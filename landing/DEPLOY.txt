@@ -1,0 +1,24 @@
+نشر دائم لصفحة الهبوط (Retweet)
+================================
+
+1) Netlify (الأسهل — بدون Git)
+   - شغّل: npm run build
+   - افتح: https://app.netlify.com/drop
+   - اسحب مجلد landing بالكامل إلى الصفحة
+   - سيعطونك رابط https://....netlify.app
+
+2) Cloudflare Pages
+   - npm run build
+   - لوحة Cloudflare → Workers & Pages → Create → Upload assets
+   - ارفع محتويات مجلد landing بعد البناء
+
+3) GitHub Pages (مجلد landing = جذر المستودع)
+   - ادفع هذا المجلد إلى مستودع جديد على GitHub
+   - Settings → Pages → Build: GitHub Actions
+   - ادفع على فرع main ليعمل workflow في .github/workflows/pages.yml
+
+4) Render
+   - من جذر المشروع الكبير: New Blueprint واختر render.yaml
+   - أو Static Site يدوياً: Root = landing، Build = npm install && npm run build
+
+ملاحظة: dist/styles.css يُنشأ بـ npm run build قبل أي رفع.

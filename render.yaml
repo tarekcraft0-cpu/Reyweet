@@ -1,0 +1,7 @@
+# https://render.com — New Blueprint → ربط هذا المستودع
+services:
+  - type: static_site
+    name: retweet-landing
+    rootDir: landing
+    buildCommand: npm install && npm run build
+    staticPublishPath: .

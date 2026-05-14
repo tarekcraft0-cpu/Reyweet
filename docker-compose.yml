@@ -1,0 +1,21 @@
+# PostgreSQL للخادم المحلي (Retweet API + Prisma)
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: retweet
+      POSTGRES_PASSWORD: retweet
+      POSTGRES_DB: retweet
+    ports:
+      - "5432:5432"
+    volumes:
+      - retweet_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U retweet -d retweet"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  retweet_pg_data:

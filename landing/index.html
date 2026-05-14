@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Retweet — شارك لحظتك. تطبيق اجتماعي عصري لنشر اللحظات والتفاعل." />
+    <title>Retweet — شارك لحظتك</title>
+    <script>
+      (function () {
+        try {
+          var m = localStorage.getItem("retweet-theme");
+          if (m === "dark") document.documentElement.classList.add("dark");
+          else document.documentElement.classList.remove("dark");
+        } catch (e) {}
+      })();
+    </script>
+    <link rel="icon" type="image/png" href="./public/favicon.png" />
+    <link rel="apple-touch-icon" href="./public/logo.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./dist/styles.css" />
+  </head>
+  <body class="font-sans antialiased">
+    <!-- Header — ألوان مطابقة لـ ThemeData في Flutter (فاتح/داكن) -->
+    <header
+      class="sticky top-0 z-50 border-b border-slate-200/90 bg-white/90 backdrop-blur-md dark:border-neutral-800 dark:bg-black/90"
+    >
+      <div class="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 py-4 sm:px-6">
+        <a href="#" class="flex min-w-0 items-center gap-3 transition-opacity hover:opacity-90">
+          <img
+            src="./public/logo.png"
+            width="44"
+            height="44"
+            alt="شعار Retweet"
+            class="shrink-0 rounded-2xl ring-1 ring-slate-200 dark:ring-neutral-700"
+          />
+          <div class="min-w-0 text-right">
+            <p class="truncate text-lg font-bold tracking-tight text-slate-900 dark:text-white sm:text-xl">Retweet</p>
+            <p class="truncate text-sm text-slate-500 dark:text-neutral-400">شارك لحظتك</p>
+          </div>
+        </a>
+        <div class="flex shrink-0 items-center gap-2 sm:gap-3">
+          <button
+            type="button"
+            id="theme-toggle"
+            class="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-700 transition hover:bg-slate-100 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800"
+            aria-label="تبديل الوضع الفاتح أو الداكن"
+          >
+            <span class="hidden dark:inline" aria-hidden="true">
+              <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
+              </svg>
+            </span>
+            <span class="inline dark:hidden" aria-hidden="true">
+              <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+              </svg>
+            </span>
+          </button>
+          <nav class="hidden items-center gap-5 text-sm font-medium text-slate-600 dark:text-neutral-400 md:flex">
+            <a href="#features" class="transition-colors hover:text-slate-900 dark:hover:text-white">المميزات</a>
+            <a href="#install" class="transition-colors hover:text-slate-900 dark:hover:text-white">طريقة التثبيت</a>
+            <a
+              href="#download"
+              class="rounded-full bg-slate-900 px-4 py-2 font-semibold text-white shadow-sm transition hover:bg-black dark:bg-white dark:text-black dark:hover:bg-neutral-200"
+              >تحميل</a
+            >
+          </nav>
+          <a
+            href="#download"
+            class="rounded-full bg-slate-900 px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-black dark:bg-white dark:text-black dark:hover:bg-neutral-200 md:hidden"
+            >تحميل</a
+          >
+        </div>
+      </div>
+    </header>
+
+    <main>
+      <!-- Hero — scaffold أبيض / أسود + primaryColor للتمييز -->
+      <section
+        id="download"
+        class="relative overflow-hidden border-b border-slate-200 bg-gradient-to-br from-white via-slate-50/80 to-white dark:border-neutral-800 dark:from-black dark:via-neutral-950 dark:to-black"
+      >
+        <div
+          class="pointer-events-none absolute -left-24 top-10 h-64 w-64 rounded-full bg-slate-900/[0.06] blur-3xl dark:bg-white/[0.05]"
+          aria-hidden="true"
+        ></div>
+        <div
+          class="pointer-events-none absolute -right-16 bottom-0 h-56 w-56 rounded-full bg-slate-200/40 blur-3xl dark:bg-neutral-800/25"
+          aria-hidden="true"
+        ></div>
+        <div class="reveal mx-auto grid max-w-6xl items-center gap-12 px-4 py-16 sm:px-6 lg:grid-cols-2 lg:py-24">
+          <div class="text-right">
+            <p
+              class="mb-3 inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-sm font-medium text-slate-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+            >
+              <span class="h-1.5 w-1.5 rounded-full bg-slate-900 dark:bg-white" aria-hidden="true"></span>
+              متوفر لـ iPhone
+            </p>
+            <h1 class="text-balance text-4xl font-bold leading-[1.15] tracking-tight text-slate-900 dark:text-white sm:text-5xl lg:text-[3.25rem]">
+              لحظاتك تستحق
+              <span class="mt-1 block text-slate-900 dark:text-white">إعادة النشر</span>
+            </h1>
+            <p class="mt-5 max-w-xl text-lg leading-relaxed text-slate-600 dark:text-neutral-400">
+              تجربة اجتماعية نظيفة وسريعة — واجهة عربية، ثيم فاتح وداكن، وربط بخادمكم. صفحة هبوط جاهزة للتسويق وللتحميل.
+            </p>
+            <div class="mt-8 flex flex-wrap items-center gap-4">
+              <a
+                href="#"
+                class="inline-flex items-center gap-3 rounded-2xl bg-slate-900 px-6 py-3.5 text-base font-semibold text-white shadow-lg shadow-slate-900/20 transition hover:bg-black dark:bg-white dark:text-black dark:shadow-white/10 dark:hover:bg-neutral-200"
+              >
+                <svg class="h-7 w-7 shrink-0 opacity-95" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path
+                    d="M18.71 19.5c-.83 1.24-1.71 2.45-3.05 2.47-1.34.03-1.77-.79-3.29-.79-1.53 0-2 .77-3.27.82-1.31.05-2.3-1.32-3.14-2.53C4.25 17 2.94 12.45 4.7 9.39c.87-1.52 2.43-2.48 4.12-2.51 1.28-.02 2.5.87 3.29.87.78 0 2.26-1.07 3.81-.91.65.03 2.47.26 3.64 1.98-.09.06-2.17 1.28-2.15 3.81.03 3.02 2.65 4.03 2.68 4.04-.03.07-.42 1.44-1.38 2.83M13 3.5c.73-.83 1.94-1.46 2.94-1.5.13 1.17-.34 2.35-1.04 3.19-.69.85-1.83 1.51-2.95 1.42-.15-1.15.41-2.35 1.05-3.11z"
+                  />
+                </svg>
+                تحميل للآيفون
+              </a>
+              <a
+                href="#install"
+                class="text-sm font-semibold text-slate-900 underline decoration-slate-400 decoration-2 underline-offset-4 hover:text-black dark:text-white dark:decoration-neutral-500 dark:hover:text-neutral-200"
+                >تثبيت من خارج App Store؟ اقرأ الخطوات</a
+              >
+            </div>
+            <p class="mt-4 text-sm text-slate-500 dark:text-neutral-500">
+              استبدل رابط الزر برابط ملف التثبيت (IPA) أو TestFlight عند النشر.
+            </p>
+          </div>
+          <div class="flex justify-center lg:justify-start">
+            <div class="landing-float relative w-full max-w-[340px] px-2 sm:max-w-[360px]">
+              <div
+                class="pointer-events-none absolute -inset-10 rounded-[4rem] bg-gradient-to-br from-slate-300/50 via-transparent to-slate-400/30 blur-3xl dark:from-white/[0.07] dark:to-transparent"
+                aria-hidden="true"
+              ></div>
+              <!-- إطار iPhone — تيتانيوم، Dynamic Island، شاشة بمحتوى من التطبيق -->
+              <div
+                class="relative z-10 mx-auto w-full max-w-[300px] rounded-[2.9rem] bg-gradient-to-b from-neutral-400 via-neutral-800 to-neutral-950 p-[11px] shadow-[0_32px_64px_-12px_rgba(0,0,0,0.45),0_0_0_1px_rgba(255,255,255,0.06)_inset] ring-1 ring-black/10 dark:from-neutral-500 dark:via-neutral-800 dark:shadow-[0_40px_80px_-16px_rgba(0,0,0,0.85)] sm:max-w-[310px]"
+              >
+                <div class="relative aspect-[9/19.5] overflow-hidden rounded-[2.15rem] bg-black">
+                  <div class="absolute inset-0 bg-gradient-to-b from-neutral-800/90 via-black to-black"></div>
+                  <div
+                    class="absolute left-1/2 top-3 z-30 h-[30px] w-[108px] -translate-x-1/2 rounded-full bg-black ring-1 ring-white/[0.08]"
+                    aria-hidden="true"
+                  ></div>
+                  <div class="absolute left-0 right-0 top-0 z-20 flex items-start justify-between px-7 pb-2 pt-[52px] text-[11px] font-semibold tracking-wide text-white/55">
+                    <span>9:41</span>
+                    <span class="flex items-center gap-1.5 tabular-nums" aria-hidden="true">
+                      <span class="text-[10px]">5G</span>
+                      <span class="font-mono">100%</span>
+                    </span>
+                  </div>
+                  <div class="relative z-10 flex h-full flex-col items-center justify-center px-6 pb-10 pt-16">
+                    <div class="relative">
+                      <div class="absolute inset-0 scale-110 rounded-[2.2rem] bg-white/10 blur-2xl"></div>
+                      <img
+                        src="./public/logo.png"
+                        width="120"
+                        height="120"
+                        alt=""
+                        class="relative h-[7.5rem] w-[7.5rem] rounded-[1.75rem] object-cover shadow-2xl ring-1 ring-white/15 sm:h-32 sm:w-32"
+                      />
+                    </div>
+                    <p class="mt-7 text-center text-[15px] font-semibold tracking-tight text-white">Retweet</p>
+                    <p class="mt-1 text-center text-xs text-white/45">شارك لحظتك</p>
+                  </div>
+                  <div
+                    class="absolute bottom-3 left-1/2 z-20 h-[5px] w-[92px] -translate-x-1/2 rounded-full bg-white/20"
+                    aria-hidden="true"
+                  ></div>
+                </div>
+              </div>
+              <p class="mt-4 text-center text-xs text-slate-500 dark:text-neutral-500">تصميم يشبه شاشة iPhone — مع شعاركم داخل الشاشة</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Features -->
+      <section id="features" class="reveal border-b border-slate-200 bg-white py-20 dark:border-neutral-800 dark:bg-black sm:py-24">
+        <div class="mx-auto max-w-6xl px-4 sm:px-6">
+          <div class="mx-auto max-w-2xl text-center">
+            <h2 class="text-3xl font-bold text-slate-900 dark:text-white sm:text-4xl">تغريد وريلزات</h2>
+            <p class="mt-3 text-slate-600 dark:text-neutral-400">
+              محتوى نصي سريع وفيديو قصير في مكان واحد — مع واجهة واضحة في الوضعين الفاتح والداكن.
+            </p>
+          </div>
+          <div class="mt-14 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
+            <article
+              class="card-lift group rounded-3xl border border-slate-200 bg-slate-50/80 p-8 shadow-sm transition hover:border-slate-300 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-950 dark:hover:border-neutral-600"
+            >
+              <div
+                class="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl border border-slate-300 bg-slate-200/90 text-slate-900 dark:border-neutral-600 dark:bg-neutral-800 dark:text-white"
+              >
+                <svg class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+              </div>
+              <h3 class="text-xl font-bold text-slate-900 dark:text-white">أداء سريع</h3>
+              <p class="mt-2 leading-relaxed text-slate-600 dark:text-neutral-400">واجهة خفيفة واستجابة فورية تناسب الاستخدام اليومي.</p>
+            </article>
+            <article
+              class="card-lift group rounded-3xl border border-slate-200 bg-slate-50/80 p-8 shadow-sm transition hover:border-slate-300 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-950 dark:hover:border-neutral-600"
+            >
+              <div
+                class="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl border border-slate-300 bg-slate-200/90 text-slate-900 dark:border-neutral-600 dark:bg-neutral-800 dark:text-white"
+              >
+                <svg class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                  />
+                </svg>
+              </div>
+              <h3 class="text-xl font-bold text-slate-900 dark:text-white">مشاركة لحظاتك</h3>
+              <p class="mt-2 leading-relaxed text-slate-600 dark:text-neutral-400">ركز على المحتوى الذي يهمك مع تجربة نشر بسيطة.</p>
+            </article>
+            <article
+              class="card-lift group rounded-3xl border border-slate-200 bg-slate-50/80 p-8 shadow-sm transition hover:border-slate-300 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-950 dark:hover:border-neutral-600 sm:col-span-2 lg:col-span-1"
+            >
+              <div
+                class="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl border border-slate-300 bg-slate-200/90 text-slate-900 dark:border-neutral-600 dark:bg-neutral-800 dark:text-white"
+              >
+                <svg class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
+                  />
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <h3 class="text-xl font-bold text-slate-900 dark:text-white">تغريد وريلزات</h3>
+              <p class="mt-2 leading-relaxed text-slate-600 dark:text-neutral-400">
+                انشر تحديثات نصية خفيفة وشاهد فيديوهات قصيرة (ريلز) في نفس التدفّق — بدون تعقيد.
+              </p>
+            </article>
+            <article
+              class="card-lift group rounded-3xl border border-slate-200 bg-slate-50/80 p-8 shadow-sm transition hover:border-slate-300 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-950 dark:hover:border-neutral-600"
+            >
+              <div
+                class="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl border border-slate-300 bg-slate-200/90 text-slate-900 dark:border-neutral-600 dark:bg-neutral-800 dark:text-white"
+              >
+                <svg class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+                  />
+                </svg>
+              </div>
+              <h3 class="text-xl font-bold text-slate-900 dark:text-white">جلسة آمنة</h3>
+              <p class="mt-2 leading-relaxed text-slate-600 dark:text-neutral-400">تسجيل دخول منظم يتصل بخادمك وفق إعداداتك.</p>
+            </article>
+            <article
+              class="card-lift group rounded-3xl border border-slate-200 bg-slate-50/80 p-8 shadow-sm transition hover:border-slate-300 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-950 dark:hover:border-neutral-600"
+            >
+              <div
+                class="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl border border-slate-300 bg-slate-200/90 text-slate-900 dark:border-neutral-600 dark:bg-neutral-800 dark:text-white"
+              >
+                <svg class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"
+                  />
+                </svg>
+              </div>
+              <h3 class="text-xl font-bold text-slate-900 dark:text-white">تصميم نظيف</h3>
+              <p class="mt-2 leading-relaxed text-slate-600 dark:text-neutral-400">أسطح فاتحة أو داكنة مع تباين واضح للقراءة والتركيز على المحتوى.</p>
+            </article>
+            <article
+              class="card-lift group rounded-3xl border border-slate-200 bg-slate-50/80 p-8 shadow-sm transition hover:border-slate-300 hover:shadow-md dark:border-neutral-800 dark:bg-neutral-950 dark:hover:border-neutral-600"
+            >
+              <div
+                class="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl border border-slate-300 bg-slate-200/90 text-slate-900 dark:border-neutral-600 dark:bg-neutral-800 dark:text-white"
+              >
+                <svg class="h-7 w-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"
+                  />
+                </svg>
+              </div>
+              <h3 class="text-xl font-bold text-slate-900 dark:text-white">تواصل مريح وآمن</h3>
+              <p class="mt-2 leading-relaxed text-slate-600 dark:text-neutral-400">
+                تفاعل بسيط مع المحتوى والأصدقاء، مع جلسة دخول منظمة واتصال آمن بخادمك عند استخدام التطبيق.
+              </p>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <!-- How to install -->
+      <section id="install" class="reveal bg-slate-50 py-20 dark:bg-neutral-950 sm:py-24">
+        <div class="mx-auto max-w-6xl px-4 sm:px-6">
+          <div class="mx-auto max-w-2xl text-center">
+            <h2 class="text-3xl font-bold text-slate-900 dark:text-white sm:text-4xl">طريقة التثبيت والوثوق بالشهادة</h2>
+            <p class="mt-3 text-slate-600 dark:text-neutral-400">
+              عند تثبيت التطبيق من رابط مباشر (Enterprise أو Ad Hoc)، قد يظهر تنبيه حول المطوّر. اتبع الخطوات التالية على
+              iPhone للوثوق بالشهادة من الإعدادات.
+            </p>
+          </div>
+          <ol class="mx-auto mt-14 max-w-3xl space-y-6">
+            <li
+              class="flex gap-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
+            >
+              <span
+                class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-slate-200 text-sm font-bold text-slate-900 dark:border-neutral-600 dark:bg-neutral-800 dark:text-white"
+                >1</span
+              >
+              <div class="text-right">
+                <h3 class="font-bold text-slate-900 dark:text-white">افتح تطبيق الإعدادات</h3>
+                <p class="mt-1 text-slate-600 dark:text-neutral-400">من الشاشة الرئيسية، اضغط على أيقونة الإعدادات (Settings).</p>
+              </div>
+            </li>
+            <li
+              class="flex gap-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
+            >
+              <span
+                class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-slate-200 text-sm font-bold text-slate-900 dark:border-neutral-600 dark:bg-neutral-800 dark:text-white"
+                >2</span
+              >
+              <div class="text-right">
+                <h3 class="font-bold text-slate-900 dark:text-white">انتقل إلى «عام»</h3>
+                <p class="mt-1 text-slate-600 dark:text-neutral-400">مرّر للأسفل واختر <strong class="text-slate-800 dark:text-neutral-200">عام</strong> (General).</p>
+              </div>
+            </li>
+            <li
+              class="flex gap-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
+            >
+              <span
+                class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-slate-200 text-sm font-bold text-slate-900 dark:border-neutral-600 dark:bg-neutral-800 dark:text-white"
+                >3</span
+              >
+              <div class="text-right">
+                <h3 class="font-bold text-slate-900 dark:text-white">VPN وتطبيقات VPN أو إدارة الجهاز</h3>
+                <p class="mt-1 text-slate-600 dark:text-neutral-400">
+                  حسب إصدار iOS، اختر
+                  <strong class="text-slate-800 dark:text-neutral-200">VPN وتطبيقات إدارة الجهاز</strong> أو
+                  <strong class="text-slate-800 dark:text-neutral-200">VPN وتطبيقات VPN</strong> أو
+                  <strong class="text-slate-800 dark:text-neutral-200">الملفات الشخصية والإدارة الجهازية</strong> (Profiles &amp; Device Management).
+                </p>
+              </div>
+            </li>
+            <li
+              class="flex gap-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
+            >
+              <span
+                class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-slate-200 text-sm font-bold text-slate-900 dark:border-neutral-600 dark:bg-neutral-800 dark:text-white"
+                >4</span
+              >
+              <div class="text-right">
+                <h3 class="font-bold text-slate-900 dark:text-white">اختر ملف تعريف المطوّر</h3>
+                <p class="mt-1 text-slate-600 dark:text-neutral-400">
+                  تحت قسم <strong class="text-slate-800 dark:text-neutral-200">«تطبيق المؤسسة»</strong> أو
+                  <strong class="text-slate-800 dark:text-neutral-200">«تطبيق المطوّر»</strong>، اضغط على الاسم الذي يظهر بجانب تطبيق Retweet (اسم
+                  المؤسسة أو الشهادة).
+                </p>
+              </div>
+            </li>
+            <li
+              class="flex gap-4 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"
+            >
+              <span
+                class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-slate-300 bg-slate-200 text-sm font-bold text-slate-900 dark:border-neutral-600 dark:bg-neutral-800 dark:text-white"
+                >5</span
+              >
+              <div class="text-right">
+                <h3 class="font-bold text-slate-900 dark:text-white">اضغط «الوثوق» ثم أكّد</h3>
+                <p class="mt-1 text-slate-600 dark:text-neutral-400">
+                  اضغط <strong class="text-slate-800 dark:text-neutral-200">الوثوق في …</strong> (Trust) ثم أكّد من النافذة المنبثقة. بعدها يمكنك
+                  فتح التطبيق من الشاشة الرئيسية بشكل طبيعي.
+                </p>
+              </div>
+            </li>
+          </ol>
+          <p
+            class="mx-auto mt-8 max-w-3xl rounded-2xl border border-amber-200/90 bg-amber-50 px-4 py-3 text-center text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/35 dark:text-amber-100"
+          >
+            ثقّ فقط بالشهادات التي تعرف مصدرها. إذا تغيّر المطوّر أو الرابط، راجع الجهة التي وزّعت التطبيق قبل منح الثقة.
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-slate-200 bg-slate-100 text-slate-600 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-400">
+      <div class="mx-auto max-w-6xl px-4 py-14 sm:px-6">
+        <div class="flex flex-col items-center justify-between gap-8 md:flex-row md:items-start">
+          <div class="flex flex-col items-center gap-3 text-center md:items-end md:text-right">
+            <div class="flex items-center gap-3">
+              <img
+                src="./public/logo.png"
+                width="40"
+                height="40"
+                alt="شعار Retweet"
+                class="rounded-xl ring-1 ring-slate-200 dark:ring-neutral-700"
+              />
+              <div>
+                <p class="font-bold text-slate-900 dark:text-white">Retweet</p>
+                <p class="text-sm text-slate-500 dark:text-neutral-500">شارك لحظتك</p>
+              </div>
+            </div>
+            <p class="max-w-sm text-sm leading-relaxed text-slate-500 dark:text-neutral-500">الشعار هو نفس صورة الهوية التي أرسلتها (حرف R مع الأسهم الدائرية).</p>
+          </div>
+          <div class="text-center md:text-right">
+            <p class="text-sm font-semibold text-slate-900 dark:text-white">تواصل معنا</p>
+            <div class="mt-4 flex flex-wrap items-center justify-center gap-3 md:justify-end">
+              <a
+                href="https://twitter.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 transition hover:border-slate-400 hover:text-slate-900 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:border-neutral-500 dark:hover:text-white"
+                aria-label="X (تويتر)"
+              >
+                <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"
+                  />
+                </svg>
+              </a>
+              <a
+                href="https://github.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 transition hover:border-slate-400 hover:text-slate-900 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:border-neutral-500 dark:hover:text-white"
+                aria-label="GitHub"
+              >
+                <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    fill-rule="evenodd"
+                    d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"
+                    clip-rule="evenodd"
+                  />
+                </svg>
+              </a>
+              <a
+                href="mailto:hello@example.com"
+                class="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-700 transition hover:border-slate-400 hover:text-slate-900 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:border-neutral-500 dark:hover:text-white"
+                aria-label="البريد الإلكتروني"
+              >
+                <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                  />
+                </svg>
+              </a>
+            </div>
+          </div>
+        </div>
+        <div class="mt-10 border-t border-slate-200 pt-8 text-center text-sm text-slate-500 dark:border-neutral-800 dark:text-neutral-600">
+          <p>© <span id="y"></span> Retweet. جميع الحقوق محفوظة.</p>
+        </div>
+      </div>
+    </footer>
+    <script>
+      document.getElementById("y").textContent = new Date().getFullYear();
+
+      (function () {
+        var root = document.documentElement;
+        var btn = document.getElementById("theme-toggle");
+        if (!btn) return;
+
+        function apply(mode) {
+          if (mode === "dark") root.classList.add("dark");
+          else root.classList.remove("dark");
+          try {
+            localStorage.setItem("retweet-theme", mode);
+          } catch (e) {}
+        }
+
+        btn.addEventListener("click", function () {
+          apply(root.classList.contains("dark") ? "light" : "dark");
+        });
+      })();
+
+      (function () {
+        var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        var nodes = document.querySelectorAll(".reveal");
+        if (!nodes.length) return;
+        if (reduce) {
+          nodes.forEach(function (el) {
+            el.classList.add("is-visible");
+          });
+          return;
+        }
+        var io = new IntersectionObserver(
+          function (entries) {
+            entries.forEach(function (entry) {
+              if (!entry.isIntersecting) return;
+              entry.target.classList.add("is-visible");
+              io.unobserve(entry.target);
+            });
+          },
+          { rootMargin: "0px 0px -6% 0px", threshold: 0.06 }
+        );
+        nodes.forEach(function (el) {
+          io.observe(el);
+        });
+      })();
+    </script>
+  </body>
+</html>

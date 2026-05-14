@@ -1,0 +1,23 @@
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+.sticker-button {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  overflow: hidden;
+}
+
+.sticker-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}

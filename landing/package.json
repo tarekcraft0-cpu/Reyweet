@@ -1,0 +1,14 @@
+{
+  "name": "retweet-landing",
+  "private": true,
+  "scripts": {
+    "build": "npx @tailwindcss/cli -i ./src/input.css -o ./dist/styles.css --minify",
+    "dev": "npx @tailwindcss/cli -i ./src/input.css -o ./dist/styles.css --watch",
+    "preview": "npm run build && npx --yes serve . -l tcp://0.0.0.0:4173",
+    "deploy:netlify": "npm run build && npx --yes netlify-cli deploy --prod --dir ."
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "^4.1.0",
+    "tailwindcss": "^4.1.0"
+  }
+}
