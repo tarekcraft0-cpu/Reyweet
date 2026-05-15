@@ -1,0 +1,42 @@
+# ينشر صفحة landing على Vercel عند كل push إلى main (أو يدوياً).
+# المطلوب في GitHub: Settings → Secrets → Actions
+#   VERCEL_TOKEN   — من https://vercel.com/account/tokens
+#   VERCEL_ORG_ID  — من .vercel/project.json بعد: npx vercel link
+#   VERCEL_PROJECT_ID
+name: Deploy landing to Vercel
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "landing/**"
+      - "vercel.json"
+      - "scripts/prepare-vercel-static.mjs"
+      - ".github/workflows/vercel-landing.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: vercel-landing-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: landing/package-lock.json
+
+      - name: Deploy to Vercel (production)
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          vercel-version: ${{ secrets.VERCEL_CLI_VERSION }}
+          working-directory: ./
+          vercel-args: --prod

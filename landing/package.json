@@ -2,7 +2,7 @@
   "name": "retweet-landing",
   "private": true,
   "scripts": {
-    "build": "npx @tailwindcss/cli -i ./src/input.css -o ./dist/styles.css --minify",
+    "build": "node scripts/sync-public-assets.mjs && npx @tailwindcss/cli -i ./src/input.css -o ./dist/styles.css --minify && node scripts/write-manifest.mjs",
     "dev": "npx @tailwindcss/cli -i ./src/input.css -o ./dist/styles.css --watch",
     "preview": "npm run build && npx --yes serve . -l tcp://0.0.0.0:4173",
     "deploy:netlify": "npm run build && npx --yes netlify-cli deploy --prod --dir ."

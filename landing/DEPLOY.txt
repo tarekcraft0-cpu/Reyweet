@@ -1,6 +1,21 @@
 نشر دائم لصفحة الهبوط (Retweet)
 ================================
 
+النشر التلقائي (موصى به) — reyweet.vercel.app
+----------------------------------------------
+1) Vercel → Project → Settings → Git → اربط مستودع GitHub (Reyweet).
+2) Root Directory = . (جذر المستودع) — يستخدم vercel.json تلقائياً.
+3) كل push إلى فرع main يعيد النشر تلقائياً.
+
+أو عبر GitHub Actions (إذا لم يعمل ربط Git):
+  أضف Secrets: VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID
+  الملف: .github/workflows/vercel-landing.yml
+
+من جهازك بعد التعديل:
+  git add landing vercel.json scripts
+  git commit -m "تحديث صفحة التحميل"
+  git push origin main
+
 1) Netlify (الأسهل — بدون Git)
    - شغّل: npm run build
    - افتح: https://app.netlify.com/drop

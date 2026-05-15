@@ -17,6 +17,13 @@ dist-ssr
 *.local
 mobile/.env
 
+# Vercel static bundle (generated on deploy)
+_vercel_site
+
+# App binaries for landing (place files locally, do not commit large builds)
+landing/public/downloads/*.ipa
+landing/public/downloads/*.apk
+
 # Wrangler / Cloudflare
 .wrangler/
 .dev.vars

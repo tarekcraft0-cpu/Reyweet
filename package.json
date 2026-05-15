@@ -22,7 +22,10 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "db:delete-legacy-founder": "tsx scripts/delete-legacy-founder-account.ts",
-    "api:dev": "tsx watch api/server.ts"
+    "api:dev": "tsx watch api/server.ts",
+    "landing:build": "npm run build --prefix landing && node scripts/prepare-vercel-static.mjs",
+    "landing:preview": "npm run landing:build && npx --yes serve _vercel_site -l tcp://0.0.0.0:4173",
+    "landing:copy-builds": "node scripts/copy-app-builds.mjs"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

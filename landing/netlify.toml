@@ -10,3 +10,25 @@
   [headers.values]
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
+
+[[redirects]]
+  from = "/downloads/*"
+  to = "/public/downloads/:splat"
+  status = 200
+
+[[headers]]
+  for = "/public/downloads/*.plist"
+  [headers.values]
+    Content-Type = "application/xml; charset=utf-8"
+
+[[headers]]
+  for = "/public/downloads/*.ipa"
+  [headers.values]
+    Content-Type = "application/octet-stream"
+    Content-Disposition = "attachment; filename=\"Retweet.ipa\""
+
+[[headers]]
+  for = "/public/downloads/*.apk"
+  [headers.values]
+    Content-Type = "application/vnd.android.package-archive"
+    Content-Disposition = "attachment; filename=\"Retweet.apk\""
