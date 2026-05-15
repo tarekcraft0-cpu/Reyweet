@@ -108,11 +108,6 @@
             <p class="mt-5 max-w-xl text-lg leading-relaxed text-slate-600 dark:text-neutral-400">
               تجربة اجتماعية نظيفة وسريعة — واجهة عربية، ثيم فاتح وداكن. على iPhone اضغط «تثبيت على iPhone» من Safari؛ على أندرويد حمّل ملف APK.
             </p>
-            <p
-              id="download-status"
-              class="mt-4 hidden max-w-xl rounded-2xl border border-amber-200/90 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-900/50 dark:bg-amber-950/35 dark:text-amber-100"
-              role="status"
-            ></p>
             <div class="mt-8 flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-center">
               <a
                 id="ios-install"
@@ -125,14 +120,6 @@
                   />
                 </svg>
                 تثبيت على iPhone
-              </a>
-              <a
-                id="ipa-download"
-                href="./public/downloads/retweet.ipa"
-                download="Retweet.ipa"
-                class="hidden items-center justify-center gap-2 rounded-2xl border border-slate-300 bg-white px-5 py-3 text-sm font-semibold text-slate-900 transition hover:bg-slate-50 dark:border-neutral-600 dark:bg-neutral-900 dark:text-white dark:hover:bg-neutral-800 sm:inline-flex"
-              >
-                تحميل IPA
               </a>
               <a
                 id="apk-download"
@@ -538,47 +525,6 @@
         }
         wireItms(document.getElementById("ios-install"));
         wireItms(document.getElementById("footer-ios-install"));
-
-        function probe(url, onResult) {
-          fetch(url, { method: "HEAD", cache: "no-store" })
-            .then(function (res) {
-              onResult(res.ok);
-            })
-            .catch(function () {
-              onResult(false);
-            });
-        }
-
-        var statusEl = document.getElementById("download-status");
-        var ipaBtn = document.getElementById("ios-install");
-        var ipaFile = document.getElementById("ipa-download");
-        var apkBtn = document.getElementById("apk-download");
-
-        probe(siteRoot + "public/downloads/retweet.ipa", function (ipaOk) {
-          probe(siteRoot + "public/downloads/retweet.apk", function (apkOk) {
-            if (ipaOk && apkOk) return;
-            if (!statusEl) return;
-            var parts = [];
-            if (!ipaOk) parts.push("ملف iPhone (retweet.ipa) غير موجود على الخادم بعد");
-            if (!apkOk) parts.push("ملف Android (retweet.apk) غير موجود على الخادم بعد");
-            statusEl.textContent = parts.join(" — ") + ".";
-            statusEl.classList.remove("hidden");
-            if (!ipaOk && ipaBtn) {
-              ipaBtn.classList.add("pointer-events-none", "opacity-50");
-              ipaBtn.setAttribute("aria-disabled", "true");
-            }
-            if (!apkOk && apkBtn) {
-              apkBtn.classList.add("pointer-events-none", "opacity-50");
-              apkBtn.setAttribute("aria-disabled", "true");
-            }
-          });
-        });
-
-        if (ipaFile) {
-          probe(siteRoot + "public/downloads/retweet.ipa", function (ok) {
-            if (ok) ipaFile.classList.remove("hidden");
-          });
-        }
       })();
 
       (function () {
