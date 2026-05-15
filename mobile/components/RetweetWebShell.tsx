@@ -14,6 +14,22 @@ import WebView from "react-native-webview";
 
 import { getWebAppUrl } from "@/lib/webAppUrl";
 
+const LOAD_TIMEOUT_MS = 22_000;
+
+/** يخبر Expo أن الصفحة جاهزة (أوثق من onLoadEnd مع Vite/HMR). */
+const INJECT_READY_PROBE = `
+(function () {
+  function ping() {
+    if (window.ReactNativeWebView) {
+      window.ReactNativeWebView.postMessage(JSON.stringify({ type: "retweet-ready" }));
+    }
+  }
+  if (document.readyState === "complete") ping();
+  else window.addEventListener("load", ping, { once: true });
+})();
+true;
+`;
+
 export function RetweetWebShell() {
   const baseUrl = getWebAppUrl();
   const webRef = useRef<WebView>(null);
@@ -21,6 +37,7 @@ export function RetweetWebShell() {
   const [loading, setLoading] = useState(!!baseUrl);
   const [loadKey, setLoadKey] = useState(0);
   const [lastError, setLastError] = useState<string | null>(null);
+  const hasShownContent = useRef(false);
 
   const onNavChange = useCallback((nav: { canGoBack?: boolean }) => {
     if (typeof nav.canGoBack === "boolean") setCanGoBack(nav.canGoBack);
@@ -41,8 +58,21 @@ export function RetweetWebShell() {
   const retryLoad = useCallback(() => {
     setLastError(null);
     setLoading(true);
+    hasShownContent.current = false;
     setLoadKey(k => k + 1);
   }, []);
+
+  useEffect(() => {
+    if (!baseUrl || !loading || lastError) return;
+    const timer = setTimeout(() => {
+      if (hasShownContent.current) return;
+      setLoading(false);
+      setLastError(
+        "انتهت مهلة التحميل. تأكد أن npm run dev:lan يعمل على الكمبيوتر، وأن الآيفون على نفس Wi‑Fi، وجرّب فتح الرابط في Safari. قد تحتاج npm run open:dev-firewall كمسؤول.",
+      );
+    }, LOAD_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [baseUrl, loading, lastError, loadKey]);
 
   if (!baseUrl) {
     return (
@@ -102,10 +132,31 @@ export function RetweetWebShell() {
           source={{ uri: baseUrl }}
           style={styles.web}
           onLoadStart={() => {
-            setLoading(true);
+            if (!hasShownContent.current) setLoading(true);
             setLastError(null);
           }}
-          onLoadEnd={() => setLoading(false)}
+          onLoadEnd={() => {
+            hasShownContent.current = true;
+            setLoading(false);
+          }}
+          onLoadProgress={e => {
+            if (e.nativeEvent.progress >= 0.9) {
+              hasShownContent.current = true;
+              setLoading(false);
+            }
+          }}
+          onMessage={e => {
+            try {
+              const data = JSON.parse(e.nativeEvent.data) as { type?: string };
+              if (data.type === "retweet-ready") {
+                hasShownContent.current = true;
+                setLoading(false);
+              }
+            } catch {
+              /* ignore */
+            }
+          }}
+          injectedJavaScript={INJECT_READY_PROBE}
           onNavigationStateChange={onNavChange}
           onError={e => {
             setLoading(false);

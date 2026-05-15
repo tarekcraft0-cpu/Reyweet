@@ -1,7 +1,9 @@
 /**
  * يشغّل Vite على منفذ ثابت (3077) ليطابق mobile/.env — يحرّر المنفذ أولاً إن كان مشغولاً.
+ * يضبط DEV_LAN_HOST لـ HMR حتى يعمل WebView على Expo Go (الآيفون لا يصل إلى localhost).
  */
 import { execSync, spawn } from "node:child_process";
+import os from "node:os";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -40,11 +42,27 @@ function killPortUnix() {
 if (process.platform === "win32") killPortWin();
 else killPortUnix();
 
+function pickLanIPv4() {
+  const nets = os.networkInterfaces();
+  for (const list of Object.values(nets)) {
+    if (!list) continue;
+    for (const ni of list) {
+      if (ni.family !== "IPv4" || ni.internal) continue;
+      if (ni.address.startsWith("169.254.")) continue;
+      return ni.address;
+    }
+  }
+  return "127.0.0.1";
+}
+
+const lanHost = process.env.DEV_LAN_HOST?.trim() || pickLanIPv4();
+console.log(`[dev:lan] DEV_LAN_HOST=${lanHost} (HMR + Network URL for mobile/.env)`);
+
 const viteBin = path.join(root, "node_modules", "vite", "bin", "vite.js");
 const child = spawn(process.execPath, [viteBin, "dev", "--host", "--port", String(PORT), "--strictPort"], {
   cwd: root,
   stdio: "inherit",
-  env: process.env,
+  env: { ...process.env, DEV_LAN_HOST: lanHost },
 });
 
 child.on("exit", code => process.exit(code ?? 0));
