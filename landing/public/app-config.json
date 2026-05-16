@@ -1,4 +1,6 @@
 {
   "apiUrl": "",
-  "appPath": "/app/"
+  "appPath": "/app/",
+  "supabaseUrl": "https://jlwbzcbwtxlugnqrdbve.supabase.co",
+  "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impsd2J6Y2J3dHhsdWducXJkYnZlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0MjU0MDAsImV4cCI6MjA5NDAwMTQwMH0.suJrOWFOQs_wtGP-bJPbOFzlBFbx27NQlYbrhjGFwOE"
 }

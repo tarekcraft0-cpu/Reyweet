@@ -1,9 +1,11 @@
 /**
- * تسجيل دخول / إنشاء حساب من صفحة الهبوط — نفس API التطبيق (retweet_api_token).
+ * تسجيل دخول / إنشاء حساب من صفحة الهبوط.
+ * Retweet API إن وُجد apiUrl، وإلا Supabase (نفس التطبيق بدون VITE_API_URL).
  */
 (function () {
   var TOKEN_KEY = "retweet_api_token";
   var USER_KEY = "retweet_auth_user";
+  var SB_SESSION_KEY = "retweet_supabase_session";
 
   var overlay = document.getElementById("auth-overlay");
   var panel = document.getElementById("auth-panel");
@@ -16,14 +18,15 @@
   var fieldsSignup = document.getElementById("auth-fields-signup");
   var toggleSignup = document.getElementById("auth-toggle-signup");
   var toggleLogin = document.getElementById("auth-toggle-login");
+  var loginIdentifierInput = form ? form.querySelector('[name="identifier"]') : null;
 
   if (!overlay || !form) return;
 
   var mode = "login";
   var busy = false;
-  var config = { apiUrl: "", appPath: "/app/" };
+  var config = { apiUrl: "", appPath: "/app/", supabaseUrl: "", supabaseAnonKey: "" };
 
-  function trimApiUrl(u) {
+  function trimUrl(u) {
     return (u || "").replace(/\/$/, "");
   }
 
@@ -37,9 +40,21 @@
         return {};
       })
       .then(function (j) {
-        config.apiUrl = trimApiUrl(j.apiUrl);
+        config.apiUrl = trimUrl(j.apiUrl);
+        config.supabaseUrl = trimUrl(j.supabaseUrl);
+        config.supabaseAnonKey = (j.supabaseAnonKey || "").trim();
         if (j.appPath) config.appPath = j.appPath;
+        updateLoginPlaceholder();
       });
+  }
+
+  function usesSupabase() {
+    return !config.apiUrl && !!(config.supabaseUrl && config.supabaseAnonKey);
+  }
+
+  function updateLoginPlaceholder() {
+    if (!loginIdentifierInput) return;
+    loginIdentifierInput.placeholder = usesSupabase() ? "البريد الإلكتروني" : "اليوزر أو الإيميل";
   }
 
   function setBusy(on) {
@@ -101,14 +116,110 @@
     }, 220);
   }
 
-  function refreshOpenAppLink() {
+  function hasSession() {
     try {
-      var el = document.getElementById("auth-open-app");
-      if (!el) return;
-      el.hidden = !localStorage.getItem(TOKEN_KEY);
+      if (localStorage.getItem(TOKEN_KEY)) return true;
+      if (localStorage.getItem(SB_SESSION_KEY)) return true;
+      var ref = supabaseStorageKey();
+      if (ref && localStorage.getItem(ref)) return true;
     } catch (e) {
       /* ignore */
     }
+    return false;
+  }
+
+  function refreshOpenAppLink() {
+    var el = document.getElementById("auth-open-app");
+    if (!el) return;
+    el.hidden = !hasSession();
+  }
+
+  function supabaseProjectRef() {
+    try {
+      return new URL(config.supabaseUrl).hostname.split(".")[0] || "";
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function supabaseStorageKey() {
+    var ref = supabaseProjectRef();
+    return ref ? "sb-" + ref + "-auth-token" : "";
+  }
+
+  function mapSupabaseError(msg) {
+    if (!msg) return "تعذر تسجيل الدخول";
+    if (/invalid login credentials/i.test(msg)) return "البريد أو كلمة المرور غير صحيحة";
+    if (/email not confirmed/i.test(msg)) return "فعّل بريدك من رابط التأكيد ثم أعد المحاولة";
+    if (/user already registered/i.test(msg)) return "هذا البريد مسجّل مسبقاً — جرّب تسجيل الدخول";
+    return msg;
+  }
+
+  function supabaseHeaders() {
+    return {
+      "Content-Type": "application/json",
+      apikey: config.supabaseAnonKey,
+      Authorization: "Bearer " + config.supabaseAnonKey,
+    };
+  }
+
+  function persistSupabaseSession(payload) {
+    try {
+      localStorage.removeItem(TOKEN_KEY);
+      var session = {
+        access_token: payload.access_token,
+        refresh_token: payload.refresh_token,
+        expires_in: payload.expires_in,
+        expires_at: payload.expires_at,
+        token_type: payload.token_type || "bearer",
+        user: payload.user,
+      };
+      localStorage.setItem(SB_SESSION_KEY, JSON.stringify(session));
+      var storageKey = supabaseStorageKey();
+      if (storageKey) localStorage.setItem(storageKey, JSON.stringify(session));
+      if (payload.user) {
+        localStorage.setItem(USER_KEY, JSON.stringify(payload.user));
+        if (payload.user.id) localStorage.setItem("retweet_pending_welcome_user", payload.user.id);
+      }
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
+  function persistApiSession(token, user) {
+    try {
+      localStorage.setItem(TOKEN_KEY, token);
+      if (user) localStorage.setItem(USER_KEY, JSON.stringify(user));
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
+  function finishAuthSuccess() {
+    refreshOpenAppLink();
+    var path = config.appPath || "/app/";
+    if (!path.endsWith("/")) path += "/";
+    fetch(path, { method: "HEAD" })
+      .then(function (res) {
+        if (res.ok) {
+          window.location.href = path;
+          return;
+        }
+        showInfo("تم تسجيل الدخول بنجاح. حمّل التطبيق أو افتحه من جهازك بنفس البريد.");
+        window.setTimeout(function () {
+          closeModal();
+          var dl = document.getElementById("download");
+          if (dl) dl.scrollIntoView({ behavior: "smooth" });
+        }, 1200);
+      })
+      .catch(function () {
+        showInfo("تم تسجيل الدخول بنجاح. افتح تطبيق Retweet من جهازك.");
+        window.setTimeout(function () {
+          closeModal();
+          var dl = document.getElementById("download");
+          if (dl) dl.scrollIntoView({ behavior: "smooth" });
+        }, 1200);
+      });
   }
 
   function apiPost(path, body) {
@@ -117,7 +228,7 @@
       return Promise.resolve({
         ok: false,
         status: 0,
-        data: { error: "الخادم غير مضبوط على الموقع. أضف VITE_API_URL في إعدادات Vercel." },
+        data: { error: "لا يوجد خادم API أو Supabase مضبوط على الموقع." },
       });
     }
     return fetch(base + path, {
@@ -137,19 +248,40 @@
       });
   }
 
-  function persistSession(token, user) {
-    try {
-      localStorage.setItem(TOKEN_KEY, token);
-      if (user) localStorage.setItem(USER_KEY, JSON.stringify(user));
-    } catch (e) {
-      /* ignore */
-    }
+  function supabaseLogin(email, password) {
+    return fetch(config.supabaseUrl + "/auth/v1/token?grant_type=password", {
+      method: "POST",
+      headers: supabaseHeaders(),
+      body: JSON.stringify({ email: email, password: password }),
+    })
+      .then(function (res) {
+        return res.json().then(function (data) {
+          return { ok: res.ok, data: data };
+        });
+      })
+      .catch(function () {
+        return { ok: false, data: { error_description: "تعذر الاتصال بـ Supabase" } };
+      });
   }
 
-  function goToApp() {
-    var path = config.appPath || "/app/";
-    if (!path.endsWith("/")) path += "/";
-    window.location.href = path;
+  function supabaseSignup(email, password, username) {
+    return fetch(config.supabaseUrl + "/auth/v1/signup", {
+      method: "POST",
+      headers: supabaseHeaders(),
+      body: JSON.stringify({
+        email: email,
+        password: password,
+        data: { username: username },
+      }),
+    })
+      .then(function (res) {
+        return res.json().then(function (data) {
+          return { ok: res.ok, data: data };
+        });
+      })
+      .catch(function () {
+        return { ok: false, data: { error_description: "تعذر الاتصال بـ Supabase" } };
+      });
   }
 
   function validateSignup(email, username, password, confirm) {
@@ -158,6 +290,10 @@
     if (password.length < 6) return "كلمة المرور قصيرة جداً";
     if (password !== confirm) return "كلمة المرور غير متطابقة";
     return null;
+  }
+
+  function isEmail(s) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s);
   }
 
   form.addEventListener("submit", function (e) {
@@ -172,10 +308,29 @@
       var identifier = String(fd.get("identifier") || "").trim();
       var password = String(fd.get("password") || "");
       if (!identifier || !password) {
-        showError("أدخل اليوزر أو الإيميل وكلمة المرور");
+        showError("أدخل البريد وكلمة المرور");
         setBusy(false);
         return;
       }
+
+      if (usesSupabase()) {
+        if (!isEmail(identifier)) {
+          showError("مع تسجيل الدخول عبر الموقع استخدم البريد الإلكتروني.");
+          setBusy(false);
+          return;
+        }
+        supabaseLogin(identifier.toLowerCase(), password).then(function (r) {
+          setBusy(false);
+          if (!r.ok || !r.data.access_token) {
+            showError(mapSupabaseError(r.data.error_description || r.data.msg || r.data.error));
+            return;
+          }
+          persistSupabaseSession(r.data);
+          finishAuthSuccess();
+        });
+        return;
+      }
+
       apiPost("/auth/login", { identifier: identifier, password: password }).then(function (r) {
         setBusy(false);
         if (!r.ok) {
@@ -186,8 +341,8 @@
           showError("استجابة غير صالحة من الخادم");
           return;
         }
-        persistSession(r.data.token, r.data.user);
-        goToApp();
+        persistApiSession(r.data.token, r.data.user);
+        finishAuthSuccess();
       });
       return;
     }
@@ -202,6 +357,29 @@
       setBusy(false);
       return;
     }
+
+    if (usesSupabase()) {
+      supabaseSignup(email, pwd, username).then(function (r) {
+        setBusy(false);
+        if (!r.ok) {
+          showError(mapSupabaseError(r.data.error_description || r.data.msg || r.data.error));
+          return;
+        }
+        if (r.data.access_token) {
+          persistSupabaseSession(r.data);
+          finishAuthSuccess();
+          return;
+        }
+        if (r.data.user && !r.data.session) {
+          showInfo("تحقق من بريدك واضغط رابط التأكيد، ثم سجّل الدخول.");
+          setMode("login");
+          return;
+        }
+        showError("تعذر إنشاء الحساب");
+      });
+      return;
+    }
+
     apiPost("/auth/register", { email: email, username: username, password: pwd }).then(function (r) {
       setBusy(false);
       if (!r.ok) {
@@ -212,15 +390,8 @@
         showError("استجابة غير صالحة من الخادم");
         return;
       }
-      persistSession(r.data.token, r.data.user);
-      try {
-        if (r.data.user && r.data.user.id) {
-          localStorage.setItem("retweet_pending_welcome_user", r.data.user.id);
-        }
-      } catch (ex) {
-        /* ignore */
-      }
-      goToApp();
+      persistApiSession(r.data.token, r.data.user);
+      finishAuthSuccess();
     });
   });
 

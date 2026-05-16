@@ -2,7 +2,7 @@
  * Copies `landing/` into `_vercel_site/` for Vercel static hosting,
  * excluding `node_modules`. Run after `npm run build --prefix landing`.
  */
-import { cpSync, existsSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 
@@ -38,9 +38,36 @@ if (manifestRun.status !== 0) {
 
 const apiUrl =
   (process.env.VITE_API_URL || process.env.RETWEET_PUBLIC_API_URL || "").trim().replace(/\/$/, "");
+const supabaseUrl = (process.env.VITE_SUPABASE_URL || "").trim().replace(/\/$/, "");
+const supabaseAnonKey = (
+  process.env.VITE_SUPABASE_JWT_ANON ||
+  process.env.VITE_SUPABASE_ANON_KEY ||
+  process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+  ""
+).trim();
+
+const configPath = path.join(outDir, "public/app-config.json");
+let baseConfig = { apiUrl: "", appPath: "/app/", supabaseUrl: "", supabaseAnonKey: "" };
+if (existsSync(configPath)) {
+  try {
+    baseConfig = { ...baseConfig, ...JSON.parse(readFileSync(configPath, "utf8")) };
+  } catch {
+    /* ignore */
+  }
+}
 writeFileSync(
-  path.join(outDir, "public/app-config.json"),
-  JSON.stringify({ apiUrl, appPath: "/app/" }, null, 2) + "\n",
+  configPath,
+  JSON.stringify(
+    {
+      ...baseConfig,
+      apiUrl: apiUrl || baseConfig.apiUrl || "",
+      supabaseUrl: supabaseUrl || baseConfig.supabaseUrl || "",
+      supabaseAnonKey: supabaseAnonKey || baseConfig.supabaseAnonKey || "",
+      appPath: "/app/",
+    },
+    null,
+    2,
+  ) + "\n",
   "utf8",
 );
 
