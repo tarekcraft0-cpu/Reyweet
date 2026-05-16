@@ -10,6 +10,8 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+spa-dist
+_vercel_site
 .output
 .vinxi
 .tanstack/**

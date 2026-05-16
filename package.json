@@ -23,7 +23,8 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:delete-legacy-founder": "tsx scripts/delete-legacy-founder-account.ts",
     "api:dev": "tsx watch api/server.ts",
-    "landing:build": "npm run build --prefix landing && node scripts/prepare-vercel-static.mjs",
+    "build:spa": "vite build --config vite.spa.config.ts",
+    "landing:build": "npm run build:spa && npm run build --prefix landing && node scripts/prepare-vercel-static.mjs",
     "landing:preview": "npm run landing:build && npx --yes serve _vercel_site -l tcp://0.0.0.0:4173",
     "landing:copy-builds": "node scripts/copy-app-builds.mjs"
   },

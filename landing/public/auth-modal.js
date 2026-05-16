@@ -199,27 +199,7 @@
     refreshOpenAppLink();
     var path = config.appPath || "/app/";
     if (!path.endsWith("/")) path += "/";
-    fetch(path, { method: "HEAD" })
-      .then(function (res) {
-        if (res.ok) {
-          window.location.href = path;
-          return;
-        }
-        showInfo("تم تسجيل الدخول بنجاح. حمّل التطبيق أو افتحه من جهازك بنفس البريد.");
-        window.setTimeout(function () {
-          closeModal();
-          var dl = document.getElementById("download");
-          if (dl) dl.scrollIntoView({ behavior: "smooth" });
-        }, 1200);
-      })
-      .catch(function () {
-        showInfo("تم تسجيل الدخول بنجاح. افتح تطبيق Retweet من جهازك.");
-        window.setTimeout(function () {
-          closeModal();
-          var dl = document.getElementById("download");
-          if (dl) dl.scrollIntoView({ behavior: "smooth" });
-        }, 1200);
-      });
+    window.location.href = path;
   }
 
   function apiPost(path, body) {

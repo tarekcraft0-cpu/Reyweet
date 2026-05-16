@@ -1,8 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "installCommand": "npm ci --prefix landing",
-  "buildCommand": "npm run build --prefix landing && node scripts/prepare-vercel-static.mjs",
+  "installCommand": "npm ci && npm ci --prefix landing",
+  "buildCommand": "npm run landing:build",
   "outputDirectory": "_vercel_site",
   "rewrites": [
     { "source": "/app", "destination": "/app/index.html" },

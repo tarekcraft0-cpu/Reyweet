@@ -71,12 +71,15 @@ writeFileSync(
   "utf8",
 );
 
-const appCandidates = ["dist/client", "dist", ".output/public"];
+const appCandidates = ["spa-dist", "dist/client", "dist", ".output/public"];
 for (const rel of appCandidates) {
   const src = path.join(root, rel);
   if (!existsSync(path.join(src, "index.html"))) continue;
   const dest = path.join(outDir, "app");
   cpSync(src, dest, { recursive: true });
   console.log(`prepare-vercel-static: copied web app from ${rel} → app/`);
+  const favSrc = path.join(root, "public/favicon.png");
+  const favDest = path.join(dest, "favicon.png");
+  if (existsSync(favSrc)) cpSync(favSrc, favDest);
   break;
 }
