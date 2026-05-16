@@ -5,6 +5,9 @@
   "buildCommand": "npm run build --prefix landing && node scripts/prepare-vercel-static.mjs",
   "outputDirectory": "_vercel_site",
   "rewrites": [
+    { "source": "/app", "destination": "/app/index.html" },
+    { "source": "/app/", "destination": "/app/index.html" },
+    { "source": "/app/:path((?!.*\\.).*)", "destination": "/app/index.html" },
     { "source": "/downloads/:path*", "destination": "/public/downloads/:path*" }
   ],
   "headers": [

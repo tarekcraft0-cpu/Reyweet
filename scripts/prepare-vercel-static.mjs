@@ -2,7 +2,7 @@
  * Copies `landing/` into `_vercel_site/` for Vercel static hosting,
  * excluding `node_modules`. Run after `npm run build --prefix landing`.
  */
-import { cpSync, existsSync, rmSync } from "node:fs";
+import { cpSync, existsSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 
@@ -34,4 +34,22 @@ const manifestRun = spawnSync(process.execPath, [manifestScript, outDir], {
 });
 if (manifestRun.status !== 0) {
   process.exit(manifestRun.status ?? 1);
+}
+
+const apiUrl =
+  (process.env.VITE_API_URL || process.env.RETWEET_PUBLIC_API_URL || "").trim().replace(/\/$/, "");
+writeFileSync(
+  path.join(outDir, "public/app-config.json"),
+  JSON.stringify({ apiUrl, appPath: "/app/" }, null, 2) + "\n",
+  "utf8",
+);
+
+const appCandidates = ["dist/client", "dist", ".output/public"];
+for (const rel of appCandidates) {
+  const src = path.join(root, rel);
+  if (!existsSync(path.join(src, "index.html"))) continue;
+  const dest = path.join(outDir, "app");
+  cpSync(src, dest, { recursive: true });
+  console.log(`prepare-vercel-static: copied web app from ${rel} → app/`);
+  break;
 }

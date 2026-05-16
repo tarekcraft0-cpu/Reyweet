@@ -51,6 +51,33 @@
   }
 }
 
+/* نافذة تسجيل الدخول — أسلوب شبيه بإنستغرام */
+#auth-overlay {
+  transition: opacity 0.22s ease;
+}
+#auth-overlay:not(.is-open) {
+  opacity: 0;
+}
+#auth-overlay.is-open {
+  opacity: 1;
+}
+#auth-panel {
+  transition:
+    opacity 0.24s ease,
+    transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+#auth-panel:not(.is-open) {
+  opacity: 0;
+  transform: scale(0.96) translateY(8px);
+}
+#auth-panel.is-open {
+  opacity: 1;
+  transform: scale(1) translateY(0);
+}
+.auth-field {
+  @apply min-h-[48px] w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-base text-slate-900 outline-none placeholder:text-slate-400 focus:border-slate-900 dark:border-neutral-700 dark:bg-neutral-900 dark:text-white dark:placeholder:text-neutral-500 dark:focus:border-white;
+}
+
 .card-lift {
   transition:
     transform 0.35s cubic-bezier(0.22, 1, 0.36, 1),
