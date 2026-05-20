@@ -18,6 +18,8 @@ workflows:
       vars:
         BUNDLE_ID: com.retweetmobile.app
         CAPACITOR_WEB_APP_URL: https://reyweet.vercel.app/app
+        XCODE_SCHEME: App
+        XCODE_WORKSPACE: ios/App/App.xcworkspace
 
     scripts:
       - name: تثبيت تبعيات Node (جذر المشروع)
@@ -48,19 +50,24 @@ workflows:
           cd "$IOS_APP"
           pod install
 
-      - name: اكتشاف Xcode workspace و scheme
+      - name: Xcode workspace و scheme (Capacitor App)
         script: |
           set -e
-          WS=$(find "$CM_BUILD_DIR/ios" -name "*.xcworkspace" | head -1)
-          if [ -z "$WS" ]; then
-            echo "لم يُعثر على .xcworkspace"
+          WS="$CM_BUILD_DIR/$XCODE_WORKSPACE"
+          SCHEME="${XCODE_SCHEME:-App}"
+          if [ ! -d "$WS" ]; then
+            WS=$(find "$CM_BUILD_DIR/ios/App" -maxdepth 1 -name "*.xcworkspace" | head -1)
+          fi
+          if [ -z "$WS" ] || [ ! -d "$WS" ]; then
+            echo "لم يُعثر على App.xcworkspace تحت ios/App"
+            find "$CM_BUILD_DIR/ios" -name "*.xcworkspace" 2>/dev/null || true
             exit 1
           fi
-          SCHEME=$(basename "$WS" .xcworkspace)
           echo "XCODE_WORKSPACE=$WS" >> "$CM_ENV"
           echo "XCODE_SCHEME=$SCHEME" >> "$CM_ENV"
           echo "Using workspace: $WS"
           echo "Using scheme: $SCHEME"
+          xcodebuild -workspace "$WS" -list
 
       - name: بناء iOS بدون توقيع (CODE_SIGNING_ALLOWED=NO)
         script: |
@@ -118,6 +125,8 @@ workflows:
       vars:
         BUNDLE_ID: com.retweetmobile.app
         CAPACITOR_WEB_APP_URL: https://reyweet.vercel.app/app
+        XCODE_SCHEME: App
+        XCODE_WORKSPACE: ios/App/App.xcworkspace
     scripts:
       - name: تثبيت تبعيات Node
         script: |
@@ -137,13 +146,17 @@ workflows:
           set -e
           cd "$CM_BUILD_DIR/ios/App"
           pod install
-      - name: اكتشاف workspace
+      - name: Xcode workspace و scheme
         script: |
           set -e
-          WS=$(find "$CM_BUILD_DIR/ios" -name "*.xcworkspace" | head -1)
-          SCHEME=$(basename "$WS" .xcworkspace)
+          WS="$CM_BUILD_DIR/${XCODE_WORKSPACE:-ios/App/App.xcworkspace}"
+          SCHEME="${XCODE_SCHEME:-App}"
+          if [ ! -d "$WS" ]; then
+            WS=$(find "$CM_BUILD_DIR/ios/App" -maxdepth 1 -name "*.xcworkspace" | head -1)
+          fi
           echo "XCODE_WORKSPACE=$WS" >> "$CM_ENV"
           echo "XCODE_SCHEME=$SCHEME" >> "$CM_ENV"
+          xcodebuild -workspace "$WS" -list
       - name: بناء بدون توقيع
         script: |
           set -e
