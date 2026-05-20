@@ -1,0 +1,103 @@
+# Codemagic — Retweet (Expo / React Native) — iOS بدون توقيع رقمي
+# المخرجات: ملف .ipa غير موقّع في Artifacts (للتوقيع لاحقاً عبر Sideloadly / Xcode)
+# Docs: https://docs.codemagic.io/yaml-quick-start/building-a-react-native-app/
+
+workflows:
+  retweet-ios-unsigned-ipa:
+    name: Retweet iOS — Unsigned IPA
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+
+    environment:
+      node: v22.11.0
+      xcode: latest
+      cocoapods: default
+      vars:
+        MOBILE_DIR: mobile
+        BUNDLE_ID: com.retweetmobile.app
+        # اختياري — عرّفها في Codemagic → Environment variables
+        EXPO_PUBLIC_API_URL: ""
+        EXPO_PUBLIC_WEB_APP_URL: ""
+      # بدون ios_signing — لا توقيع رقمي في هذه الووركفلو
+
+    scripts:
+      - name: تثبيت تبعيات Node (mobile)
+        script: |
+          set -e
+          cd "$CM_BUILD_DIR/$MOBILE_DIR"
+          npm ci
+
+      - name: Expo prebuild — توليد مشروع ios/
+        script: |
+          set -e
+          cd "$CM_BUILD_DIR/$MOBILE_DIR"
+          if [ -n "$EXPO_PUBLIC_API_URL" ]; then
+            export EXPO_PUBLIC_API_URL
+          fi
+          if [ -n "$EXPO_PUBLIC_WEB_APP_URL" ]; then
+            export EXPO_PUBLIC_WEB_APP_URL
+          fi
+          npx expo prebuild --platform ios --clean --non-interactive
+
+      - name: CocoaPods
+        script: |
+          set -e
+          cd "$CM_BUILD_DIR/$MOBILE_DIR/ios"
+          pod install
+
+      - name: اكتشاف Xcode workspace و scheme
+        script: |
+          set -e
+          WS=$(find "$CM_BUILD_DIR/$MOBILE_DIR/ios" -maxdepth 1 -name "*.xcworkspace" | head -1)
+          if [ -z "$WS" ]; then
+            echo "لم يُعثر على .xcworkspace تحت mobile/ios"
+            exit 1
+          fi
+          SCHEME=$(basename "$WS" .xcworkspace)
+          echo "XCODE_WORKSPACE=$WS" >> "$CM_ENV"
+          echo "XCODE_SCHEME=$SCHEME" >> "$CM_ENV"
+          echo "Using workspace: $WS"
+          echo "Using scheme: $SCHEME"
+
+      - name: بناء iOS بدون توقيع (CODE_SIGNING_ALLOWED=NO)
+        script: |
+          set -e
+          source "$CM_ENV"
+          DERIVED="$CM_BUILD_DIR/$MOBILE_DIR/build/DerivedData"
+          mkdir -p "$DERIVED"
+          xcodebuild \
+            -workspace "$XCODE_WORKSPACE" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath "$DERIVED" \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            build
+
+      - name: تغليف Payload كملف IPA
+        script: |
+          set -e
+          DERIVED="$CM_BUILD_DIR/$MOBILE_DIR/build/DerivedData"
+          APP_PATH=$(find "$DERIVED" -path "*/Build/Products/*-iphoneos/*.app" -type d | head -1)
+          if [ -z "$APP_PATH" ]; then
+            echo "لم يُعثر على .app بعد البناء"
+            find "$DERIVED" -name "*.app" 2>/dev/null || true
+            exit 1
+          fi
+          IPA_DIR="$CM_BUILD_DIR/$MOBILE_DIR/build/ios/ipa"
+          rm -rf "$IPA_DIR"
+          mkdir -p "$IPA_DIR/Payload"
+          cp -R "$APP_PATH" "$IPA_DIR/Payload/"
+          cd "$IPA_DIR"
+          zip -qr Retweet-unsigned.ipa Payload
+          ls -la "$IPA_DIR"
+
+    artifacts:
+      - mobile/build/ios/ipa/*.ipa
+      - mobile/build/DerivedData/**/Build/Products/**/*.app
+      - /tmp/xcodebuild_logs/*.log
