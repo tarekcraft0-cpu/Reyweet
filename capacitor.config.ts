@@ -7,12 +7,12 @@ const config: CapacitorConfig = {
   server: {
     url: "https://reyweet.vercel.app/app/",
     cleartext: false,
-    androidScheme: "https"
+    androidScheme: "https",
   },
   ios: {
     contentInset: "automatic",
-    allowsLinkPreview: false
-  }
+    allowsLinkPreview: false,
+  },
 };
 
 export default config;

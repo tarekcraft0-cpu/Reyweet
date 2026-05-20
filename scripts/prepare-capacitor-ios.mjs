@@ -63,7 +63,7 @@ if (apiUrl && fs.existsSync(indexPath)) {
 }
 
 const serverUrl = `${webAppUrl.replace(/\/+$/, "")}/`;
-const capLines = [
+const capConfigTs = [
   'import type { CapacitorConfig } from "@capacitor/cli";',
   "",
   "const config: CapacitorConfig = {",
@@ -72,19 +72,19 @@ const capLines = [
   '  webDir: "spa-dist",',
   "  server: {",
   `    url: ${JSON.stringify(serverUrl)},`,
-  `    cleartext: ${allowHttp ? "true" : "false"},`,
-  '    androidScheme: "https"',
+  `    cleartext: ${allowHttp},`,
+  '    androidScheme: "https",',
   "  },",
   "  ios: {",
   '    contentInset: "automatic",',
-  "    allowsLinkPreview: false",
-  "  }",
+  "    allowsLinkPreview: false,",
+  "  },",
   "};",
   "",
   "export default config;",
   "",
-];
-fs.writeFileSync(path.join(root, "capacitor.config.ts"), capLines.join("\n"), "utf8");
+].join("\n");
+fs.writeFileSync(path.join(root, "capacitor.config.ts"), capConfigTs, "utf8");
 console.log("  ✓ capacitor.config.ts");
 
 const iosDir = path.join(root, "ios");
