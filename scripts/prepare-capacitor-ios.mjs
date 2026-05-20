@@ -33,6 +33,21 @@ function run(cmd, opts = {}) {
   });
 }
 
+/** Capacitor 7 لا يوفّر `cap rm` — حذف يدوي لمجلد ios */
+function removeIosPlatform() {
+  const iosDir = path.join(root, "ios");
+  if (fs.existsSync(iosDir)) {
+    fs.rmSync(iosDir, { recursive: true, force: true });
+    console.log("  ✓ حذف ios/ (إعادة إنشاء منصة iOS)");
+  }
+}
+
+function hasCommittedIosProject() {
+  return fs.existsSync(
+    path.join(root, "ios", "App", "App.xcodeproj", "project.pbxproj"),
+  );
+}
+
 console.log("\n══ Retweet iOS — Capacitor (نسخة الموقع) ══\n");
 console.log(`  WebView:  ${webAppUrl}/`);
 console.log(`  API:      ${apiUrl || "(من إعدادات الموقع على Vercel)"}\n`);
@@ -87,13 +102,17 @@ const capConfigTs = [
 fs.writeFileSync(path.join(root, "capacitor.config.ts"), capConfigTs, "utf8");
 console.log("  ✓ capacitor.config.ts");
 
-const iosDir = path.join(root, "ios");
-if (!fs.existsSync(iosDir)) {
+const forceRegen = process.env.CAPACITOR_FORCE_IOS_REGEN === "1";
+if (forceRegen) {
+  console.log("\n→ إعادة إنشاء ios (CAPACITOR_FORCE_IOS_REGEN=1)…");
+  removeIosPlatform();
+  run("npx cap add ios");
+} else if (hasCommittedIosProject()) {
+  console.log("\n→ مزامنة Capacitor (مشروع Xcode موجود في المستودع)…");
+  run("npx cap sync ios");
+} else {
   console.log("\n→ إنشاء مشروع Xcode (npx cap add ios)…");
   run("npx cap add ios");
-} else {
-  console.log("\n→ مزامنة Capacitor…");
-  run("npx cap sync ios");
 }
 
 const configJson = {

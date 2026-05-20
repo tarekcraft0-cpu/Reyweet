@@ -25,8 +25,8 @@ mobile/.env
 # Vercel static bundle (generated on deploy)
 _vercel_site
 
-# Capacitor — يُولَّد على Codemagic/Mac (npm run ios:prepare)
-/ios/
+# Capacitor iOS — المشروع الأصلي مُرفوع (ios/.gitignore يستثني public و Pods)
+# spa-dist يُبنى محلياً/على CI؛ لا تُرفع
 
 # App binaries for landing (place files locally, do not commit large builds)
 landing/public/downloads/*.ipa
