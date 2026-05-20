@@ -10,8 +10,11 @@ on:
     branches: [main]
     paths:
       - "landing/**"
+      - "spa/**"
+      - "src/**"
       - "vercel.json"
       - "scripts/prepare-vercel-static.mjs"
+      - "scripts/build-for-vercel.mjs"
       - ".github/workflows/vercel-landing.yml"
   workflow_dispatch:
 
@@ -30,6 +33,11 @@ jobs:
           node-version: "20"
           cache: npm
           cache-dependency-path: landing/package-lock.json
+
+      - name: Build SPA + landing for Vercel
+        run: npm run landing:build
+        env:
+          RETWEET_PUBLIC_API_URL: ${{ secrets.RETWEET_PUBLIC_API_URL }}
 
       - name: Deploy to Vercel (production)
         uses: amondnet/vercel-action@v25

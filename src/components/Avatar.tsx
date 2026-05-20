@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
-import { useEffect, useState } from "react";
+import { resolveMediaUrl } from "@/lib/mediaUrl";
+import { useEffect, useMemo, useState } from "react";
 
 interface Props {
   name?: string;
@@ -17,19 +18,21 @@ function isRenderableAvatarImageUrl(src: string): boolean {
   if (low.startsWith("blob:")) return true;
   if (low.startsWith("data:image/")) return true;
   if (low.startsWith("data:") && (low.includes("image/") || low.includes("base64,"))) return true;
+  if (low.startsWith("/media/")) return true;
   return /^https?:\/\//i.test(s);
 }
 
 export function Avatar({ name = "?", src, size = 40, className, ring }: Props) {
   const initials = name.slice(0, 2).toUpperCase();
   const [imgFailed, setImgFailed] = useState(false);
+  const resolvedSrc = useMemo(() => resolveMediaUrl(src), [src]);
 
   useEffect(() => {
     setImgFailed(false);
-  }, [src]);
+  }, [resolvedSrc]);
 
-  const showImg = !!(src && isRenderableAvatarImageUrl(src) && !imgFailed);
-  const showEmoji = !!(src && !showImg && src.length <= 4);
+  const showImg = !!(resolvedSrc && isRenderableAvatarImageUrl(resolvedSrc) && !imgFailed);
+  const showEmoji = !!(resolvedSrc && !showImg && resolvedSrc.length <= 4);
 
   const inner = (
     <div
@@ -42,7 +45,8 @@ export function Avatar({ name = "?", src, size = 40, className, ring }: Props) {
       {showImg ? (
         <span className="relative block h-full w-full min-h-0 min-w-0 overflow-hidden rounded-full">
           <img
-            src={src}
+            key={resolvedSrc}
+            src={resolvedSrc}
             alt={name}
             className="absolute inset-0 h-full w-full object-cover"
             draggable={false}
@@ -52,7 +56,7 @@ export function Avatar({ name = "?", src, size = 40, className, ring }: Props) {
           />
         </span>
       ) : showEmoji ? (
-        <span style={{ fontSize: size * 0.55 }}>{src}</span>
+        <span style={{ fontSize: size * 0.55 }}>{resolvedSrc}</span>
       ) : (
         initials
       )}

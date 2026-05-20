@@ -159,7 +159,7 @@ export interface Post {
 export interface Message {
   id: ID;
   senderId: ID;
-  type: "text" | "image" | "video" | "voice" | "sticker" | "shared_post" | "shared_story";
+  type: "text" | "image" | "video" | "voice" | "sticker" | "drawing" | "shared_post" | "shared_story";
   content: string;
   createdAt: number;
   durationSec?: number;
@@ -221,7 +221,7 @@ export interface MediaNote {
 }
 
 export type ProfileHomeSurface = "feed_comments_sheet" | "post_detail_full";
-export type ProfileGridTab = "posts" | "reposts" | "likes" | "favorites";
+export type ProfileGridTab = "posts" | "reposts" | "likes";
 
 export interface ProfileReturnContext {
   postId: ID;

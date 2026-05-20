@@ -1,0 +1,10 @@
+# انسخ إلى tunnel.yml بعد: npm run tunnel:setup
+# أو يُنشأ تلقائياً بواسطة scripts/setup-stable-tunnel.ps1
+
+tunnel: YOUR_TUNNEL_UUID
+credentials-file: C:\Users\YOUR_USER\.cloudflared\YOUR_TUNNEL_UUID.json
+
+ingress:
+  - hostname: app.yourdomain.com
+    service: http://127.0.0.1:3000
+  - service: http_status:404

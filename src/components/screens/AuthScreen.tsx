@@ -1,17 +1,25 @@
 import { useState, memo, useCallback, useRef, useEffect, type InputHTMLAttributes } from "react";
 import { useApp } from "@/lib/store";
-import { validateUsernameFormat } from "@/lib/usernameRules";
+import { sanitizeUsernameInput, validateUsernameFormat } from "@/lib/usernameRules";
 import {
-  generateOtpDigits,
   normalizeEmail,
   validateEmailFormat,
   validateNewPasswordPlain,
 } from "@/lib/passwordAuth";
+import { validateOptionalPhone } from "@/lib/phoneUtils";
 import logo from "@/assets/logo.png";
-import { apiBackendEnabled } from "@/lib/apiBackend";
+import { apiBackendEnabled, apiRequestSignupVerification } from "@/lib/apiBackend";
+import { clearStaleApiConfig, ensureApiRuntimeConfig, peekApiBaseUrl } from "@/lib/apiConfig";
 
 type Mode = "login" | "signup" | "forgot" | "reset";
-type FormState = { email: string; username: string; password: string; confirm: string; code: string };
+type FormState = {
+  email: string;
+  username: string;
+  phone: string;
+  password: string;
+  confirm: string;
+  code: string;
+};
 
 const OTP_TTL_MS = 10 * 60 * 1000;
 const LOGIN_MAX_FAIL = 8;
@@ -54,20 +62,29 @@ export function AuthScreen(props?: { onAuthSuccess?: () => void; /** false دا�
   const {
     signup,
     login,
+    verifyLogin,
     resetPasswordForUser,
     requestPasswordResetRemote,
     completePasswordResetRemote,
+    completePasswordResetLink,
     state,
     enterGuestBrowseMode,
   } = useApp();
   const [mode, setMode] = useState<Mode>("login");
-  const [form, setForm] = useState<FormState>({ email: "", username: "", password: "", confirm: "", code: "" });
+  const [form, setForm] = useState<FormState>({
+    email: "",
+    username: "",
+    phone: "",
+    password: "",
+    confirm: "",
+    code: "",
+  });
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [signupAwaitingOtp, setSignupAwaitingOtp] = useState(false);
-  const signupOtpRef = useRef<string | null>(null);
-  const signupOtpExpiresRef = useRef(0);
+  const [loginAwaitingOtp, setLoginAwaitingOtp] = useState(false);
+  const loginIdentifierRef = useRef("");
 
   const passwordResetUserIdRef = useRef<string | null>(null);
   const passwordResetOtpRef = useRef<string | null>(null);
@@ -75,13 +92,48 @@ export function AuthScreen(props?: { onAuthSuccess?: () => void; /** false دا�
   /** عند التفعيل: الاستعادة عبر الخادم (OTP على السيرفر) */
   const passwordResetUsesRemoteRef = useRef(false);
   const passwordResetIdentifierRef = useRef("");
+  const passwordResetLinkTokenRef = useRef<string | null>(null);
 
   const loginFailCountRef = useRef(0);
   const loginLockUntilRef = useRef(0);
+  const [apiReady, setApiReady] = useState(true);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const raw = window.location.hash.replace(/^#/, "");
+    if (!raw.startsWith("auth-reset")) return;
+    const q = raw.includes("?") ? raw.slice(raw.indexOf("?") + 1) : "";
+    const token = new URLSearchParams(q).get("token")?.trim();
+    if (!token) return;
+    passwordResetLinkTokenRef.current = token;
+    passwordResetUsesRemoteRef.current = false;
+    setMode("reset");
+    setForm(f => ({ ...f, code: "", password: "", confirm: "" }));
+    setInfo("اختر كلمة مرور جديدة لحسابك.");
+    const base = window.location.pathname + window.location.search;
+    window.history.replaceState(null, "", base);
+  }, []);
+
+  useEffect(() => {
+    clearStaleApiConfig();
+    void (async () => {
+      await ensureApiRuntimeConfig();
+      const base = peekApiBaseUrl();
+      const healthPath = base ? `${base.replace(/\/$/, "")}/health` : "/health";
+      try {
+        const res = await fetch(healthPath, { cache: "no-store" });
+        const j = (await res.json().catch(() => null)) as {
+          ok?: boolean;
+          dbOk?: boolean;
+        } | null;
+        setApiReady(res.ok && j?.ok === true && j?.dbOk !== false);
+      } catch {
+        setApiReady(false);
+      }
+    })();
+  }, []);
 
   const clearOtpRefs = () => {
-    signupOtpRef.current = null;
-    signupOtpExpiresRef.current = 0;
     passwordResetUserIdRef.current = null;
     passwordResetOtpRef.current = null;
     passwordResetExpiresRef.current = 0;
@@ -96,7 +148,10 @@ export function AuthScreen(props?: { onAuthSuccess?: () => void; /** false دا�
     setInfo(null);
   };
 
-  const setField = useCallback((k: keyof FormState, v: string) => setForm(f => ({ ...f, [k]: v })), []);
+  const setField = useCallback((k: keyof FormState, v: string) => {
+    const next = k === "username" && mode === "signup" ? sanitizeUsernameInput(v) : v;
+    setForm(f => ({ ...f, [k]: next }));
+  }, [mode]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -117,20 +172,48 @@ export function AuthScreen(props?: { onAuthSuccess?: () => void; /** false دا�
         setError(`محاولات كثيرة. انتظر ${s} ثانية ثم أعد المحاولة.`);
         return;
       }
-      const r = await login({ username: form.username, password: form.password });
-      if (!r.ok) {
-        loginFailCountRef.current += 1;
-        if (loginFailCountRef.current >= LOGIN_MAX_FAIL) {
-          loginLockUntilRef.current = Date.now() + LOGIN_LOCK_MS;
-          loginFailCountRef.current = 0;
-          setError("تم تقييد المحاولة مؤقتاً بسبب محاولات متعددة.");
-        } else {
-          setError(r.error || "بيانات خاطئة");
+      if (!loginAwaitingOtp) {
+        const r = await login({ username: form.username, password: form.password });
+        if (!r.ok) {
+          loginFailCountRef.current += 1;
+          if (loginFailCountRef.current >= LOGIN_MAX_FAIL) {
+            loginLockUntilRef.current = Date.now() + LOGIN_LOCK_MS;
+            loginFailCountRef.current = 0;
+            setError("تم تقييد المحاولة مؤقتاً بسبب محاولات متعددة.");
+          } else {
+            setError(r.error || "بيانات خاطئة");
+          }
+          return;
         }
+        if (r.requiresOtp) {
+          loginIdentifierRef.current = form.username.trim();
+          setLoginAwaitingOtp(true);
+          setInfo(
+            `أُرسل كود التحقق إلى ${r.emailHint || "بريدك الإلكتروني"}. أدخل الـ 6 أرقام للمتابعة.`,
+          );
+          return;
+        }
+        loginFailCountRef.current = 0;
+        loginLockUntilRef.current = 0;
+        onAuthSuccess?.();
+        return;
+      }
+      if (!form.code.trim()) {
+        setError("أدخل كود التحقق من بريدك");
+        return;
+      }
+      const vr = await verifyLogin({
+        username: loginIdentifierRef.current || form.username,
+        code: form.code.trim(),
+      });
+      if (!vr.ok) {
+        setError(vr.error || "كود غير صحيح");
         return;
       }
       loginFailCountRef.current = 0;
       loginLockUntilRef.current = 0;
+      setLoginAwaitingOtp(false);
+      loginIdentifierRef.current = "";
       onAuthSuccess?.();
       return;
     }
@@ -145,83 +228,56 @@ export function AuthScreen(props?: { onAuthSuccess?: () => void; /** false دا�
         setError(pwdErr);
         return;
       }
-
-      /** مع خادم API حقيقي: إنشاء مباشر بدون OTP وهمي (لا يظهر كود على الهاتف). */
-      if (apiBackendEnabled()) {
-        const emailErr = validateEmailFormat(form.email);
-        if (emailErr) {
-          setError(emailErr);
-          return;
-        }
-        const nameErr = validateUsernameFormat(form.username.trim());
-        if (nameErr) {
-          setError(nameErr);
-          return;
-        }
-        const r = await signup({
-          email: normalizeEmail(form.email),
-          username: form.username,
-          password: form.password,
-        });
-        if (!r.ok) {
-          setError(r.error || "خطأ");
-          return;
-        }
-        signupOtpRef.current = null;
-        setSignupAwaitingOtp(false);
-        if (r.userId) {
-          try {
-            localStorage.setItem("retweet_pending_welcome_user", r.userId);
-          } catch {
-            /* ignore */
-          }
-          onAuthSuccess?.();
-        }
+      const phoneFieldErr = validateOptionalPhone(form.phone);
+      if (phoneFieldErr) {
+        setError(phoneFieldErr);
         return;
       }
 
+      if (!apiBackendEnabled()) {
+        setError("إنشاء الحساب يتطلب اتصالاً بالخادم مع تفعيل البريد (SMTP). شغّل الخادم ثم أعد المحاولة.");
+        return;
+      }
+      const emailErr = validateEmailFormat(form.email);
+      if (emailErr) {
+        setError(emailErr);
+        return;
+      }
+      const nameErr = validateUsernameFormat(form.username.trim());
+      if (nameErr) {
+        setError(nameErr);
+        return;
+      }
       if (!signupAwaitingOtp) {
-        const emailErr = validateEmailFormat(form.email);
-        if (emailErr) {
-          setError(emailErr);
+        const sent = await apiRequestSignupVerification(
+          normalizeEmail(form.email),
+          form.username.trim(),
+        );
+        if (!sent.ok) {
+          setError(sent.error || "تعذر إرسال كود التحقق");
           return;
         }
-        const nameErr = validateUsernameFormat(form.username.trim());
-        if (nameErr) {
-          setError(nameErr);
-          return;
-        }
-        const code = generateOtpDigits();
-        signupOtpRef.current = code;
-        signupOtpExpiresRef.current = Date.now() + OTP_TTL_MS;
         setSignupAwaitingOtp(true);
-        let msg =
-          "أدخل كود التحقق المكوّن من 6 أرقام. عند ربط خادم حقيقي سيُرسل الكود إلى بريدك فقط ولا يُعرض هنا.";
-        if (import.meta.env.DEV) msg += ` — للتجربة المحلية: ${code}`;
-        setInfo(msg);
-        if (import.meta.env.DEV) console.debug("[Retweet dev] كود التسجيل:", code);
+        setInfo(
+          `أُرسل كود التحقق (6 أرقام) إلى ${normalizeEmail(form.email)}. راجع البريد الوارد ومجلد الرسائل غير المرغوب فيها، ثم أدخل الرمز واضغط «تأكيد وإنشاء».`,
+        );
         return;
       }
-      if (Date.now() > signupOtpExpiresRef.current) {
-        setError("انتهت صلاحية الكود. ارجع خطوة وأعد طلب كود جديد.");
-        signupOtpRef.current = null;
-        setSignupAwaitingOtp(false);
-        return;
-      }
-      if (form.code.trim() !== signupOtpRef.current) {
-        setError("كود التحقق غير صحيح");
+      if (!form.code.trim()) {
+        setError("أدخل كود التحقق المرسل إلى بريدك الإلكتروني");
         return;
       }
       const r = await signup({
         email: normalizeEmail(form.email),
         username: form.username,
         password: form.password,
+        code: form.code.trim(),
+        phone: form.phone.trim() || undefined,
       });
       if (!r.ok) {
         setError(r.error || "خطأ");
         return;
       }
-      signupOtpRef.current = null;
       setSignupAwaitingOtp(false);
       if (r.userId) {
         try {
@@ -240,41 +296,27 @@ export function AuthScreen(props?: { onAuthSuccess?: () => void; /** false دا�
         setError("أدخل اسم المستخدم أو البريد");
         return;
       }
-      if (apiBackendEnabled()) {
-        const rr = await requestPasswordResetRemote(q);
-        if (!rr.ok) {
-          setError(rr.error || "تعذر الطلب");
-          return;
-        }
-        passwordResetUsesRemoteRef.current = true;
-        passwordResetIdentifierRef.current = q;
-        passwordResetUserIdRef.current = null;
-        passwordResetOtpRef.current = null;
-        passwordResetExpiresRef.current = 0;
-        setMode("reset");
-        setForm(f => ({ ...f, code: "", password: "", confirm: "" }));
-        let msg =
-          "إن وُجد حساب بهذه البيانات يمكنك إدخال رمز التحقق ثم كلمة المرور الجديدة. (في الإنتاج يُرسل الرمز عبر البريد.)";
-        if (import.meta.env.DEV && rr.devCode) msg += ` — للتجربة: ${rr.devCode}`;
-        setInfo(msg);
-        if (import.meta.env.DEV && rr.devCode) console.debug("[Retweet dev] رمز الاستعادة من الخادم:", rr.devCode);
+      if (!apiBackendEnabled()) {
+        setError("استعادة كلمة المرور تتطلب اتصالاً بالخادم مع تفعيل البريد (SMTP).");
         return;
       }
-      const u = state.users.find(
-        x => x.username.toLowerCase() === q.toLowerCase() || x.email.toLowerCase() === q.toLowerCase(),
-      );
-      passwordResetUsesRemoteRef.current = false;
-      passwordResetIdentifierRef.current = "";
-      passwordResetUserIdRef.current = u?.id ?? null;
-      const code = generateOtpDigits();
-      passwordResetOtpRef.current = code;
-      passwordResetExpiresRef.current = Date.now() + OTP_TTL_MS;
+      const rr = await requestPasswordResetRemote(q);
+      if (!rr.ok) {
+        setError(rr.error || "تعذر الطلب");
+        return;
+      }
+      passwordResetUsesRemoteRef.current = true;
+      passwordResetIdentifierRef.current = q;
+      passwordResetUserIdRef.current = null;
+      passwordResetOtpRef.current = null;
+      passwordResetExpiresRef.current = 0;
+      passwordResetLinkTokenRef.current = null;
       setMode("reset");
       setForm(f => ({ ...f, code: "", password: "", confirm: "" }));
-      let msg = "أدخل كود الاستعادة ثم كلمة المرور الجديدة.";
-      if (import.meta.env.DEV && u) msg += ` — للتجربة المحلية: ${code}`;
-      setInfo(msg);
-      if (import.meta.env.DEV && u) console.debug("[Retweet dev] كود الاستعادة:", code);
+      setInfo(
+        rr.message ||
+          "إن وُجد حساب بهذا البريد أو اسم المستخدم أُرسل رمز التحقق (6 أرقام) إلى بريدك. أدخله أدناه مع كلمة المرور الجديدة.",
+      );
       return;
     }
 
@@ -286,6 +328,20 @@ export function AuthScreen(props?: { onAuthSuccess?: () => void; /** false دا�
       const pwdErr = validateNewPasswordPlain(form.password);
       if (pwdErr) {
         setError(pwdErr);
+        return;
+      }
+      const linkToken = passwordResetLinkTokenRef.current;
+      if (linkToken && apiBackendEnabled()) {
+        const lr = await completePasswordResetLink(linkToken, form.password);
+        if (!lr.ok) {
+          setError(lr.error || "تعذر الحفظ");
+          return;
+        }
+        passwordResetLinkTokenRef.current = null;
+        clearOtpRefs();
+        setInfo("تم تغيير كلمة المرور. سجّل الدخول الآن.");
+        setMode("login");
+        setForm({ email: "", username: "", password: "", confirm: "", code: "" });
         return;
       }
       if (passwordResetUsesRemoteRef.current) {
@@ -334,6 +390,9 @@ export function AuthScreen(props?: { onAuthSuccess?: () => void; /** false دا�
     resetMessages();
     clearOtpRefs();
     setSignupAwaitingOtp(false);
+    setLoginAwaitingOtp(false);
+    loginIdentifierRef.current = "";
+    passwordResetLinkTokenRef.current = null;
     setMode("login");
   };
 
@@ -359,14 +418,26 @@ export function AuthScreen(props?: { onAuthSuccess?: () => void; /** false دا�
                 onChange={setField}
                 autoComplete="username"
               />
-              <Field
-                name="password"
-                placeholder="كلمة المرور"
-                type="password"
-                value={form.password}
-                onChange={setField}
-                autoComplete="current-password"
-              />
+              {!loginAwaitingOtp && (
+                <Field
+                  name="password"
+                  placeholder="كلمة المرور"
+                  type="password"
+                  value={form.password}
+                  onChange={setField}
+                  autoComplete="current-password"
+                />
+              )}
+              {loginAwaitingOtp && (
+                <Field
+                  name="code"
+                  placeholder="كود التحقق من البريد"
+                  value={form.code}
+                  onChange={setField}
+                  autoComplete="one-time-code"
+                  inputMode="numeric"
+                />
+              )}
             </>
           )}
           {mode === "signup" && (
@@ -381,12 +452,21 @@ export function AuthScreen(props?: { onAuthSuccess?: () => void; /** false دا�
               />
               <Field
                 name="username"
-                placeholder="اسم المستخدم (إنجليزي، 3 أحرف+)"
+                placeholder="اسم المستخدم (a-z، 3 أحرف+)"
                 value={form.username}
                 onChange={setField}
                 autoComplete="username"
               />
-              <p className="text-[11px] text-muted-foreground px-1">أحرف إنجليزية وأرقام و _ فقط — من 3 إلى 30 حرفاً</p>
+              <p className="text-[11px] text-muted-foreground px-1">أحرف إنجليزية صغيرة وأرقام و _ فقط — بدون عربي أو أحرف كبيرة</p>
+              <Field
+                name="phone"
+                placeholder="رقم الجوال (اختياري)"
+                value={form.phone}
+                onChange={setField}
+                autoComplete="tel"
+                inputMode="tel"
+              />
+              <p className="text-[11px] text-muted-foreground px-1">اختياري — مثال: 05xxxxxxxx أو +9665xxxxxxxx</p>
               <Field
                 name="password"
                 placeholder="كلمة المرور"
@@ -403,10 +483,10 @@ export function AuthScreen(props?: { onAuthSuccess?: () => void; /** false دا�
                 onChange={setField}
                 autoComplete="new-password"
               />
-              {signupAwaitingOtp && !apiBackendEnabled() && (
+              {signupAwaitingOtp && (
                 <Field
                   name="code"
-                  placeholder="كود التحقق"
+                  placeholder="كود التحقق (6 أرقام)"
                   value={form.code}
                   onChange={setField}
                   autoComplete="one-time-code"
@@ -418,7 +498,7 @@ export function AuthScreen(props?: { onAuthSuccess?: () => void; /** false دا�
           {mode === "forgot" && (
             <Field
               name="username"
-              placeholder="اليوزر أو الإيميل"
+              placeholder="البريد الإلكتروني أو اسم المستخدم"
               value={form.username}
               onChange={setField}
               autoComplete="username"
@@ -426,13 +506,16 @@ export function AuthScreen(props?: { onAuthSuccess?: () => void; /** false دا�
           )}
           {mode === "reset" && (
             <>
-              <Field
-                name="code"
-                placeholder="كود الاستعادة"
-                value={form.code}
-                onChange={setField}
-                autoComplete="one-time-code"
-              />
+              {!passwordResetLinkTokenRef.current && (
+                <Field
+                  name="code"
+                  placeholder="كود الاستعادة"
+                  value={form.code}
+                  onChange={setField}
+                  autoComplete="one-time-code"
+                  inputMode="numeric"
+                />
+              )}
               <Field
                 name="password"
                 placeholder="كلمة المرور الجديدة"
@@ -452,6 +535,12 @@ export function AuthScreen(props?: { onAuthSuccess?: () => void; /** false دا�
             </>
           )}
 
+          {!apiReady && (
+            <p className="text-destructive text-sm text-center leading-relaxed">
+              الخادم غير متصل. شغّل على جهازك:{" "}
+              <span className="font-mono text-xs">npm run backend:dev</span> ثم حدّث الصفحة (F5).
+            </p>
+          )}
           {error && <p className="text-destructive text-sm text-center">{error}</p>}
           {info && <p className="text-muted-foreground text-sm text-center leading-relaxed">{info}</p>}
 
@@ -463,12 +552,14 @@ export function AuthScreen(props?: { onAuthSuccess?: () => void; /** false دا�
             {busy
               ? "جاري المعالجة…"
               : mode === "login"
-                ? "دخول"
+                ? loginAwaitingOtp
+                  ? "تأكيد الدخول"
+                  : "دخول"
                 : mode === "signup"
-                  ? signupAwaitingOtp && !apiBackendEnabled()
+                  ? signupAwaitingOtp
                     ? "تأكيد وإنشاء"
                     : apiBackendEnabled()
-                      ? "إنشاء الحساب"
+                      ? "إرسال كود التحقق"
                       : "إرسال كود التحقق"
                   : mode === "forgot"
                     ? "متابعة"
@@ -513,6 +604,14 @@ export function AuthScreen(props?: { onAuthSuccess?: () => void; /** false دا�
             </button>
           )}
         </div>
+
+        {typeof window !== "undefined" && window.location.pathname.startsWith("/app") && (
+          <p className="mt-8 text-center text-sm">
+            <a href="/" className="text-muted-foreground underline underline-offset-4 hover:text-foreground">
+              العودة لصفحة التحميل
+            </a>
+          </p>
+        )}
       </div>
     </div>
   );

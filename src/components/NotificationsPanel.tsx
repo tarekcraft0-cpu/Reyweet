@@ -4,10 +4,10 @@ import { Avatar } from "./Avatar";
 import { Heart, MessageCircle, Repeat2, AtSign, X, UserPlus } from "lucide-react";
 
 export function NotificationsPanel({ onClose, onOpenProfile, onOpenChat }: { onClose: () => void; onOpenProfile: (id: string) => void; onOpenChat?: (chatId: string) => void }) {
-  const { state, currentUser, markNotificationsRead, markNotificationRead, acceptFollowRequest, declineFollowRequest } = useApp();
+  const { state, currentUser, markNotificationsRead, acceptFollowRequest, declineFollowRequest } = useApp();
   const t = useT();
   const me = currentUser!;
-  const list = state.notifications.filter(n => n.userId === me.id);
+  const list = state.notifications.filter(n => n.userId === me.id && n.type !== "message");
 
   return (
     <div className="fixed inset-0 bg-black/50 z-40" onClick={onClose}>
@@ -82,24 +82,23 @@ export function NotificationsPanel({ onClose, onOpenProfile, onOpenChat }: { onC
                   <button
                     type="button"
                     className="flex-1 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold"
-                    onClick={() => {
-                      acceptFollowRequest(n.fromId);
-                      markNotificationRead(n.id);
-                    }}
+                    onClick={() => acceptFollowRequest(n.fromId)}
                   >
                     قبول
                   </button>
                   <button
                     type="button"
                     className="flex-1 py-2 rounded-xl bg-secondary text-sm font-semibold"
-                    onClick={() => {
-                      declineFollowRequest(n.fromId);
-                      markNotificationRead(n.id);
-                    }}
+                    onClick={() => declineFollowRequest(n.fromId)}
                   >
                     رفض
                   </button>
                 </div>
+              )}
+              {friendReqResolved && n.type === "friend_request" && (
+                <p className="ps-12 text-xs text-muted-foreground">
+                  {n.followRequestStatus === "accepted" ? "✓ تم القبول" : "تم الرفض"}
+                </p>
               )}
             </div>
           );

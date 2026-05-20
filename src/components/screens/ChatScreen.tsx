@@ -1,22 +1,69 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, startTransition } from "react";
-import { QURAN_CHANNEL_ID, useApp, userById, visibleChatMessages } from "@/lib/store";
+import { createPortal } from "react-dom";
+import { useLockPageScroll } from "@/hooks/useLockPageScroll";
+import {
+  useSlideDismissBack,
+  APP_COLUMN_MAX_PX,
+  SLIDE_DISMISS_MS,
+  SLIDE_DISMISS_EASE,
+  chatStackLayerTransforms,
+  isDocumentRtl,
+} from "@/hooks/useSlideDismissBack";
+import { useVisualViewportLayout } from "@/hooks/useVisualViewportLayout";
+import { SlideDismissBackButton, SlideDismissShell } from "../SlideDismissShell";
+import { QURAN_CHANNEL_ID, isProfileNoteActive, useApp, userById, visibleChatMessages } from "@/lib/store";
 import { notifyGuestActionBlocked } from "@/lib/guestBlocked";
 import { useT } from "@/lib/i18n";
 import { Avatar } from "../Avatar";
+import { ChatDmIntroCard } from "../chat/ChatDmIntroCard";
 import { ChatStickerPicker } from "../chat/ChatStickerPicker";
 import { ChatCameraComposeModal, ViewOnceMediaOverlay, type CameraComposeDraft } from "../chat/ChatCameraComposeModal";
+import { ChatDrawComposeModal } from "../chat/ChatDrawComposeModal";
+import { ChatDrawingCanvas } from "../chat/ChatDrawingCanvas";
+import { parseDrawingPayload } from "../chat/drawingPayload";
+import { ChatInlineMediaLightbox } from "../chat/ChatInlineMediaLightbox";
 import { ChatSharedFeedOverlay, type ChatShareFeedItem } from "../chat/ChatSharedFeedOverlay";
 import { SharedPostPreview, SharedStoryChatPreview } from "../SharedPostPreview";
-import { ProfileNoteReplySheet } from "../ProfileNoteReplySheet";
+import { SharedGroupInvitePreview } from "../chat/SharedGroupInvitePreview";
+import { ChatNoteReplyBubble, ChatStoryReplyStack } from "../chat/ChatReplyContext";
+import { ChatSwipeMessageRow } from "../chat/ChatSwipeMessageRow";
+import { isOwnChatMessage, resolveActiveViewerId } from "@/lib/chatViewer";
+import { chatMergeKey, findChatByOpenId, openChatIdFor } from "@/lib/dmChatId";
+import { ChatInlineReplyQuote } from "../chat/ChatInlineReplyQuote";
+import { ChatComposerReplyBar } from "../chat/ChatComposerReplyBar";
+import { GroupDetailsScreen } from "../chat/GroupDetailsScreen";
 import { EXTENDED_REACTION_EMOJIS } from "@/lib/reactionEmojiGrid";
 import { isStickerImageContent, isStickerVideoContent } from "@/lib/stickerUtils";
 import { renderMentionHashtagNodes } from "@/lib/renderMentionHashtagText";
-import { Mic, Image as ImageIcon, Smile, Sticker, Phone, Video, MicOff, MonitorUp, X, Plus, ArrowRight, Settings as SettingsIcon, Check, Camera, Search, Square, Megaphone, Users, LogOut, AtSign, MoreVertical, ChevronLeft, Reply, Forward, Copy, Trash2, Flag, MoreHorizontal, ChevronRight, Pin, Play, Pause, Star, Bell, BellOff, Mail } from "lucide-react";
-import type { AppState, Chat, Message } from "@/lib/types";
+import { Mic, Image as ImageIcon, Sticker, Phone, Video, MicOff, MonitorUp, X, Plus, ArrowRight, Settings as SettingsIcon, Check, Camera, Search, Square, Megaphone, Users, LogOut, AtSign, MoreVertical, ChevronLeft, Reply, Forward, Copy, Trash2, Flag, MoreHorizontal, ChevronRight, Pin, Play, Pause, Star, Bell, BellOff, Mail, Send, PenLine, SquarePen } from "lucide-react";
+import { RSocialAvatar } from "../rsocial/RSocialAvatar";
+import { displayNameFromUsername, formatChatListTime, RS_BADGE } from "@/lib/rsocialUi";
+import type { AppState, Chat, Message, User } from "@/lib/types";
+import { isReactNativeWebView, postToNativeShell } from "@/lib/nativeShell";
+import { isRenderableMediaUrl, resolveMediaUrl } from "@/lib/mediaUrl";
+import {
+  apiBackendEnabled,
+  apiLookupUserByUsername,
+  apiUploadMedia,
+  getApiToken,
+  userFromSearchResult,
+} from "@/lib/apiBackend";
+import { INCOMING_CALL_WINDOW_EVENT } from "@/lib/store";
+import type { IncomingCallRing } from "@/lib/webrtcCall";
+import { CallScreen } from "./CallScreen";
 
 const PREVIEW_MAX = 96;
-/** عرض عمود التطبيق (مثل max-w-md) للمعاينة والسحب */
-const APP_COLUMN_MAX_PX = 448;
+/** عرض عمود التطبيق — من useSlideDismissBack */
+/**
+ * ارتفاع شريط App العلوي (تقريباً: py-3 + صف الأيقونات + border) حتى تتطابق طبقة صندوق الوارد خلف المحادثة مع main.
+ * يجب أن يبقى متوافقاً مع `<header className="... py-3 ...">` في App.tsx.
+ */
+const APP_TOP_BAR_BELOW_SAFE_AREA = "3.5rem";
+/** يقرأها App.tsx (header/nav) أثناء سحب الرجوع من المحادثة — 0…1 */
+export const CHAT_DISMISS_PULL_CSS_VAR = "--retweet-chat-dismiss-pull";
+/** 0…1 — تقدّم فتح المحادثة (قائمة تزيح لليمين + الخيط من اليسار) */
+export const CHAT_STACK_PROGRESS_VAR = "--retweet-chat-stack-progress";
+const CHAT_STACK_OPEN_FRACTION = 0.34;
 
 function viewOnceOpenedForViewer(m: Message, viewerId: string) {
   return !!(m.viewOnce && (m.viewOnceOpenedByUserIds || []).includes(viewerId));
@@ -29,7 +76,7 @@ function viewOncePillActiveClass(mine: boolean, isQuran: boolean): string {
     return base + (mine ? " bg-zinc-700/90 text-zinc-50" : " bg-zinc-800/90 text-zinc-100");
   }
   if (mine) {
-    return base + " bg-primary/20 text-foreground dark:bg-primary/35 dark:text-primary-foreground";
+    return base + " bg-black/[0.1] text-zinc-800 dark:bg-white/15 dark:text-zinc-100";
   }
   return base + " bg-background/85 text-foreground dark:bg-muted/75";
 }
@@ -43,6 +90,52 @@ function viewOncePillDoneClass(mine: boolean, isQuran: boolean): string {
 }
 
 const QUICK_REACTION_EMOJIS = ["❤️", "😂", "😮", "😢", "😡", "👍"];
+
+/** فيديو في ثريد المحادثة — أقرب لحجم دايركت إنستغرام، بدون إطارات، وحواف دائرية */
+const CHAT_VIDEO_WRAP =
+  "w-full max-w-full shrink-0 overflow-hidden rounded-[18px] bg-black shadow-none ring-0";
+const CHAT_VIDEO_EL =
+  "block h-auto w-full max-h-[min(52vh,400px)] border-0 object-cover bg-transparent outline-none shadow-none ring-0 focus:outline-none focus-visible:outline-none";
+
+/** صورة في ثريد المحادثة — نفس حدود عرض/ارتفاع تقريب دايركت إنستغرام (مع الفيديو) */
+const CHAT_IMAGE_WRAP =
+  "w-full max-w-full shrink-0 overflow-hidden rounded-[18px] bg-transparent shadow-none ring-0";
+const CHAT_IMAGE_EL =
+  "block h-auto w-full max-h-[min(52vh,400px)] border-0 object-cover bg-transparent outline-none shadow-none ring-0";
+
+/** ملصق في المحادثة — زوايا دائرية، بدون إطار أو حافة حادة */
+const CHAT_STICKER_MEDIA_CLASS =
+  "block h-auto w-auto max-h-[min(42vh,260px)] max-w-[min(88vw,240px)] shrink-0 object-contain overflow-hidden rounded-[22px] border-0 bg-transparent align-middle shadow-none outline-none ring-0";
+
+/** عرض عمود صورة/فيديو دايركت — حدّ أقصى ضيّق يشبه عمود رسائل الإنستا */
+const CHAT_INLINE_MEDIA_COL = "w-full max-w-[min(74vw,274px)] shrink-0";
+
+/** حد أقصى لفقاعة النص — ~75% من الشاشة (إنستغرام دايركت) */
+const CHAT_BUBBLE_MAX_W = "max-w-[min(75vw,280px)]";
+
+/** عمود فقاعة نص/محتوى — عرض جوهري (يلتف حول النص) وليس full-width */
+const CHAT_TEXT_BUBBLE_COL = "w-max " + CHAT_BUBBLE_MAX_W + " shrink-0";
+
+/** فقاعة نصية في الشات؛ رسائلي: زجاج شفاف بنفس منطق رسالة الفويس (بدون أزرق) */
+function chatBubbleFilledClass(mine: boolean, isQuran: boolean): string {
+  const base = "inline-block w-max max-w-full rounded-2xl px-3 py-2 text-sm align-top ";
+  if (isQuran) {
+    return (
+      base +
+      (mine
+        ? "bg-emerald-950/88 text-emerald-50 shadow-sm ring-1 ring-emerald-800/35"
+        : "bg-zinc-800 text-zinc-100 shadow-sm ring-1 ring-zinc-600/40")
+    );
+  }
+  if (mine) {
+    return (
+      base +
+      "border-0 shadow-none ring-0 outline-none backdrop-blur-xl backdrop-saturate-150 " +
+      "bg-black/[0.052] text-zinc-900 dark:bg-white/[0.065] dark:text-zinc-50"
+    );
+  }
+  return base + "bg-zinc-100 text-zinc-900 shadow-sm ring-1 ring-black/[0.07] dark:bg-zinc-800 dark:text-zinc-100 dark:ring-white/12";
+}
 
 function formatMsgContextTime(createdAt: number, lang: string) {
   try {
@@ -174,12 +267,69 @@ function lastMessagePreview(last: Message | undefined): string {
   if (last.type === "text") return truncateText(last.content);
   if (last.type === "sticker") return (isStickerImageContent(last.content) || isStickerVideoContent(last.content)) ? "ملصق" : truncateText(last.content, 24);
   if (last.type === "image") return last.viewOnce ? "صورة (مرة واحدة)" : "صورة";
+  if (last.type === "drawing") return last.viewOnce ? "رسم (مرة واحدة)" : "رسم";
   if (last.type === "video") return last.viewOnce ? "فيديو (مرة واحدة)" : "فيديو";
   if (last.type === "voice") return "رسالة صوتية";
   if (last.type === "shared_post") return "منشور";
   if (last.type === "shared_story") return "ستوري";
   return `[${last.type}]`;
 }
+
+/** نفس معاينة الرسالة المختصرة داخل ChatRoom (مثبتات، رد، حافظة، نسخ…) */
+function chatReplyPreview(m: Message): string {
+  if (m.type === "text") return truncateText(m.content, 100);
+  if (m.type === "sticker") return (isStickerImageContent(m.content) || isStickerVideoContent(m.content)) ? "[ملصق]" : truncateText(m.content, 40);
+  if (m.type === "image" && m.viewOnce) return "[صورة مرة واحدة]";
+  if (m.type === "video" && m.viewOnce) return "[فيديو مرة واحدة]";
+  if (m.type === "drawing" && m.viewOnce) return "[رسم مرة واحدة]";
+  if (m.type === "image") return "[صورة]";
+  if (m.type === "drawing") return "[رسم]";
+  if (m.type === "video") return "[فيديو]";
+  if (m.type === "voice") return "[صوت]";
+  if (m.type === "shared_post") return "[منشور]";
+  if (m.type === "shared_story") return "[ستوري]";
+  return `[${m.type}]`;
+}
+
+function readVideoDurationSec(file: File): Promise<number> {
+  return new Promise(resolve => {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement("video");
+    video.preload = "metadata";
+    const finish = (sec: number) => {
+      URL.revokeObjectURL(url);
+      resolve(sec);
+    };
+    video.onloadedmetadata = () => {
+      const d = video.duration;
+      finish(d && Number.isFinite(d) ? Math.max(1, Math.round(d)) : 1);
+    };
+    video.onerror = () => finish(1);
+    video.src = url;
+  });
+}
+
+function readAudioDurationSec(file: File): Promise<number> {
+  return new Promise(resolve => {
+    const url = URL.createObjectURL(file);
+    const audio = document.createElement("audio");
+    audio.preload = "metadata";
+    const finish = (sec: number) => {
+      URL.revokeObjectURL(url);
+      resolve(sec);
+    };
+    audio.onloadedmetadata = () => {
+      const d = audio.duration;
+      finish(d && Number.isFinite(d) ? Math.max(1, Math.round(d)) : 1);
+    };
+    audio.onerror = () => finish(1);
+    audio.src = url;
+  });
+}
+
+/** لا تستخدم `hidden`/`display:none` — على iOS قد لا يُشغَّل صوت/فيديو الرسالة الصوتية */
+const VOICE_MEDIA_OFFSCREEN =
+  "pointer-events-none fixed start-0 top-0 z-[-1] m-0 h-[2px] w-[2px] max-h-[2px] max-w-[2px] overflow-hidden border-0 p-0 opacity-[0.02]";
 
 function fmtVoiceTime(sec: number) {
   const s = Math.max(0, Math.floor(sec || 0));
@@ -188,93 +338,368 @@ function fmtVoiceTime(sec: number) {
   return `${m}:${String(r).padStart(2, "0")}`;
 }
 
-/** مشغّل صوتي بدون شريط المتصفح الأسود — تشغيل + 🎙️ + تقدم */
-function InlineVoicePlayer({ src, durationSec, isQuran }: { src: string; durationSec?: number; isQuran: boolean }) {
-  const isVideo = src.startsWith("data:video");
+const VOICE_WAVE_BARS = 40;
+
+function voiceWaveHeightsFromSrc(src: string): number[] {
+  let h = 0;
+  for (let i = 0; i < src.length; i++) h = (h + src.charCodeAt(i) * (i + 1)) % 100017;
+  return Array.from({ length: VOICE_WAVE_BARS }, (_, i) => {
+    const t = Math.sin((i + 1) * 1.55 + h * 0.00012) * 0.45 + 0.55;
+    const t2 = Math.cos((i + 2) * 0.9 + h * 0.00008) * 0.2;
+    return Math.round(Math.min(100, Math.max(28, (t + t2) * 100)));
+  });
+}
+
+/** مستويات شريط الموجة من Web Audio؛ يعكس قوة الإشارة وقت التشغيل */
+function waveBarsFromAnalyser(analyser: AnalyserNode, barCount: number): number[] {
+  const n = analyser.frequencyBinCount;
+  const data = new Uint8Array(n);
+  analyser.getByteFrequencyData(data);
+  const heights: number[] = [];
+  for (let b = 0; b < barCount; b++) {
+    const t0 = (b / barCount) ** 1.05;
+    const t1 = ((b + 1) / barCount) ** 1.05;
+    const start = Math.floor(n * t0);
+    const end = Math.ceil(n * t1);
+    let sum = 0;
+    for (let i = start; i < end; i++) sum += data[Math.min(i, n - 1)];
+    const avg = sum / Math.max(1, end - start) / 255;
+    const boosted = Math.min(1.15, avg * 1.75 + 0.03);
+    const eased = Math.pow(boosted, 0.82);
+    const pct = Math.round(20 + eased * 80);
+    heights.push(Math.min(100, Math.max(17, pct)));
+  }
+  return heights;
+}
+
+type VoiceAnalyserGraph = {
+  ctx: AudioContext;
+  analyser: AnalyserNode;
+};
+
+/** Safari/iOS غالباً لا يشغّل webm صوت — نستخدم عنصر فيديو */
+function voiceUsesVideoElement(src: string): boolean {
+  if (src.startsWith("data:video")) return true;
+  const low = src.slice(0, 80).toLowerCase();
+  return low.includes("audio/webm") || low.includes("video/webm");
+}
+
+function waitMediaCanPlay(el: HTMLMediaElement): Promise<void> {
+  if (el.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const done = () => {
+      cleanup();
+      resolve();
+    };
+    const fail = () => {
+      cleanup();
+      reject(new Error("media load failed"));
+    };
+    const cleanup = () => {
+      el.removeEventListener("canplay", done);
+      el.removeEventListener("loadeddata", done);
+      el.removeEventListener("error", fail);
+    };
+    el.addEventListener("canplay", done, { once: true });
+    el.addEventListener("loadeddata", done, { once: true });
+    el.addEventListener("error", fail, { once: true });
+    try {
+      el.load();
+    } catch {
+      /* ignore */
+    }
+  });
+}
+
+/** data: URL كبيرة تبطّئ التشغيل — نحوّلها لـ blob URL أسرع */
+function useVoicePlaybackSrc(src: string): string {
+  const [playbackSrc, setPlaybackSrc] = useState(src);
+  useEffect(() => {
+    if (!src.startsWith("data:")) {
+      setPlaybackSrc(src);
+      return;
+    }
+    let revoked: string | null = null;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const blob = await (await fetch(src)).blob();
+        if (cancelled) return;
+        revoked = URL.createObjectURL(blob);
+        setPlaybackSrc(revoked);
+      } catch {
+        if (!cancelled) setPlaybackSrc(src);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (revoked) URL.revokeObjectURL(revoked);
+    };
+  }, [src]);
+  return playbackSrc;
+}
+
+/** رسالة صوتية — شكل عصري قريب من إنستغرام دايركت */
+function InlineVoicePlayer({
+  src,
+  durationSec,
+  isQuran,
+  mine,
+}: {
+  src: string;
+  durationSec?: number;
+  isQuran: boolean;
+  mine: boolean;
+}) {
+  const playbackSrc = useVoicePlaybackSrc(src);
+  const useVideoEl = voiceUsesVideoElement(playbackSrc);
   const audioRef = useRef<HTMLAudioElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const analyserGraphRef = useRef<VoiceAnalyserGraph | null>(null);
+  const ensureAnalyserRef = useRef<(() => Promise<void>) | null>(null);
+  const waveRafRef = useRef(0);
+  const waveSmoothRef = useRef<number[]>(Array.from({ length: VOICE_WAVE_BARS }, () => 40));
+  const waveFrameRef = useRef(0);
+
   const [playing, setPlaying] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [cur, setCur] = useState(0);
-  const [dur, setDur] = useState(0);
+  const [dur, setDur] = useState(durationSec || 0);
+  const [levelsLive, setLevelsLive] = useState<number[] | null>(null);
+
+  const idleHeights = useMemo(() => voiceWaveHeightsFromSrc(src), [src]);
+  const idleRef = useRef(idleHeights);
+  idleRef.current = idleHeights;
 
   useEffect(() => {
-    const el = (isVideo ? videoRef.current : audioRef.current) as HTMLMediaElement | null;
-    if (!el) return;
+    waveSmoothRef.current = idleRef.current.slice();
+    setLevelsLive(null);
+    setPlaying(false);
+    setCur(0);
+    setDur(durationSec || 0);
+    if (waveRafRef.current) cancelAnimationFrame(waveRafRef.current);
+    waveRafRef.current = 0;
+    void analyserGraphRef.current?.ctx.close().catch(() => {});
+    analyserGraphRef.current = null;
+    ensureAnalyserRef.current = null;
+
+    const el = (useVideoEl ? videoRef.current : audioRef.current) as HTMLMediaElement | null;
+    if (!el) return undefined;
+    try {
+      el.load();
+    } catch {
+      /* ignore */
+    }
     const onT = () => setCur(el.currentTime);
     const onMeta = () => {
       const d = el.duration;
       setDur(d && isFinite(d) && d > 0 ? d : durationSec || 0);
     };
     const onPlay = () => setPlaying(true);
-    const onPause = () => setPlaying(false);
+    const stopWaveRaf = () => {
+      if (waveRafRef.current) cancelAnimationFrame(waveRafRef.current);
+      waveRafRef.current = 0;
+    };
+
+    const onWaveStop = () => {
+      stopWaveRaf();
+      setLevelsLive(null);
+    };
+
+    const onPause = () => {
+      setPlaying(false);
+      onWaveStop();
+    };
+
     const onEnded = () => {
       setPlaying(false);
       setCur(0);
+      onWaveStop();
     };
+
+    const attachAnalyser = async () => {
+      if (analyserGraphRef.current) return;
+      const AW =
+        typeof window !== "undefined" &&
+        (window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext);
+      if (!AW) return;
+      try {
+        const ctx = new AW();
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 512;
+        analyser.smoothingTimeConstant = 0.72;
+        const source = ctx.createMediaElementSource(el);
+        source.connect(analyser);
+        analyser.connect(ctx.destination);
+        analyserGraphRef.current = { ctx, analyser };
+        await ctx.resume();
+      } catch {
+        analyserGraphRef.current = null;
+      }
+    };
+    ensureAnalyserRef.current = attachAnalyser;
+
+    const waveLoop = () => {
+      if (el.paused) return;
+      const graph = analyserGraphRef.current;
+      if (!graph) return;
+      const raw = waveBarsFromAnalyser(graph.analyser, VOICE_WAVE_BARS);
+      const sm = waveSmoothRef.current;
+      for (let i = 0; i < VOICE_WAVE_BARS; i++) {
+        sm[i] = sm[i] * 0.56 + raw[i] * 0.44;
+      }
+      waveFrameRef.current += 1;
+      if ((waveFrameRef.current & 3) === 0) setLevelsLive([...sm]);
+      waveRafRef.current = requestAnimationFrame(waveLoop);
+    };
+
+    const onPlaying = () => {
+      setLoading(false);
+      void ensureAnalyserRef.current?.();
+      void analyserGraphRef.current?.ctx.resume().catch(() => {});
+      waveSmoothRef.current = idleRef.current.slice();
+      waveFrameRef.current = 0;
+      stopWaveRaf();
+      if (analyserGraphRef.current) waveRafRef.current = requestAnimationFrame(waveLoop);
+    };
+
     el.addEventListener("timeupdate", onT);
     el.addEventListener("loadedmetadata", onMeta);
     el.addEventListener("play", onPlay);
+    el.addEventListener("playing", onPlaying);
     el.addEventListener("pause", onPause);
     el.addEventListener("ended", onEnded);
+
     return () => {
       el.removeEventListener("timeupdate", onT);
       el.removeEventListener("loadedmetadata", onMeta);
       el.removeEventListener("play", onPlay);
+      el.removeEventListener("playing", onPlaying);
       el.removeEventListener("pause", onPause);
       el.removeEventListener("ended", onEnded);
+      stopWaveRaf();
+      setLevelsLive(null);
+      void analyserGraphRef.current?.ctx.close().catch(() => {});
+      analyserGraphRef.current = null;
+      ensureAnalyserRef.current = null;
     };
-  }, [src, isVideo, durationSec]);
+  }, [playbackSrc, useVideoEl, durationSec]);
 
   const toggle = async () => {
-    const el = (isVideo ? videoRef.current : audioRef.current) as HTMLMediaElement | null;
+    const el = (useVideoEl ? videoRef.current : audioRef.current) as HTMLMediaElement | null;
     if (!el) return;
     try {
-      if (el.paused) await el.play();
-      else el.pause();
+      if (!el.paused) {
+        el.pause();
+        setLoading(false);
+        return;
+      }
+      setLoading(true);
+      await waitMediaCanPlay(el);
+      await el.play();
     } catch {
-      /* ignore */
+      try {
+        await waitMediaCanPlay(el);
+        await el.play();
+      } catch {
+        setLoading(false);
+      }
     }
   };
 
   const total = dur || durationSec || 0;
-  const pct = total > 0 ? Math.min(100, (cur / total) * 100) : 0;
+  const filledBars = total > 0 ? Math.min(VOICE_WAVE_BARS, Math.ceil((cur / total) * VOICE_WAVE_BARS)) : 0;
+  const remaining = Math.max(0, total - cur);
+
+  const displayHeights = levelsLive ?? idleHeights;
+
+  const shell =
+    "flex min-w-[min(92vw,268px)] max-w-[min(92vw,288px)] items-center gap-3 rounded-[22px] px-2.5 py-2 " +
+    "border-0 outline-none ring-0 ring-offset-0 shadow-none " +
+    "backdrop-blur-xl backdrop-saturate-150 " +
+    (isQuran
+      ? mine
+        ? "bg-emerald-950/22 text-emerald-50 dark:bg-emerald-950/26"
+        : "bg-black/[0.065] text-zinc-100 dark:bg-zinc-900/34"
+      : "bg-black/[0.052] text-zinc-900 dark:bg-white/[0.065] dark:text-zinc-50");
+
+  const playBtn =
+    "flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition active:scale-[0.97] " +
+    "border-0 shadow-none outline-none ring-0 backdrop-blur-md " +
+    "bg-zinc-900/80 text-white focus-visible:ring-2 focus-visible:ring-zinc-400/45 " +
+    "dark:bg-white dark:text-zinc-950 dark:focus-visible:ring-white/35 " +
+    (isQuran && mine ? " !bg-emerald-900/80 !text-emerald-50 dark:!bg-emerald-800/90" : "");
+
+  const barIdle = isQuran
+    ? mine
+      ? "bg-emerald-200/38"
+      : "bg-zinc-500/38"
+    : "bg-zinc-400/42 dark:bg-white/24";
+
+  const barActive = isQuran
+    ? mine
+      ? "bg-emerald-100"
+      : "bg-zinc-300"
+    : "bg-zinc-800 dark:bg-white";
 
   return (
-    <div className="flex min-w-0 max-w-full flex-col gap-1">
-      {isVideo ? (
-        <video ref={videoRef} src={src} preload="metadata" className="hidden" playsInline />
+    <div className="flex w-max max-w-[min(92vw,288px)] flex-col">
+      {useVideoEl ? (
+        <video
+          ref={videoRef}
+          src={playbackSrc}
+          preload="auto"
+          className={VOICE_MEDIA_OFFSCREEN}
+          playsInline
+          controls={false}
+        />
       ) : (
-        <audio ref={audioRef} src={src} preload="metadata" className="hidden" />
+        <audio ref={audioRef} src={playbackSrc} preload="auto" className={VOICE_MEDIA_OFFSCREEN} />
       )}
-      <div
-        className={
-          "flex w-full min-w-0 max-w-full items-center gap-2 rounded-full py-1 ps-1 pe-2.5 " +
-          (isQuran ? "bg-zinc-800/90 text-zinc-100" : "bg-black/[0.06] dark:bg-white/10")
-        }
-      >
+      <div className={shell} dir="ltr">
         <button
           type="button"
           onClick={toggle}
-          className={
-            "flex h-9 w-9 shrink-0 items-center justify-center rounded-full " +
-            (isQuran ? "bg-zinc-600 text-zinc-50" : "bg-primary text-primary-foreground")
-          }
-          aria-label={playing ? "إيقاف" : "تشغيل"}
+          className={playBtn}
+          aria-label={playing ? "إيقاف" : loading ? "تحميل" : "تشغيل"}
+          disabled={loading && !playing}
         >
-          {playing ? <Pause size={16} className="fill-current" /> : <Play size={16} className="ms-0.5 fill-current" />}
+          {loading && !playing ? (
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+          ) : playing ? (
+            <Pause size={18} className="fill-current" />
+          ) : (
+            <Play size={18} className="ms-0.5 fill-current" />
+          )}
         </button>
-        <span className="shrink-0 select-none text-lg leading-none" aria-hidden>
-          🎙️
-        </span>
-        <div className="relative h-1 min-w-[40px] flex-1 rounded-full bg-black/10 dark:bg-white/15">
-          <div
-            className={"absolute inset-y-0 start-0 rounded-full " + (isQuran ? "bg-zinc-300" : "bg-primary")}
-            style={{ width: `${pct}%` }}
-          />
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <div className="flex h-9 min-w-0 flex-1 items-end justify-stretch gap-[2px] px-0.5">
+            {displayHeights.map((hPct, i) => {
+              const active = i < filledBars;
+              return (
+                <span
+                  key={i}
+                  className={
+                    "min-h-[4px] min-w-[2px] flex-1 max-w-[4px] origin-bottom rounded-full transition-colors duration-100 " +
+                    (active ? barActive : barIdle) +
+                    (playing && active ? " motion-safe:opacity-95" : "")
+                  }
+                  style={{ height: `${hPct}%` }}
+                />
+              );
+            })}
+          </div>
+          <div className="flex items-center justify-end px-0.5">
+            <span
+              className={
+                "text-[12px] font-semibold tabular-nums tracking-tight " +
+                (isQuran ? "text-emerald-100/90" : "text-zinc-600 dark:text-zinc-300")
+              }
+            >
+              {total > 0 ? fmtVoiceTime(remaining) : "—"}
+            </span>
+          </div>
         </div>
-        <span className={"shrink-0 text-[10px] tabular-nums opacity-80 " + (isQuran ? "text-zinc-300" : "")}>
-          {fmtVoiceTime(cur)} / {fmtVoiceTime(total)}
-        </span>
       </div>
     </div>
   );
@@ -284,6 +709,7 @@ function peekMessageLine(m: Message): string {
   if (m.type === "text") return truncateText(m.content, 220);
   if (m.type === "sticker") return truncateText(m.content, 48);
   if (m.type === "image") return m.viewOnce ? "صورة · مرة واحدة" : "صورة";
+  if (m.type === "drawing") return m.viewOnce ? "رسم · مرة واحدة" : "رسم";
   if (m.type === "video") return m.viewOnce ? "فيديو · مرة واحدة" : "فيديو";
   if (m.type === "voice") return "رسالة صوتية";
   if (m.type === "shared_post") return "منشور";
@@ -305,7 +731,7 @@ function ChatPeekMessageBody({
 }) {
   if (m.type === "text")
     return (
-      <span className="block whitespace-pre-wrap text-sm leading-relaxed [overflow-wrap:break-word] [word-break:normal]">
+      <span className="block max-w-full whitespace-pre-wrap break-words text-sm leading-relaxed text-start [overflow-wrap:anywhere] [word-break:break-word]">
         {m.content}
       </span>
     );
@@ -325,14 +751,21 @@ function ChatPeekMessageBody({
       </div>
     );
   }
-  if (m.type === "voice" && m.content.startsWith("data:")) {
-    return <InlineVoicePlayer src={m.content} durationSec={m.durationSec} isQuran={isQuran} />;
-  }
-  if (m.type === "voice" && !m.content.startsWith("data:")) {
+  if (m.type === "voice") {
+    if (m.content.startsWith("data:") || isRenderableMediaUrl(m.content)) {
+      return (
+        <InlineVoicePlayer
+          src={m.content.startsWith("data:") ? m.content : resolveMediaUrl(m.content)}
+          durationSec={m.durationSec}
+          isQuran={isQuran}
+          mine={bubbleMine}
+        />
+      );
+    }
     return (
       <span className="inline-flex items-center gap-2">
         <span className="text-xl">🎙️</span>
-        <span>{m.content}</span>
+        <span className="break-all text-xs opacity-80">{m.content}</span>
       </span>
     );
   }
@@ -341,7 +774,7 @@ function ChatPeekMessageBody({
       <img
         src={m.content}
         alt=""
-        className="block h-auto max-h-[260px] w-auto max-w-[240px] border-0 bg-transparent object-contain outline-none ring-0 rounded-none"
+        className={CHAT_STICKER_MEDIA_CLASS}
         loading="lazy"
         decoding="async"
       />
@@ -351,7 +784,7 @@ function ChatPeekMessageBody({
     return (
       <video
         src={m.content}
-        className="block h-auto max-h-[260px] w-auto max-w-[240px] border-0 bg-transparent object-contain outline-none ring-0 rounded-none"
+        className={CHAT_STICKER_MEDIA_CLASS}
         autoPlay
         loop
         muted
@@ -363,9 +796,30 @@ function ChatPeekMessageBody({
   }
   if (m.type === "sticker") {
     return (
-      <span className="inline-flex items-center justify-center min-w-[44px] min-h-[44px] px-2 rounded-[18px] bg-secondary/40 text-2xl leading-none select-none">
+      <span className="inline-flex items-center justify-center min-w-[44px] min-h-[44px] px-2 rounded-[22px] bg-secondary/40 text-2xl leading-none select-none">
         {m.content}
       </span>
+    );
+  }
+  if (m.type === "drawing" && m.viewOnce) {
+    if (viewOnceOpenedForViewer(m, viewerId)) {
+      return <span className={viewOncePillDoneClass(bubbleMine, isQuran)}>رسم · تمت</span>;
+    }
+    return (
+      <span className={viewOncePillActiveClass(bubbleMine, isQuran)}>
+        <Play size={12} className="shrink-0 fill-current opacity-90" />
+        رسم
+      </span>
+    );
+  }
+  if (m.type === "drawing") {
+    const p = parseDrawingPayload(m.content);
+    return p ? (
+      <div className={CHAT_IMAGE_WRAP + " overflow-hidden"}>
+        <ChatDrawingCanvas payload={p} className="w-full" maxHeightPx={240} forChatDisplay />
+      </div>
+    ) : (
+      <span className="text-xs opacity-70">رسم</span>
     );
   }
   if (m.type === "image" && m.viewOnce) {
@@ -391,25 +845,59 @@ function ChatPeekMessageBody({
     );
   }
   if (m.type === "image") {
-    return <img src={m.content} alt="" className="block max-h-80 w-full max-w-[28rem] border-0 object-cover outline-none ring-0 rounded-none" />;
+    return (
+      <div className={CHAT_IMAGE_WRAP}>
+        <img
+          src={m.content}
+          alt=""
+          className={CHAT_IMAGE_EL}
+          loading="lazy"
+          decoding="async"
+        />
+      </div>
+    );
   }
   if (m.type === "video") {
-    return <video src={m.content} controls className="max-h-80 w-full max-w-[28rem] border-0 object-cover outline-none ring-0 rounded-none" preload="metadata" />;
+    return (
+      <div className={CHAT_VIDEO_WRAP}>
+        <video
+          src={m.content}
+          controls
+          playsInline
+          className={`${CHAT_VIDEO_EL} rounded-none`}
+          preload="metadata"
+        />
+      </div>
+    );
   }
   return <span className="text-sm leading-relaxed [overflow-wrap:break-word] [word-break:normal]">{peekMessageLine(m)}</span>;
 }
+
+/** معاينة المحادثة: إما سحب أفقي مبكر من الكاميرا، أو ضغط مطوّل ثم سحب */
+const CAMERA_LONG_PRESS_MS = 240;
+const CAMERA_TAP_MAX_DURATION_MS = CAMERA_LONG_PRESS_MS - 45;
+/** بعد هذا الجذب نحو عرض الشاشة نفعّل المعاينة فوراً (بدون انتظار الضغط المطوّل) */
+const CAMERA_EARLY_PULL_PX = 16;
+/** نسبة من عرض عمود التطبيق تكفي لفتح المحادثة عند رفع الإصبع (كان ~97% من العرض الكامل) */
+const PEEK_OPEN_CHAT_FRACTION = 0.5;
+/** أقل من هذا + إيماءة قصيرة نفتح التقاط الكاميرا */
+const PEEK_CAMERA_TAP_FRACTION = 0.2;
 
 /** سحب من جهة أيقونة الكاميرا نحو عرض المحادثة (معاينة مثل السناب) */
 function ChatListRowWithPeek({
   chat: c,
   me,
   onOpenChat,
+  onStackDrag,
+  onStackDragEnd,
 }: {
   chat: Chat;
   me: { id: string };
   onOpenChat: (id: string) => void;
+  onStackDrag?: (chatId: string, px: number) => void;
+  onStackDragEnd?: (chatId: string, px: number) => void;
 }) {
-  const { state, openOrCreateChat, sendMessage, toggleChatListPin, toggleChatMute, deleteChat, isGuest } = useApp();
+  const { state, openOrCreateChat, sendMessage, toggleChatListPin, toggleChatMute, deleteChat, isGuest, joinChannel } = useApp();
   const t = useT();
   const [peekPx, setPeekPx] = useState(0);
   const [cameraDraft, setCameraDraft] = useState<CameraComposeDraft | null>(null);
@@ -430,18 +918,30 @@ function ChatListRowWithPeek({
   const displayName = (c.isGroup || c.isChannel) ? c.name || "?" : other?.username || "?";
   const avatarSrc = (c.isGroup || c.isChannel) ? c.avatar : other?.avatar;
   const isQuranPeek = c.id === QURAN_CHANNEL_ID;
-  const titlePeek = (c.isGroup || c.isChannel) ? c.name || "…" : "@" + (other?.username || "");
   const peekScrollRef = useRef<HTMLDivElement>(null);
+  const [peekPrivacyMenuOpen, setPeekPrivacyMenuOpen] = useState(false);
+  const [peekTheme, setPeekTheme] = useState<"default" | "blue" | "pink">("default");
+  const [peekHideReadStatus, setPeekHideReadStatus] = useState(false);
+  const [peekHideTypingStatus, setPeekHideTypingStatus] = useState(false);
+  const peekChatTitle = (c.isGroup || c.isChannel) ? (c.name || "") : "@" + (other?.username || "");
+  const isPeekChannelMember = c.members.includes(me.id);
+  const peekThemeBg = isQuranPeek
+    ? "bg-black text-white"
+    : peekTheme === "blue"
+      ? "bg-blue-50 dark:bg-blue-950"
+      : peekTheme === "pink"
+        ? "bg-pink-50 dark:bg-pink-950"
+        : "bg-background text-foreground";
   const [rowMenu, setRowMenu] = useState<{ x: number; y: number } | null>(null);
-  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressTimerRef = useRef<number | null>(null);
   const longPressStartRef = useRef<{ x: number; y: number } | null>(null);
   const skipAvatarClickRef = useRef(false);
-  const cameraLongPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cameraLongPressTimerRef = useRef<number | null>(null);
   const cameraPeekArmedRef = useRef(false);
   const cameraDownRef = useRef<{ x0: number; y0: number; pointerId: number; downAt: number } | null>(null);
-  const peekPivotXRef = useRef(0);
-  const lastPtrRef = useRef({ x: 0, y: 0 });
   const cameraBtnRef = useRef<HTMLButtonElement | null>(null);
+  const rowOpenDownRef = useRef<{ x0: number; y0: number; pointerId: number } | null>(null);
+  const rowOpenArmedRef = useRef(false);
 
   const clearLongPressTimerOnly = useCallback(() => {
     if (longPressTimerRef.current) {
@@ -449,6 +949,27 @@ function ChatListRowWithPeek({
       longPressTimerRef.current = null;
     }
   }, []);
+
+  const closePeekPanel = useCallback(() => {
+    peekRef.current = 0;
+    setPeekPx(0);
+    setPeekPrivacyMenuOpen(false);
+  }, []);
+
+  const openPeekAsFullChat = useCallback(() => {
+    peekRef.current = 0;
+    setPeekPx(0);
+    setPeekPrivacyMenuOpen(false);
+    startTransition(() => onOpenChat(openChatIdFor(c, me.id)));
+  }, [onOpenChat, c, me.id]);
+
+  useEffect(() => {
+    if (peekPx > 0) return;
+    setPeekPrivacyMenuOpen(false);
+    setPeekTheme("default");
+    setPeekHideReadStatus(false);
+    setPeekHideTypingStatus(false);
+  }, [peekPx]);
 
   const clearAvatarLongPress = useCallback(() => {
     clearLongPressTimerOnly();
@@ -478,7 +999,7 @@ function ChatListRowWithPeek({
       if (e.button !== 0) return;
       clearLongPressTimerOnly();
       longPressStartRef.current = { x: e.clientX, y: e.clientY };
-      longPressTimerRef.current = setTimeout(() => {
+      longPressTimerRef.current = window.setTimeout(() => {
         longPressTimerRef.current = null;
         skipAvatarClickRef.current = true;
         window.setTimeout(() => {
@@ -524,14 +1045,34 @@ function ChatListRowWithPeek({
     };
   }, [rowMenu]);
 
+  const prevPeekPxForScrollRef = useRef(0);
+
   useLayoutEffect(() => {
-    if (peekPx <= 0) return;
     const el = peekScrollRef.current;
+    if (peekPx <= 0) {
+      prevPeekPxForScrollRef.current = 0;
+      return;
+    }
     if (!el) return;
-    requestAnimationFrame(() => {
-      el.scrollTop = el.scrollHeight;
-    });
-  }, [peekPx, peekMessages.length, c.id]);
+    const prev = prevPeekPxForScrollRef.current;
+    prevPeekPxForScrollRef.current = peekPx;
+    if (prev <= 0 && peekPx > 0) {
+      requestAnimationFrame(() => {
+        el.scrollTop = el.scrollHeight;
+      });
+    }
+  }, [peekPx]);
+
+  /** iOS/WebKit: يمنع الحاوية الأب من سرقة الإيماءة أثناء الضغط على الكاميرا والسحب */
+  useLayoutEffect(() => {
+    const el = cameraBtnRef.current;
+    if (!el) return;
+    const blockParentScroll = (ev: TouchEvent) => {
+      if (cameraDownRef.current) ev.preventDefault();
+    };
+    el.addEventListener("touchmove", blockParentScroll, { passive: false });
+    return () => el.removeEventListener("touchmove", blockParentScroll);
+  }, []);
 
   const onCameraFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -571,13 +1112,19 @@ function ChatListRowWithPeek({
         const cap = capWidth();
         peekRef.current = 0;
         setPeekPx(0);
-        if (px >= cap * 0.97) onOpenChat(c.id);
+        if (cap > 0 && px >= cap * PEEK_OPEN_CHAT_FRACTION) {
+          queueMicrotask(() => {
+            onOpenChat(openChatIdFor(c, me.id));
+          });
+        } else if (cap > 0 && px < cap * PEEK_CAMERA_TAP_FRACTION && down && Date.now() - down.downAt < 520) {
+          cameraInputRef.current?.click();
+        }
         return;
       }
       if (!down) return;
       const duration = Date.now() - down.downAt;
       const distSq = (e.clientX - down.x0) ** 2 + (e.clientY - down.y0) ** 2;
-      if (duration < 450 && distSq < 200) {
+      if (duration < CAMERA_TAP_MAX_DURATION_MS && distSq < 200) {
         cameraInputRef.current?.click();
       }
     },
@@ -589,38 +1136,108 @@ function ChatListRowWithPeek({
     cameraBtnRef.current = e.currentTarget;
     cameraDownRef.current = { x0: e.clientX, y0: e.clientY, pointerId: e.pointerId, downAt: Date.now() };
     cameraPeekArmedRef.current = false;
-    lastPtrRef.current = { x: e.clientX, y: e.clientY };
     clearCameraLongPress();
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      /* بعض المتصفحات ترفض الالتقاط قبل تعامل صريح */
+    }
     cameraLongPressTimerRef.current = window.setTimeout(() => {
       cameraLongPressTimerRef.current = null;
+      if (!cameraDownRef.current) return;
       cameraPeekArmedRef.current = true;
-      peekPivotXRef.current = lastPtrRef.current.x;
-      const btn = cameraBtnRef.current;
-      const d = cameraDownRef.current;
-      if (btn && d) {
-        try {
-          btn.setPointerCapture(d.pointerId);
-        } catch {
-          /* ignore */
-        }
+      try {
+        navigator.vibrate?.(6);
+      } catch {
+        /* ignore */
       }
-    }, 450);
+    }, CAMERA_LONG_PRESS_MS);
+  };
+
+  const rowOpenPullPx = (e: React.PointerEvent) => {
+    const down = rowOpenDownRef.current;
+    if (!down) return 0;
+    const rtl = typeof document !== "undefined" && document.documentElement.getAttribute("dir") === "rtl";
+    return rtl ? e.clientX - down.x0 : down.x0 - e.clientX;
+  };
+
+  const onRowOpenPointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0 || c.isGroup || c.isChannel) return;
+    rowOpenDownRef.current = { x0: e.clientX, y0: e.clientY, pointerId: e.pointerId };
+    rowOpenArmedRef.current = false;
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const onRowOpenPointerMove = (e: React.PointerEvent) => {
+    const down = rowOpenDownRef.current;
+    if (!down || down.pointerId !== e.pointerId) return;
+    const pull = rowOpenPullPx(e);
+    const dx = e.clientX - down.x0;
+    const dy = e.clientY - down.y0;
+    if (!rowOpenArmedRef.current) {
+      if (pull < 8) return;
+      if (Math.abs(dy) > Math.abs(dx) * 1.2 && dy * dy > 64) {
+        rowOpenDownRef.current = null;
+        return;
+      }
+      rowOpenArmedRef.current = true;
+    }
+    const cap = capWidth();
+    const px = Math.max(0, Math.min(cap, pull));
+    onStackDrag?.(openChatIdFor(c, me.id), px);
+  };
+
+  const onRowOpenPointerEnd = (e: React.PointerEvent) => {
+    const down = rowOpenDownRef.current;
+    rowOpenDownRef.current = null;
+    const armed = rowOpenArmedRef.current;
+    rowOpenArmedRef.current = false;
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+    if (!armed || !down) return;
+    const cap = capWidth();
+    const pull = rowOpenPullPx(e);
+    const px = Math.max(0, Math.min(cap, pull));
+    onStackDragEnd?.(openChatIdFor(c, me.id), px);
   };
 
   const onCameraPointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
-    lastPtrRef.current = { x: e.clientX, y: e.clientY };
     const down = cameraDownRef.current;
     if (!down) return;
-    const dx = e.clientX - down.x0;
-    const dy = e.clientY - down.y0;
+    const rtl = typeof document !== "undefined" && document.documentElement.getAttribute("dir") === "rtl";
+    /** سحب لفتح المعاينة: ثابت من أول إحداثية x للضغط على الكاميرا */
+    const openPull = rtl ? e.clientX - down.x0 : down.x0 - e.clientX;
+
     if (!cameraPeekArmedRef.current) {
-      if (dx * dx + dy * dy > 140) clearCameraLongPress();
+      if (openPull >= CAMERA_EARLY_PULL_PX) {
+        clearCameraLongPress();
+        cameraPeekArmedRef.current = true;
+        const cap = capWidth();
+        const v = Math.max(0, Math.min(cap, openPull));
+        peekRef.current = v;
+        setPeekPx(v);
+        try {
+          navigator.vibrate?.(6);
+        } catch {
+          /* ignore */
+        }
+        return;
+      }
+      const dx = e.clientX - down.x0;
+      const dy = e.clientY - down.y0;
+      if (dy * dy > 85 * 85 && dy * dy > dx * dx * 8) clearCameraLongPress();
       return;
     }
-    const rtl = typeof document !== "undefined" && document.documentElement.getAttribute("dir") === "rtl";
-    const pullDx = rtl ? e.clientX - peekPivotXRef.current : peekPivotXRef.current - e.clientX;
+
     const cap = capWidth();
-    const v = Math.max(0, Math.min(cap, pullDx));
+    const v = Math.max(0, Math.min(cap, openPull));
     peekRef.current = v;
     setPeekPx(v);
   };
@@ -643,116 +1260,317 @@ function ChatListRowWithPeek({
           <div className="fixed inset-0 z-[76] flex justify-center pointer-events-none">
             <div className="relative h-full w-full max-w-md pointer-events-auto">
               <div
-                className="absolute top-0 bottom-0 end-0 overflow-hidden border-s border-border bg-background shadow-xl"
+                className="absolute top-0 bottom-0 end-0 flex min-h-0 flex-row justify-end overflow-hidden border-s border-border bg-background shadow-xl [transform:translateZ(0)]"
                 style={{ width: Math.round(Math.min(peekPx, capWidth())) }}
               >
-                <div
-                  className={
-                    "flex h-full min-h-0 flex-col ms-auto " +
-                    (isQuranPeek ? "bg-black text-white" : "bg-background text-foreground")
-                  }
-                  style={{ width: capWidth(), minWidth: capWidth() }}
-                >
+                <div className={"flex h-full min-h-0 shrink-0 flex-col overflow-hidden " + peekThemeBg} style={{ width: capWidth() }}>
                   <div
                     className={
-                      "flex shrink-0 items-center justify-between gap-2 border-b p-3 " +
-                      (isQuranPeek ? "border-zinc-700 bg-zinc-900 text-zinc-100" : "border-border bg-background")
+                      "relative z-40 flex shrink-0 items-center justify-between border-b border-border p-3 " +
+                      (isQuranPeek ? "bg-zinc-900 text-zinc-100 border-zinc-700" : "bg-background")
                     }
                   >
-                    <div className="shrink-0 p-2 opacity-60" aria-hidden>
+                    <button type="button" onClick={closePeekPanel} className="rounded-full p-2 hover:bg-secondary" aria-label="رجوع">
                       <ChevronLeft size={22} />
-                    </div>
-                    <div className="flex min-w-0 flex-1 items-center gap-2 text-start">
+                    </button>
+                    <button
+                      type="button"
+                      onClick={openPeekAsFullChat}
+                      className="flex min-w-0 flex-1 items-center gap-2 text-start justify-start me-2"
+                    >
                       <Avatar name={displayName} src={avatarSrc} size={36} />
                       <div className="min-w-0">
-                        <div className="flex items-center gap-1 truncate text-sm font-semibold">
-                          {c.isChannel && <Megaphone size={14} />}
-                          {titlePeek}
+                        <div className="flex min-w-0 items-center gap-1 truncate text-sm font-semibold">
+                          {c.isChannel && <Megaphone size={14} className="shrink-0" />}
+                          {peekChatTitle}
                         </div>
                         {(c.isGroup || c.isChannel) && (
-                          <div className={"truncate text-xs " + (isQuranPeek ? "text-zinc-400" : "text-muted-foreground")}>
+                          <div className={"text-xs " + (isQuranPeek ? "text-zinc-400" : "text-muted-foreground")}>
                             {c.members.length} {t("members")}
                           </div>
                         )}
                       </div>
-                    </div>
-                    <div className={"flex shrink-0 items-center gap-2 " + (isQuranPeek ? "text-zinc-300" : "text-muted-foreground")}>
+                    </button>
+                    <div className="flex items-center gap-2">
                       {!isQuranPeek && !c.isChannel && (
                         <>
-                          <Phone size={20} />
-                          <Video size={20} />
+                          <button type="button" onClick={openPeekAsFullChat}>
+                            <Phone size={20} />
+                          </button>
+                          <button type="button" onClick={openPeekAsFullChat}>
+                            <Video size={20} />
+                          </button>
                         </>
                       )}
-                      {!c.isGroup && !c.isChannel && <MoreVertical size={20} />}
-                      {(c.isGroup || c.isChannel) && <SettingsIcon size={20} />}
+                      {!c.isGroup && !c.isChannel && (
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={() => setPeekPrivacyMenuOpen(!peekPrivacyMenuOpen)}
+                            className="rounded-full p-1 hover:bg-secondary"
+                          >
+                            <MoreVertical size={20} />
+                          </button>
+                          {peekPrivacyMenuOpen && (
+                            <div className="absolute left-0 top-8 z-50 w-48 rounded-lg border border-border bg-background shadow-lg">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPeekHideReadStatus(!peekHideReadStatus);
+                                  setPeekPrivacyMenuOpen(false);
+                                }}
+                                className="flex w-full items-center justify-between px-4 py-3 text-right hover:bg-secondary"
+                              >
+                                <span>إخفاء حالة القراءة</span>
+                                {peekHideReadStatus && <Check size={16} />}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPeekHideTypingStatus(!peekHideTypingStatus);
+                                  setPeekPrivacyMenuOpen(false);
+                                }}
+                                className="flex w-full items-center justify-between px-4 py-3 text-right hover:bg-secondary"
+                              >
+                                <span>إخفاء حالة الكتابة</span>
+                                {peekHideTypingStatus && <Check size={16} />}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {(c.isGroup || c.isChannel) && (
+                        <button type="button" onClick={openPeekAsFullChat}>
+                          <SettingsIcon size={20} />
+                        </button>
+                      )}
+                      {!isQuranPeek && !c.isGroup && !c.isChannel && (
+                        <select
+                          value={peekTheme}
+                          onChange={e => setPeekTheme(e.target.value as "default" | "blue" | "pink")}
+                          className="rounded-full bg-secondary px-2 py-1 text-xs"
+                        >
+                          <option value="default">ثيم</option>
+                          <option value="blue">أزرق</option>
+                          <option value="pink">وردي</option>
+                        </select>
+                      )}
                     </div>
                   </div>
+
+                  {(c.pinnedMessageIds || []).some(mid => c.messages.some(x => x.id === mid)) && (
+                    <div
+                      className={
+                        "no-scrollbar flex shrink-0 flex-nowrap gap-2 overflow-x-scroll overflow-y-hidden overscroll-x-none border-b px-2 py-1.5 touch-pan-x snap-x snap-mandatory " +
+                        (isQuranPeek ? "border-zinc-700 bg-zinc-900/95" : "border-border bg-muted/45")
+                      }
+                    >
+                      {(c.pinnedMessageIds || [])
+                        .filter(mid => c.messages.some(x => x.id === mid))
+                        .map(mid => {
+                          const pm = c.messages.find(x => x.id === mid)!;
+                          return (
+                            <button
+                              key={mid}
+                              type="button"
+                              onClick={openPeekAsFullChat}
+                              className={
+                                "flex max-w-[200px] min-w-[118px] shrink-0 snap-start items-center gap-2 rounded-xl border px-2.5 py-1.5 text-start text-xs " +
+                                (isQuranPeek ? "border-zinc-600 bg-zinc-800/80 text-zinc-100" : "border-border bg-background/90")
+                              }
+                            >
+                              <Pin size={14} className="shrink-0 opacity-90" />
+                              <span className="min-w-0 flex-1 truncate font-medium">{chatReplyPreview(pm)}</span>
+                            </button>
+                          );
+                        })}
+                    </div>
+                  )}
+
+                  {c.isChannel && !isPeekChannelMember && (
+                    <div
+                      className={
+                        "flex shrink-0 items-center gap-2 border-b border-border px-3 py-3 " +
+                        (isQuranPeek ? "border-zinc-700 bg-zinc-900 text-zinc-100" : "bg-muted/50")
+                      }
+                    >
+                      <p className="flex-1 text-sm">انضم للقناة للمتابعة والتفاعل</p>
+                      <button
+                        type="button"
+                        onClick={() => joinChannel(c.id)}
+                        className="shrink-0 rounded-2xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground"
+                      >
+                        انضمام
+                      </button>
+                    </div>
+                  )}
 
                   <div
                     ref={peekScrollRef}
                     className={
-                      "min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-y-contain p-3 " +
-                      (isQuranPeek ? "bg-zinc-950" : "")
+                      "chat-scroll-pane relative z-10 min-h-0 flex-1 overflow-y-auto overscroll-none " +
+                      (isQuranPeek ? "bg-zinc-950" : "bg-background")
                     }
-                    style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+                    style={{
+                      scrollbarWidth: "none",
+                      msOverflowStyle: "none",
+                      ...(peekMessages.length === 0 ? { WebkitOverflowScrolling: "touch" as const } : {}),
+                    }}
                   >
-                    {peekMessages.length === 0 && (
-                      <p className={"py-16 text-center text-sm opacity-70 " + (isQuranPeek ? "text-zinc-400" : "text-muted-foreground")}>لا رسائل</p>
-                    )}
+                    <div
+                      className={
+                        "flex w-full flex-col gap-2 px-3 pt-3 pb-28 " +
+                        (peekMessages.length === 0 ? "min-h-[calc(100%+min(12rem,36vh))] " : "min-h-full ") +
+                        (isQuranPeek ? "bg-zinc-950" : "")
+                      }
+                    >
+                      {!c.isGroup && !c.isChannel && other && otherId && (
+                        <ChatDmIntroCard
+                          other={other}
+                          meId={me.id}
+                          state={state}
+                          isQuran={isQuranPeek}
+                          hasMessages={peekMessages.length > 0}
+                          onOpenProfile={openPeekAsFullChat}
+                        />
+                      )}
+                      <div dir="ltr" className="flex min-h-0 flex-1 flex-col justify-end gap-2">
                     {peekMessages.map(m => {
-                      const mine = m.senderId === me.id;
+                      const mine = isOwnChatMessage(m.senderId, state, { directMessagePeerId: otherId });
                       const sender = userById(state, m.senderId);
                       const bareSticker = m.type === "sticker" && (isStickerImageContent(m.content) || isStickerVideoContent(m.content));
                       const bareImage = m.type === "image" && m.content.startsWith("data:") && !m.viewOnce;
+                      const bareDrawing = m.type === "drawing" && !!parseDrawingPayload(m.content) && !m.viewOnce;
+                      const bareVideo = m.type === "video" && !m.viewOnce;
+                      const bareVoiceBubble = m.type === "voice";
                       const bareViewOnceMedia =
-                        (m.type === "image" || m.type === "video") && !!m.viewOnce && m.content.startsWith("data:");
-                      const colClass =
-                        bareImage ? "w-full max-w-[28rem]" : bareSticker || bareViewOnceMedia ? "max-w-[17.5rem]" : "max-w-[22rem]";
+                        ((m.type === "image" || m.type === "video") && !!m.viewOnce && m.content.startsWith("data:")) ||
+                        (m.type === "drawing" && !!m.viewOnce);
+                      const colClass = bareVideo
+                        ? CHAT_INLINE_MEDIA_COL
+                        : bareVoiceBubble
+                          ? "w-max max-w-[min(92vw,288px)] shrink-0"
+                          : bareImage || bareDrawing
+                            ? CHAT_INLINE_MEDIA_COL
+                            : bareSticker || bareViewOnceMedia
+                              ? "w-fit max-w-[min(90vw,280px)] shrink"
+                              : CHAT_TEXT_BUBBLE_COL;
                       const bubbleClass =
-                        bareSticker || bareImage || bareViewOnceMedia
-                          ? "text-sm p-0 m-0 bg-transparent shadow-none ring-0 border-0 overflow-visible"
-                          : "rounded-2xl px-3 py-2 text-sm " +
-                            (isQuranPeek
-                              ? mine
-                                ? "bg-zinc-800 text-zinc-100"
-                                : "bg-zinc-700 text-zinc-50"
-                              : mine
-                                ? "bg-primary/20 text-foreground"
-                                : "bg-secondary");
+                        bareSticker || bareImage || bareVideo || bareViewOnceMedia || bareVoiceBubble || bareDrawing
+                          ? "text-sm p-0 m-0 bg-transparent shadow-none ring-0 border-0 overflow-visible outline-none"
+                          : chatBubbleFilledClass(mine, isQuranPeek);
                       return (
-                        <div key={m.id} className={"flex " + (mine ? "justify-start" : "justify-end")}>
-                          <div className={"flex flex-col gap-0.5 " + colClass + " " + (mine ? "items-start" : "items-end")}>
+                        <ChatSwipeMessageRow
+                          key={m.id}
+                          message={m}
+                          mine={mine}
+                          isQuran={isQuranPeek}
+                          avatarName={!mine ? sender?.username || "?" : undefined}
+                          avatarSrc={!mine ? sender?.avatar : undefined}
+                          onSwipeReply={() => {}}
+                          onPointerDown={() => {}}
+                          onPointerMove={() => {}}
+                          onPointerUp={() => {}}
+                        >
+                          <div
+                            className={
+                              "relative flex w-max flex-col gap-0.5 " +
+                              colClass +
+                              " " +
+                              (mine ? "items-end self-end" : "items-start self-start")
+                            }
+                          >
                             <div className={bubbleClass}>
                               {(c.isGroup || c.isChannel) && !mine && (
                                 <div className={"mb-0.5 text-[10px] opacity-70 " + (isQuranPeek ? "text-zinc-300" : "")}>@{sender?.username}</div>
                               )}
-                              <ChatPeekMessageBody m={m} isQuran={isQuranPeek} viewerId={me.id} bubbleMine={mine} />
+                              <ChatPeekMessageBody
+                                m={m}
+                                isQuran={isQuranPeek}
+                                viewerId={state.currentUserId ?? me.id}
+                                bubbleMine={mine}
+                              />
                             </div>
                           </div>
-                        </div>
+                        </ChatSwipeMessageRow>
                       );
                     })}
+                      </div>
+                    </div>
                   </div>
 
                   <div
                     className={
-                      "pointer-events-none flex shrink-0 items-center gap-2 border-t p-3 " +
-                      (isQuranPeek ? "border-zinc-700 bg-zinc-900 text-zinc-200" : "border-border bg-background")
+                      "pointer-events-none shrink-0 border-t " + (isQuranPeek ? "border-zinc-700 bg-zinc-900" : "border-border bg-background")
                     }
+                    aria-hidden
                   >
-                    <Sticker size={22} />
-                    <ImageIcon size={22} />
-                    <Camera size={22} />
-                    <Smile size={22} />
-                    <div
-                      className={
-                        "flex-1 rounded-full px-3 py-2 text-start text-xs " +
-                        (isQuranPeek ? "bg-zinc-800 text-zinc-400" : "bg-input text-muted-foreground")
-                      }
-                    >
-                      {t("typeMessage")}
+                    <div className="px-2 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))] pt-1" dir="ltr">
+                      <div
+                        className={
+                          "relative flex min-h-[44px] h-12 flex-nowrap items-center gap-1 rounded-full border px-1.5 shadow-sm " +
+                          (isQuranPeek
+                            ? "border-zinc-800/95 bg-[#1a1a1a]"
+                            : "border-border/55 bg-muted/90 dark:border-zinc-800/90 dark:bg-[#1c1c1c]")
+                        }
+                      >
+                        <div
+                          className={
+                            "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-foreground/85 " +
+                            (isQuranPeek ? "text-zinc-200" : "text-zinc-950 dark:text-white")
+                          }
+                          aria-hidden
+                        >
+                          <Camera size={21} strokeWidth={2} />
+                        </div>
+                        <div
+                          className={
+                            "pointer-events-none min-h-0 min-w-0 flex-1 rounded-full px-3 py-2 text-start text-[15px] leading-5 " +
+                            (isQuranPeek
+                              ? "bg-zinc-800/90 text-emerald-200/55"
+                              : "bg-transparent text-zinc-500/75 dark:text-zinc-400/65")
+                          }
+                        >
+                          {t("typeMessage")}
+                        </div>
+                        <div
+                          className={
+                            "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-foreground/85 " +
+                            (isQuranPeek ? "text-zinc-200" : "")
+                          }
+                          aria-hidden
+                        >
+                          <Mic size={21} strokeWidth={2} />
+                        </div>
+                        <div
+                          className={
+                            "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-foreground/85 " +
+                            (isQuranPeek ? "text-zinc-200" : "")
+                          }
+                          aria-hidden
+                        >
+                          <ImageIcon size={21} strokeWidth={2} />
+                        </div>
+                        <div
+                          className={
+                            "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-foreground/85 " +
+                            (isQuranPeek ? "text-zinc-200" : "")
+                          }
+                          aria-hidden
+                        >
+                          <Sticker size={21} strokeWidth={2} />
+                        </div>
+                        <div
+                          className={
+                            "flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-foreground/90 " +
+                            (isQuranPeek ? "border-zinc-600/80 text-zinc-200" : "border-muted-foreground/40")
+                          }
+                          aria-hidden
+                        >
+                          <Plus size={19} strokeWidth={2.25} />
+                        </div>
+                      </div>
                     </div>
-                    <Mic size={22} />
                   </div>
                 </div>
               </div>
@@ -761,10 +1579,10 @@ function ChatListRowWithPeek({
         </>
       )}
 
-      <div className="relative rounded-2xl overflow-visible">
-        <div className="relative z-20 flex items-center gap-1 rounded-2xl bg-background">
+      <div className="relative overflow-visible border-b border-zinc-100 dark:border-zinc-800">
+        <div className="relative z-20 flex items-center gap-3 bg-white dark:bg-background px-4 py-3 active:bg-zinc-50">
           <div
-            className="flex min-w-0 flex-1 items-stretch rounded-2xl hover:bg-secondary/80 touch-manipulation"
+            className="flex min-w-0 flex-1 items-center gap-3 touch-manipulation"
             title={t("chatRowLongPressHint")}
             onPointerDown={onAvatarPointerDown}
             onPointerMove={onAvatarPointerMove}
@@ -777,24 +1595,29 @@ function ChatListRowWithPeek({
               onClick={e => {
                 e.stopPropagation();
                 if (skipAvatarClickRef.current) return;
-                onOpenChat(c.id);
+                onOpenChat(openChatIdFor(c, me.id));
               }}
             >
-              <Avatar name={displayName} src={avatarSrc} />
+              <RSocialAvatar name={displayName} src={avatarSrc} size={52} />
               {hasUnread && <span className="absolute -top-0.5 -end-0.5 w-2.5 h-2.5 rounded-full bg-sky-500 ring-2 ring-background" aria-hidden />}
             </div>
             <button
               type="button"
               onClick={() => {
                 if (skipAvatarClickRef.current) return;
-                onOpenChat(c.id);
+                onOpenChat(openChatIdFor(c, me.id));
               }}
-              className="flex min-w-0 flex-1 flex-col justify-center gap-0.5 py-3 pe-3 text-start outline-none"
+              className="flex min-w-0 flex-1 flex-col justify-center gap-0.5 py-3 pe-3 text-start outline-none touch-manipulation"
+              style={{ touchAction: "pan-y" }}
+              onPointerDown={onRowOpenPointerDown}
+              onPointerMove={onRowOpenPointerMove}
+              onPointerUp={onRowOpenPointerEnd}
+              onPointerCancel={onRowOpenPointerEnd}
             >
               <div className="font-semibold text-sm flex min-w-0 items-center gap-1">
                 {c.isChannel && <Megaphone size={12} className="shrink-0" aria-hidden />}
                 <span className="min-w-0 truncate">
-                  {c.isGroup || c.isChannel ? c.name : "@" + (other?.username || "")}
+                  {c.isGroup || c.isChannel ? c.name || "Group" : displayNameFromUsername(other?.username || displayName)}
                 </span>
                 {isListPinned && (
                   <span className="inline-flex shrink-0" title={t("pinnedBar")}>
@@ -802,17 +1625,22 @@ function ChatListRowWithPeek({
                   </span>
                 )}
               </div>
-              <div className={"text-xs truncate flex items-center gap-1.5 " + (hasUnread ? "text-foreground font-medium" : "text-muted-foreground")}>
-                {hasUnread && <span className="w-1.5 h-1.5 rounded-full bg-sky-500 shrink-0" aria-hidden />}
-                <span className="truncate">{lastMessagePreview(last)}</span>
+              <div className={"text-sm truncate " + (hasUnread ? "text-zinc-700 font-medium" : "text-zinc-500")}>
+                {last ? lastMessagePreview(last) : "No messages yet"}
               </div>
             </button>
+          </div>
+          <div className="flex shrink-0 flex-col items-end gap-1.5 ps-1">
+            {last && <span className="text-xs text-zinc-400 tabular-nums">{formatChatListTime(last.createdAt)}</span>}
+            {hasUnread && (
+              <span className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[11px] font-bold text-white" style={{ backgroundColor: RS_BADGE }}>1</span>
+            )}
           </div>
           <button
             type="button"
             ref={cameraBtnRef}
-            className="shrink-0 flex items-center justify-center rounded-xl border border-border/60 bg-secondary/50 hover:bg-secondary p-2.5 text-muted-foreground touch-manipulation select-none active:scale-[0.97]"
-            aria-label="التقاط صورة بالكاميرا؛ اضغط مطوّلاً ثم اسحب لمعاينة المحادثة"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-500 hover:bg-zinc-100 active:bg-zinc-200 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:active:bg-zinc-700"
+            aria-label="التقاط صورة: اضغط سريعاً. أو اسحب من الكاميرا نحو الشاشة / اضغط مطوّلاً ثم اسحب لمعاينة المحادثة"
             style={{ touchAction: "none" }}
             onPointerDown={onCameraPointerDown}
             onPointerMove={onCameraPointerMove}
@@ -887,7 +1715,7 @@ function ChatListRowWithPeek({
             };
             if (c.isGroup || c.isChannel) {
               sendMessage(c.id, payload);
-              onOpenChat(c.id);
+              onOpenChat(openChatIdFor(c, me.id));
             } else if (otherId) {
               const ch = openOrCreateChat(otherId);
               if (!ch) {
@@ -897,7 +1725,7 @@ function ChatListRowWithPeek({
                 return;
               }
               sendMessage(ch.id, payload);
-              onOpenChat(ch.id);
+              onOpenChat(openChatIdFor(ch, me.id));
             }
             setCameraDraft(null);
           }}
@@ -912,19 +1740,63 @@ interface Props {
   initialChatId?: string | null;
   onConsumedInitialChat?: () => void;
   onThreadOpen?: (open: boolean) => void;
+  /** إخفاء الشريط السفلي (قائمة إنشاء مجموعة/قناة، إلخ) */
+  onHideBottomNav?: (hidden: boolean) => void;
   onActiveChatChange?: (chatId: string | null) => void;
+  /** إن وُجد: الرجوع من خيط المحادثة يعيد هذا البروفايل (مثلاً بعد «مراسلة» من الملف) */
+  resumeThreadToProfileUserId?: string | null;
+  onExitThreadToProfile?: (profileUserId: string) => void;
 }
 
-export function ChatScreen({ onOpenProfile, initialChatId, onConsumedInitialChat, onThreadOpen, onActiveChatChange }: Props) {
-  const { state, currentUser, openOrCreateChat, setNote, sendMessage, isGuest } = useApp();
+export function ChatScreen({
+  onOpenProfile,
+  initialChatId,
+  onConsumedInitialChat,
+  onThreadOpen,
+  onHideBottomNav,
+  onActiveChatChange,
+  resumeThreadToProfileUserId,
+  onExitThreadToProfile,
+}: Props) {
+  const { state, currentUser, accountSessionKey, openOrCreateChat, setNote, sendMessage, isGuest, replyToProfileNoteAsDm } = useApp();
   const [profileNoteReply, setProfileNoteReply] = useState<{ userId: string; note: string } | null>(null);
+  const [profileNoteReplyDraft, setProfileNoteReplyDraft] = useState("");
   const t = useT();
   const me = currentUser!;
   const [openChat, setOpenChat] = useState<string | null>(null);
   const [showRequests, setShowRequests] = useState(false);
   const [showCreate, setShowCreate] = useState<null | "menu" | "group" | "channel">(null);
   const [showCall, setShowCall] = useState<string | null>(null);
+  const [callVideo, setCallVideo] = useState(false);
+  const [incomingCall, setIncomingCall] = useState<IncomingCallRing | null>(null);
   const [showGroupSettings, setShowGroupSettings] = useState(false);
+  const [stackDrag, setStackDrag] = useState<{ chatId: string; px: number } | null>(null);
+  const [stackProgress, setStackProgress] = useState(1);
+  const [stackSpring, setStackSpring] = useState(false);
+  const stackCapRef = useRef(
+    typeof window !== "undefined" ? Math.min(window.innerWidth, APP_COLUMN_MAX_PX) : APP_COLUMN_MAX_PX,
+  );
+  const stackProgressRef = useRef(0);
+  const stackOpenDragRef = useRef(false);
+  const [stackClosingId, setStackClosingId] = useState<string | null>(null);
+
+  const syncStackProgress = useCallback((p: number) => {
+    const clamped = Math.max(0, Math.min(1, p));
+    stackProgressRef.current = clamped;
+    setStackProgress(clamped);
+    if (typeof document !== "undefined") {
+      document.documentElement.style.setProperty(CHAT_STACK_PROGRESS_VAR, String(clamped));
+    }
+  }, []);
+
+  const syncStackProgressFromRoom = useCallback(
+    (p: number) => {
+      if (stackOpenDragRef.current) return;
+      syncStackProgress(p);
+    },
+    [syncStackProgress],
+  );
+
   const [search, setSearch] = useState("");
   const [noteInput, setNoteInput] = useState(me.note || "");
   const [editingNote, setEditingNote] = useState(false);
@@ -932,16 +1804,134 @@ export function ChatScreen({ onOpenProfile, initialChatId, onConsumedInitialChat
   const [gameType, setGameType] = useState<"billiards" | "football">("billiards");
   useEffect(() => {
     if (!initialChatId) return;
-    setOpenChat(initialChatId);
+    const found = findChatByOpenId(state.chats, initialChatId, me.id);
+    setOpenChat(found ? openChatIdFor(found, me.id) : initialChatId);
     onConsumedInitialChat?.();
-  }, [initialChatId, onConsumedInitialChat]);
+  }, [initialChatId, onConsumedInitialChat, state.chats, me.id]);
+
+  /** بعد دمج DM قديم: openChat يبقى id عشوائي — نحدّثه لـ dm:… */
+  useEffect(() => {
+    if (!openChat) return;
+    const found = findChatByOpenId(state.chats, openChat, me.id);
+    if (!found) return;
+    const canonical = openChatIdFor(found, me.id);
+    if (canonical !== openChat) setOpenChat(canonical);
+  }, [state.chats, openChat, me.id]);
+
+  const prevAccountIdRef = useRef(me.id);
+  /** عند تبديل الحساب: إغلاق الغرفة ومسح حالة المكدس (لا يُنفَّذ عند أول mount) */
+  useEffect(() => {
+    if (prevAccountIdRef.current === me.id) return;
+    prevAccountIdRef.current = me.id;
+    setOpenChat(null);
+    setStackDrag(null);
+    setStackClosingId(null);
+    setStackSpring(false);
+    setShowCall(null);
+    setIncomingCall(null);
+    setShowGroupSettings(false);
+    syncStackProgress(0);
+    onActiveChatChange?.(null);
+  }, [me.id, syncStackProgress, onActiveChatChange]);
 
   useEffect(() => {
-    onThreadOpen?.(!!openChat);
-  }, [openChat, onThreadOpen]);
+    const onOpen = (e: Event) => {
+      const id = (e as CustomEvent<{ chatId?: string }>).detail?.chatId;
+      if (id) {
+        const found = findChatByOpenId(state.chats, id, me.id);
+        setOpenChat(found ? openChatIdFor(found, me.id) : id);
+      }
+    };
+    window.addEventListener("retweet-open-chat", onOpen);
+    return () => window.removeEventListener("retweet-open-chat", onOpen);
+  }, [state.chats, me.id]);
+
+  useEffect(() => {
+    onThreadOpen?.(!!openChat || !!stackDrag || !!stackClosingId);
+    onHideBottomNav?.(!!openChat || !!stackDrag || !!stackClosingId || showCreate != null);
+  }, [openChat, stackDrag, stackClosingId, showCreate, onThreadOpen, onHideBottomNav]);
+
+  const onStackDrag = useCallback(
+    (chatId: string, px: number) => {
+      stackOpenDragRef.current = true;
+      setStackClosingId(null);
+      setStackSpring(false);
+      setStackDrag({ chatId, px });
+      const cap = stackCapRef.current;
+      syncStackProgress(cap > 0 ? px / cap : 0);
+    },
+    [syncStackProgress],
+  );
+
+  const onStackDragEnd = useCallback(
+    (chatId: string, px: number) => {
+      stackOpenDragRef.current = false;
+      const cap = stackCapRef.current;
+      if (cap > 0 && px >= cap * CHAT_STACK_OPEN_FRACTION) {
+        syncStackProgress(1);
+        setStackDrag(null);
+        setStackClosingId(null);
+        setStackSpring(false);
+        const found = findChatByOpenId(state.chats, chatId, me.id);
+        setOpenChat(found ? openChatIdFor(found, me.id) : chatId);
+        return;
+      }
+      setStackClosingId(chatId);
+      setStackDrag(null);
+      setStackSpring(true);
+      syncStackProgress(0);
+      window.setTimeout(() => {
+        setStackClosingId(null);
+        setStackSpring(false);
+      }, SLIDE_DISMISS_MS);
+    },
+    [syncStackProgress, state.chats, me.id],
+  );
+
+  useLayoutEffect(() => {
+    if (!openChat) {
+      if (!stackDrag) {
+        syncStackProgress(0);
+        if (typeof document !== "undefined") {
+          document.documentElement.style.removeProperty(CHAT_STACK_PROGRESS_VAR);
+        }
+      }
+      return;
+    }
+    if (stackClosingId) return;
+    setStackDrag(null);
+    if (stackProgressRef.current >= 0.98) {
+      setStackSpring(false);
+      return;
+    }
+    setStackSpring(true);
+    syncStackProgress(0);
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        syncStackProgress(1);
+        window.setTimeout(() => setStackSpring(false), 340);
+      });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [openChat, stackClosingId, syncStackProgress]);
   useEffect(() => {
     onActiveChatChange?.(openChat);
   }, [openChat, onActiveChatChange]);
+
+  useLockPageScroll(!!openChat || !!stackDrag);
+
+  useEffect(() => {
+    const onRing = (e: Event) => {
+      const detail = (e as CustomEvent<IncomingCallRing>).detail;
+      if (detail?.chatId) setIncomingCall(detail);
+    };
+    window.addEventListener(INCOMING_CALL_WINDOW_EVENT, onRing);
+    return () => window.removeEventListener(INCOMING_CALL_WINDOW_EVENT, onRing);
+  }, []);
+
+  useEffect(() => {
+    setProfileNoteReplyDraft("");
+  }, [profileNoteReply?.userId, profileNoteReply?.note]);
 
   const myChats = state.chats.filter(c => c.members.includes(me.id) && !c.request);
   const requests = state.chats.filter(c => c.members.includes(me.id) && c.request);
@@ -959,7 +1949,7 @@ export function ChatScreen({ onOpenProfile, initialChatId, onConsumedInitialChat
     ...state.users.filter(
       u =>
         u.id !== me.id &&
-        u.note &&
+        isProfileNoteActive(u) &&
         me.following.includes(u.id) &&
         !me.blocked.includes(u.id) &&
         !u.blocked.includes(me.id),
@@ -995,43 +1985,40 @@ export function ChatScreen({ onOpenProfile, initialChatId, onConsumedInitialChat
     });
   }, [filteredChats, me.id, me.pinnedChatIds, state.chats]);
 
-  if (showCall) return <CallScreen chatId={showCall} onClose={() => setShowCall(null)} />;
-  if (openChat) {
-    const chat = state.chats.find(c => c.id === openChat);
-    if (!chat) { setOpenChat(null); return null; }
-    if (showGroupSettings && (chat.isGroup || chat.isChannel)) return <GroupSettings chat={chat} onBack={() => setShowGroupSettings(false)} onOpenProfile={onOpenProfile} />;
-    return <ChatRoom chat={chat} onBack={() => setOpenChat(null)} onCall={() => setShowCall(chat.id)} onOpenSettings={() => setShowGroupSettings(true)} onOpenProfile={onOpenProfile} />;
-  }
-  if (showRequests) return <RequestsList chats={messageRequests} onBack={() => setShowRequests(false)} onOpen={(id) => { setShowRequests(false); setOpenChat(id); }} onOpenProfile={onOpenProfile} />;
-  if (showCreate === "group" || showCreate === "channel") return <CreateGroup mode={showCreate} onBack={() => setShowCreate(null)} onCreated={(id) => { setShowCreate(null); setOpenChat(id); }} />;
-
-  return (
-    <div className="p-4 space-y-4">
+  const chatInbox = (
+    <div className="chat-inbox-pane flex min-h-0 flex-1 flex-col overflow-hidden overscroll-none bg-white pb-4 dark:bg-background">
       {isGuest && (
-        <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-center text-sm text-amber-950 dark:text-amber-100">
+        <div className="mx-4 mt-3 rounded-2xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-center text-sm text-amber-950 dark:text-amber-100">
           وضع الزائر: يمكنك تصفّح القوائم فقط. سجّل الدخول من تبويب «أنا» لإرسال رسائل أو فتح محادثات.
         </div>
       )}
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold">{t("chat")}</h2>
-        <div className="flex items-center gap-2">
-          <button type="button" disabled={isGuest} onClick={() => !isGuest && setShowGames(true)} className="flex items-center gap-1 text-sm bg-secondary px-3 py-1.5 rounded-full disabled:opacity-40">
-            🎮
-          </button>
-          <button type="button" disabled={isGuest} onClick={() => !isGuest && setShowCreate("menu")} className="flex items-center gap-1 text-sm bg-secondary px-3 py-1.5 rounded-full disabled:opacity-40">
-            <Plus size={16} />
-          </button>
-        </div>
+      <div className="px-4 pt-3 pb-2 flex items-start justify-between gap-3">
+        <button
+          type="button"
+          onClick={() => setShowRequests(true)}
+          className="relative mt-1 p-1 rounded-lg hover:bg-zinc-100 touch-manipulation"
+          aria-label={t("requests")}
+        >
+          <Mail size={26} strokeWidth={1.75} className="text-zinc-900" />
+          {messageRequests.length > 0 && (
+            <span className="absolute -top-0.5 -end-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+              {messageRequests.length > 9 ? "9+" : messageRequests.length}
+            </span>
+          )}
+        </button>
+        <button
+          type="button"
+          disabled={isGuest}
+          onClick={() => !isGuest && setShowCreate("menu")}
+          className="mt-1 p-1 rounded-lg border border-zinc-200 hover:bg-zinc-50 disabled:opacity-40 touch-manipulation"
+          aria-label="Compose"
+        >
+          <SquarePen size={22} strokeWidth={1.75} className="text-zinc-900" />
+        </button>
       </div>
+      <h1 className="px-4 text-[2rem] font-bold leading-tight text-zinc-900 dark:text-zinc-50 tracking-tight">{t("chat")}</h1>
 
-      {/* Search */}
-      <div className="flex items-center gap-2 bg-input rounded-full px-4 py-2">
-        <Search size={16} className="text-muted-foreground" />
-        <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t("searchPlaceholder")} className="flex-1 bg-transparent outline-none text-sm" />
-      </div>
-
-      {/* شريط النوتات ثم طلبات الرسائل تحته */}
-      <div className="flex w-full flex-col gap-2">
+      <div className="px-4 mt-1 flex w-full flex-col gap-2">
         <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2 w-full">
           {noteUsers.map((u: any) => {
             const isMine = u.id === me.id;
@@ -1049,11 +2036,21 @@ export function ChatScreen({ onOpenProfile, initialChatId, onConsumedInitialChat
                   ) : (
                     <button
                       type="button"
-                      onClick={() => setProfileNoteReply({ userId: u.id, note: u.note })}
-                      className="text-[10px] bg-secondary rounded-2xl px-2 py-1 max-w-28 truncate font-ios-emoji text-start hover:bg-secondary/80 active:scale-[0.98]"
-                      title="رد على النوت"
+                      onClick={() => {
+                        if (isGuest) {
+                          notifyGuestActionBlocked();
+                          return;
+                        }
+                        setProfileNoteReply({ userId: u.id, note: u.note });
+                      }}
+                      className={
+                        "min-h-[44px] max-w-[8.5rem] rounded-2xl border border-transparent bg-secondary px-2.5 py-2 text-start text-[11px] font-ios-emoji leading-snug transition hover:bg-secondary/85 active:scale-[0.98] " +
+                        (profileNoteReply?.userId === u.id ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : "")
+                      }
+                      title="اضغط للرد على النوت في الخاص"
+                      aria-label={`رد على نوت ${u.username}`}
                     >
-                      {u.note}
+                      <span className="line-clamp-3 [overflow-wrap:anywhere]">{u.note}</span>
                     </button>
                   )
                 ) : (
@@ -1063,7 +2060,19 @@ export function ChatScreen({ onOpenProfile, initialChatId, onConsumedInitialChat
                     </button>
                   )
                 )}
-                <button type="button" onClick={() => isMine ? setEditingNote(true) : startTransition(() => onOpenProfile(u.id))}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isMine) setEditingNote(true);
+                    else if (u.note) {
+                      if (isGuest) {
+                        notifyGuestActionBlocked();
+                        return;
+                      }
+                      setProfileNoteReply({ userId: u.id, note: u.note });
+                    } else startTransition(() => onOpenProfile(u.id));
+                  }}
+                >
                   <Avatar name={u.username} src={u.avatar} size={56} />
                 </button>
                 <span className="text-xs">{isMine ? "أنت" : u.username}</span>
@@ -1071,25 +2080,85 @@ export function ChatScreen({ onOpenProfile, initialChatId, onConsumedInitialChat
             );
           })}
         </div>
-        <div className="flex w-full justify-start rtl:justify-end">
-          <button
-            type="button"
-            onClick={() => setShowRequests(true)}
-            className="inline-flex max-w-[calc(100%-0.5rem)] shrink-0 items-center gap-1.5 rounded-full border border-border bg-secondary/80 py-1 pe-2.5 ps-1.5 text-[11px] font-semibold touch-manipulation hover:bg-secondary active:scale-[0.98]"
-            title={t("requests")}
-            aria-label={t("requests")}
+
+        {profileNoteReply && (
+          <div
+            className="w-full rounded-2xl border border-border bg-card p-3 shadow-sm"
+            dir="rtl"
           >
-            <span className="relative inline-flex shrink-0 rounded-full p-0.5">
-              <Mail className="text-sky-600 dark:text-sky-400" size={14} strokeWidth={2} />
-              {messageRequests.length > 0 && (
-                <span className="absolute -top-0.5 -end-0.5 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-destructive px-0.5 text-[9px] font-bold leading-none text-destructive-foreground">
-                  {messageRequests.length > 9 ? "9+" : messageRequests.length}
-                </span>
-              )}
-            </span>
-            <span className="truncate">{t("requests")}</span>
-          </button>
-        </div>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <p className="text-xs text-muted-foreground">
+                  ردّ على نوت{" "}
+                  <span className="font-semibold text-foreground">
+                    @{userById(state, profileNoteReply.userId)?.username ?? "…"}
+                  </span>
+                  <span className="text-muted-foreground"> — يُرسل في الخاص</span>
+                </p>
+                <p className="mt-2 max-h-20 overflow-y-auto rounded-xl bg-secondary/70 px-3 py-2 text-sm font-ios-emoji leading-snug text-foreground/90 [overflow-wrap:anywhere]">
+                  {profileNoteReply.note}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="shrink-0 rounded-full p-2 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                aria-label="إغلاق"
+                onClick={() => setProfileNoteReply(null)}
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <label className="mt-3 block text-xs font-medium text-muted-foreground" htmlFor="profile-note-reply-input">
+              ردك
+            </label>
+            <textarea
+              id="profile-note-reply-input"
+              value={profileNoteReplyDraft}
+              onChange={e => setProfileNoteReplyDraft(e.target.value)}
+              placeholder="اكتب ردك… سيصله في المحادثة الخاصة معك"
+              rows={3}
+              disabled={isGuest}
+              className="mt-1 w-full resize-none rounded-xl border border-border bg-input px-3 py-2.5 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 font-ios-emoji"
+            />
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={isGuest || !profileNoteReplyDraft.trim()}
+                onClick={() => {
+                  if (isGuest) {
+                    notifyGuestActionBlocked();
+                    return;
+                  }
+                  const res = replyToProfileNoteAsDm({
+                    friendId: profileNoteReply.userId,
+                    noteText: profileNoteReply.note,
+                    replyText: profileNoteReplyDraft.trim(),
+                  });
+                  if (res) {
+                    setProfileNoteReply(null);
+                    setOpenChat(res.chatId);
+                  }
+                }}
+                className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-45"
+              >
+                <Send size={16} className="shrink-0" strokeWidth={2.25} />
+                إرسال في الخاص
+              </button>
+              <button
+                type="button"
+                className="min-h-[44px] rounded-xl border border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-secondary"
+                onClick={() => {
+                  const id = profileNoteReply.userId;
+                  setProfileNoteReply(null);
+                  startTransition(() => onOpenProfile(id));
+                }}
+              >
+                الملف الشخصي
+              </button>
+            </div>
+          </div>
+        )}
+
       </div>
 
       {editingNote && (
@@ -1102,32 +2171,31 @@ export function ChatScreen({ onOpenProfile, initialChatId, onConsumedInitialChat
         </div>
       )}
 
-      <div className="space-y-1">
+      <div className="mt-2 border-t border-zinc-100 dark:border-zinc-800">
         {sortedFilteredChats.map(c => (
-          <ChatListRowWithPeek key={c.id} chat={c} me={me} onOpenChat={setOpenChat} />
+          <ChatListRowWithPeek
+            key={c.id}
+            chat={c}
+            me={me}
+            onOpenChat={id => {
+              setStackSpring(true);
+              setOpenChat(id);
+            }}
+            onStackDrag={onStackDrag}
+            onStackDragEnd={onStackDragEnd}
+          />
         ))}
-        {sortedFilteredChats.length === 0 && <p className="text-center text-muted-foreground py-6">{t("noChats")}</p>}
+        {sortedFilteredChats.length === 0 && <p className="text-center text-zinc-500 py-10 text-sm">{t("noChats")}</p>}
       </div>
 
       {showCreate === "menu" && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-end" onClick={() => setShowCreate(null)}>
+        <div className="fixed inset-0 z-[220] flex items-end justify-center bg-black/50" role="presentation" onClick={() => setShowCreate(null)}>
           <div className="bg-background w-full rounded-t-3xl p-4 max-w-md mx-auto" onClick={e => e.stopPropagation()}>
             <button onClick={() => setShowCreate("group")} className="w-full flex items-center gap-3 p-3 hover:bg-secondary rounded-2xl"><Users /> {t("newGroup")}</button>
             <button onClick={() => setShowCreate("channel")} className="w-full flex items-center gap-3 p-3 hover:bg-secondary rounded-2xl"><Megaphone /> {t("newChannel")}</button>
           </div>
         </div>
       )}
-      {profileNoteReply && (
-        <ProfileNoteReplySheet
-          target={profileNoteReply}
-          onClose={() => setProfileNoteReply(null)}
-          onSent={chatId => {
-            setProfileNoteReply(null);
-            setOpenChat(chatId);
-          }}
-        />
-      )}
-
       {showGames && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end" onClick={() => setShowGames(false)}>
           <div className="bg-background w-full rounded-t-3xl p-4 max-w-md mx-auto max-h-[75vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
@@ -1151,7 +2219,7 @@ export function ChatScreen({ onOpenProfile, initialChatId, onConsumedInitialChat
                     const label = gameType === "billiards" ? "🎱 بلياردو" : "⚽ كرة";
                     sendMessage(ch.id, { type: "text", content: `دعوة لعبة ${label}\nاضغط للبدء: /game/${gameType}?host=${me.id}` });
                     setShowGames(false);
-                    setOpenChat(ch.id);
+                    setOpenChat(openChatIdFor(ch, me.id));
                   }}
                 >
                   <span className="font-semibold">@{u.username}</span>
@@ -1164,6 +2232,158 @@ export function ChatScreen({ onOpenProfile, initialChatId, onConsumedInitialChat
         </div>
       )}
     </div>
+  );
+
+  if (showCall) {
+    return (
+      <CallScreen
+        chatId={showCall}
+        calleePeerId={incomingCall?.chatId === showCall ? incomingCall.fromUserId : undefined}
+        video={incomingCall?.chatId === showCall ? incomingCall.video : callVideo}
+        onClose={() => {
+          setShowCall(null);
+          setCallVideo(false);
+          setIncomingCall(null);
+        }}
+      />
+    );
+  }
+  const activeStackChatId = openChat ?? stackDrag?.chatId ?? stackClosingId ?? null;
+
+  if (activeStackChatId) {
+    const chat = findChatByOpenId(state.chats, activeStackChatId, me.id);
+    if (!chat) {
+      setOpenChat(null);
+      setStackDrag(null);
+      setStackClosingId(null);
+      return null;
+    }
+    if (showGroupSettings && openChat && (chat.isGroup || chat.isChannel))
+      return (
+        <GroupDetailsScreen
+          chat={chat}
+          messages={chat.messages}
+          onBack={() => setShowGroupSettings(false)}
+          onOpenProfile={onOpenProfile}
+          onCreateNewGroup={() => {
+            setShowGroupSettings(false);
+            setOpenChat(null);
+            setShowCreate("group");
+          }}
+        />
+      );
+    const showInboxStack = !chat.isGroup && !chat.isChannel;
+    const cap = stackCapRef.current;
+    const chatOpenKey = openChatIdFor(chat, me.id);
+    const dragProgress =
+      stackDrag && stackDrag.chatId === chatOpenKey && cap > 0
+        ? Math.min(1, stackDrag.px / cap)
+        : openChat === chatOpenKey || stackClosingId === chatOpenKey
+          ? stackProgress
+          : 0;
+    const stackTransition = stackSpring ? `transform ${SLIDE_DISMISS_MS}ms ${SLIDE_DISMISS_EASE}` : "none";
+    const { inbox: inboxTransform, room: roomTransform } = chatStackLayerTransforms(
+      dragProgress,
+      cap,
+      isDocumentRtl(),
+    );
+    const isInteractiveDrag = !!(stackDrag && stackDrag.chatId === chat.id);
+
+    const chatStackOverlay = (
+      <div className="fixed inset-0 z-[220] isolate overflow-hidden overscroll-none bg-black">
+        {showInboxStack && (
+          <div
+            className="absolute inset-0 z-[1] overflow-hidden bg-background pb-[env(safe-area-inset-bottom,0px)] [transform:translateZ(0)]"
+            style={{
+              transform: inboxTransform,
+              transition: stackTransition,
+              pointerEvents: isInteractiveDrag || dragProgress < 0.98 ? "auto" : "none",
+            }}
+          >
+            <div className="h-full w-full overflow-hidden overscroll-none pb-[calc(5.25rem+env(safe-area-inset-bottom,0px))]">
+              {chatInbox}
+            </div>
+          </div>
+        )}
+        <div
+          className="absolute inset-0 z-[2] flex w-full flex-col overflow-hidden bg-black [transform:translateZ(0)]"
+          style={{
+            transform: roomTransform,
+            transition: stackTransition,
+            pointerEvents: "auto",
+          }}
+        >
+          <ChatRoom
+            key={`${accountSessionKey}-${chat.id}`}
+            chat={chat}
+            embedInStack
+            onStackProgress={syncStackProgressFromRoom}
+            onBack={() => {
+              if (resumeThreadToProfileUserId && onExitThreadToProfile) {
+                onExitThreadToProfile(resumeThreadToProfileUserId);
+              }
+              stackOpenDragRef.current = false;
+              if (!openChat) return;
+              setStackClosingId(chatOpenKey);
+              setStackDrag(null);
+              setStackSpring(true);
+              syncStackProgress(0);
+              window.setTimeout(() => {
+                setOpenChat(null);
+                setStackClosingId(null);
+                setStackSpring(false);
+              }, SLIDE_DISMISS_MS);
+            }}
+            onCall={(video) => {
+              setCallVideo(video);
+              setShowCall(chat.id);
+            }}
+            onOpenSettings={() => setShowGroupSettings(true)}
+            onOpenProfile={onOpenProfile}
+          />
+        </div>
+      </div>
+    );
+
+    return typeof document !== "undefined" ? createPortal(chatStackOverlay, document.body) : chatStackOverlay;
+  }
+    if (showRequests) return <RequestsList chats={messageRequests} onBack={() => setShowRequests(false)} onOpen={(id) => { setShowRequests(false); setOpenChat(id); }} onOpenProfile={onOpenProfile} />;
+  if (showCreate === "group" || showCreate === "channel") return <CreateGroup mode={showCreate} onBack={() => setShowCreate(null)} onCreated={(id) => { setShowCreate(null); setOpenChat(id); }} />;
+
+  const caller = incomingCall ? userById(state, incomingCall.fromUserId) : null;
+
+  return (
+    <>
+      {incomingCall && !showCall && (
+        <div className="fixed inset-x-0 bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))] z-[250] mx-auto max-w-md px-3">
+          <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-3 shadow-lg">
+            <Avatar name={caller?.username || "?"} src={caller?.avatar} size={44} />
+            <div className="min-w-0 flex-1 text-start">
+              <div className="text-sm font-semibold">مكالمة {incomingCall.video ? "فيديو" : "صوتية"}</div>
+              <div className="truncate text-xs text-muted-foreground">@{caller?.username || "?"}</div>
+            </div>
+            <button
+              type="button"
+              className="rounded-full bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground"
+              onClick={() => {
+                setCallVideo(incomingCall.video);
+                setShowCall(incomingCall.chatId);
+              }}
+            >
+              قبول
+            </button>
+            <button
+              type="button"
+              className="rounded-full bg-secondary px-3 py-2 text-xs font-semibold"
+              onClick={() => setIncomingCall(null)}
+            >
+              رفض
+            </button>
+          </div>
+        </div>
+      )}
+      {chatInbox}
+    </>
   );
 }
 
@@ -1182,6 +2402,7 @@ function RequestsList({
   const t = useT();
   const me = currentUser!;
   const [detail, setDetail] = useState<{ chatId: string; messageId: string } | null>(null);
+  const requestRows = chats;
 
   const resolvedDetail = useMemo(() => {
     if (!detail) return null;
@@ -1198,11 +2419,12 @@ function RequestsList({
   }, [detail, resolvedDetail]);
 
   return (
+    <SlideDismissShell onDismiss={onBack} variant="inline" className="flex-1 bg-background">
     <div className="flex min-h-[50vh] flex-col p-4 pb-8">
       <div className="mb-4 flex items-center gap-2">
-        <button type="button" onClick={onBack} className="rounded-full p-2 hover:bg-secondary" aria-label={t("close")}>
+        <SlideDismissBackButton onDismiss={onBack} className="rounded-full p-2 hover:bg-secondary" aria-label={t("close")}>
           <ArrowRight />
-        </button>
+        </SlideDismissBackButton>
         <h2 className="font-bold">{t("requests")}</h2>
       </div>
       {chats.length === 0 && <p className="py-8 text-center text-sm text-muted-foreground">{t("noChats")}</p>}
@@ -1322,6 +2544,7 @@ function RequestsList({
         </div>
       )}
     </div>
+    </SlideDismissShell>
   );
 }
 
@@ -1332,8 +2555,32 @@ function CreateGroup({ mode, onBack, onCreated }: { mode: "group" | "channel"; o
   const [step, setStep] = useState<1 | 2>(1);
   const [name, setName] = useState("");
   const [avatar, setAvatar] = useState(mode === "channel" ? "📢" : "👥");
+  const [avatarBusy, setAvatarBusy] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const others = state.users.filter(u => u.id !== me.id && !me.blocked.includes(u.id));
+
+  const onAvatarFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f || !f.type.startsWith("image/")) return;
+    void (async () => {
+      const token = getApiToken();
+      if (apiBackendEnabled() && token) {
+        setAvatarBusy(true);
+        const up = await apiUploadMedia(token, f);
+        setAvatarBusy(false);
+        e.target.value = "";
+        if (up.ok) {
+          setAvatar(up.url);
+          return;
+        }
+        alert(up.error || "فشل رفع الصورة");
+        return;
+      }
+      const r = new FileReader();
+      r.onload = () => setAvatar(String(r.result));
+      r.readAsDataURL(f);
+    })();
+  };
 
   const create = () => {
     if (mode === "group" && selected.length < 2) { alert("اختر شخصين على الأقل"); return; }
@@ -1342,13 +2589,21 @@ function CreateGroup({ mode, onBack, onCreated }: { mode: "group" | "channel"; o
   };
 
   return (
+    <SlideDismissShell onDismiss={onBack} variant="inline" className="flex-1 bg-background">
     <div className="p-4">
-      <div className="flex items-center gap-2 mb-4"><button onClick={onBack}><ArrowRight /></button><h2 className="font-bold">{mode === "group" ? t("newGroup") : t("newChannel")}</h2></div>
+      <div className="flex items-center gap-2 mb-4"><SlideDismissBackButton onDismiss={onBack}><ArrowRight /></SlideDismissBackButton><h2 className="font-bold">{mode === "group" ? t("newGroup") : t("newChannel")}</h2></div>
       {step === 1 ? (
         <div className="space-y-3">
-          <div className="flex justify-center">
-            <select value={avatar} onChange={e => setAvatar(e.target.value)} className="text-5xl bg-secondary rounded-full w-24 h-24 text-center">
-              {(mode === "channel" ? ["📢","📰","📚","🕌","⭐","🎙️"] : ["👥","🎉","🚀","💬","🌟","❤️","🔥","🎨"]).map(e => <option key={e}>{e}</option>)}
+          <div className="flex flex-col items-center gap-2">
+            <label className="relative cursor-pointer">
+              <Avatar name={name || "مجموعة"} src={avatar} size={96} />
+              <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 text-xs text-white opacity-0 hover:opacity-100">
+                {avatarBusy ? "…" : "صورة"}
+              </span>
+              <input type="file" accept="image/*" className="sr-only" onChange={onAvatarFile} disabled={avatarBusy} />
+            </label>
+            <select value={avatar} onChange={e => setAvatar(e.target.value)} className="text-sm bg-secondary rounded-xl px-3 py-1.5">
+              {(mode === "channel" ? ["📢","📰","📚","🕌","⭐","🎙️"] : ["👥","🎉","🚀","💬","🌟","❤️","🔥","🎨"]).map(e => <option key={e} value={e}>{e} أيقونة</option>)}
             </select>
           </div>
           <input value={name} onChange={e => setName(e.target.value)} placeholder={mode === "group" ? t("groupName") : t("channelName")} className="w-full bg-input rounded-2xl px-4 py-3 outline-none" />
@@ -1368,14 +2623,32 @@ function CreateGroup({ mode, onBack, onCreated }: { mode: "group" | "channel"; o
         </div>
       )}
     </div>
+    </SlideDismissShell>
   );
 }
 
-function ChatRoom({ chat, onBack, onCall, onOpenSettings, onOpenProfile }: { chat: Chat; onBack: () => void; onCall: () => void; onOpenSettings: () => void; onOpenProfile: (id: string) => void }) {
+function ChatRoom({
+  chat,
+  onBack,
+  onCall,
+  onOpenSettings,
+  onOpenProfile,
+  embedInStack = false,
+  onStackProgress,
+}: {
+  chat: Chat;
+  onBack: () => void;
+  onCall: (video: boolean) => void;
+  onOpenSettings: () => void;
+  onOpenProfile: (id: string) => void;
+  embedInStack?: boolean;
+  onStackProgress?: (progress: number) => void;
+}) {
   const {
     state,
     currentUser,
     sendMessage,
+    loadChatMessages,
     markViewOnceOpened,
     markChatOpened,
     markChatRead,
@@ -1386,40 +2659,189 @@ function ChatRoom({ chat, onBack, onCall, onOpenSettings, onOpenProfile }: { cha
     unpinChatMessage,
     addFavoriteStickerContent,
     addCreatedStickerContent,
+    mergeDiscoveredUsers,
+    isGuest,
   } = useApp();
   const t = useT();
+  const viewerId = resolveActiveViewerId(state) ?? currentUser?.id ?? "";
   const me = currentUser!;
   const [text, setText] = useState("");
+  const [mentionPick, setMentionPick] = useState<{ query: string; start: number } | null>(null);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [showStickers, setShowStickers] = useState(false);
+  const [plusAttachOpen, setPlusAttachOpen] = useState(false);
   const [theme, setTheme] = useState<"default" | "blue" | "pink">("default");
   const [recording, setRecording] = useState(false);
   const [showPrivacyMenu, setShowPrivacyMenu] = useState(false);
   const [hideReadStatus, setHideReadStatus] = useState(false);
   const [hideTypingStatus, setHideTypingStatus] = useState(false);
   const [isTyping] = useState(false);
+  const [vanishMode, setVanishMode] = useState(false);
+  const [vanishMessages, setVanishMessages] = useState<Message[]>([]);
   const recRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const recordStartRef = useRef<number>(0);
-  const otherId = chat.isGroup || chat.isChannel ? null : chat.members.find(id => id !== me.id);
+  const sendChatId = useMemo(() => chatMergeKey(chat, me.id), [chat, me.id]);
+  const chatIdRef = useRef(sendChatId);
+  chatIdRef.current = sendChatId;
+  const dispatchSendRef = useRef<(msg: Omit<Message, "id" | "senderId" | "createdAt">) => boolean>(
+    () => false,
+  );
+  const composerInputRef = useRef<HTMLInputElement>(null);
+  const composingRef = useRef(false);
+  /** بعد الإرسال: منع ظهور زر الميك تحت الإصبع (ghost click يفتح التسجيل) */
+  const blockMicUntilRef = useRef(0);
+  const [composerMicCooldown, setComposerMicCooldown] = useState(false);
+  /** تقدّم السحب من الأسفل لتبديل الوضع المخفي (بدون واجهة مرئية) */
+  const vanishPullProgRef = useRef(0);
+  /** pointer السحب: من الأسفل للأعلى */
+  const vanishPullDragRef = useRef<{ pointerId: number | null; startY: number }>({ pointerId: null, startY: 0 });
+  useEffect(() => {
+    if (!plusAttachOpen) return;
+    const onDoc = (e: Event) => {
+      const el = plusAttachMenuRef.current;
+      if (!el || el.contains(e.target as Node)) return;
+      setPlusAttachOpen(false);
+    };
+    const id = window.setTimeout(() => {
+      document.addEventListener("pointerdown", onDoc, true);
+    }, 0);
+    return () => {
+      window.clearTimeout(id);
+      document.removeEventListener("pointerdown", onDoc, true);
+    };
+  }, [plusAttachOpen]);
+
+  useEffect(() => {
+    if (text.trim()) setPlusAttachOpen(false);
+  }, [text]);
+
+  const otherId =
+    chat.isGroup || chat.isChannel ? null : chat.members.find(id => id !== viewerId) ?? null;
   const other = otherId ? userById(state, otherId) : null;
   const title = chat.isGroup || chat.isChannel ? chat.name : "@" + (other?.username || "");
   const isMember = chat.members.includes(me.id);
   const canPost = !chat.isChannel || (chat.hosts || []).includes(me.id);
-  const visibleMessages = useMemo(() => visibleChatMessages(chat, me.id), [chat.messages, chat.hiddenMessageIdsByUser, me.id]);
+  const isGroupChat = chat.isGroup && !chat.isChannel;
+  const isDmRoom = !chat.isGroup && !chat.isChannel;
+  const groupMentionOptions = useMemo(() => {
+    if (!isGroupChat || !mentionPick) return [];
+    const q = mentionPick.query;
+    const members = chat.members
+      .map(id => userById(state, id))
+      .filter((u): u is User => !!u && u.id !== me.id);
+    const filtered = q ? members.filter(u => u.username.toLowerCase().includes(q)) : members;
+    return filtered.slice(0, 10);
+  }, [isGroupChat, mentionPick, chat.members, state.users, me.id]);
+  const onComposerChange = (v: string) => {
+    setText(v);
+    if (!isGroupChat) {
+      setMentionPick(null);
+      return;
+    }
+    const m = v.match(/@([a-z0-9_]*)$/i);
+    if (m && m.index != null) {
+      setMentionPick({ query: (m[1] || "").toLowerCase(), start: m.index });
+    } else {
+      setMentionPick(null);
+    }
+  };
+  const pickMention = (uname: string) => {
+    if (!mentionPick) return;
+    setText(`${text.slice(0, mentionPick.start)}@${uname} `);
+    setMentionPick(null);
+  };
+  const visibleMessages = useMemo(
+    () => visibleChatMessages(chat, viewerId),
+    [chat.messages, chat.hiddenMessageIdsByUser, viewerId],
+  );
+  const displayMessages = useMemo(() => {
+    if (!isDmRoom || vanishMessages.length === 0) return visibleMessages;
+    return [...visibleMessages, ...vanishMessages].slice().sort((a, b) => a.createdAt - b.createdAt);
+  }, [isDmRoom, visibleMessages, vanishMessages]);
+  const noMessagesYet = displayMessages.length === 0;
+  const showDmIntro = isDmRoom && !!other && !!otherId && !vanishMode && noMessagesYet;
   const [messageContext, setMessageContext] = useState<Message | null>(null);
   const [moreReactionEmoji, setMoreReactionEmoji] = useState(false);
   const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
   const [cameraCompose, setCameraCompose] = useState<CameraComposeDraft | null>(null);
+  const [drawComposeOpen, setDrawComposeOpen] = useState(false);
   const [viewOnceOverlay, setViewOnceOverlay] = useState<Message | null>(null);
+  const [inlineMediaViewer, setInlineMediaViewer] = useState<Message | null>(null);
   const [shareFeedOpen, setShareFeedOpen] = useState<null | { items: ChatShareFeedItem[]; initialIndex: number }>(null);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLDivElement>(null);
+  const vv = useVisualViewportLayout();
+  const keyboardOpen = vv.keyboardInset > 8;
+  const scrollMessagesToBottom = useCallback(() => {
+    const el = messagesScrollRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, []);
+  /** false عندما يمرّر المستخدم لأعلى لقراءة قديم — لا نعيده للأسفل تلقائياً عند وصول رسالة جديدة */
+  const stickToBottomRef = useRef(true);
   const cameraCaptureRef = useRef<HTMLInputElement>(null);
+  const galleryMediaInputRef = useRef<HTMLInputElement>(null);
+  const galleryVideoVoiceInputRef = useRef<HTMLInputElement>(null);
+  const galleryLpTimerRef = useRef<number | null>(null);
+  const galleryLpStartRef = useRef<{ x: number; y: number } | null>(null);
+  const galleryLpFiredRef = useRef(false);
+  const plusAttachMenuRef = useRef<HTMLDivElement>(null);
   const messageElRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
   const lpTimerRef = useRef<number | null>(null);
   const lpStartRef = useRef<{ x: number; y: number } | null>(null);
   const pressStartRef = useRef<{ x: number; y: number; mid: string } | null>(null);
   const longPressActivatedRef = useRef(false);
+  /** ضغطتان متتاليتان على نفس الرسالة → تفاعل ❤️ */
+  const heartDblTapRef = useRef<{ messageId: string; at: number } | null>(null);
+
+  const dispatchSend = useCallback(
+    (msg: Omit<Message, "id" | "senderId" | "createdAt">) => {
+      if (isDmRoom && vanishMode) {
+        const id = `vx_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
+        setVanishMessages(v => [...v, { ...msg, id, senderId: me.id, createdAt: Date.now() }]);
+        return true;
+      }
+      return sendMessage(sendChatId, msg);
+    },
+    [isDmRoom, vanishMode, sendChatId, me.id, sendMessage],
+  );
+
+  useLayoutEffect(() => {
+    dispatchSendRef.current = dispatchSend;
+  });
+
+  useEffect(() => {
+    if (!isReactNativeWebView()) return;
+    window.retweetOnVoiceRecorded = payload => {
+      dispatchSendRef.current({
+        type: "voice",
+        content: payload.content,
+        durationSec: payload.durationSec,
+      });
+      setRecording(false);
+      recordStartRef.current = 0;
+    };
+    window.retweetOnVoiceRecordError = (message: string) => {
+      window.alert(message);
+      setRecording(false);
+      recordStartRef.current = 0;
+    };
+    return () => {
+      delete window.retweetOnVoiceRecorded;
+      delete window.retweetOnVoiceRecordError;
+    };
+  }, []);
+
+  useEffect(() => {
+    setVanishMode(false);
+    setVanishMessages([]);
+    vanishPullProgRef.current = 0;
+  }, [chat.id]);
+
+  useEffect(() => {
+    void loadChatMessages(sendChatId);
+  }, [sendChatId, loadChatMessages]);
 
   const scrollToMessageId = useCallback((id: string) => {
     setMoreReactionEmoji(false);
@@ -1455,6 +2877,7 @@ function ChatRoom({ chat, onBack, onCall, onOpenSettings, onOpenProfile }: { cha
   const onMsgPointerDown = useCallback(
     (e: React.PointerEvent, m: Message) => {
       if (messageContext || forwardingMessage || e.button !== 0) return;
+      if (m.id.startsWith("vx_")) return;
       longPressActivatedRef.current = false;
       pressStartRef.current = { x: e.clientX, y: e.clientY, mid: m.id };
       lpStartRef.current = { x: e.clientX, y: e.clientY };
@@ -1487,6 +2910,10 @@ function ChatRoom({ chat, onBack, onCall, onOpenSettings, onOpenProfile }: { cha
   const onMsgPointerUp = useCallback(
     (e: React.PointerEvent, m: Message) => {
       clearLongPress();
+      if (m.id.startsWith("vx_")) {
+        pressStartRef.current = null;
+        return;
+      }
       if (longPressActivatedRef.current) {
         longPressActivatedRef.current = false;
         pressStartRef.current = null;
@@ -1497,13 +2924,33 @@ function ChatRoom({ chat, onBack, onCall, onOpenSettings, onOpenProfile }: { cha
       if (!st || st.mid !== m.id) return;
       const dx = e.clientX - st.x;
       const dy = e.clientY - st.y;
-      if (Math.abs(dx) > 44 && Math.abs(dx) > Math.abs(dy)) {
-        const mine = m.senderId === me.id;
-        if (mine && dx < -44) startTransition(() => setReplyingTo(m));
-        else if (!mine && dx > 44) startTransition(() => setReplyingTo(m));
+      if (dx > 44 && Math.abs(dx) > Math.abs(dy)) {
+        startTransition(() => setReplyingTo(m));
+        return;
       }
+      if (Math.hypot(dx, dy) > 26) {
+        heartDblTapRef.current = null;
+        return;
+      }
+      const now = Date.now();
+      const prev = heartDblTapRef.current;
+      if (prev && prev.messageId === m.id && now - prev.at < 480) {
+        heartDblTapRef.current = null;
+        if (isGuest) {
+          notifyGuestActionBlocked();
+          return;
+        }
+        addMessageReaction(chat.id, m.id, "❤️");
+        try {
+          (navigator as unknown as { vibrate?: (p: number | number[]) => void }).vibrate?.(12);
+        } catch {
+          /* ignore */
+        }
+        return;
+      }
+      heartDblTapRef.current = { messageId: m.id, at: now };
     },
-    [clearLongPress, me.id],
+    [clearLongPress, me.id, chat.id, addMessageReaction, isGuest],
   );
 
   useEffect(() => {
@@ -1511,9 +2958,10 @@ function ChatRoom({ chat, onBack, onCall, onOpenSettings, onOpenProfile }: { cha
     markChatOpened(chat.id);
   }, [chat.id, chat.isGroup, chat.isChannel, markChatOpened]);
 
+  const lastMessageId = chat.messages[chat.messages.length - 1]?.id;
   useEffect(() => {
     markChatRead(chat.id);
-  }, [chat.id, chat.messages.length, markChatRead]);
+  }, [chat.id, lastMessageId, markChatRead]);
 
   useEffect(() => {
     setMoreReactionEmoji(false);
@@ -1522,6 +2970,7 @@ function ChatRoom({ chat, onBack, onCall, onOpenSettings, onOpenProfile }: { cha
   useLayoutEffect(() => {
     const el = messagesScrollRef.current;
     if (!el) return;
+    stickToBottomRef.current = true;
     const run = () => {
       el.scrollTop = el.scrollHeight;
     };
@@ -1534,28 +2983,145 @@ function ChatRoom({ chat, onBack, onCall, onOpenSettings, onOpenProfile }: { cha
     };
   }, [chat.id]);
 
-  useLayoutEffect(() => {
+  const onMessagesScroll = useCallback(() => {
     const el = messagesScrollRef.current;
-    if (!el || messageContext) return;
+    if (!el) return;
     const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
-    if (dist < 100) el.scrollTop = el.scrollHeight;
-  }, [chat.messages.length, messageContext]);
+    stickToBottomRef.current = dist < 72;
+  }, []);
 
-  // NOTE: Disable fake typing indicator; only real-time typing should appear.
+  useLayoutEffect(() => {
+    if (messageContext) return;
+    if (!stickToBottomRef.current) return;
+    scrollMessagesToBottom();
+  }, [chat.messages.length, vanishMessages.length, messageContext, scrollMessagesToBottom]);
+
+  useLayoutEffect(() => {
+    if (!keyboardOpen) return;
+    stickToBottomRef.current = true;
+    scrollMessagesToBottom();
+    const t = window.setTimeout(scrollMessagesToBottom, 120);
+    return () => window.clearTimeout(t);
+  }, [keyboardOpen, vv.keyboardInset, scrollMessagesToBottom]);
+
+  const VANISH_PULL_NEED = 120;
+  /** ارتفاع النطاق من أسفل منطقة التمرير لبدء سحب الوضع المخفي */
+  const VANISH_PULL_HIT_PX = 140;
 
   const isQuranChannel = chat.id === QURAN_CHANNEL_ID;
   const themeBg = isQuranChannel
     ? "bg-black text-white"
     : theme === "blue" ? "bg-blue-50 dark:bg-blue-950" : theme === "pink" ? "bg-pink-50 dark:bg-pink-950" : "bg-background";
 
-  const onFile = (e: React.ChangeEvent<HTMLInputElement>, type: "image" | "video") => {
-    const f = e.target.files?.[0]; if (!f) return;
-    const r = new FileReader();
-    r.onload = () => sendMessage(chat.id, { type, content: String(r.result) });
-    r.readAsDataURL(f);
-  };
+  const clearGalleryLongPress = useCallback(() => {
+    if (galleryLpTimerRef.current) {
+      clearTimeout(galleryLpTimerRef.current);
+      galleryLpTimerRef.current = null;
+    }
+    galleryLpStartRef.current = null;
+  }, []);
+
+  const sendGalleryVideoAsVoice = useCallback(
+    (file: File) => {
+      void (async () => {
+        const isVid = file.type.startsWith("video/");
+        const isAud = file.type.startsWith("audio/");
+        if (!isVid && !isAud) {
+          window.alert("اختر مقطع فيديو أو ملف صوتي (مثل m4a أو mp3).");
+          return;
+        }
+        const durationSec = isVid ? await readVideoDurationSec(file) : await readAudioDurationSec(file);
+        const reader = new FileReader();
+        reader.onload = () =>
+          dispatchSend({
+            type: "voice",
+            content: String(reader.result),
+            durationSec,
+          });
+        reader.readAsDataURL(file);
+      })();
+    },
+    [dispatchSend],
+  );
+
+  const onGalleryMediaPick = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const f = e.target.files?.[0];
+      e.target.value = "";
+      if (!f) return;
+      const msgType = f.type.startsWith("video/") ? "video" : "image";
+      const reader = new FileReader();
+      reader.onload = () => dispatchSend({ type: msgType, content: String(reader.result) });
+      reader.readAsDataURL(f);
+    },
+    [dispatchSend],
+  );
+
+  const onGalleryVideoVoicePick = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const f = e.target.files?.[0];
+      e.target.value = "";
+      if (!f) return;
+      sendGalleryVideoAsVoice(f);
+    },
+    [sendGalleryVideoAsVoice],
+  );
+
+  const onGalleryButtonClick = useCallback(() => {
+    if (galleryLpFiredRef.current) {
+      galleryLpFiredRef.current = false;
+      return;
+    }
+    galleryMediaInputRef.current?.click();
+  }, []);
+
+  const onGalleryPointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      if (e.button !== 0) return;
+      galleryLpFiredRef.current = false;
+      clearGalleryLongPress();
+      galleryLpStartRef.current = { x: e.clientX, y: e.clientY };
+      galleryLpTimerRef.current = window.setTimeout(() => {
+        galleryLpTimerRef.current = null;
+        galleryLpStartRef.current = null;
+        galleryLpFiredRef.current = true;
+        galleryVideoVoiceInputRef.current?.click();
+        try {
+          navigator.vibrate?.(12);
+        } catch {
+          /* ignore */
+        }
+      }, 480);
+    },
+    [clearGalleryLongPress],
+  );
+
+  const onGalleryPointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      const start = galleryLpStartRef.current;
+      if (!start || !galleryLpTimerRef.current) return;
+      if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > 12) {
+        clearGalleryLongPress();
+      }
+    },
+    [clearGalleryLongPress],
+  );
 
   const startRecording = async () => {
+    if (Date.now() < blockMicUntilRef.current) return;
+    if (isReactNativeWebView()) {
+      setRecording(true);
+      recordStartRef.current = Date.now();
+      postToNativeShell({ type: "voice-record-start" });
+      return;
+    }
+
+    if (typeof window !== "undefined" && !window.isSecureContext) {
+      window.alert(
+        "التسجيل الصوتي يتطلب اتصالاً آمناً (HTTPS). في تطبيق Expo يُفعَّل تلقائياً — أعد فتح التطبيق بعد التحديث.",
+      );
+      return;
+    }
     if (typeof window === "undefined" || !navigator.mediaDevices?.getUserMedia) {
       window.alert("التسجيل الصوتي غير متاح في هذا المتصفّح.");
       return;
@@ -1584,20 +3150,23 @@ function ChatRoom({ chat, onBack, onCall, onOpenSettings, onOpenProfile }: { cha
         if (e.data && e.data.size > 0) chunksRef.current.push(e.data);
       };
       rec.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: rec.mimeType || "audio/webm" });
         stream.getTracks().forEach(t => t.stop());
-        if (blob.size < 64) {
-          window.alert("التسجيل قصير جداً أو فارغ — اضغط الميكروفون ثم «إيقاف» بعد ثانية على الأقل.");
-          return;
-        }
-        const reader = new FileReader();
-        reader.onload = () =>
-          sendMessage(chat.id, {
-            type: "voice",
-            content: String(reader.result),
-            durationSec: Math.max(1, Math.round((Date.now() - (recordStartRef.current || Date.now())) / 1000)),
-          });
-        reader.readAsDataURL(blob);
+        const flushAndSend = () => {
+          const blob = new Blob(chunksRef.current, { type: rec.mimeType || "audio/webm" });
+          if (blob.size < 64) {
+            window.alert("التسجيل قصير جداً أو فارغ — اضغط الميكروفون ثم «إيقاف» بعد ثانية على الأقل.");
+            return;
+          }
+          const reader = new FileReader();
+          reader.onload = () =>
+            dispatchSend({
+              type: "voice",
+              content: String(reader.result),
+              durationSec: Math.max(1, Math.round((Date.now() - (recordStartRef.current || Date.now())) / 1000)),
+            });
+          reader.readAsDataURL(blob);
+        };
+        queueMicrotask(flushAndSend);
       };
       try {
         rec.start(250);
@@ -1618,6 +3187,11 @@ function ChatRoom({ chat, onBack, onCall, onOpenSettings, onOpenProfile }: { cha
     }
   };
   const stopRecording = () => {
+    if (isReactNativeWebView()) {
+      postToNativeShell({ type: "voice-record-stop" });
+      return;
+    }
+
     const rec = recRef.current;
     if (rec && rec.state === "recording") {
       try {
@@ -1636,28 +3210,69 @@ function ChatRoom({ chat, onBack, onCall, onOpenSettings, onOpenProfile }: { cha
     recordStartRef.current = 0;
   };
 
-  const renderText = (txt: string) => {
+  const openMentionProfile = useCallback(
+    (uname: string) => {
+      const local = state.users.find(x => x.username.toLowerCase() === uname.toLowerCase());
+      if (local) {
+        startTransition(() => onOpenProfile(local.id));
+        return;
+      }
+      if (!apiBackendEnabled() || !getApiToken()) return;
+      void (async () => {
+        const row = await apiLookupUserByUsername(uname);
+        if (!row) return;
+        const user = userFromSearchResult(row);
+        mergeDiscoveredUsers([user]);
+        startTransition(() => onOpenProfile(user.id));
+      })();
+    },
+    [state.users, onOpenProfile, mergeDiscoveredUsers],
+  );
+
+  const renderText = (txt: string, mineBubble: boolean) => {
     const capped = txt.length > 8000 ? txt.slice(0, 8000) + "…" : txt;
+    const glassLinks = mineBubble && !isQuranChannel;
     return renderMentionHashtagNodes(capped, {
       renderMention: (uname, key) => {
-        const u = state.users.find((x) => x.username === uname);
+        const u = state.users.find(x => x.username.toLowerCase() === uname.toLowerCase());
         if (u) {
           return (
             <button
               key={key}
               type="button"
-              onClick={() => startTransition(() => onOpenProfile(u.id))}
-              className="text-primary underline"
+              onClick={e => {
+                e.stopPropagation();
+                openMentionProfile(uname);
+              }}
+              className={
+                glassLinks ? "text-zinc-800 underline underline-offset-2 dark:text-zinc-200" : "text-primary underline"
+              }
             >
               <AtSign size={12} className="inline" />
               {uname}
             </button>
           );
         }
-        return <span key={key}>@{uname}</span>;
+        return (
+          <button
+            key={key}
+            type="button"
+            onClick={e => {
+              e.stopPropagation();
+              openMentionProfile(uname);
+            }}
+            className={
+              glassLinks
+                ? "text-zinc-800 underline underline-offset-2 dark:text-zinc-200"
+                : "text-primary underline"
+            }
+          >
+            @{uname}
+          </button>
+        );
       },
       renderHashtag: (h, key) => (
-        <span key={key} className="text-primary">
+        <span key={key} className={glassLinks ? "text-zinc-700 dark:text-zinc-300" : "text-primary"}>
           {h}
         </span>
       ),
@@ -1681,18 +3296,37 @@ function ChatRoom({ chat, onBack, onCall, onOpenSettings, onOpenProfile }: { cha
         )}
         {(chat.isGroup || chat.isChannel) && !mine && <div className="text-[10px] opacity-70 mb-0.5">@{sender?.username}</div>}
         {m.replyTo && (
-          <div className={"text-[10px] mb-1 ps-2 opacity-90 line-clamp-2 " + (mine ? "text-primary-foreground/90" : "text-foreground/80")}>
-            {m.replyTo.type === "text"
-              ? truncateText(m.replyTo.content, 120)
-              : m.replyTo.type === "sticker" && isStickerImageContent(m.replyTo.content)
-                ? "[ملصق]"
-                : truncateText(m.replyTo.content || `[${m.replyTo.type}]`, 80)}
-          </div>
+          <ChatInlineReplyQuote
+            replyTo={m.replyTo}
+            messages={displayMessages}
+            meId={me.id}
+            state={state}
+            mine={mine}
+            isQuran={isQuranChannel}
+          />
         )}
-        {m.type === "text" && (
-          <span dir="auto" className="break-words [word-break:normal]">
-            {renderText(m.content)}
-          </span>
+        {m.type === "text" &&
+          ((m.replyContext?.kind === "note" || /^↩️ رد على نوتك:/.test(m.content)) ? (
+            <ChatNoteReplyBubble message={m} mine={mine} />
+          ) : (
+            <span
+              dir="auto"
+              className="block max-w-full whitespace-pre-wrap break-words text-start [overflow-wrap:anywhere] [word-break:break-word]"
+            >
+              {renderText(m.content, mine)}
+            </span>
+          ))}
+        {m.type === "shared_group" && (
+          <SharedGroupInvitePreview
+            inviteCode={m.content}
+            onJoined={id => {
+              if (id) {
+                window.dispatchEvent(
+                  new CustomEvent("retweet-open-chat", { detail: { chatId: id } }),
+                );
+              }
+            }}
+          />
         )}
         {m.type === "shared_post" && (
           <button
@@ -1707,33 +3341,40 @@ function ChatRoom({ chat, onBack, onCall, onOpenSettings, onOpenProfile }: { cha
             <SharedPostPreview postId={m.content} variant="chat" />
           </button>
         )}
-        {m.type === "shared_story" && (
-          <button
-            type="button"
-            className="m-0 max-w-[min(96vw,360px)] border-0 bg-transparent p-0 text-start outline-none ring-0"
-            onClick={e => {
-              e.stopPropagation();
-              openShareFeedFromMessage(m);
-            }}
-          >
-            {m.shareText && <span className="mb-1 block whitespace-pre-wrap text-xs opacity-90">{m.shareText}</span>}
-            <SharedStoryChatPreview storyId={m.content} />
-          </button>
-        )}
-        {m.type === "voice" && m.content.startsWith("data:") && (
-          <InlineVoicePlayer src={m.content} durationSec={m.durationSec} isQuran={isQuranChannel} />
-        )}
-        {m.type === "voice" && !m.content.startsWith("data:") && (
-          <div className="flex items-center gap-2">
-            <span className="text-2xl">🎙️</span>
-            <span>{m.content}</span>
-          </div>
-        )}
+        {m.type === "shared_story" &&
+          (m.replyContext?.kind === "story" || m.shareText ? (
+            <ChatStoryReplyStack message={m} shareText={m.shareText} />
+          ) : (
+            <button
+              type="button"
+              className="m-0 max-w-[min(96vw,360px)] border-0 bg-transparent p-0 text-start outline-none ring-0"
+              onClick={e => {
+                e.stopPropagation();
+                openShareFeedFromMessage(m);
+              }}
+            >
+              <SharedStoryChatPreview storyId={m.content} />
+            </button>
+          ))}
+        {m.type === "voice" &&
+          (m.content.startsWith("data:") || isRenderableMediaUrl(m.content) ? (
+            <InlineVoicePlayer
+              src={m.content.startsWith("data:") ? m.content : resolveMediaUrl(m.content)}
+              durationSec={m.durationSec}
+              isQuran={isQuranChannel}
+              mine={mine}
+            />
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className="text-2xl">🎙️</span>
+              <span className="break-all text-xs opacity-80">{m.content}</span>
+            </div>
+          ))}
         {m.type === "sticker" && isStickerImageContent(m.content) && (
           <img
             src={m.content}
             alt=""
-            className="block w-auto h-auto max-w-[min(88vw,240px)] max-h-[min(42vh,260px)] object-contain align-middle rounded-none border-0 bg-transparent outline-none ring-0"
+            className={CHAT_STICKER_MEDIA_CLASS}
             loading="lazy"
             decoding="async"
           />
@@ -1741,7 +3382,7 @@ function ChatRoom({ chat, onBack, onCall, onOpenSettings, onOpenProfile }: { cha
         {m.type === "sticker" && isStickerVideoContent(m.content) && (
           <video
             src={m.content}
-            className="block w-auto h-auto max-w-[min(88vw,240px)] max-h-[min(42vh,260px)] object-contain align-middle rounded-none border-0 bg-transparent outline-none ring-0"
+            className={CHAT_STICKER_MEDIA_CLASS}
             autoPlay
             loop
             muted
@@ -1751,10 +3392,37 @@ function ChatRoom({ chat, onBack, onCall, onOpenSettings, onOpenProfile }: { cha
           />
         )}
         {m.type === "sticker" && !isStickerImageContent(m.content) && !isStickerVideoContent(m.content) && (
-          <span className="inline-flex items-center justify-center min-w-[44px] min-h-[44px] px-2 rounded-[18px] bg-secondary/40 text-2xl leading-none select-none" title="ملصق">
+          <span className="inline-flex items-center justify-center min-w-[44px] min-h-[44px] px-2 rounded-[22px] bg-secondary/40 text-2xl leading-none select-none" title="ملصق">
             {m.content}
           </span>
         )}
+        {m.type === "drawing" && m.viewOnce && (
+          viewOnceOpenedForViewer(m, me.id) ? (
+            <div className={viewOncePillDoneClass(mine, isQuranChannel)}>رسم · تمت المشاهدة</div>
+          ) : (
+            <button
+              type="button"
+              onClick={e => {
+                e.stopPropagation();
+                setViewOnceOverlay(m);
+              }}
+              className={viewOncePillActiveClass(mine, isQuranChannel)}
+            >
+              <Play size={12} className="shrink-0 fill-current opacity-90" />
+              رسم
+            </button>
+          )
+        )}
+        {m.type === "drawing" && !m.viewOnce && (() => {
+          const d = parseDrawingPayload(m.content);
+          return d ? (
+            <div className={CHAT_IMAGE_WRAP + " overflow-hidden"}>
+              <ChatDrawingCanvas payload={d} className="w-full" maxHeightPx={280} forChatDisplay />
+            </div>
+          ) : (
+            <span className="text-xs opacity-70">رسم</span>
+          );
+        })()}
         {m.type === "image" && m.viewOnce && (
           viewOnceOpenedForViewer(m, me.id) ? (
             <div className={viewOncePillDoneClass(mine, isQuranChannel)}>صورة · تمت المشاهدة</div>
@@ -1773,7 +3441,24 @@ function ChatRoom({ chat, onBack, onCall, onOpenSettings, onOpenProfile }: { cha
           )
         )}
         {m.type === "image" && !m.viewOnce && (
-          <img src={m.content} alt="" className="block w-full max-h-[min(78vh,720px)] border-0 object-cover align-middle outline-none ring-0 rounded-none" />
+          <button
+            type="button"
+            aria-label="عرض الصورة بحجم الشاشة"
+            className="m-0 block w-full cursor-pointer border-0 bg-transparent p-0 outline-none ring-0 ring-offset-0 focus-visible:ring-2 focus-visible:ring-white/35"
+            onClick={e => {
+              e.stopPropagation();
+              setInlineMediaViewer(m);
+            }}
+          >
+            <div className={CHAT_IMAGE_WRAP}>
+              <img
+                src={m.content}
+                alt=""
+                draggable={false}
+                className={`${CHAT_IMAGE_EL} pointer-events-none align-middle`}
+              />
+            </div>
+          </button>
         )}
         {m.type === "video" && m.viewOnce && (
           viewOnceOpenedForViewer(m, me.id) ? (
@@ -1793,42 +3478,125 @@ function ChatRoom({ chat, onBack, onCall, onOpenSettings, onOpenProfile }: { cha
           )
         )}
         {m.type === "video" && !m.viewOnce && (
-          <div className="flex flex-col gap-2">
-            <video src={m.content} controls className="max-h-[min(78vh,720px)] w-full border-0 object-cover outline-none ring-0 rounded-none" preload="metadata" />
-            <div className="text-[10px] opacity-70 flex items-center gap-1">
-              <span>🎬 فيديو</span>
-            </div>
-          </div>
+          <button
+            type="button"
+            aria-label="تكبير مقطع الفيديو"
+            className={
+              CHAT_VIDEO_WRAP +
+              " relative m-0 cursor-pointer border-0 bg-black p-0 text-start shadow-none outline-none ring-0 focus-visible:ring-2 focus-visible:ring-white/30"
+            }
+            onClick={e => {
+              e.stopPropagation();
+              setInlineMediaViewer(m);
+            }}
+          >
+            <video src={m.content} muted playsInline preload="metadata" className={CHAT_VIDEO_EL + " pointer-events-none"} />
+            <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
+              <span className="rounded-full bg-black/50 p-3 text-white shadow-md" aria-hidden>
+                <Play size={28} fill="currentColor" className="text-white opacity-95" />
+              </span>
+            </span>
+          </button>
         )}
       </>
     );
   };
 
-  const replyPreview = (m: Message) => {
-    if (m.type === "text") return truncateText(m.content, 100);
-    if (m.type === "sticker") return (isStickerImageContent(m.content) || isStickerVideoContent(m.content)) ? "[ملصق]" : truncateText(m.content, 40);
-    if (m.type === "image" && m.viewOnce) return "[صورة مرة واحدة]";
-    if (m.type === "video" && m.viewOnce) return "[فيديو مرة واحدة]";
-    if (m.type === "image") return "[صورة]";
-    if (m.type === "video") return "[فيديو]";
-    if (m.type === "voice") return "[صوت]";
-    if (m.type === "shared_post") return "[منشور]";
-    if (m.type === "shared_story") return "[ستوري]";
-    return `[${m.type}]`;
-  };
-
   const pickSticker = useCallback(
     (content: string, meta?: { createdFromImage?: boolean }) => {
-      sendMessage(chat.id, { type: "sticker", content });
+      dispatchSend({ type: "sticker", content });
       if (meta?.createdFromImage) addCreatedStickerContent(content);
       setShowStickers(false);
     },
-    [chat.id, sendMessage, addCreatedStickerContent],
+    [dispatchSend, addCreatedStickerContent],
   );
 
   const toggleStickerPanel = useCallback(() => {
     startTransition(() => setShowStickers(s => !s));
   }, []);
+
+  const handleVanishPullDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (drawComposeOpen) return;
+      if (!isDmRoom || !canPost) return;
+      e.preventDefault();
+      vanishPullDragRef.current = { pointerId: e.pointerId, startY: e.clientY };
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+      vanishPullProgRef.current = 0;
+    },
+    [drawComposeOpen, isDmRoom, canPost],
+  );
+
+  const handleVanishPullMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (drawComposeOpen) return;
+      const d = vanishPullDragRef.current;
+      if (d.pointerId !== e.pointerId || d.pointerId === null) return;
+      const dy = d.startY - e.clientY;
+      if (dy <= 0) {
+        vanishPullProgRef.current = 0;
+        return;
+      }
+      const p = Math.min(1, dy / VANISH_PULL_NEED);
+      vanishPullProgRef.current = p;
+    },
+    [drawComposeOpen],
+  );
+
+  const finalizeVanishPull = useCallback(() => {
+    const d = vanishPullDragRef.current;
+    vanishPullDragRef.current = { pointerId: null, startY: 0 };
+    const done = vanishPullProgRef.current >= 0.92;
+    vanishPullProgRef.current = 0;
+    if (done) {
+      setVanishMode(vm => {
+        if (vm) setVanishMessages([]);
+        return !vm;
+      });
+      try {
+        (navigator as unknown as { vibrate?: (x: number | number[]) => void }).vibrate?.(16);
+      } catch {
+        /* ignore */
+      }
+    }
+  }, []);
+
+  const handleVanishPullUp = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (drawComposeOpen) return;
+      const d = vanishPullDragRef.current;
+      if (d.pointerId !== e.pointerId) return;
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+      finalizeVanishPull();
+    },
+    [drawComposeOpen, finalizeVanishPull],
+  );
+
+  const onMessagesVanishPointerDownCapture = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (drawComposeOpen) return;
+      if (!isDmRoom || !canPost) return;
+      const el = e.currentTarget;
+      const r = el.getBoundingClientRect();
+      const fromBottom = r.bottom - e.clientY;
+      if (fromBottom < 0 || fromBottom > VANISH_PULL_HIT_PX) return;
+      const tgt = e.target as HTMLElement | null;
+      if (!tgt || !el.contains(tgt)) return;
+      if (tgt.closest("button, a, input, textarea, select, canvas")) return;
+      /* السماح بالبدء من فقاعات الرسائل في أسفل الشاشة — كان استبعاد .touch-manipulation يعطّل الوضع المخفي عملياً */
+      e.stopPropagation();
+      handleVanishPullDown(e);
+    },
+    [drawComposeOpen, isDmRoom, canPost, handleVanishPullDown],
+  );
 
   let seenFooter: string | null = null;
   if (!chat.isGroup && !chat.isChannel && otherId) {
@@ -1849,21 +3617,155 @@ function ChatRoom({ chat, onBack, onCall, onOpenSettings, onOpenProfile }: { cha
     }
   }
 
+  const inlineMediaLightboxUser: User | null =
+    inlineMediaViewer &&
+    !inlineMediaViewer.viewOnce &&
+    (inlineMediaViewer.type === "image" || inlineMediaViewer.type === "video")
+      ? (userById(state, inlineMediaViewer.senderId) ?? null)
+      : null;
+  const inlineMediaLightboxLabel =
+    inlineMediaLightboxUser != null
+      ? `@${inlineMediaLightboxUser.username}`
+      : inlineMediaViewer?.senderId === me.id
+        ? `@${me.username}`
+        : "?";
+
+  const composerHasText = text.trim().length > 0;
+
+  const readComposerBody = useCallback(() => {
+    const raw = composerInputRef.current?.value ?? text;
+    return raw.trim();
+  }, [text]);
+
+  const submitTextMessage = useCallback(() => {
+    const body = readComposerBody();
+    if (!body) return;
+    const rt = replyingTo
+      ? { id: replyingTo.id, content: chatReplyPreview(replyingTo), type: replyingTo.type }
+      : undefined;
+    const sent = dispatchSend({ type: "text", content: body, replyTo: rt });
+    if (!sent) return;
+    blockMicUntilRef.current = Date.now() + 520;
+    setComposerMicCooldown(true);
+    setText("");
+    if (composerInputRef.current) composerInputRef.current.value = "";
+    setReplyingTo(null);
+    setMentionPick(null);
+    window.setTimeout(() => setComposerMicCooldown(false), 480);
+  }, [readComposerBody, replyingTo, dispatchSend]);
+
+  const edgeSwipeBackBlocked = useMemo(
+    () =>
+      !!messageContext ||
+      !!forwardingMessage ||
+      !!cameraCompose ||
+      drawComposeOpen ||
+      !!viewOnceOverlay ||
+      !!inlineMediaViewer ||
+      !!shareFeedOpen ||
+      showStickers ||
+      recording ||
+      showPrivacyMenu,
+    [
+      messageContext,
+      forwardingMessage,
+      cameraCompose,
+      drawComposeOpen,
+      viewOnceOverlay,
+      inlineMediaViewer,
+      shareFeedOpen,
+      showStickers,
+      recording,
+      showPrivacyMenu,
+    ],
+  );
+
+  const { containerRef: chatSwipeColumnRef, panelStyle: chatPanelStyle, requestDismiss: requestChatDismiss, edgeStripProps } =
+    useSlideDismissBack({
+      onDismiss: onBack,
+      blocked: edgeSwipeBackBlocked,
+      dismissPullCssVar: CHAT_DISMISS_PULL_CSS_VAR,
+      stackProgressCssVar: embedInStack ? CHAT_STACK_PROGRESS_VAR : undefined,
+      embedInStack,
+      onStackProgress,
+      resetKey: chat.id,
+      edgeBottomInsetPx: keyboardOpen ? 56 : 80,
+    });
+
+  const [roomEntered, setRoomEntered] = useState(embedInStack);
+  useLayoutEffect(() => {
+    if (embedInStack) {
+      setRoomEntered(true);
+      return;
+    }
+    setRoomEntered(false);
+    const id = requestAnimationFrame(() => setRoomEntered(true));
+    return () => cancelAnimationFrame(id);
+  }, [chat.id, embedInStack]);
+
+  const roomEnterStyle: React.CSSProperties = embedInStack
+    ? { transform: "none", transition: "none" }
+    : {
+        transform: roomEntered ? chatPanelStyle.transform : "translate3d(100%, 0, 0)",
+        transition: roomEntered
+          ? (chatPanelStyle.transition ?? `transform ${SLIDE_DISMISS_MS}ms cubic-bezier(0.25, 1, 0.35, 1)`)
+          : "transform 320ms cubic-bezier(0.25, 1, 0.35, 1)",
+        boxShadow: chatPanelStyle.boxShadow,
+      };
+
   return (
-    <div className="fixed inset-0 z-[200] box-border flex justify-center overflow-hidden bg-background pt-[env(safe-area-inset-top,0px)] pb-[env(safe-area-inset-bottom,0px)]">
+    <div
+      className={
+        (embedInStack
+          ? "relative h-full w-full "
+          : "fixed inset-x-0 z-[200] box-border flex justify-center ") +
+        "overflow-hidden overscroll-none bg-black pointer-events-none"
+      }
+      style={embedInStack ? undefined : { top: vv.offsetTop, height: vv.height, bottom: "auto" }}
+    >
       <div
+        ref={chatSwipeColumnRef}
         className={
-          "relative flex h-full max-h-full min-h-0 w-full max-w-md flex-col overflow-hidden " + themeBg
+          embedInStack
+            ? "relative h-full w-full min-w-0 overflow-hidden overscroll-none"
+            : "relative mx-auto h-full w-full min-w-0 max-w-md overflow-hidden overscroll-none"
         }
       >
-      <div className={"flex items-center justify-between p-3 border-b border-border " + (isQuranChannel ? "bg-zinc-900 text-zinc-100 border-zinc-700" : "bg-background")}>
-        {/* Left side - Back button */}
-        <button type="button" onClick={onBack} className="p-2 rounded-full hover:bg-secondary" aria-label="رجوع">
-          <ChevronLeft size={22} />
+      <div
+        className={
+          "pointer-events-auto relative flex h-full max-h-full min-h-0 w-full flex-col overflow-hidden " +
+          (embedInStack ? "" : "will-change-transform ") +
+          themeBg
+        }
+        style={roomEnterStyle}
+      >
+      <div {...edgeStripProps} />
+      <div
+        dir="rtl"
+        className={
+          "relative z-40 flex shrink-0 items-center gap-2 border-b border-border px-3 py-3 pt-[max(0.75rem,env(safe-area-inset-top,0px))] " +
+          (isQuranChannel ? "bg-zinc-900 text-zinc-100 border-zinc-700" : "bg-background")
+        }
+      >
+        <div className="flex min-w-0 flex-1 items-center gap-1">
+        {/* Back + profile (يمين في RTL) */}
+        <button
+          type="button"
+          onClick={() => {
+            if (embedInStack) {
+              onBack();
+              return;
+            }
+            if (!requestChatDismiss()) onBack();
+          }}
+          className="touch-manipulation rounded-full p-2 transition-transform duration-150 ease-out hover:bg-secondary active:scale-[0.88]"
+          aria-label="رجوع"
+        >
+          <ChevronRight size={22} />
         </button>
         
         {/* Center - User info */}
-        <button type="button" onClick={() => (chat.isGroup || chat.isChannel) ? onOpenSettings() : (otherId && startTransition(() => onOpenProfile(otherId)))} className="flex items-center gap-2 flex-1 min-w-0 text-start justify-start me-2">
+        <button type="button" onClick={() => (chat.isGroup || chat.isChannel) ? onOpenSettings() : (otherId && startTransition(() => onOpenProfile(otherId)))} className="flex items-center gap-2 flex-1 min-w-0 text-start justify-start">
           <Avatar name={chat.isGroup ? chat.name! : other?.username || "?"} src={chat.isGroup ? chat.avatar : other?.avatar} size={36} />
           <div className="min-w-0">
             <div className="font-semibold text-sm flex items-center gap-1 truncate">{chat.isChannel && <Megaphone size={14} />}{title}</div>
@@ -1873,13 +3775,14 @@ function ChatRoom({ chat, onBack, onCall, onOpenSettings, onOpenProfile }: { cha
             {(chat.isGroup || chat.isChannel) && <div className={"text-xs " + (isQuranChannel ? "text-zinc-400" : "text-muted-foreground")}>{chat.members.length} {t("members")}</div>}
           </div>
         </button>
+        </div>
         
-        {/* Right side - Actions */}
-        <div className="flex items-center gap-2">
+        {/* Actions (يسار في RTL) */}
+        <div className="flex shrink-0 items-center gap-2">
           {!isQuranChannel && !chat.isChannel && (
             <>
-              <button type="button" onClick={onCall}><Phone size={20} /></button>
-              <button type="button" onClick={onCall}><Video size={20} /></button>
+              <button type="button" onClick={() => onCall(false)} aria-label="مكالمة صوتية"><Phone size={20} /></button>
+              <button type="button" onClick={() => onCall(true)} aria-label="مكالمة فيديو"><Video size={20} /></button>
             </>
           )}
           {!chat.isGroup && !chat.isChannel && (
@@ -1888,7 +3791,7 @@ function ChatRoom({ chat, onBack, onCall, onOpenSettings, onOpenProfile }: { cha
                 <MoreVertical size={20} />
               </button>
               {showPrivacyMenu && (
-                <div className="absolute left-0 top-8 bg-background border border-border rounded-lg shadow-lg w-48 z-50">
+                <div className="absolute end-0 top-8 z-50 w-48 rounded-lg border border-border bg-background shadow-lg">
                   <button 
                     onClick={() => { setHideReadStatus(!hideReadStatus); setShowPrivacyMenu(false); }}
                     className="w-full text-right px-4 py-3 hover:bg-secondary flex items-center justify-between"
@@ -1916,10 +3819,16 @@ function ChatRoom({ chat, onBack, onCall, onOpenSettings, onOpenProfile }: { cha
         </div>
       </div>
 
+      {isDmRoom && vanishMode && (
+        <p className="sr-only">
+          وضع مخفي — الرسائل الجديدة لا تُحفظ بالكامل. اسحب من أسفل منطقة الإدخال إلى الأعلى لتعطيل الوضع وحذف رسائل هذا الوضع.
+        </p>
+      )}
+
       {(chat.pinnedMessageIds || []).some(mid => chat.messages.some(x => x.id === mid)) && (
         <div
           className={
-            "no-scrollbar flex shrink-0 flex-nowrap gap-2 overflow-x-scroll overflow-y-hidden overscroll-x-contain border-b px-2 py-1.5 touch-pan-x [-webkit-overflow-scrolling:touch] snap-x snap-mandatory " +
+            "no-scrollbar flex shrink-0 flex-nowrap gap-2 overflow-x-scroll overflow-y-hidden overscroll-x-none border-b px-2 py-1.5 touch-pan-x snap-x snap-mandatory " +
             (isQuranChannel ? "border-zinc-700 bg-zinc-900/95" : "border-border bg-muted/45")
           }
         >
@@ -1938,7 +3847,7 @@ function ChatRoom({ chat, onBack, onCall, onOpenSettings, onOpenProfile }: { cha
                   }
                 >
                   <Pin size={14} className="shrink-0 opacity-90" />
-                  <span className="min-w-0 flex-1 truncate font-medium">{replyPreview(pm)}</span>
+                  <span className="min-w-0 flex-1 truncate font-medium">{chatReplyPreview(pm)}</span>
                 </button>
               );
             })}
@@ -1958,54 +3867,101 @@ function ChatRoom({ chat, onBack, onCall, onOpenSettings, onOpenProfile }: { cha
         </div>
       )}
 
+      {showDmIntro && (
+        <ChatDmIntroCard
+          other={other!}
+          meId={me.id}
+          state={state}
+          isQuran={isQuranChannel}
+          hasMessages={false}
+          onOpenProfile={() => startTransition(() => onOpenProfile(otherId!))}
+        />
+      )}
+
       <div
-          ref={messagesScrollRef}
-          className={"min-h-0 flex-1 overflow-y-auto p-3 space-y-2 " + (isQuranChannel ? "bg-zinc-950" : "")}
-          style={{
-            scrollbarWidth: 'none',
-            msOverflowStyle: 'none'
-          }}
+        ref={messagesScrollRef}
+        onScroll={onMessagesScroll}
+        onPointerDownCapture={onMessagesVanishPointerDownCapture}
+        onPointerMove={handleVanishPullMove}
+        onPointerUp={handleVanishPullUp}
+        onPointerCancel={handleVanishPullUp}
+        dir="ltr"
+        className={
+          "chat-scroll-pane relative z-10 min-h-0 flex-1 touch-pan-y overscroll-none " +
+          (drawComposeOpen ? "overflow-hidden " : "overflow-y-auto ") +
+          (isQuranChannel ? "bg-zinc-950" : "bg-background")
+        }
+        style={{
+          scrollbarWidth: "none",
+          msOverflowStyle: "none",
+        }}
+      >
+        <div
+          className={
+            "flex min-h-full w-full flex-col justify-end gap-2 px-3 pt-2 pb-2 " +
+            (isQuranChannel ? "bg-zinc-950" : "")
+          }
         >
-        {visibleMessages.map(m => {
-          const mine = m.senderId === me.id;
+        {displayMessages.map(m => {
+          const mine = isOwnChatMessage(m.senderId, state, { directMessagePeerId: otherId });
+          const senderProfile = userById(state, m.senderId);
           const bareSticker = m.type === "sticker" && (isStickerImageContent(m.content) || isStickerVideoContent(m.content));
           const bareImage = m.type === "image" && m.content.startsWith("data:") && !m.viewOnce;
+          const bareDrawing = m.type === "drawing" && !!parseDrawingPayload(m.content) && !m.viewOnce;
+          const bareVideo = m.type === "video" && !m.viewOnce;
+          const bareVoiceBubble = m.type === "voice";
           const bareViewOnceMedia =
-            (m.type === "image" || m.type === "video") && !!m.viewOnce && m.content.startsWith("data:");
-          const colClass = bareImage ? "max-w-[min(96vw,560px)] w-full" : bareSticker || bareViewOnceMedia ? "max-w-[min(90vw,280px)]" : "max-w-[78%]";
+            ((m.type === "image" || m.type === "video") && !!m.viewOnce && m.content.startsWith("data:")) ||
+            (m.type === "drawing" && !!m.viewOnce);
+          const colClass = bareVideo
+            ? CHAT_INLINE_MEDIA_COL
+            : bareVoiceBubble
+              ? "w-max max-w-[min(92vw,288px)] shrink-0"
+              : bareImage || bareDrawing
+                ? CHAT_INLINE_MEDIA_COL
+                : bareSticker || bareViewOnceMedia
+                  ? "w-fit max-w-[min(90vw,280px)] shrink"
+                  : CHAT_TEXT_BUBBLE_COL;
+          const bubbleBase =
+            bareSticker || bareImage || bareVideo || bareViewOnceMedia || bareVoiceBubble || bareDrawing
+              ? "text-sm p-0 m-0 bg-transparent shadow-none ring-0 border-0 overflow-visible outline-none"
+              : chatBubbleFilledClass(mine, isQuranChannel);
           const bubbleClass =
-            bareSticker || bareImage || bareViewOnceMedia
-              ? "text-sm p-0 m-0 bg-transparent shadow-none ring-0 border-0 overflow-visible"
-              : "rounded-2xl px-3 py-2 text-sm " +
-                (isQuranChannel
-                  ? mine
-                    ? "bg-zinc-800 text-zinc-100"
-                    : "bg-zinc-700 text-zinc-50"
-                  : mine
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-secondary");
+            bubbleBase +
+            (!(bareSticker || bareImage || bareVideo || bareViewOnceMedia || bareVoiceBubble || bareDrawing) && vanishMode && m.id.startsWith("vx_")
+              ? " ring-2 ring-orange-500/50 border border-orange-400/40"
+              : "");
           return (
-            <div
+            <ChatSwipeMessageRow
               key={m.id}
-              className={"flex touch-pan-y " + (mine ? "justify-start" : "justify-end")}
-              onPointerDown={e => onMsgPointerDown(e, m)}
+              message={m}
+              mine={mine}
+              isQuran={isQuranChannel}
+              avatarName={!mine ? senderProfile?.username || "?" : undefined}
+              avatarSrc={!mine ? senderProfile?.avatar : undefined}
+              onSwipeReply={() => startTransition(() => setReplyingTo(m))}
+              onPointerDown={onMsgPointerDown}
               onPointerMove={onMsgPointerMove}
-              onPointerUp={e => onMsgPointerUp(e, m)}
-              onPointerCancel={e => onMsgPointerUp(e, m)}
-              onContextMenu={e => e.preventDefault()}
+              onPointerUp={onMsgPointerUp}
             >
               <div
                 ref={el => {
                   if (el) messageElRefs.current.set(m.id, el);
                   else messageElRefs.current.delete(m.id);
                 }}
-                className={"relative flex flex-col gap-0.5 " + colClass + " " + (mine ? "items-start" : "items-end")}
+                className={
+                  "relative flex w-max flex-col gap-0.5 " +
+                  colClass +
+                  " " +
+                  (mine ? "items-end self-end" : "items-start self-start")
+                }
               >
                 <div className={bubbleClass}>{renderBubbleContent(m, mine)}</div>
                 {m.reactions && m.reactions.length > 0 && (
                   <div
                     className={
-                      "-mt-2 z-[1] flex flex-wrap items-center gap-0.5 " + (mine ? "self-start ps-1" : "self-end pe-1")
+                      "-mt-2 z-[1] flex flex-wrap items-center gap-0.5 " +
+                      (mine ? "self-end pe-1" : "self-start ps-1")
                     }
                   >
                     {aggregateReactions(m.reactions).map(([emoji, count]) => (
@@ -2025,33 +3981,66 @@ function ChatRoom({ chat, onBack, onCall, onOpenSettings, onOpenProfile }: { cha
                   </div>
                 )}
               </div>
-            </div>
+            </ChatSwipeMessageRow>
           );
         })}
         {seenFooter && (
           <div className={"text-end text-[11px] px-1 pt-1 " + (isQuranChannel ? "text-zinc-500" : "text-muted-foreground")}>{seenFooter}</div>
+        )}
+          </div>
+        {isDmRoom && canPost && (
+          <div
+            role="presentation"
+            aria-hidden
+            className="pointer-events-auto absolute inset-x-0 bottom-0 z-[12] h-14 touch-none"
+            onPointerDown={e => {
+              if (e.pointerType === "mouse" && e.button !== 0) return;
+              const t = e.target as HTMLElement;
+              if (t.closest("button, a, input, textarea, select")) return;
+              handleVanishPullDown(e);
+            }}
+            onPointerMove={handleVanishPullMove}
+            onPointerUp={handleVanishPullUp}
+            onPointerCancel={handleVanishPullUp}
+          />
+        )}
+        {drawComposeOpen && (
+          <ChatDrawComposeModal
+            overMessages
+            isQuranChannel={isQuranChannel}
+            senderName={me.username}
+            senderAvatar={me.avatar}
+            onClose={() => setDrawComposeOpen(false)}
+            onSend={({ type, content, viewOnce }) => {
+              const rt = replyingTo ? { id: replyingTo.id, content: chatReplyPreview(replyingTo), type: replyingTo.type } : undefined;
+              dispatchSend({
+                type,
+                content,
+                ...(viewOnce ? { viewOnce: true } : {}),
+                ...(rt ? { replyTo: rt } : {}),
+              });
+              setReplyingTo(null);
+            }}
+          />
         )}
       </div>
 
       {messageContext &&
         (() => {
           const m = messageContext;
-          const mine = m.senderId === me.id;
+          const mine = isOwnChatMessage(m.senderId, state, { directMessagePeerId: otherId });
           const bareSticker = m.type === "sticker" && (isStickerImageContent(m.content) || isStickerVideoContent(m.content));
           const bareImage = m.type === "image" && m.content.startsWith("data:") && !m.viewOnce;
+          const bareDrawing = m.type === "drawing" && !!parseDrawingPayload(m.content) && !m.viewOnce;
+          const bareVideo = m.type === "video" && !m.viewOnce;
+          const bareVoiceBubble = m.type === "voice";
           const bareViewOnceMedia =
-            (m.type === "image" || m.type === "video") && !!m.viewOnce && m.content.startsWith("data:");
+            ((m.type === "image" || m.type === "video") && !!m.viewOnce && m.content.startsWith("data:")) ||
+            (m.type === "drawing" && !!m.viewOnce);
           const bubbleClass =
-            bareSticker || bareImage || bareViewOnceMedia
-              ? "text-sm p-0 m-0 bg-transparent shadow-none ring-0 border-0 overflow-visible"
-              : "rounded-2xl px-3 py-2 text-sm shadow-lg " +
-                (isQuranChannel
-                  ? mine
-                    ? "bg-zinc-800 text-zinc-100"
-                    : "bg-zinc-700 text-zinc-50"
-                  : mine
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-secondary");
+            bareSticker || bareImage || bareVideo || bareViewOnceMedia || bareVoiceBubble || bareDrawing
+              ? "text-sm p-0 m-0 bg-transparent shadow-none ring-0 border-0 overflow-visible outline-none"
+              : chatBubbleFilledClass(mine, isQuranChannel) + " shadow-lg";
 
           const closeCtx = () => {
             setMoreReactionEmoji(false);
@@ -2069,6 +4058,8 @@ function ChatRoom({ chat, onBack, onCall, onOpenSettings, onOpenProfile }: { cha
                 await navigator.clipboard.writeText(`${base}?story=${encodeURIComponent(m.content)}`);
               } else if ((m.type === "image" || m.type === "video") && m.viewOnce) {
                 await navigator.clipboard.writeText(m.type === "image" ? "[صورة مرة واحدة]" : "[فيديو مرة واحدة]");
+              } else if (m.type === "drawing" && m.viewOnce) {
+                await navigator.clipboard.writeText("[رسم مرة واحدة]");
               } else if (m.type === "sticker" && !isStickerImageContent(m.content) && !isStickerVideoContent(m.content)) {
                 await navigator.clipboard.writeText(m.content);
               } else if (typeof m.content === "string" && m.content.length < 400_000) {
@@ -2078,7 +4069,7 @@ function ChatRoom({ chat, onBack, onCall, onOpenSettings, onOpenProfile }: { cha
               }
             } catch {
               try {
-                await navigator.clipboard.writeText(replyPreview(m));
+                await navigator.clipboard.writeText(chatReplyPreview(m));
               } catch {
                 /* ignore */
               }
@@ -2252,92 +4243,312 @@ function ChatRoom({ chat, onBack, onCall, onOpenSettings, onOpenProfile }: { cha
         })()}
 
       {showStickers && (
-        <ChatStickerPicker
-          isQuranChannel={isQuranChannel}
-          userStickers={state.stickers.filter(s => s.userId === me.id)}
-          favoriteStickerContents={me.favoriteStickerContents || []}
-          createdStickerContents={me.createdStickerContents || []}
-          onPick={pickSticker}
-        />
+        <>
+          <button
+            type="button"
+            className="absolute inset-0 z-[34] bg-black/25"
+            aria-label="إغلاق الملصقات"
+            onClick={() => setShowStickers(false)}
+          />
+          <div className="relative z-[36] shrink-0 max-h-[72vh]">
+            <ChatStickerPicker
+              isQuranChannel={isQuranChannel}
+              userStickers={state.stickers.filter(s => s.userId === me.id)}
+              favoriteStickerContents={me.favoriteStickerContents || []}
+              createdStickerContents={me.createdStickerContents || []}
+              onPick={pickSticker}
+              onClose={() => setShowStickers(false)}
+            />
+          </div>
+        </>
       )}
 
+      <div ref={composerRef} className="relative z-[56] shrink-0 isolate">
       {!canPost ? (
-        <div className={"p-4 text-center text-sm border-t border-border " + (isQuranChannel ? "text-zinc-400 bg-zinc-900 border-zinc-700" : "text-muted-foreground bg-background")}>{t("onlyOwner")}</div>
+        <div
+          className={
+            "p-4 text-center text-sm border-t border-border " +
+            (keyboardOpen ? "pb-1.5" : "pb-[max(0.5rem,env(safe-area-inset-bottom,0px))]") +
+            " " +
+            (isQuranChannel ? "text-zinc-400 bg-zinc-900 border-zinc-700" : "text-muted-foreground bg-background")
+          }
+        >
+          {t("onlyOwner")}
+        </div>
       ) : (
-        <div className={"border-t border-border shrink-0 " + (isQuranChannel ? "bg-zinc-900 border-zinc-700" : "bg-background")}>
+        <div
+          className={
+            "border-t border-border " +
+            (isQuranChannel ? "bg-zinc-900 border-zinc-700" : "bg-background")
+          }
+        >
           {replyingTo && (
-            <div className="flex items-center gap-2 px-3 py-2 text-xs border-b border-border/60">
-              <span className="flex-1 truncate opacity-80">رد على: {replyPreview(replyingTo)}</span>
-              <button type="button" className="text-muted-foreground px-2" onClick={() => setReplyingTo(null)}>×</button>
+            <ChatComposerReplyBar
+              isQuran={isQuranChannel}
+              authorLabel={
+                replyingTo.senderId === me.id
+                  ? `${t("chatReplyingTo")} · رسالتك`
+                  : `${t("chatReplyingTo")} @${userById(state, replyingTo.senderId)?.username || "?"}`
+              }
+              preview={chatReplyPreview(replyingTo)}
+              onClose={() => setReplyingTo(null)}
+            />
+          )}
+          {isGroupChat && mentionPick && (
+            <div className="max-h-40 overflow-y-auto border-b border-border/60 bg-card px-2 py-1">
+              <button
+                type="button"
+                className="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-sm font-semibold hover:bg-secondary"
+                onClick={() => pickMention("all")}
+              >
+                <AtSign size={16} className="shrink-0 text-primary" />
+                منشن عام (@all) — إشعار للجميع
+              </button>
+              {groupMentionOptions.map(u => (
+                <button
+                  key={u.id}
+                  type="button"
+                  className="flex w-full items-center gap-2 rounded-xl px-2 py-2 text-sm hover:bg-secondary"
+                  onClick={() => pickMention(u.username)}
+                >
+                  <Avatar name={u.username} src={u.avatar} size={28} />
+                  @{u.username}
+                </button>
+              ))}
             </div>
           )}
-          <form onSubmit={e => {
-            e.preventDefault();
-            if (!text.trim()) return;
-            const rt = replyingTo
-              ? { id: replyingTo.id, content: replyPreview(replyingTo), type: replyingTo.type }
-              : undefined;
-            sendMessage(chat.id, { type: "text", content: text, replyTo: rt });
-            setText("");
-            setReplyingTo(null);
-          }} className="flex flex-wrap items-center gap-2 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))] sm:flex-nowrap"
+          <form
+            onSubmit={e => {
+              e.preventDefault();
+              submitTextMessage();
+            }}
+            className={"px-2 pt-1 " + (keyboardOpen ? "pb-1.5" : "pb-[max(0.5rem,env(safe-area-inset-bottom,0px))]")}
           >
-            <button type="button" onClick={toggleStickerPanel}><Sticker size={22} /></button>
-            <label><ImageIcon size={22} /><input type="file" accept="image/*" hidden onChange={e => onFile(e, "image")} /></label>
-            <button
-              type="button"
-              className="m-0 border-0 bg-transparent p-0 cursor-pointer text-inherit"
-              aria-label="كاميرا"
-              onClick={() => cameraCaptureRef.current?.click()}
-            >
-              <Camera size={22} />
-            </button>
-            <input
-              ref={cameraCaptureRef}
-              type="file"
-              accept="image/*,video/*"
-              capture="environment"
-              className="hidden"
-              onChange={e => {
-                const f = e.target.files?.[0];
-                e.target.value = "";
-                if (!f) return;
-                const kind = f.type.startsWith("video") ? "video" : "image";
-                const r = new FileReader();
-                r.onload = () => setCameraCompose({ kind, dataUrl: String(r.result) });
-                r.readAsDataURL(f);
-              }}
-            />
-            <label><Smile size={22} /><input type="file" accept="video/*" hidden onChange={e => onFile(e, "video")} /></label>
-            <input 
-              value={text} 
-              onChange={e => setText(e.target.value)} 
-              placeholder={t("typeMessage")} 
+            <div
+              dir="ltr"
               className={
-                "flex-1 rounded-full px-4 py-2 outline-none text-sm transition-all " + 
-                (isQuranChannel 
-                  ? "bg-zinc-800 text-zinc-100 placeholder:text-zinc-400 focus:bg-zinc-700" 
-                  : "bg-input focus:bg-background focus:ring-2 focus:ring-primary/20"
-                )
+                "relative flex min-h-[44px] h-12 flex-nowrap items-center gap-1 rounded-full border px-1.5 shadow-sm " +
+                (isQuranChannel
+                  ? "border-zinc-800/95 bg-[#1a1a1a]"
+                  : "border-border bg-muted dark:border-zinc-800 dark:bg-[#1c1c1c]")
               }
-              autoFocus
-              style={{
-                fontSize: '14px',
-                lineHeight: '1.5'
-              }}
-            />
-            {text ? (
-              <button type="submit" className="text-primary font-semibold">{t("send")}</button>
-            ) : recording ? (
-              <button type="button" onClick={stopRecording} className="text-destructive flex items-center gap-1"><Square size={14} fill="currentColor" /> {t("stop")}</button>
-            ) : (
-              <button type="button" className="touch-manipulation p-1 rounded-full hover:bg-secondary" aria-label="تسجيل صوتي" onClick={startRecording}>
-                <Mic size={22} />
+            >
+              {!composerHasText && (
+              <button
+                type="button"
+                className={
+                  "flex h-10 w-10 shrink-0 touch-manipulation items-center justify-center rounded-full transition hover:bg-black/[0.06] active:scale-[0.97] dark:hover:bg-white/10 " +
+                  (isQuranChannel ? "text-zinc-200" : "text-zinc-950 dark:text-white")
+                }
+                aria-label="كاميرا"
+                onClick={() => {
+                  setPlusAttachOpen(false);
+                  cameraCaptureRef.current?.click();
+                }}
+              >
+                <Camera size={21} strokeWidth={2} className="pointer-events-none text-current" />
               </button>
-            )}
+              )}
+              <input
+                ref={composerInputRef}
+                value={text}
+                onChange={e => onComposerChange(e.target.value)}
+                onInput={e => onComposerChange(e.currentTarget.value)}
+                onCompositionStart={() => {
+                  composingRef.current = true;
+                }}
+                onCompositionEnd={e => {
+                  composingRef.current = false;
+                  onComposerChange(e.currentTarget.value);
+                }}
+                onKeyDown={e => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    submitTextMessage();
+                  }
+                }}
+                onFocus={() => {
+                  stickToBottomRef.current = true;
+                  scrollMessagesToBottom();
+                  window.setTimeout(scrollMessagesToBottom, 120);
+                }}
+                placeholder={t("typeMessage")}
+                className={
+                  "min-h-0 min-w-0 flex-1 bg-transparent py-0 text-[15px] leading-5 outline-none " +
+                  (isQuranChannel
+                    ? "text-emerald-50 caret-emerald-200 placeholder:text-emerald-200/55"
+                    : "text-zinc-900 caret-zinc-800 placeholder:text-zinc-500/65 dark:text-zinc-50 dark:caret-zinc-200 dark:placeholder:text-zinc-400/60")
+                }
+              />
+
+              {composerHasText ? (
+                <button
+                  type="button"
+                  className="relative z-[57] flex h-10 w-10 shrink-0 touch-manipulation items-center justify-center rounded-full bg-[#0084ff] text-white shadow-sm transition hover:bg-[#0073e6] active:scale-[0.97]"
+                  aria-label={t("send")}
+                  onPointerUp={e => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    blockMicUntilRef.current = Date.now() + 520;
+                    submitTextMessage();
+                  }}
+                >
+                  <Send size={18} strokeWidth={2.25} className="pointer-events-none ltr:-rotate-12" />
+                </button>
+              ) : recording ? (
+                <button
+                  type="button"
+                  className="flex h-10 w-10 shrink-0 touch-manipulation items-center justify-center rounded-full text-destructive hover:bg-destructive/10"
+                  aria-label={t("stop")}
+                  onClick={stopRecording}
+                >
+                  <Square size={16} fill="currentColor" />
+                </button>
+              ) : composerMicCooldown ? (
+                <div
+                  className="h-10 w-10 shrink-0 touch-none pointer-events-none"
+                  aria-hidden
+                />
+              ) : (
+                <button
+                  type="button"
+                  className={
+                    "flex h-10 w-10 shrink-0 touch-manipulation items-center justify-center rounded-full text-foreground/85 transition hover:bg-black/[0.06] dark:hover:bg-white/10 " +
+                    (isQuranChannel ? "text-zinc-200" : "")
+                  }
+                  aria-label="تسجيل صوتي"
+                  onClick={() => {
+                    if (Date.now() < blockMicUntilRef.current) return;
+                    void startRecording();
+                  }}
+                >
+                  <Mic size={21} strokeWidth={2} className="pointer-events-none" />
+                </button>
+              )}
+
+              {!composerHasText && (
+              <>
+              <button
+                type="button"
+                className={
+                  "flex h-10 w-10 shrink-0 touch-manipulation items-center justify-center rounded-full text-foreground/85 transition hover:bg-black/[0.06] dark:hover:bg-white/10 " +
+                  (isQuranChannel ? "text-zinc-200" : "")
+                }
+                aria-label="الاستديو: ضغطة للصور والفيديو، ضغط مطوّل لمقاطع كرسالة صوتية"
+                onClick={() => {
+                  setPlusAttachOpen(false);
+                  onGalleryButtonClick();
+                }}
+                onPointerDown={e => {
+                  setPlusAttachOpen(false);
+                  onGalleryPointerDown(e);
+                }}
+                onPointerMove={onGalleryPointerMove}
+                onPointerUp={clearGalleryLongPress}
+                onPointerCancel={clearGalleryLongPress}
+                onPointerLeave={clearGalleryLongPress}
+              >
+                <ImageIcon size={21} strokeWidth={2} />
+              </button>
+
+              <button
+                type="button"
+                className={
+                  "flex h-10 w-10 shrink-0 touch-manipulation items-center justify-center rounded-full text-foreground/85 transition hover:bg-black/[0.06] dark:hover:bg-white/10 " +
+                  (isQuranChannel ? "text-zinc-200" : "")
+                }
+                aria-label="ملصقات"
+                onClick={() => {
+                  setPlusAttachOpen(false);
+                  toggleStickerPanel();
+                }}
+              >
+                <Sticker size={21} strokeWidth={2} />
+              </button>
+
+              <div ref={plusAttachMenuRef} className="relative shrink-0">
+                <button
+                  type="button"
+                  className={
+                    "flex h-10 w-10 shrink-0 touch-manipulation items-center justify-center rounded-full border text-foreground/90 transition hover:bg-black/[0.06] dark:hover:bg-white/10 " +
+                    (isQuranChannel ? "border-zinc-600/80 text-zinc-200" : "border-muted-foreground/40")
+                  }
+                  aria-label="إرفاق"
+                  onPointerDown={e => e.stopPropagation()}
+                  onClick={e => {
+                    e.stopPropagation();
+                    setPlusAttachOpen(o => !o);
+                  }}
+                >
+                  <Plus size={19} strokeWidth={2.25} />
+                </button>
+                {plusAttachOpen && (
+                  <div
+                    className={
+                      "absolute bottom-[calc(100%+10px)] end-0 z-[60] min-w-[12rem] overflow-hidden rounded-2xl border py-1 shadow-xl " +
+                      (isQuranChannel ? "border-zinc-700 bg-zinc-900" : "border-border bg-popover")
+                    }
+                  >
+                    <button
+                      type="button"
+                      disabled={isGuest}
+                      className={
+                        "flex w-full items-center gap-3 px-4 py-3 text-start text-sm transition hover:bg-secondary " +
+                        (isQuranChannel ? "text-zinc-100" : "") +
+                        (isGuest ? " cursor-not-allowed opacity-40" : "")
+                      }
+                      onClick={() => {
+                        setPlusAttachOpen(false);
+                        if (isGuest) {
+                          notifyGuestActionBlocked();
+                          return;
+                        }
+                        setDrawComposeOpen(true);
+                      }}
+                    >
+                      <PenLine size={18} /> <span>رسم وكتابة</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+              </>
+              )}
+
+              <input
+                ref={galleryMediaInputRef}
+                type="file"
+                accept="image/*,video/*"
+                hidden
+                onChange={onGalleryMediaPick}
+              />
+              <input
+                ref={galleryVideoVoiceInputRef}
+                type="file"
+                accept="video/*,audio/*"
+                hidden
+                onChange={onGalleryVideoVoicePick}
+              />
+              <input
+                ref={cameraCaptureRef}
+                type="file"
+                accept="image/*,video/*"
+                capture="environment"
+                className="hidden"
+                onChange={e => {
+                  const f = e.target.files?.[0];
+                  e.target.value = "";
+                  if (!f) return;
+                  const kind = f.type.startsWith("video") ? "video" : "image";
+                  const r = new FileReader();
+                  r.onload = () => setCameraCompose({ kind, dataUrl: String(r.result) });
+                  r.readAsDataURL(f);
+                }}
+              />
+            </div>
           </form>
         </div>
       )}
+      </div>
       {cameraCompose && (
         <ChatCameraComposeModal
           draft={cameraCompose}
@@ -2345,8 +4556,8 @@ function ChatRoom({ chat, onBack, onCall, onOpenSettings, onOpenProfile }: { cha
           senderAvatar={me.avatar}
           onClose={() => setCameraCompose(null)}
           onSend={({ type, content, viewOnce }) => {
-            const rt = replyingTo ? { id: replyingTo.id, content: replyPreview(replyingTo), type: replyingTo.type } : undefined;
-            sendMessage(chat.id, {
+            const rt = replyingTo ? { id: replyingTo.id, content: chatReplyPreview(replyingTo), type: replyingTo.type } : undefined;
+            dispatchSend({
               type,
               content,
               ...(viewOnce ? { viewOnce: true } : {}),
@@ -2358,7 +4569,7 @@ function ChatRoom({ chat, onBack, onCall, onOpenSettings, onOpenProfile }: { cha
       )}
       {viewOnceOverlay && (
         <ViewOnceMediaOverlay
-          media={viewOnceOverlay.type === "video" ? "video" : "image"}
+          media={viewOnceOverlay.type === "video" ? "video" : viewOnceOverlay.type === "drawing" ? "drawing" : "image"}
           src={viewOnceOverlay.content}
           onClose={() => {
             markViewOnceOpened(chat.id, viewOnceOverlay.id);
@@ -2366,6 +4577,17 @@ function ChatRoom({ chat, onBack, onCall, onOpenSettings, onOpenProfile }: { cha
           }}
         />
       )}
+      {inlineMediaViewer &&
+        !inlineMediaViewer.viewOnce &&
+        (inlineMediaViewer.type === "image" || inlineMediaViewer.type === "video") && (
+          <ChatInlineMediaLightbox
+            media={inlineMediaViewer.type === "video" ? "video" : "image"}
+            src={inlineMediaViewer.content}
+            sender={inlineMediaLightboxUser}
+            senderLabel={inlineMediaLightboxLabel}
+            onClose={() => setInlineMediaViewer(null)}
+          />
+        )}
       {shareFeedOpen && (
         <ChatSharedFeedOverlay
           items={shareFeedOpen.items}
@@ -2377,81 +4599,6 @@ function ChatRoom({ chat, onBack, onCall, onOpenSettings, onOpenProfile }: { cha
         <ForwardChatSheet currentChat={chat} message={forwardingMessage} me={me} onClose={() => setForwardingMessage(null)} />
       )}
       </div>
-    </div>
-  );
-}
-
-function GroupSettings({ chat, onBack, onOpenProfile }: { chat: Chat; onBack: () => void; onOpenProfile: (id: string) => void }) {
-  const { state, currentUser, renameGroup, toggleGroupAdmin, kickMember, toggleHost, leaveChat } = useApp();
-  const t = useT();
-  const me = currentUser!;
-  const [name, setName] = useState(chat.name || "");
-  const isAdmin = chat.admins.includes(me.id);
-
-  return (
-    <div className="p-4 space-y-4">
-      <div className="flex items-center gap-2"><button onClick={onBack}><ArrowRight /></button><h2 className="font-bold">{chat.isChannel ? t("channel") : t("group")}</h2></div>
-      <div className="text-center">
-        <div className="text-6xl">{chat.avatar}</div>
-        <div className="text-sm text-muted-foreground mt-1">{chat.members.length} {t("members")}</div>
-      </div>
-      <div className="flex gap-2">
-        <input value={name} onChange={e => setName(e.target.value)} className="flex-1 bg-input rounded-2xl px-4 py-2 outline-none" disabled={!isAdmin} />
-        <button onClick={() => renameGroup(chat.id, name)} className="bg-primary text-primary-foreground px-4 rounded-2xl text-sm" disabled={!isAdmin}>{t("save")}</button>
-      </div>
-      <div>
-        <h3 className="font-semibold mb-2">{t("members")}</h3>
-        <div className="space-y-1">
-          {chat.members.map(id => {
-            const u = userById(state, id);
-            const admin = chat.admins.includes(id);
-            const host = (chat.hosts || []).includes(id);
-            return (
-              <div key={id} className="flex items-center gap-2 p-2 rounded-2xl bg-secondary flex-wrap">
-                <button onClick={() => onOpenProfile(id)}><Avatar name={u?.username || "?"} src={u?.avatar} size={36} /></button>
-                <div className="flex-1 text-start text-sm">@{u?.username} {admin && <span className="text-xs text-muted-foreground">(مشرف)</span>} {host && chat.isChannel && <span className="text-xs text-primary">(مساهم)</span>}</div>
-                {isAdmin && id !== me.id && (<>
-                  {chat.isChannel && <button onClick={() => toggleHost(chat.id, id)} className="text-xs bg-background px-2 py-1 rounded-full">{host ? t("removeHost") : t("inviteHost")}</button>}
-                  {!chat.isChannel && <button onClick={() => toggleGroupAdmin(chat.id, id)} className="text-xs bg-background px-2 py-1 rounded-full">{admin ? "إزالة مشرف" : "تعيين مشرف"}</button>}
-                  <button onClick={() => kickMember(chat.id, id)} className="text-xs text-destructive">طرد</button>
-                </>)}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-      <button onClick={() => { leaveChat(chat.id); onBack(); }} className="w-full bg-card text-destructive font-semibold py-2 rounded-2xl flex items-center justify-center gap-2">
-        <LogOut size={16} /> {chat.isChannel ? t("leave") : "مغادرة المجموعة"}
-      </button>
-    </div>
-  );
-}
-
-function CallScreen({ chatId, onClose }: { chatId: string; onClose: () => void }) {
-  const { state, currentUser } = useApp();
-  const me = currentUser!;
-  const chat = state.chats.find(c => c.id === chatId);
-  const otherId = chat?.members.find(id => id !== me.id);
-  const other = otherId ? userById(state, otherId) : null;
-  const [muted, setMuted] = useState(false);
-  const [sharing, setSharing] = useState(false);
-  return (
-    <div className="fixed inset-0 bg-black text-white flex flex-col items-center justify-between py-12 z-50">
-      <div className="flex flex-col items-center gap-3">
-        <Avatar name={chat?.isGroup ? chat.name! : other?.username || "?"} src={chat?.isGroup ? chat.avatar : other?.avatar} size={120} />
-        <div className="text-xl font-semibold">{chat?.isGroup ? chat.name : "@" + (other?.username || "")}</div>
-        <div className="text-sm text-white/60">{sharing ? "🖥️ مشاركة الشاشة" : "جاري الاتصال..."}</div>
-      </div>
-      <div className="flex gap-4">
-        <button onClick={() => setMuted(m => !m)} className={"w-14 h-14 rounded-full flex items-center justify-center " + (muted ? "bg-red-600" : "bg-white/20")}>
-          {muted ? <MicOff /> : <Mic />}
-        </button>
-        <button onClick={() => setSharing(s => !s)} className={"w-14 h-14 rounded-full flex items-center justify-center " + (sharing ? "bg-blue-600" : "bg-white/20")}>
-          <MonitorUp />
-        </button>
-        <button onClick={onClose} className="w-14 h-14 rounded-full flex items-center justify-center bg-red-600">
-          <X />
-        </button>
       </div>
     </div>
   );

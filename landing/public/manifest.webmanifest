@@ -1,0 +1,26 @@
+{
+  "name": "Retweet",
+  "short_name": "Retweet",
+  "description": "Retweet — شارك لحظتك",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "/app/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0095f6",
+  "icons": [
+    {
+      "src": "./apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

@@ -36,15 +36,47 @@ if (manifestRun.status !== 0) {
   process.exit(manifestRun.status ?? 1);
 }
 
-const apiUrl =
-  (process.env.VITE_API_URL || process.env.RETWEET_PUBLIC_API_URL || "").trim().replace(/\/$/, "");
-const supabaseUrl = (process.env.VITE_SUPABASE_URL || "").trim().replace(/\/$/, "");
-const supabaseAnonKey = (
-  process.env.VITE_SUPABASE_JWT_ANON ||
-  process.env.VITE_SUPABASE_ANON_KEY ||
-  process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-  ""
-).trim();
+function readRepoApiUrl() {
+  for (const rel of ["spa/public/web-auth-config.json", "landing/public/app-config.json"]) {
+    const p = path.join(root, rel);
+    if (!existsSync(p)) continue;
+    try {
+      const u = String(JSON.parse(readFileSync(p, "utf8")).apiUrl || "")
+        .trim()
+        .replace(/\/$/, "");
+      if (u) return u;
+    } catch {
+      /* ignore */
+    }
+  }
+  return "";
+}
+
+/** عند ضبط RETWEET_PUBLIC_API_URL أو VITE_API_URL يُربط تسجيل الدخول بقاعدة البيانات المحلية */
+const sameOrigin = process.env.RETWEET_SAME_ORIGIN === "1";
+const envApi = sameOrigin
+  ? ""
+  : (process.env.RETWEET_PUBLIC_API_URL || process.env.VITE_API_URL || "")
+      .trim()
+      .replace(/\/$/, "");
+const repoApi = readRepoApiUrl();
+const apiUrl = repoApi || envApi;
+if (repoApi && envApi && repoApi !== envApi) {
+  console.warn(
+    `prepare-vercel-static: repo API (${repoApi}) overrides stale Vercel env (${envApi})`,
+  );
+}
+const supabaseUrl = apiUrl
+  ? ""
+  : (process.env.VITE_SUPABASE_URL || "").trim().replace(/\/$/, "");
+const supabaseAnonKey = apiUrl
+  ? ""
+  : (
+      process.env.VITE_SUPABASE_JWT_ANON ||
+      process.env.VITE_SUPABASE_ANON_KEY ||
+      process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+      ""
+    ).trim();
 
 const configPath = path.join(outDir, "public/app-config.json");
 let baseConfig = { apiUrl: "", appPath: "/app/", supabaseUrl: "", supabaseAnonKey: "" };
@@ -55,12 +87,18 @@ if (existsSync(configPath)) {
     /* ignore */
   }
 }
+const vercelSite = (process.env.RETWEET_VERCEL_SITE_URL || "https://reyweet.vercel.app").replace(
+  /\/$/,
+  "",
+);
+
 writeFileSync(
   configPath,
   JSON.stringify(
     {
       ...baseConfig,
       apiUrl: apiUrl || baseConfig.apiUrl || "",
+      siteUrl: vercelSite,
       supabaseUrl: supabaseUrl || baseConfig.supabaseUrl || "",
       supabaseAnonKey: supabaseAnonKey || baseConfig.supabaseAnonKey || "",
       appPath: "/app/",
@@ -81,5 +119,33 @@ for (const rel of appCandidates) {
   const favSrc = path.join(root, "public/favicon.png");
   const favDest = path.join(dest, "favicon.png");
   if (existsSync(favSrc)) cpSync(favSrc, favDest);
+  const webAuth = {
+    apiUrl: apiUrl || baseConfig.apiUrl || "",
+    supabaseUrl: supabaseUrl || baseConfig.supabaseUrl || "",
+    supabaseAnonKey: supabaseAnonKey || baseConfig.supabaseAnonKey || "",
+  };
+  const webAuthFull = {
+    apiUrl: apiUrl || webAuth.apiUrl || "",
+    supabaseUrl: webAuth.supabaseUrl || "",
+    supabaseAnonKey: webAuth.supabaseAnonKey || "",
+  };
+  writeFileSync(
+    path.join(dest, "web-auth-config.json"),
+    JSON.stringify(webAuthFull, null, 2) + "\n",
+    "utf8",
+  );
+  const indexPath = path.join(dest, "index.html");
+  if (apiUrl && existsSync(indexPath)) {
+    let html = readFileSync(indexPath, "utf8");
+    const tag = `<script>window.__RETWEET_API_URL__=${JSON.stringify(apiUrl)};</script>`;
+    if (!html.includes("__RETWEET_API_URL__")) {
+      html = html.replace("</head>", `${tag}\n</head>`);
+      writeFileSync(indexPath, html, "utf8");
+    }
+  }
   break;
+}
+
+if (apiUrl) {
+  console.log(`prepare-vercel-static: API العام للواجهة → ${apiUrl}`);
 }

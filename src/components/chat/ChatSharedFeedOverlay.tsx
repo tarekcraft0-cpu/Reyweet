@@ -4,6 +4,7 @@ import { Avatar } from "../Avatar";
 import { VerifiedMarkForUser } from "../VerifiedBadge";
 import { Heart, MessageCircle, Repeat2, Film, X } from "lucide-react";
 import { isRenderableMediaUrl } from "@/lib/mediaUrl";
+import { normalizeStoryMedia } from "@/lib/storyMedia";
 
 export type ChatShareFeedItem = {
   messageId: string;
@@ -101,11 +102,30 @@ function ShareFeedStorySection({ storyId }: { storyId: string }) {
         </div>
       </div>
       <div className="mt-4 flex min-h-0 flex-1 items-center justify-center bg-muted/20 px-2 pb-8">
-        {story.video ? (
-          <video src={story.video} controls className="max-h-[min(62vh,560px)] w-full max-w-lg object-contain" playsInline preload="metadata" />
-        ) : (
-          <img src={story.image} alt="" className="max-h-[min(62vh,560px)] w-full max-w-lg object-contain" />
-        )}
+        {(() => {
+          const sm = normalizeStoryMedia(story);
+          if (sm.hasVideo) {
+            return (
+              <video
+                src={sm.videoUrl}
+                controls
+                className="max-h-[min(62vh,560px)] w-full max-w-lg object-contain"
+                playsInline
+                preload="metadata"
+              />
+            );
+          }
+          if (sm.hasImage) {
+            return (
+              <img
+                src={sm.imageUrl}
+                alt=""
+                className="max-h-[min(62vh,560px)] w-full max-w-lg object-contain"
+              />
+            );
+          }
+          return <span className="text-6xl">{sm.emojiFallback || "📷"}</span>;
+        })()}
       </div>
     </div>
   );

@@ -3,6 +3,8 @@ import { Avatar } from "./Avatar";
 import { VerifiedMarkForUser } from "./VerifiedBadge";
 import { Heart, MessageCircle, Repeat2, Film } from "lucide-react";
 import { isRenderableMediaUrl } from "@/lib/mediaUrl";
+import { normalizeStoryMedia } from "@/lib/storyMedia";
+import { userDisplayName } from "@/lib/userDisplay";
 
 interface Props {
   postId: string;
@@ -45,7 +47,7 @@ export function SharedPostPreview({ postId, comment, compact = false, variant = 
           <Avatar name={author.username} src={author.avatar} size={22} />
           <div className="min-w-0 flex-1 text-start">
             <div className="flex items-center gap-1 truncate">
-              <span className="truncate text-xs font-semibold">@{author.username}</span>
+              <span className="truncate text-xs font-semibold">{userDisplayName(author)}</span>
               <VerifiedMarkForUser user={author} size={12} />
             </div>
             <div className="text-[10px] text-muted-foreground">
@@ -213,17 +215,34 @@ export function SharedStoryChatPreview({ storyId, comment }: { storyId: string; 
       {comment && <p className="px-1 pb-1.5 text-[11px] italic text-muted-foreground">&quot;{comment}&quot;</p>}
       <div className="px-0 pb-1">
         <div className="relative w-full overflow-hidden rounded-none bg-transparent">
-          {story.video ? (
-            <video
-              src={story.video}
-              className="block max-h-[min(52vh,400px)] min-h-[220px] w-full object-cover object-center"
-              muted
-              playsInline
-              preload="metadata"
-            />
-          ) : (
-            <img src={story.image} alt="" className="block max-h-[min(52vh,400px)] min-h-[220px] w-full object-cover object-center" />
-          )}
+          {(() => {
+            const sm = normalizeStoryMedia(story);
+            if (sm.hasVideo) {
+              return (
+                <video
+                  src={sm.videoUrl}
+                  className="block max-h-[min(52vh,400px)] min-h-[220px] w-full object-cover object-center"
+                  muted
+                  playsInline
+                  preload="metadata"
+                />
+              );
+            }
+            if (sm.hasImage) {
+              return (
+                <img
+                  src={sm.imageUrl}
+                  alt=""
+                  className="block max-h-[min(52vh,400px)] min-h-[220px] w-full object-cover object-center"
+                />
+              );
+            }
+            return (
+              <div className="flex min-h-[220px] items-center justify-center text-5xl">
+                {sm.emojiFallback || "📷"}
+              </div>
+            );
+          })()}
         </div>
       </div>
     </div>

@@ -17,6 +17,9 @@ _vercel_site
 .tanstack/**
 .nitro
 *.local
+.env
+.env.*
+!.env.example
 mobile/.env
 
 # Vercel static bundle (generated on deploy)
@@ -29,6 +32,7 @@ landing/public/downloads/*.apk
 # Wrangler / Cloudflare
 .wrangler/
 .dev.vars
+cloudflare/tunnel.yml
 
 # Editor directories and files
 .vscode/*
@@ -40,3 +44,15 @@ landing/public/downloads/*.apk
 *.njsproj
 *.sln
 *.sw?
+
+.vercel
+
+# Local dev / tunnel (do not publish)
+LOCAL_URLS.txt
+PUBLIC_API_URL.txt
+PUBLIC_LINKS.txt
+PUBLIC_PWA_URL.txt
+PUBLIC_TUNNEL_URL.txt
+.tunnel-log.txt
+tunnel-err.txt
+mobile/dist-ipa/*.ipa

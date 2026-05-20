@@ -160,6 +160,11 @@
   }
 }
 
+.chat-scroll-pane {
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: auto;
+}
+
 .story-ring {
   background: conic-gradient(from 180deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888, #f09433);
   padding: 2px;

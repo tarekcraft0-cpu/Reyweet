@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useApp, userById, visibleMediaNotes, isMutual, visibleStoryUserIds, nextStoryAuthorAfter } from "@/lib/store";
+import {
+  useApp,
+  userById,
+  visibleMediaNotes,
+  isMutual,
+  visibleStoryUserIds,
+  nextStoryAuthorAfter,
+  storiesForUser,
+} from "@/lib/store";
 import { notifyGuestActionBlocked } from "@/lib/guestBlocked";
 import type { MediaNote } from "@/lib/types";
 import { Avatar } from "./Avatar";
@@ -7,8 +15,9 @@ import { ShareSheet } from "./ShareSheet";
 import { NoteReplySheet } from "./NoteReplySheet";
 import { StoryStickerLayer } from "./story/StoryStickerLayer";
 import { VerifiedMarkForUser } from "./VerifiedBadge";
-import { isRenderableMediaUrl } from "@/lib/mediaUrl";
-import { X, Send, Share2, Bookmark, ChevronLeft, Heart, ChevronUp } from "lucide-react";
+import { normalizeStoryMedia } from "@/lib/storyMedia";
+import { setStoryFullscreen } from "@/lib/storyChrome";
+import { X, Send, Share2, Bookmark, ChevronLeft, Heart, ChevronUp, Trash2 } from "lucide-react";
 
 const STORY_SEGMENT_CAP_MS = 5000;
 
@@ -26,16 +35,14 @@ export function StoryViewer({
   /** الانتقال لحساب ستوري آخر، أو `null` للإغلاق */
   onRequestAuthor?: (id: string | null) => void;
 }) {
-  const { state, currentUser, openOrCreateChat, sendMessage, toggleStoryLike, recordStoryView, isGuest } = useApp();
+  const { state, currentUser, openOrCreateChat, sendMessage, toggleStoryLike, recordStoryView, deleteStory, isGuest } =
+    useApp();
   const me = currentUser!;
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
   const author = userById(state, userId);
-  const stories = state.stories
-    .filter(s => s.userId === userId)
-    .filter(s => s.audience === "all" || s.userId === me.id || (author?.closeFriends.includes(me.id) ?? false))
-    .sort((a, b) => a.createdAt - b.createdAt);
+  const stories = storiesForUser(state, userId, me.id);
 
   const ring = visibleStoryUserIds(state, me.id);
 
@@ -56,12 +63,74 @@ export function StoryViewer({
 
   const [segmentMs, setSegmentMs] = useState(STORY_SEGMENT_CAP_MS);
   const deadlineRef = useRef(0);
-  const advanceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const advanceTimerRef = useRef<number | null>(null);
   const holdRemainingRef = useRef(0);
   const isHoldingProgressRef = useRef(false);
   const [middleHold, setMiddleHold] = useState(false);
+  const [topChromeVisible, setTopChromeVisible] = useState(true);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const chromeHideTimerRef = useRef<number | null>(null);
   const [ownViewsOpen, setOwnViewsOpen] = useState(false);
   const ownPullRef = useRef<{ y0: number; pointerId: number } | null>(null);
+  const [dismissY, setDismissY] = useState(0);
+  const [dismissSpring, setDismissSpring] = useState(false);
+  const dismissDragRef = useRef<{
+    pointerId: number;
+    startY: number;
+    startDismissY: number;
+    lastY: number;
+    lastT: number;
+    velocity: number;
+  } | null>(null);
+  const viewportHRef = useRef(typeof window !== "undefined" ? window.innerHeight : 800);
+
+  useEffect(() => {
+    setStoryFullscreen(true);
+    document.documentElement.classList.add("retweet-story-open");
+    return () => {
+      setStoryFullscreen(false);
+      document.documentElement.classList.remove("retweet-story-open");
+    };
+  }, []);
+
+  const showTopChrome = useCallback(() => {
+    setTopChromeVisible(true);
+    if (chromeHideTimerRef.current != null) window.clearTimeout(chromeHideTimerRef.current);
+    chromeHideTimerRef.current = window.setTimeout(() => {
+      chromeHideTimerRef.current = null;
+      setTopChromeVisible(false);
+    }, 3000);
+  }, []);
+
+  useEffect(() => {
+    showTopChrome();
+    return () => {
+      if (chromeHideTimerRef.current != null) window.clearTimeout(chromeHideTimerRef.current);
+    };
+  }, [userId, curStoryForHooks?.id, showTopChrome]);
+
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v || !curStoryForHooks) return;
+    const media = normalizeStoryMedia(curStoryForHooks);
+    if (!media.hasVideo) return;
+
+    const playWithSound = () => {
+      v.muted = false;
+      v.volume = 1;
+      const p = v.play();
+      if (p) {
+        p.catch(() => {
+          v.muted = true;
+          void v.play();
+        });
+      }
+    };
+
+    playWithSound();
+    v.addEventListener("loadeddata", playWithSound, { once: true });
+    return () => v.removeEventListener("loadeddata", playWithSound);
+  }, [curStoryForHooks?.id, curStoryForHooks?.video, curStoryForHooks?.image]);
 
   const clearAdvanceTimer = useCallback(() => {
     if (advanceTimerRef.current != null) {
@@ -95,7 +164,30 @@ export function StoryViewer({
 
   useEffect(() => {
     setI(0);
+    setDismissY(0);
+    setDismissSpring(false);
   }, [userId]);
+
+  useEffect(() => {
+    const onResize = () => {
+      viewportHRef.current = window.innerHeight;
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  const finishDismiss = useCallback(() => {
+    const h = viewportHRef.current;
+    setDismissSpring(true);
+    setDismissY(h);
+    window.setTimeout(() => onCloseRef.current(), 300);
+  }, []);
+
+  const snapDismissBack = useCallback(() => {
+    setDismissSpring(true);
+    setDismissY(0);
+    window.setTimeout(() => setDismissSpring(false), 320);
+  }, []);
 
   useEffect(() => {
     if (stories.length === 0) return;
@@ -170,7 +262,7 @@ export function StoryViewer({
 
   if (stories.length === 0) {
     return (
-      <div className="fixed inset-0 bg-black z-[60] flex flex-col items-center justify-center p-6 text-white">
+      <div className="fixed inset-0 bg-black z-[200] flex flex-col items-center justify-center p-6 text-white">
         <button type="button" className="absolute top-3 end-3 p-2 rounded-full bg-white/10" onClick={() => onCloseRef.current()} aria-label="إغلاق">
           <X size={24} />
         </button>
@@ -185,6 +277,7 @@ export function StoryViewer({
 
   const displayIdx = Math.min(Math.max(0, i), stories.length - 1);
   const cur = stories[displayIdx];
+  const storyMedia = normalizeStoryMedia(cur);
   const storyLiked = (cur.likes || []).includes(me.id);
   const storyNotes = visibleMediaNotes(state, "story", cur.id, me.id).slice(0, 8);
 
@@ -207,8 +300,10 @@ export function StoryViewer({
       return;
     }
     sendMessage(chat.id, {
-      type: "text",
-      content: `↩️ رد على ستوري: ${reply.trim()}`,
+      type: "shared_story",
+      content: cur.id,
+      shareText: reply.trim(),
+      replyContext: { kind: "story", storyId: cur.id, storyAuthorId: userId },
     });
     setReply("");
   };
@@ -218,6 +313,21 @@ export function StoryViewer({
     alert(`تم حفظ الهايلايت "${highlightTitle}" بنجاح!`);
     setShowHighlightModal(false);
     setHighlightTitle("");
+  };
+
+  const handleDeleteCurrentStory = () => {
+    if (userId !== me.id || !cur?.id) return;
+    if (!window.confirm("حذف هذه الستوري؟")) return;
+    const remaining = stories.length - 1;
+    const atLast = displayIdx >= remaining && remaining > 0;
+    deleteStory(cur.id);
+    setOwnViewsOpen(false);
+    if (remaining <= 0) {
+      if (onRequestAuthor) onRequestAuthor(null);
+      else onCloseRef.current();
+      return;
+    }
+    if (atLast) setI((prev) => Math.max(0, prev - 1));
   };
 
   const onOwnZonePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -252,8 +362,88 @@ export function StoryViewer({
     if (pull > 44) setOwnViewsOpen(true);
   };
 
+  const dismissProgress = dismissY / Math.max(1, viewportHRef.current);
+  const dismissScale = Math.max(0.88, 1 - dismissProgress * 0.1);
+  const backdropOpacity = Math.max(0, 1 - dismissProgress * 0.9);
+
+  const onDismissPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0 || ownViewsOpen) return;
+    if ((e.target as HTMLElement).closest("[data-story-interactive]")) return;
+    dismissDragRef.current = {
+      pointerId: e.pointerId,
+      startY: e.clientY,
+      startDismissY: dismissY,
+      lastY: e.clientY,
+      lastT: performance.now(),
+      velocity: 0,
+    };
+    setDismissSpring(false);
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const onDismissPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const p = dismissDragRef.current;
+    if (!p || e.pointerId !== p.pointerId || ownViewsOpen) return;
+    const dy = Math.max(0, e.clientY - p.startY);
+    const now = performance.now();
+    const dt = Math.max(1, now - p.lastT);
+    p.velocity = (e.clientY - p.lastY) / dt;
+    p.lastY = e.clientY;
+    p.lastT = now;
+    setDismissY(p.startDismissY + dy);
+  };
+
+  const endDismissDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    const p = dismissDragRef.current;
+    dismissDragRef.current = null;
+    try {
+      if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+    } catch {
+      /* ignore */
+    }
+    if (!p || e.pointerId !== p.pointerId || ownViewsOpen) return;
+    const h = viewportHRef.current;
+    const dy = Math.max(0, e.clientY - p.startY) + p.startDismissY;
+    if (dy > h * 0.42 || p.velocity > 0.42) finishDismiss();
+    else snapDismissBack();
+  };
+
   return (
-    <div className="fixed inset-0 bg-black z-[60] flex flex-col">
+    <div className="fixed inset-0 z-[200] touch-none">
+      <div
+        className="absolute inset-0 bg-black"
+        style={{
+          opacity: backdropOpacity,
+          transition: dismissSpring ? "opacity 0.32s cubic-bezier(0.25, 1, 0.35, 1)" : "none",
+        }}
+        aria-hidden
+      />
+      <div
+        className="absolute inset-0 flex flex-col bg-black"
+        style={{
+          transform: `translate3d(0, ${dismissY}px, 0) scale(${dismissScale})`,
+          transformOrigin: "center top",
+          transition: dismissSpring ? "transform 0.32s cubic-bezier(0.25, 1, 0.35, 1)" : "none",
+          willChange: "transform",
+        }}
+        onPointerDown={onDismissPointerDown}
+        onPointerMove={onDismissPointerMove}
+        onPointerUp={endDismissDrag}
+        onPointerCancel={endDismissDrag}
+      >
+      <div
+        className={
+          "absolute inset-x-0 top-0 z-50 flex flex-col pt-[max(0.25rem,env(safe-area-inset-top,0px))] " +
+          "bg-gradient-to-b from-black/75 via-black/40 to-transparent transition-opacity duration-300 " +
+          (topChromeVisible && !ownViewsOpen ? "opacity-100" : "opacity-0 pointer-events-none")
+        }
+      >
       <div className="flex gap-1 p-2 shrink-0">
         {stories.map((_, idx) => (
           <div key={idx} className="flex-1 h-0.5 bg-white/30 rounded">
@@ -274,7 +464,7 @@ export function StoryViewer({
           </div>
         ))}
       </div>
-      <div className="flex items-center gap-2 px-3 text-white shrink-0">
+      <div className="flex shrink-0 items-center gap-2 px-3 text-white" data-story-interactive>
         <button type="button" onClick={() => onCloseRef.current()} className="p-2" aria-label="رجوع">
           <ChevronLeft size={24} />
         </button>
@@ -355,19 +545,34 @@ export function StoryViewer({
           })}
         </div>
       )}
+      </div>
 
-      <div className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden text-white">
-        <div className="relative z-10 flex max-h-full max-w-full items-center justify-center">
-          {cur.video && isRenderableMediaUrl(cur.video) ? (
+      <div
+        className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden text-white"
+        onPointerDown={e => {
+          if ((e.target as HTMLElement).closest("[data-story-interactive]")) return;
+          showTopChrome();
+        }}
+      >
+        <div className="relative z-10 flex h-full w-full max-h-full max-w-full items-center justify-center">
+          {storyMedia.hasVideo ? (
             <video
+              ref={videoRef}
               key={cur.id}
-              src={cur.video}
+              src={storyMedia.videoUrl}
               className="max-h-full max-w-full object-contain select-none touch-manipulation"
               playsInline
-              muted
               autoPlay
               loop={false}
               controls={false}
+              onPointerDown={() => {
+                const v = videoRef.current;
+                if (v?.muted) {
+                  v.muted = false;
+                  v.volume = 1;
+                  void v.play();
+                }
+              }}
               onLoadedMetadata={e => {
                 const d = e.currentTarget.duration;
                 if (Number.isFinite(d) && d > 0) {
@@ -376,15 +581,17 @@ export function StoryViewer({
               }}
               onEnded={() => goForwardRef.current()}
             />
-          ) : isRenderableMediaUrl(cur.image) ? (
+          ) : storyMedia.hasImage ? (
             <img
-              src={cur.image}
+              src={storyMedia.imageUrl}
               className="max-h-full max-w-full object-contain select-none touch-manipulation"
               alt=""
               draggable={false}
             />
           ) : (
-            <span className="text-7xl select-none touch-manipulation">{cur.image}</span>
+            <span className="text-7xl select-none touch-manipulation">
+              {storyMedia.emojiFallback || cur.image || "📷"}
+            </span>
           )}
           <StoryStickerLayer story={cur} storyAuthorId={author.id} onOpenProfile={onOpenProfile} />
         </div>
@@ -421,6 +628,7 @@ export function StoryViewer({
         />
         <button
           type="button"
+          data-story-interactive
           className="absolute inset-y-0 start-0 w-[26%] z-40 bg-transparent touch-manipulation select-none"
           aria-label="الستوري السابق"
           onClick={e => {
@@ -430,6 +638,7 @@ export function StoryViewer({
         />
         <button
           type="button"
+          data-story-interactive
           className="absolute inset-y-0 end-0 w-[28%] z-40 bg-transparent touch-manipulation select-none"
           aria-label="الستوري التالي"
           onClick={e => {
@@ -440,7 +649,7 @@ export function StoryViewer({
       </div>
 
       {canReplyToStories && userId !== me.id && !isGuest && (
-        <form onSubmit={submitReply} className="shrink-0 p-3 flex gap-2 bg-black/80 border-t border-white/10">
+        <form onSubmit={submitReply} className="flex shrink-0 gap-2 border-t border-white/10 bg-black/80 p-3" data-story-interactive>
           <input
             value={reply}
             onChange={e => setReply(e.target.value)}
@@ -455,8 +664,9 @@ export function StoryViewer({
       )}
       {userId === me.id && (
         <div
-          className="shrink-0 z-[45] flex flex-col items-center justify-center gap-0.5 border-t border-white/5 bg-gradient-to-t from-black via-black/95 to-black/40 px-4 pt-2 pb-[max(0.65rem,env(safe-area-inset-bottom,0px))] touch-none select-none"
+          className="z-[45] flex shrink-0 touch-none select-none flex-col items-center justify-center gap-0.5 border-t border-white/5 bg-gradient-to-t from-black via-black/95 to-black/40 px-4 pt-2 pb-[max(0.65rem,env(safe-area-inset-bottom,0px))]"
           style={{ touchAction: "none" }}
+          data-story-interactive
           onPointerDown={onOwnZonePointerDown}
           onPointerMove={onOwnZonePointerMove}
           onPointerUp={endOwnZonePull}
@@ -549,7 +759,15 @@ export function StoryViewer({
                 </ul>
               )}
             </div>
-            <div className="shrink-0 border-t border-white/10 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]">
+            <div className="shrink-0 space-y-2 border-t border-white/10 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]">
+              <button
+                type="button"
+                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-red-500/20 py-3 text-sm font-semibold text-red-300 transition active:opacity-90"
+                onClick={handleDeleteCurrentStory}
+              >
+                <Trash2 size={18} aria-hidden />
+                حذف الستوري
+              </button>
               <button
                 type="button"
                 className="w-full rounded-2xl bg-white/12 py-3 text-sm font-semibold text-white transition-[transform,opacity] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] active:scale-[0.98] active:opacity-90"
@@ -561,6 +779,7 @@ export function StoryViewer({
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

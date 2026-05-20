@@ -22,6 +22,37 @@
   height: 0 !important;
 }
 
+/* منطقة رسائل المحادثة — بدون ارتداد/فراغ أسود عند السحب */
+.chat-scroll-pane {
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: auto;
+}
+
+/* وضع ملء الشاشة عند فتح الستوري */
+html.retweet-story-open {
+  overflow: hidden;
+}
+
+/* منع ارتداد iOS/Safari في الريلز والمحادثة */
+html.retweet-overscroll-lock,
+html.retweet-overscroll-lock body {
+  overscroll-behavior: none;
+}
+
+.reels-snap-viewport {
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: auto;
+  touch-action: pan-y;
+  scroll-snap-type: y mandatory;
+  scroll-snap-stop: always;
+}
+
+.chat-inbox-pane {
+  overscroll-behavior: none;
+  -webkit-overflow-scrolling: auto;
+  touch-action: pan-y;
+}
+
 /* إزالة الحواف البيضاء من الملصقات */
 .sticker-clean {
   background: transparent !important;

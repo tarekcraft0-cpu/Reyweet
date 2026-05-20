@@ -1,18 +1,32 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useApp, userById, trendingHashtags } from "@/lib/store";
+import { rankUsersBySearchQuery } from "@/lib/searchRank";
 import { notifyGuestActionBlocked } from "@/lib/guestBlocked";
 import { useT } from "@/lib/i18n";
-import type { Post, ProfileReturnContext } from "@/lib/types";
+import type { Post, ProfileReturnContext, User } from "@/lib/types";
 import { Avatar } from "../Avatar";
 import { PostDetail } from "../PostDetail";
 import { ShareSheet } from "../ShareSheet";
-import { Search, BookOpen, Hash, Compass } from "lucide-react";
-import { isRenderableMediaUrl } from "@/lib/mediaUrl";
+import { Search, BookOpen, Hash, MoreHorizontal } from "lucide-react";
+import { formatTrendPostCount } from "@/lib/rsocialUi";
+import { userDisplayName } from "@/lib/userDisplay";
+import { PostGridThumbnail } from "../PostGridThumbnail";
+import { isGuestUserId } from "@/lib/guestUser";
+import {
+  apiBackendEnabled,
+  apiFetchUserDirectory,
+  apiSearchUsers,
+  getApiToken,
+  userFromSearchResult,
+} from "@/lib/apiBackend";
+import { USER_REGISTERED_WINDOW_EVENT } from "@/lib/realtimeEvents";
 
 interface Props {
   onOpenProfile: (id: string, ctx?: ProfileReturnContext) => void;
   onOpenQuranChat: () => void;
   onOpenChat: (chatId: string) => void;
+  restoreFromProfileContext?: ProfileReturnContext | null;
+  onConsumedRestoreFromProfile?: () => void;
 }
 
 function shuffle<T>(arr: T[]): T[] {
@@ -24,21 +38,121 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-export function SearchScreen({ onOpenProfile, onOpenQuranChat, onOpenChat }: Props) {
-  const { state, currentUser, touchQuranBot, isGuest } = useApp();
+function isBlockedBetween(me: User, other: User): boolean {
+  return other.blocked.includes(me.id) || me.blocked.includes(other.id);
+}
+
+export function SearchScreen({
+  onOpenProfile,
+  onOpenQuranChat,
+  onOpenChat,
+  restoreFromProfileContext = null,
+  onConsumedRestoreFromProfile,
+}: Props) {
+  const { state, currentUser, touchQuranBot, isGuest, mergeDiscoveredUsers, refreshUserDirectory } = useApp();
   const t = useT();
   const [q, setQ] = useState("");
+  const [remoteHits, setRemoteHits] = useState<User[]>([]);
+  const [recentUsers, setRecentUsers] = useState<User[]>([]);
+  const [searching, setSearching] = useState(false);
   const [openPost, setOpenPost] = useState<Post | null>(null);
   const [focusCommentsOnOpen, setFocusCommentsOnOpen] = useState(false);
   const [sharePost, setSharePost] = useState<Post | null>(null);
+  const searchSeqRef = useRef(0);
   const me = currentUser!;
-  const list = state.users.filter(
-    u =>
-      u.id !== me.id &&
-      !u.blocked.includes(me.id) &&
-      !me.blocked.includes(u.id) &&
-      (q === "" || u.username.toLowerCase().includes(q.toLowerCase())),
+  const qq = q.trim();
+
+  const runServerSearch = useCallback(
+    async (query: string) => {
+      if (!apiBackendEnabled() || !getApiToken() || isGuest) {
+        setRemoteHits([]);
+        setSearching(false);
+        return;
+      }
+      const seq = ++searchSeqRef.current;
+      setSearching(true);
+      const rows = await apiSearchUsers(query);
+      if (seq !== searchSeqRef.current) return;
+      const users = rows.map(userFromSearchResult);
+      setRemoteHits(users);
+      mergeDiscoveredUsers(users);
+      setSearching(false);
+    },
+    [isGuest, mergeDiscoveredUsers],
   );
+
+  const loadRecentFromServer = useCallback(async () => {
+    if (!apiBackendEnabled() || !getApiToken() || isGuest) {
+      setRecentUsers([]);
+      return;
+    }
+    const rows = await apiFetchUserDirectory();
+    const users = rows.map(userFromSearchResult);
+    setRecentUsers(users);
+    mergeDiscoveredUsers(users);
+  }, [isGuest, mergeDiscoveredUsers]);
+
+  useEffect(() => {
+    void refreshUserDirectory();
+  }, [refreshUserDirectory]);
+
+  useEffect(() => {
+    if (!qq) {
+      setRemoteHits([]);
+      setSearching(false);
+      void loadRecentFromServer();
+      return;
+    }
+    let cancelled = false;
+    setSearching(true);
+    const timer = window.setTimeout(() => {
+      if (cancelled) return;
+      void runServerSearch(qq);
+    }, 220);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [qq, isGuest, runServerSearch, loadRecentFromServer]);
+
+  useEffect(() => {
+    const onRegistered = () => {
+      if (qq) void runServerSearch(qq);
+      else void loadRecentFromServer();
+    };
+    window.addEventListener(USER_REGISTERED_WINDOW_EVENT, onRegistered);
+    return () => window.removeEventListener(USER_REGISTERED_WINDOW_EVENT, onRegistered);
+  }, [qq, runServerSearch, loadRecentFromServer]);
+
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState !== "visible") return;
+      if (qq) void runServerSearch(qq);
+      else void loadRecentFromServer();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [qq, runServerSearch, loadRecentFromServer]);
+
+  const accountList = useMemo(() => {
+    const source = qq ? remoteHits : recentUsers;
+    const byId = new Map<string, User>();
+    for (const u of source) {
+      if (u.id === me.id || isGuestUserId(u.id) || isBlockedBetween(me, u)) continue;
+      byId.set(u.id, u);
+    }
+    if (qq) {
+      for (const u of state.users) {
+        if (u.id === me.id || isGuestUserId(u.id) || isBlockedBetween(me, u)) continue;
+        const un = u.username.toLowerCase();
+        const ql = qq.toLowerCase();
+        if (!un.includes(ql) && !u.email?.toLowerCase().includes(ql)) continue;
+        if (!byId.has(u.id)) byId.set(u.id, u);
+      }
+    }
+    return rankUsersBySearchQuery([...byId.values()], qq);
+  }, [qq, remoteHits, recentUsers, state.users, me]);
+
   const tags = trendingHashtags(state);
 
   const explorePool = useMemo(
@@ -55,19 +169,16 @@ export function SearchScreen({ onOpenProfile, onOpenQuranChat, onOpenChat }: Pro
 
   const explore = useMemo(() => shuffle(explorePool).slice(0, 30), [explorePool]);
 
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const d = (e as CustomEvent<ProfileReturnContext>).detail;
-      if (!d || d.tab !== "search") return;
-      const p = state.posts.find(x => x.id === d.postId);
-      if (p) {
-        setFocusCommentsOnOpen(!!d.commentsOpen);
-        setOpenPost(p);
-      }
-    };
-    window.addEventListener("retweet-restore-post", handler);
-    return () => window.removeEventListener("retweet-restore-post", handler);
-  }, [state.posts]);
+  useLayoutEffect(() => {
+    if (!restoreFromProfileContext || restoreFromProfileContext.tab !== "search") return;
+    const d = restoreFromProfileContext;
+    onConsumedRestoreFromProfile?.();
+    if (!d.postId || !d.homeSurface) return;
+    const p = state.posts.find(x => x.id === d.postId);
+    if (!p) return;
+    setFocusCommentsOnOpen(!!d.commentsOpen);
+    setOpenPost(p);
+  }, [restoreFromProfileContext, state.posts, onConsumedRestoreFromProfile]);
 
   if (openPost) {
     return (
@@ -86,16 +197,39 @@ export function SearchScreen({ onOpenProfile, onOpenQuranChat, onOpenChat }: Pro
   }
 
   return (
-    <div className="p-4 space-y-4 pb-24">
-      <div className="flex items-center gap-2 bg-input rounded-full px-4 py-2">
-        <Search size={18} className="text-muted-foreground" />
-        <input
-          value={q}
-          onChange={e => setQ(e.target.value)}
-          placeholder={t("searchPlaceholder")}
-          className="flex-1 bg-transparent outline-none text-sm"
-        />
+    <div className="flex min-h-0 flex-1 flex-col bg-white pb-24 dark:bg-background">
+      <h1 className="px-4 pt-3 text-[2rem] font-bold text-zinc-900 dark:text-zinc-50 tracking-tight">Explore</h1>
+      <div className="px-4 mt-3">
+        <div className="flex items-center gap-2 rounded-full bg-zinc-100 dark:bg-zinc-800/80 px-4 py-3">
+          <Search size={18} className="text-zinc-400 shrink-0" />
+          <input
+            value={q}
+            onChange={e => setQ(e.target.value)}
+            placeholder="Search R - Social"
+            className="flex-1 bg-transparent outline-none text-sm text-zinc-900 placeholder:text-zinc-400"
+          />
+        </div>
       </div>
+
+      {q === "" && tags.length > 0 && (
+        <div className="mt-4 divide-y divide-zinc-100 dark:divide-zinc-800 border-t border-zinc-100">
+          {tags.slice(0, 12).map(([tag, n], i) => (
+            <button
+              key={tag}
+              type="button"
+              onClick={() => setQ(tag)}
+              className="w-full flex items-center gap-3 px-4 py-3.5 text-start hover:bg-zinc-50 active:bg-zinc-100"
+            >
+              <span className="w-6 text-center text-sm font-medium text-zinc-400 tabular-nums">{i + 1}</span>
+              <div className="flex-1 min-w-0">
+                <div className="font-bold text-zinc-900">{tag.startsWith("#") ? tag : `#${tag.replace(/^#/, "")}`}</div>
+                <div className="text-sm text-zinc-500">{formatTrendPostCount(n)}</div>
+              </div>
+              <MoreHorizontal size={18} className="text-zinc-400 shrink-0" />
+            </button>
+          ))}
+        </div>
+      )}
 
       <button
         type="button"
@@ -112,74 +246,36 @@ export function SearchScreen({ onOpenProfile, onOpenQuranChat, onOpenChat }: Pro
         <BookOpen size={28} />
         <div className="flex-1 text-start">
           <div className="font-bold">{t("quranChannel")}</div>
-          <div className="text-xs opacity-90">شات مباشر · بوت طارق يرسل دعاء/آية كل فترة</div>
+          <div className="text-xs opacity-90">شات مباشر · بوت طارق يرسل أدعية كل فترة</div>
         </div>
         <span className="text-xs bg-white/20 px-2 py-1 rounded-full">LIVE</span>
       </button>
 
-      {q === "" && tags.length > 0 && (
-        <div>
-          <h3 className="text-xs text-muted-foreground mb-2">{t("trending")}</h3>
-          <div className="flex flex-wrap gap-2">
-            {tags.map(([tag, n]) => (
-              <button key={tag} type="button" onClick={() => setQ(tag)} className="bg-secondary px-3 py-1.5 rounded-full text-sm flex items-center gap-1">
-                <Hash size={14} /> {tag.replace("#", "")} <span className="text-xs text-muted-foreground">{n}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {q === "" && explore.length > 0 && (
-        <div>
-          <h3 className="text-sm font-bold mb-2 flex items-center gap-2">
-            <Compass size={18} className="text-primary" />
-            استكشف
-          </h3>
-          <p className="text-xs text-muted-foreground mb-3">منشورات وريلز من الجميع (ما عدا المحظورين) — شبكة ثلاث أعمدة</p>
-          <div className="grid grid-cols-3 gap-1.5">
-            {explore.map(p => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => {
-                  setFocusCommentsOnOpen(false);
-                  setOpenPost(p);
-                }}
-                className="relative aspect-square rounded-xl overflow-hidden border border-border bg-muted focus:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-              >
-                {isRenderableMediaUrl(p.image) ? (
-                  <img src={p.image} alt="" className="absolute inset-0 w-full h-full object-cover" />
-                ) : isRenderableMediaUrl(p.video) ? (
-                  <video src={p.video} className="absolute inset-0 w-full h-full object-cover" muted playsInline preload="metadata" />
-                ) : p.image ? (
-                  <span className="absolute inset-0 flex items-center justify-center text-3xl">{p.image}</span>
-                ) : p.video ? (
-                  <span className="absolute inset-0 flex items-center justify-center text-3xl">🎬</span>
-                ) : (
-                  <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-secondary to-muted text-2xl">📷</div>
-                )}
-                {p.type === "reel" && (
-                  <span className="absolute bottom-1 end-1 text-[9px] font-bold bg-black/65 text-white px-1 py-0.5 rounded">REEL</span>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="space-y-2">
-        <h3 className="text-xs text-muted-foreground">حسابات</h3>
-        {list.map(u => (
+      {qq ? (
+      <div className="space-y-2 px-4 mt-4">
+        <h3 className="text-xs text-muted-foreground">
+          {qq ? "نتائج البحث" : "حسابات جديدة"}
+        </h3>
+        {searching && accountList.length === 0 && (
+          <p className="text-xs text-muted-foreground py-2">جاري التحديث من الخادم…</p>
+        )}
+        {!searching && accountList.length === 0 && (
+          <p className="text-xs text-muted-foreground py-2">
+            {qq ? "لا توجد حسابات مطابقة" : "لا توجد حسابات بعد"}
+          </p>
+        )}
+        {accountList.map(u => (
           <button key={u.id} type="button" onClick={() => onOpenProfile(u.id)} className="w-full flex items-center gap-3 p-2 hover:bg-secondary rounded-2xl">
             <Avatar name={u.username} src={u.avatar} />
-            <div className="text-start">
-              <div className="font-semibold text-sm">@{u.username}</div>
-              <div className="text-xs text-muted-foreground">{u.bio}</div>
+            <div className="min-w-0 text-start">
+              <div className="truncate text-sm font-semibold">{userDisplayName(u)}</div>
+              <div className="truncate text-xs text-muted-foreground" dir="ltr">@{u.username}</div>
+              {u.bio ? <div className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{u.bio}</div> : null}
             </div>
           </button>
         ))}
       </div>
+      ) : null}
 
       {q.startsWith("#") && (
         <div className="space-y-2">

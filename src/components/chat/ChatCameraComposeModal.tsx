@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { ChatDrawingCanvas } from "./ChatDrawingCanvas";
+import { parseDrawingPayload } from "./drawingPayload";
 import { X, Sparkles, Type as TypeIcon, PenLine, Sticker, Music, Download, LayoutGrid, Infinity, Eye } from "lucide-react";
 import { Avatar } from "../Avatar";
 
@@ -227,11 +229,12 @@ export function ViewOnceMediaOverlay({
   src,
   onClose,
 }: {
-  media: "image" | "video";
+  media: "image" | "video" | "drawing";
   src: string;
   onClose: () => void;
 }) {
   if (typeof document === "undefined") return null;
+  const drawPayload = media === "drawing" ? parseDrawingPayload(src) : null;
   return createPortal(
     <div className="fixed inset-0 z-[370] flex flex-col bg-black">
       <div className="flex shrink-0 justify-end p-3">
@@ -240,7 +243,15 @@ export function ViewOnceMediaOverlay({
         </button>
       </div>
       <div className="flex min-h-0 flex-1 items-center justify-center p-2">
-        {media === "image" ? (
+        {media === "drawing" ? (
+          drawPayload ? (
+            <div className="flex h-full w-full max-w-lg flex-col items-center justify-center">
+              <ChatDrawingCanvas payload={drawPayload} className="w-full" maxHeightPx={620} />
+            </div>
+          ) : (
+            <p className="text-center text-sm text-white/80">تعذر عرض الرسمة</p>
+          )
+        ) : media === "image" ? (
           <img src={src} alt="" className="max-h-full max-w-full object-contain" />
         ) : (
           <video src={src} controls autoPlay className="max-h-full max-w-full object-contain" playsInline />

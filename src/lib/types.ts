@@ -22,7 +22,11 @@ export interface HighlightEntry {
 export interface User {
   id: ID;
   username: string;
+  /** الاسم المعروض (مختلف عن @username) */
+  displayName?: string;
   email: string;
+  /** رقم جوال اختياري */
+  phone?: string;
   password: string;
   bio: string;
   avatar: string;
@@ -33,6 +37,10 @@ export interface User {
   isPrivate: boolean;
   /** توثيق الحساب (يظهر بجانب اليوزر) */
   verified?: boolean;
+  /** توثيق منشئ التطبيق — شارة مميزة غير التوثيق الأزرق العادي */
+  founderVerified?: boolean;
+  /** نص الملاحظة الرسمية (تُعرض في إطار خارج البايو) */
+  founderOfficialLabel?: string;
   followers: ID[];
   following: ID[];
   /** إن وُجد، يُعرض كعدد المتابعين في البروفايل (بدل `followers.length` فقط) */
@@ -180,7 +188,16 @@ export interface Post {
 export interface Message {
   id: ID;
   senderId: ID;
-  type: "text" | "image" | "video" | "voice" | "sticker" | "shared_post" | "shared_story";
+  type:
+    | "text"
+    | "image"
+    | "video"
+    | "voice"
+    | "sticker"
+    | "drawing"
+    | "shared_post"
+    | "shared_story"
+    | "shared_group";
   content: string;
   createdAt: number;
   durationSec?: number;
@@ -191,6 +208,10 @@ export interface Message {
   /** من فتح المحتوى الكامل لرسالة viewOnce (لكل مستخدم على حدة) */
   viewOnceOpenedByUserIds?: ID[];
   replyTo?: { id: ID; content: string; type: Message["type"] };
+  /** سياق رد على نوت أو ستوري داخل المحادثة */
+  replyContext?:
+    | { kind: "note"; noteText: string }
+    | { kind: "story"; storyId: ID; storyAuthorId?: ID };
   /** تفاعلات سريعة (إيموجي لكل مستخدم) */
   reactions?: { emoji: string; userId: ID }[];
   /** إعادة توجيه من محادثة أخرى */
@@ -219,6 +240,12 @@ export interface Chat {
   hiddenMessageIdsByUser?: Record<ID, ID[]>;
   /** رسائل مثبتة (حتى ٣) — الأحدث أولاً */
   pinnedMessageIds?: ID[];
+  /** رمز دعوة للمجموعة (رابط انضمام) */
+  inviteCode?: string;
+  /** مجموعة عامة — الانضمام بالرابط مباشرة */
+  isPublicGroup?: boolean;
+  /** طلبات انضمام (مجموعات خاصة بالرابط) */
+  joinRequests?: { userId: ID; at: number }[];
 }
 
 export interface Sticker { id: ID; userId: ID; emoji: string; label: string; }
@@ -254,11 +281,12 @@ export interface MediaNote {
 export type ProfileHomeSurface = "feed_comments_sheet" | "post_detail_full";
 
 /** تبويب شبكة البروفايل (منشورات / ريبوستات / إعجابات / محفوظات) */
-export type ProfileGridTab = "posts" | "reposts" | "likes" | "favorites";
+export type ProfileGridTab = "posts" | "reposts" | "likes";
 
 /** عند فتح بروفايل من تعليق: الرجوع يعيد المنشور أو نافذة التعليقات */
 export interface ProfileReturnContext {
-  postId: ID;
+  /** يُمرَّر فقط عند الحاجة لإعادة فتح منشور/تعليقات بعد الرجوع من البروفايل */
+  postId?: ID;
   tab: "home" | "search" | "reels" | "profile";
   commentsOpen?: boolean;
   /** فقط عند tab === "home" */

@@ -4,7 +4,6 @@
  */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
-import { supabaseReady } from "./supabaseNative";
 import type { AppState } from "./types";
 
 const TOKEN_KEY = "retweet_api_token";
@@ -17,10 +16,12 @@ function fromEnv(): string {
 }
 
 export function getApiBaseUrl(): string {
-  return fromEnv();
+  const u = fromEnv();
+  if (!u || u.includes("localhost") || u.includes("127.0.0.1")) return "";
+  return u;
 }
 
-export const apiBackendEnabled = (): boolean => getApiBaseUrl().length > 0;
+export const apiBackendEnabled = (): boolean => true;
 
 export async function getApiToken(): Promise<string | null> {
   try {
@@ -99,15 +100,15 @@ export async function pullRemoteAppState(token: string): Promise<AppState | null
 
 export async function apiRequestPasswordReset(
   identifier: string,
-): Promise<{ ok: true; devCode?: string } | { ok: false; error: string }> {
+): Promise<{ ok: true } | { ok: false; error: string }> {
   const res = await apiFetch("/auth/request-password-reset", {
     method: "POST",
     body: JSON.stringify({ identifier: identifier.trim() }),
     token: null,
   });
-  const data = (await res.json().catch(() => ({}))) as { error?: string; devCode?: string };
+  const data = (await res.json().catch(() => ({}))) as { error?: string };
   if (!res.ok) return { ok: false, error: data.error || "تعذر الطلب" };
-  return { ok: true, devCode: data.devCode };
+  return { ok: true };
 }
 
 export async function apiCompletePasswordReset(
@@ -126,5 +127,5 @@ export async function apiCompletePasswordReset(
 }
 
 export function authBackendReady(): boolean {
-  return apiBackendEnabled() || supabaseReady();
+  return apiBackendEnabled();
 }

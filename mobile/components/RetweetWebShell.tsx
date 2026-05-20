@@ -12,32 +12,132 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import * as Linking from "expo-linking";
 import WebView from "react-native-webview";
 
+import { getApiBaseUrl } from "@/lib/apiNative";
+import {
+  fetchAndroidReleaseInfo,
+  needsNativeApkUpdate,
+  type AndroidReleaseInfo,
+} from "@/lib/androidUpdate";
 import { getWebAppUrl } from "@/lib/webAppUrl";
+import { injectVoiceRecordError, injectVoiceRecorded } from "@/lib/injectWebVoiceResult";
+import { startNativeVoiceRecording, stopNativeVoiceRecording } from "@/lib/nativeVoiceRecord";
 
 const LOAD_TIMEOUT_MS = 22_000;
 
-/** يخبر Expo أن الصفحة جاهزة (أوثق من onLoadEnd مع Vite/HMR). */
-const INJECT_READY_PROBE = `
+/** يحقن رابط API من Vercel ثم يخبر الشِلّ الأصلي أن الصفحة جاهزة. */
+function buildInjectReadyProbe(webAppUrl: string, fallbackApiUrl: string): string {
+  const appJson = JSON.stringify(webAppUrl.replace(/\/$/, ""));
+  const fallbackJson = JSON.stringify(fallbackApiUrl.replace(/\/$/, ""));
+  return `
 (function () {
-  function ping() {
+  window.__RETWEET_NATIVE_SHELL__ = true;
+  var appBase = ${appJson};
+  var fallbackApi = ${fallbackJson};
+  function applyApi(url) {
+    if (!url) return;
+    try {
+      localStorage.setItem("retweet_web_api_config", JSON.stringify({ apiUrl: url }));
+      window.__RETWEET_API_URL__ = url;
+    } catch (e) {}
+  }
+  function done() {
+    try {
+      window.dispatchEvent(new Event("retweet-api-config-ready"));
+    } catch (e) {}
     if (window.ReactNativeWebView) {
       window.ReactNativeWebView.postMessage(JSON.stringify({ type: "retweet-ready" }));
     }
   }
-  if (document.readyState === "complete") ping();
-  else window.addEventListener("load", ping, { once: true });
+  var configUrl = appBase + "/web-auth-config.json?t=" + Date.now();
+  fetch(configUrl, { cache: "no-store" })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (j) {
+      if (j && j.apiUrl) applyApi(String(j.apiUrl).replace(/\\/$/, ""));
+      else if (fallbackApi) applyApi(fallbackApi);
+      done();
+    })
+    .catch(function () {
+      if (fallbackApi) applyApi(fallbackApi);
+      done();
+    });
 })();
 true;
 `;
+}
+
+type WebToNativeMessage = {
+  type?: string;
+};
 
 export function RetweetWebShell() {
   const baseUrl = getWebAppUrl();
+  const nativeApiUrl = getApiBaseUrl();
+  const injectReadyProbe = buildInjectReadyProbe(baseUrl, nativeApiUrl);
   const webRef = useRef<WebView>(null);
   const [canGoBack, setCanGoBack] = useState(false);
   const [loading, setLoading] = useState(!!baseUrl);
   const [loadKey, setLoadKey] = useState(0);
   const [lastError, setLastError] = useState<string | null>(null);
   const hasShownContent = useRef(false);
+  const voiceBusyRef = useRef(false);
+  const [apkUpdate, setApkUpdate] = useState<AndroidReleaseInfo | null>(null);
+
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    let cancelled = false;
+    void (async () => {
+      const remote = await fetchAndroidReleaseInfo();
+      if (cancelled || !remote) return;
+      if (needsNativeApkUpdate(remote)) setApkUpdate(remote);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const onWebMessage = useCallback(
+    async (raw: string) => {
+      let data: WebToNativeMessage;
+      try {
+        data = JSON.parse(raw) as WebToNativeMessage;
+      } catch {
+        return;
+      }
+
+      if (data.type === "retweet-ready") {
+        hasShownContent.current = true;
+        setLoading(false);
+        return;
+      }
+
+      if (data.type === "voice-record-start") {
+        if (voiceBusyRef.current) return;
+        voiceBusyRef.current = true;
+        try {
+          await startNativeVoiceRecording();
+        } catch (e) {
+          voiceBusyRef.current = false;
+          const msg = e instanceof Error ? e.message : "تعذّر بدء التسجيل.";
+          injectVoiceRecordError(webRef, msg);
+        }
+        return;
+      }
+
+      if (data.type === "voice-record-stop") {
+        if (!voiceBusyRef.current) return;
+        try {
+          const result = await stopNativeVoiceRecording();
+          injectVoiceRecorded(webRef, result);
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : "تعذّر إيقاف التسجيل.";
+          injectVoiceRecordError(webRef, msg);
+        } finally {
+          voiceBusyRef.current = false;
+        }
+      }
+    },
+    [],
+  );
 
   const onNavChange = useCallback((nav: { canGoBack?: boolean }) => {
     if (typeof nav.canGoBack === "boolean") setCanGoBack(nav.canGoBack);
@@ -126,6 +226,23 @@ export function RetweetWebShell() {
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <View style={styles.column}>
+        {apkUpdate ? (
+          <View style={styles.updateBanner}>
+            <Text style={styles.updateTitle}>تحديث التطبيق متوفر ({apkUpdate.version})</Text>
+            <Text style={styles.updateBody}>
+              المحتوى يتحدّث تلقائياً من الموقع. ثبّت آخر APK للحصول على إصلاحات التطبيق نفسه.
+            </Text>
+            <Pressable
+              style={styles.updateBtn}
+              onPress={() => void Linking.openURL(apkUpdate.apkUrl)}
+            >
+              <Text style={styles.updateBtnText}>تحميل التحديث</Text>
+            </Pressable>
+            <Pressable onPress={() => setApkUpdate(null)}>
+              <Text style={styles.updateDismiss}>لاحقاً</Text>
+            </Pressable>
+          </View>
+        ) : null}
         <WebView
           key={loadKey}
           ref={webRef}
@@ -136,29 +253,18 @@ export function RetweetWebShell() {
             setLastError(null);
           }}
           onLoadEnd={() => {
-            hasShownContent.current = true;
-            setLoading(false);
+            if (!hasShownContent.current) setLoading(false);
           }}
           onLoadProgress={e => {
-            if (e.nativeEvent.progress >= 0.9) {
-              hasShownContent.current = true;
-              setLoading(false);
-            }
+            if (e.nativeEvent.progress >= 0.9) setLoading(false);
           }}
           onMessage={e => {
-            try {
-              const data = JSON.parse(e.nativeEvent.data) as { type?: string };
-              if (data.type === "retweet-ready") {
-                hasShownContent.current = true;
-                setLoading(false);
-              }
-            } catch {
-              /* ignore */
-            }
+            void onWebMessage(e.nativeEvent.data);
           }}
-          injectedJavaScript={INJECT_READY_PROBE}
+          injectedJavaScript={injectReadyProbe}
           onNavigationStateChange={onNavChange}
           onError={e => {
+            hasShownContent.current = false;
             setLoading(false);
             const raw = e.nativeEvent.description || "";
             const code = (e.nativeEvent as { code?: number }).code;
@@ -184,8 +290,12 @@ export function RetweetWebShell() {
           setSupportMultipleWindows={false}
           originWhitelist={["*"]}
           mixedContentMode="always"
+          thirdPartyCookiesEnabled
           allowsInlineMediaPlayback
           mediaPlaybackRequiresUserAction={false}
+          mediaCapturePermissionGrantType="grant"
+          overScrollMode="never"
+          bounces={false}
         />
       </View>
       {loading ? (
@@ -267,4 +377,31 @@ const styles = StyleSheet.create({
   },
   retryBtnText: { color: "#fff", fontWeight: "600", fontSize: 15 },
   secondaryBtnText: { color: "#0a0a0a" },
+  updateBanner: {
+    backgroundColor: "#ecfdf5",
+    borderBottomWidth: 1,
+    borderBottomColor: "#a7f3d0",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    zIndex: 30,
+  },
+  updateTitle: { fontSize: 14, fontWeight: "700", color: "#065f46", textAlign: "right" },
+  updateBody: {
+    fontSize: 12,
+    lineHeight: 18,
+    color: "#047857",
+    marginTop: 4,
+    marginBottom: 8,
+    textAlign: "right",
+  },
+  updateBtn: {
+    alignSelf: "flex-start",
+    backgroundColor: "#059669",
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginBottom: 6,
+  },
+  updateBtnText: { color: "#fff", fontWeight: "600", fontSize: 13 },
+  updateDismiss: { fontSize: 12, color: "#047857", textAlign: "right" },
 });

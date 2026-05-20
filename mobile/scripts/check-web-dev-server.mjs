@@ -20,47 +20,23 @@ function readWebAppUrlFromEnvFile() {
   return raw.replace(/^["']|["']$/g, "").trim();
 }
 
-const webUrl = readWebAppUrlFromEnvFile();
-if (!webUrl) {
-  console.warn(
-    "[retweet-mobile] تحذير: EXPO_PUBLIC_WEB_APP_URL غير مضبوط في ‎.env‎ — Expo سيعمل لكن WebView لن يحمّل الويب حتى تضبط العنوان.",
+function probe(hostname, port, path, onOk, onFail) {
+  const req = http.request(
+    { hostname, port, path, method: "HEAD", timeout: 3500 },
+    res => {
+      res.resume();
+      onOk();
+    },
   );
-  process.exit(0);
+  req.on("timeout", () => {
+    req.destroy();
+    onFail();
+  });
+  req.on("error", onFail);
+  req.end();
 }
 
-let u;
-try {
-  u = new URL(webUrl);
-} catch {
-  console.error("[retweet-mobile] EXPO_PUBLIC_WEB_APP_URL في ‎.env‎ ليس رابطاً صالحاً:", webUrl);
-  process.exit(1);
-}
-
-const opts = {
-  hostname: u.hostname,
-  port: u.port || (u.protocol === "https:" ? 443 : 80),
-  path: u.pathname || "/",
-  method: "HEAD",
-  timeout: 3500,
-};
-
-const req = http.request(opts, res => {
-  res.resume();
-  process.exit(0);
-});
-
-req.on("timeout", () => {
-  req.destroy();
-  printFail();
-  process.exit(1);
-});
-
-req.on("error", () => {
-  printFail();
-  process.exit(1);
-});
-
-function printFail() {
+function printFail(webUrl) {
   console.error(`
 [retweet-mobile] لا يوجد استجابة من خادم الويب: ${webUrl}
 
@@ -69,8 +45,8 @@ function printFail() {
        npm run dev:lan
      حتى يستمع Vite على المنفذ ‎3077‎ وعلى واجهة الشبكة (LAN).
 
-  2) إذا غيّر الراوتر عنوان جهازك، حدّث ‎EXPO_PUBLIC_WEB_APP_URL‎ في ‎mobile/.env‎
-     (نفس عنوان «Network» الذي يطبعه Vite).
+  2) إذا غيّر الراوتر عنوان جهازك، احذف قيمة ‎EXPO_PUBLIC_WEB_APP_URL‎ من ‎mobile/.env‎
+     ليستخدم التطبيق الاكتشاف التلقائي، أو حدّثها لتطابق عنوان «Network» من Vite.
 
   3) جدار حماية ويندوز (كمسؤول): من مجلد ‎mobile‎ شغّل ‎npm run open:dev-firewall‎
      أو اسمح لـ Node.js بالشبكة الخاصة.
@@ -79,4 +55,43 @@ function printFail() {
 `);
 }
 
-req.end();
+const webUrl = readWebAppUrlFromEnvFile();
+if (!webUrl) {
+  console.warn(
+    "[retweet-mobile] EXPO_PUBLIC_WEB_APP_URL غير مضبوط — سيستنتج التطبيق عنوان Vite من عنوان Expo (Metro) على الهاتف. تأكد أن ‎npm run dev:lan‎ يعمل على المنفذ ‎3077‎.",
+  );
+  probe(
+    "127.0.0.1",
+    3077,
+    "/",
+    () => process.exit(0),
+    () => {
+      console.warn(
+        "[retweet-mobile] لا يوجد استجابة من ‎127.0.0.1:3077‎ — شغّل من جذر المشروع: npm run dev:lan",
+      );
+      process.exit(0);
+    },
+  );
+} else {
+  let u;
+  try {
+    u = new URL(webUrl);
+  } catch {
+    console.error("[retweet-mobile] EXPO_PUBLIC_WEB_APP_URL في ‎.env‎ ليس رابطاً صالحاً:", webUrl);
+    process.exit(1);
+  }
+
+  const port = u.port || (u.protocol === "https:" ? 443 : 80);
+  const path = u.pathname || "/";
+
+  probe(u.hostname, port, path, () => process.exit(0), () => {
+    if (u.hostname === "localhost" || u.hostname === "127.0.0.1") {
+      printFail(webUrl);
+      process.exit(1);
+    }
+    probe("127.0.0.1", port, path, () => process.exit(0), () => {
+      printFail(webUrl);
+      process.exit(1);
+    });
+  });
+}

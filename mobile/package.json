@@ -8,17 +8,24 @@
     "start": "expo start --lan",
     "open:dev-firewall": "powershell -ExecutionPolicy Bypass -File ./scripts/windows-open-dev-ports.ps1",
     "start:tunnel": "expo start --tunnel",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
-    "web": "expo start --web"
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "web": "expo start --web",
+    "prebuild:ios": "node scripts/ios-prebuild.mjs",
+    "ios:device": "expo run:ios --device",
+    "ios:open-xcode": "open ios/Retweet.xcworkspace 2>/dev/null || open ios/*.xcworkspace 2>/dev/null || echo افتح ios/*.xcworkspace من Xcode يدوياً",
+    "eas:build:ios": "eas build --platform ios --profile preview",
+    "eas:build:ios:sim": "eas build --platform ios --profile simulator",
+    "eas:device": "eas device:create"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-navigation/native": "^7.1.8",
-    "@supabase/supabase-js": "^2.105.4",
     "expo": "~54.0.0",
+    "expo-av": "~16.0.8",
     "expo-constants": "~18.0.13",
+    "expo-file-system": "~19.0.22",
     "expo-font": "~14.0.11",
     "expo-linking": "~8.0.12",
     "expo-router": "~6.0.23",
@@ -38,7 +45,9 @@
   },
   "devDependencies": {
     "@babel/core": "^7.26.0",
+    "@expo/ngrok": "^4.1.3",
     "@types/react": "~19.1.10",
+    "expo-build-properties": "~1.0.10",
     "react-test-renderer": "19.1.0",
     "typescript": "~5.9.2"
   },

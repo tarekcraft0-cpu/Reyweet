@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useApp, userById, visibleStoryUserIds } from "@/lib/store";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useApp, userById, userHasVisibleStories, visibleStoryFriendsUserIds } from "@/lib/store";
 import { notifyGuestActionBlocked } from "@/lib/guestBlocked";
+import { stashPendingStoryFile } from "@/lib/storyMedia";
 import { useT } from "@/lib/i18n";
 import { Avatar } from "../Avatar";
 import { PostCard } from "../PostCard";
@@ -8,12 +9,25 @@ import { PostDetail } from "../PostDetail";
 import { StoryViewer } from "../StoryViewer";
 import { ShareSheet } from "../ShareSheet";
 import type { Post, ProfileReturnContext } from "@/lib/types";
-import { X } from "lucide-react";
+import { X, MoreHorizontal } from "lucide-react";
+import { CommentOptionsMenu } from "../PostOptionsMenu";
 
-interface Props { onOpenProfile: (id: string, ctx?: ProfileReturnContext) => void; onOpenChat: (chatId: string) => void; }
+interface Props {
+  onOpenProfile: (id: string, ctx?: ProfileReturnContext) => void;
+  onOpenChat: (chatId: string) => void;
+  /** يُمرَّر من App بعد الرجوع من بروفايل فتح منشور/تعليقات */
+  restoreFromProfileContext?: ProfileReturnContext | null;
+  onConsumedRestoreFromProfile?: () => void;
+}
 
-export function HomeScreen({ onOpenProfile, onOpenChat }: Props) {
+export function HomeScreen({
+  onOpenProfile,
+  onOpenChat,
+  restoreFromProfileContext = null,
+  onConsumedRestoreFromProfile,
+}: Props) {
   const { state, currentUser, addComment, isGuest } = useApp();
+  const [sheetCommentMenuId, setSheetCommentMenuId] = useState<string | null>(null);
   const t = useT();
   const [shareTarget, setShareTarget] = useState<Post | null>(null);
   const [storyUserId, setStoryUserId] = useState<string | null>(null);
@@ -40,26 +54,24 @@ export function HomeScreen({ onOpenProfile, onOpenChat }: Props) {
     return () => window.removeEventListener("retweet-open-story", handler);
   }, []);
   
-  useEffect(() => {
-    const handler = (e: Event) => {
-      const d = (e as CustomEvent<ProfileReturnContext>).detail;
-      if (!d || d.tab !== "home") return;
-      const p = state.posts.find(x => x.id === d.postId);
-      if (!p) return;
-      const surface = d.homeSurface ?? "post_detail_full";
-      if (surface === "feed_comments_sheet") {
-        setCommentsSheetPostId(d.postId);
-        setOpenPost(null);
-        setFocusCommentsOnOpen(false);
-      } else {
-        setCommentsSheetPostId(null);
-        setFocusCommentsOnOpen(!!d.commentsOpen);
-        setOpenPost(p);
-      }
-    };
-    window.addEventListener("retweet-restore-post", handler);
-    return () => window.removeEventListener("retweet-restore-post", handler);
-  }, [state.posts]);
+  useLayoutEffect(() => {
+    if (!restoreFromProfileContext || restoreFromProfileContext.tab !== "home") return;
+    const d = restoreFromProfileContext;
+    onConsumedRestoreFromProfile?.();
+    if (!d.postId || !d.homeSurface) return;
+    const p = state.posts.find(x => x.id === d.postId);
+    if (!p) return;
+    const surface = d.homeSurface;
+    if (surface === "feed_comments_sheet") {
+      setCommentsSheetPostId(d.postId);
+      setOpenPost(null);
+      setFocusCommentsOnOpen(false);
+    } else {
+      setCommentsSheetPostId(null);
+      setFocusCommentsOnOpen(!!d.commentsOpen);
+      setOpenPost(p);
+    }
+  }, [restoreFromProfileContext, state.posts, onConsumedRestoreFromProfile]);
 
   useEffect(() => {
     if (!commentsSheetPostId) setSheetCommentDraft("");
@@ -80,15 +92,13 @@ export function HomeScreen({ onOpenProfile, onOpenChat }: Props) {
     input.accept = 'image/*,video/*';
     input.onchange = (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          const dataUrl = e.target?.result as string;
-          // Navigate to create screen with story type and media
-          window.location.hash = '#create?type=story&media=' + encodeURIComponent(dataUrl);
-        };
-        reader.readAsDataURL(file);
-      }
+      if (!file) return;
+      stashPendingStoryFile(file);
+      window.dispatchEvent(
+        new CustomEvent("retweet-open-create", {
+          detail: { type: "story" },
+        }),
+      );
     };
     input.click();
   };
@@ -116,26 +126,43 @@ export function HomeScreen({ onOpenProfile, onOpenChat }: Props) {
     };
   }, []);
 
-  // story users - نفس ترتيب الشريط
-  const storyUsers = useMemo(
-    () => visibleStoryUserIds(state, me.id).filter(id => id !== me.id),
+  const hasMyStories = useMemo(
+    () => userHasVisibleStories(state, me.id, me.id),
     [state.stories, state.users, me.id, feedTick],
   );
 
-  const feed = useMemo(
-    () =>
-      state.posts
-        .filter(p => {
-          const author = userById(state, p.userId);
-          if (!author) return false;
-          if (author.blocked.includes(me.id)) return false;
-          if (me.blocked.includes(author.id)) return false;
-          if (author.isPrivate && p.userId !== me.id && !author.followers.includes(me.id)) return false;
-          return true;
-        })
-        .sort((a, b) => b.createdAt - a.createdAt),
-    [state.posts, state.users, me.id, me.blocked, me.following, feedTick],
+  const storyUsers = useMemo(
+    () => visibleStoryFriendsUserIds(state, me.id),
+    [state.stories, state.users, me.id, me.following, feedTick],
   );
+
+  const openMyStoryOrCreate = () => {
+    if (isGuest) {
+      notifyGuestActionBlocked();
+      return;
+    }
+    if (hasMyStories) setStoryUserId(me.id);
+    else handleStoryCreate();
+  };
+
+  const feed = useMemo(() => {
+    const seen = new Set<string>();
+    return (state.posts ?? [])
+      .filter(p => {
+        if (!p?.id || seen.has(p.id)) return false;
+        seen.add(p.id);
+        const author = userById(state, p.userId);
+        if (!author) return true;
+        const authorBlocked = author.blocked ?? [];
+        const myBlocked = me.blocked ?? [];
+        const authorFollowers = author.followers ?? [];
+        if (authorBlocked.includes(me.id)) return false;
+        if (myBlocked.includes(author.id)) return false;
+        if (author.isPrivate && p.userId !== me.id && !authorFollowers.includes(me.id)) return false;
+        return true;
+      })
+      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+  }, [state.posts, state.users, me.id, me.blocked, feedTick]);
 
   if (openPost)
     return (
@@ -153,7 +180,7 @@ export function HomeScreen({ onOpenProfile, onOpenChat }: Props) {
     );
 
   return (
-    <div className="pb-2">
+    <div className="flex min-h-0 flex-1 flex-col pb-2">
       {pullHint && (
         <div className="sticky top-0 z-20 mx-3 mt-1 rounded-full bg-primary/90 text-primary-foreground text-center text-xs py-2 px-3 shadow-md">
           تم التحديث — أحدث المنشورات والستوريات
@@ -162,7 +189,7 @@ export function HomeScreen({ onOpenProfile, onOpenChat }: Props) {
       <div className="flex gap-3 overflow-x-auto no-scrollbar px-4 py-3 border-b border-border">
         <button
           type="button"
-          onClick={handleStoryCreate}
+          onClick={openMyStoryOrCreate}
           aria-disabled={isGuest}
           className={
             "flex flex-col items-center gap-1 shrink-0 touch-manipulation " +
@@ -170,12 +197,30 @@ export function HomeScreen({ onOpenProfile, onOpenChat }: Props) {
           }
         >
           <div className="relative">
-            <Avatar name={me.username} src={me.avatar} size={62} ring={state.stories.some(s => s.userId === me.id)} />
-            <div className="absolute -bottom-1 -end-1 bg-primary text-primary-foreground rounded-full w-5 h-5 flex items-center justify-center text-xs">+</div>
+            <Avatar name={me.username} src={me.avatar} size={62} ring={hasMyStories} />
+            <span
+              role="button"
+              tabIndex={0}
+              aria-label="إنشاء ستوري"
+              onClick={e => {
+                e.stopPropagation();
+                handleStoryCreate();
+              }}
+              onKeyDown={e => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleStoryCreate();
+                }
+              }}
+              className="absolute -bottom-1 -end-1 z-10 flex h-5 w-5 cursor-pointer items-center justify-center rounded-full bg-primary text-xs text-primary-foreground"
+            >
+              +
+            </span>
           </div>
           <span className="text-xs">{t("yourStory")}</span>
         </button>
-        {storyUsers.filter(id => id !== me.id).map(id => {
+        {storyUsers.map(id => {
           const u = userById(state, id); if (!u) return null;
           return (
             <button key={id} onClick={() => setStoryUserId(id)} className="flex flex-col items-center gap-1 shrink-0">
@@ -192,6 +237,7 @@ export function HomeScreen({ onOpenProfile, onOpenChat }: Props) {
           post={p}
           onShare={setShareTarget}
           onOpenProfile={onOpenProfile}
+          profileReturnTab="home"
           onOpenChat={onOpenChat}
           onOpen={() => {
             setFocusCommentsOnOpen(false);
@@ -208,20 +254,21 @@ export function HomeScreen({ onOpenProfile, onOpenChat }: Props) {
       {commentsSheetPost && (
         <div className="fixed inset-0 z-[60] bg-black/50 flex items-end" onClick={() => setCommentsSheetPostId(null)}>
           <div
-            className="bg-background text-foreground w-full max-w-md mx-auto rounded-t-3xl max-h-[70vh] flex flex-col shadow-2xl border-t border-border"
+            className="mx-auto flex w-full max-w-md flex-col rounded-t-3xl border-t border-border bg-background text-foreground shadow-2xl"
+            style={{ height: "min(72vh, 640px)", maxHeight: "72vh" }}
             onClick={e => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between p-3 border-b border-border shrink-0">
-              <span className="font-semibold text-sm">التعليقات</span>
+            <div className="flex shrink-0 items-center justify-between border-b border-border p-3">
+              <span className="text-sm font-semibold">التعليقات ({commentsSheetPost.comments.length})</span>
               <button type="button" onClick={() => setCommentsSheetPostId(null)} aria-label="إغلاق">
                 <X size={22} />
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto p-3 space-y-2 min-h-0">
+            <div className="min-h-0 flex-1 overflow-y-auto p-3 space-y-2">
               {commentsSheetPost.comments.map(c => {
                 const cu = userById(state, c.userId);
                 return (
-                  <div key={c.id} className="flex gap-2 text-sm">
+                  <div key={c.id} className="relative flex gap-2 text-sm">
                     <button
                       type="button"
                       className="shrink-0"
@@ -255,6 +302,26 @@ export function HomeScreen({ onOpenProfile, onOpenChat }: Props) {
                       </button>{" "}
                       <span>{c.text}</span>
                     </div>
+                    {currentUser && c.userId === currentUser.id && (
+                      <div className="relative shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setSheetCommentMenuId(sheetCommentMenuId === c.id ? null : c.id)}
+                          className="rounded-full p-1 text-muted-foreground hover:bg-secondary"
+                          aria-label="خيارات التعليق"
+                        >
+                          <MoreHorizontal size={18} />
+                        </button>
+                        {sheetCommentMenuId === c.id && (
+                          <CommentOptionsMenu
+                            postId={commentsSheetPost.id}
+                            commentId={c.id}
+                            authorId={c.userId}
+                            onClose={() => setSheetCommentMenuId(null)}
+                          />
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}

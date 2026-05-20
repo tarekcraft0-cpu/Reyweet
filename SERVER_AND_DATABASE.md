@@ -1,88 +1,62 @@
-# خادم Retweet + قاعدة بيانات PostgreSQL
+# خادم Retweet المحلي + قاعدة البيانات على القرص D
 
-تم إعداد **خادم HTTP** (Hono) مع **Prisma ORM** ومخطط **علائقي** يغطي المستخدمين، المتابعة، المنشورات، التعليقات، الستوريات، المحادثات، الرسائل، الإشعارات، الملصقات، والنوتات الإعلامية.  
-العميل الحالي (`src/lib/store.tsx`) ما زال يعمل **محلياً**؛ ربط الواجهة بالـ API يتم في مرحلة لاحقة عبر `VITE_API_URL` وطبقة مزامنة.
+## التشغيل السريع
 
-## المتطلبات
+```bash
+cd backend
+npm install
+npm run dev
+```
 
-- Node.js 20+
-- Docker (لتشغيل PostgreSQL محلياً) — أو أي Postgres وتوفر `DATABASE_URL`
+الخادم يعمل على **http://localhost:3000** ويخزّن البيانات في **`D:\RetweetSocial`** (قابل للتغيير عبر `DATA_ROOT` في `backend/.env`).
 
-## 1) تشغيل قاعدة البيانات
+## الواجهة (Vite)
 
 من جذر المشروع:
 
 ```bash
-docker compose up -d
-```
-
-ينشئ مستخدم قاعدة البيانات `retweet` وكلمة المرور `retweet` وقاعدة `retweet` على المنفذ `5432` (انظر `docker-compose.yml`).
-
-## 2) ملف البيئة
-
-انسخ `.env.example` إلى `.env` وعدّل القيم إن لزم:
-
-- `DATABASE_URL` — يجب أن يطابق Postgres (مثال جاهز للـ Docker في الملف).
-- `JWT_SECRET` — **إلزامي في الإنتاج**: سلسلة عشوائية طويلة (16 حرفاً على الأقل).
-- `PORT` — منفذ الخادم (افتراضي `8788`).
-- `BCRYPT_ROUNDS` — اختياري (10–14).
-
-## 3) إنشاء الجداول وتوليد Prisma Client
-
-```bash
 npm install
-npm run db:generate
-npm run db:push
+npm run dev
 ```
 
-- `db:push` يزامن المخطط مع قاعدة البيانات دون ملفات ترحيل (مناسب للتطوير).  
-- للإنتاج يُفضّل لاحقاً: `npm run db:migrate` مع ترحيلات Prisma.
+تأكد من `.env`:
 
-## 4) بيانات تجريبية (اختياري)
-
-```bash
-npm run db:seed
+```
+VITE_API_URL=http://localhost:3000
 ```
 
-ينشئ مستخدمين تجريبيين:
+## الهاتف (نفس شبكة الـ Wi‑Fi)
 
-- `sara_demo` / البريد `sara@demo.retweet`
-- `omar_demo` / البريد `omar@demo.retweet`  
-كلمة المرور لكليهما: **`12345678`**
+1. `ipconfig` → عنوان IPv4 (مثل `192.168.100.166`)
+2. `backend/.env`: `PUBLIC_BASE_URL=http://<IPv4>:3000`
+3. `.env`: `VITE_API_URL_MOBILE=http://<IPv4>:3000`
+4. `mobile/app.json` → `expo.extra.apiUrl` بنفس العنوان
 
-## 5) تشغيل الخادم
+## هيكل التخزين على D
 
-```bash
-npm run api:dev
-```
+| المسار | المحتوى |
+|--------|---------|
+| `D:\RetweetSocial\db\users.json` | الحسابات (إيميل، يوزر، كلمة مرور مشفّرة) |
+| `D:\RetweetSocial\db\posts.json` | المنشورات |
+| `D:\RetweetSocial\db\likes.json` | الإعجابات |
+| `D:\RetweetSocial\db\follows.json` | المتابعات |
+| `D:\RetweetSocial\db\messages.json` | رسائل الدردشة (مرسل، مستقبل، نص، وقت) |
+| `D:\RetweetSocial\snapshots\` | لقطة حالة التطبيق الكاملة لكل مستخدم |
+| `D:\RetweetSocial\media\` | صور وفيديوهات مضغوطة (WebP / H.264) |
 
-الخادم يستمع على **جميع الواجهات** (`0.0.0.0`) ويطبع عناوين `http://<IP>:8788` عند التشغيل. استخدم أحدها في `.env` للعميل (`VITE_API_URL` / `VITE_API_URL_MOBILE`) وفي تطبيق Expo (`EXPO_PUBLIC_API_URL`).
+## ضغط الميديا
 
-### نقاط النهاية
+- الصور: **sharp** → WebP بعرض أقصى 1920px
+- الفيديو: **ffmpeg** → MP4 H.264 (يتطلب تثبيت ffmpeg على PATH)
+- عند حفظ الحالة (`PUT /v1/app-state`) تُستبدل روابط `data:` تلقائياً بملفات على القرص D
+- رفع مباشر: `POST /v1/media/upload` (حقل `file`)
 
-| الطريقة | المسار | الوصف |
-|--------|--------|--------|
-| GET | `/health` | فحص الحياة |
-| POST | `/auth/register` | جسم JSON: `{ "email", "username", "password" }` — يعيد `{ token, user }` |
-| POST | `/auth/login` | جسم JSON: `{ "identifier", "password" }` — `identifier` يمكن أن يكون إيميلاً أو يوزراً |
-| GET | `/v1/app-state` | رأس `Authorization: Bearer <token>` — يعيد `{ state }` بصيغة قريبة من `AppState` في العميل (كلمات مرور المستخدمين الفارغة دائماً في الاستجابة) |
+## رسائل الدردشة
 
-### CORS
+- `POST /v1/messages` — حفظ فوري عند الإرسال (`chatId`, `receiverId`, `type`, `content`, `createdAt`, …)
+- `GET /v1/chats/:chatId/messages` — جلب رسائل محادثة من `messages.json`
+- عند `GET /v1/app-state` تُدمج الرسائل المحفوظة في كل محادثة تلقائياً
 
-مفعّل لـ `localhost` و`capacitor://` ولعناوين LAN في وضع التطوير؛ راجع `api/server.ts` عند النشر.
+## متطلبات ffmpeg (للفيديو)
 
-## 6) الخطوة التالية (ربط العميل)
-
-1. إضافة `VITE_API_URL=http://<IPv4-الكمبيوتر>:8788` و`VITE_API_URL_MOBILE` بنفس القيمة في `.env` للواجهة (انظر `.env.example`).
-2. بعد تسجيل الدخول عبر الخادم، حفظ `token` (مثلاً `localStorage`) واستدعاء `GET /v1/app-state` لاستبدال الحالة المحلية أو دمجها مع `store`.
-3. نقل عمليات الكتابة (منشور، رسالة، متابعة…) إلى مسارات REST إضافية تدريجياً.
-
-## ملاحظات أمان
-
-- كلمات المرور تُخزّن بـ **bcrypt** على الخادم فقط.
-- **JWT** للجلسات؛ لا ترسل `JWT_SECRET` للعميل.
-- في الإنتاج: HTTPS، تقييد معدل الطلبات، ومراجعة سياسات CORS.
-
-## Supabase (اختياري — قديم)
-
-ما زال بإمكانك استخدام `VITE_SUPABASE_URL` و`VITE_SUPABASE_ANON_KEY` مع `supabase/schema.sql` لمزامنة JSON كما في `src/lib/cloud.ts` — هذا **منفصل** عن خادم Prisma الجديد ويمكن إيقافه عند اكتمال الانتقال للـ API.
+ثبّت [FFmpeg](https://ffmpeg.org/download.html) وأضفه إلى PATH، ثم أعد تشغيل الخادم.
