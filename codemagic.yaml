@@ -15,10 +15,8 @@ workflows:
       vars:
         MOBILE_DIR: mobile
         BUNDLE_ID: com.retweetmobile.app
-        # اختياري — عرّفها في Codemagic → Environment variables
-        EXPO_PUBLIC_API_URL: ""
-        EXPO_PUBLIC_WEB_APP_URL: ""
       # بدون ios_signing — لا توقيع رقمي في هذه الووركفلو
+      # EXPO_PUBLIC_API_URL / EXPO_PUBLIC_WEB_APP_URL — عرّفهما في Codemagic → Environment variables إن لزم
 
     scripts:
       - name: تثبيت تبعيات Node (mobile)
