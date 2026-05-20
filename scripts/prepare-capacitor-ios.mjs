@@ -62,28 +62,29 @@ if (apiUrl && fs.existsSync(indexPath)) {
   }
 }
 
-const capConfig = `import type { CapacitorConfig } from "@capacitor/cli";
-
-/** مُولَّد — scripts/prepare-capacitor-ios.mjs — لا تعدّل يدوياً */
-const config: CapacitorConfig = {
-  appId: "${appId}",
-  appName: "Retweet",
-  webDir: "spa-dist",
-  bundledWebRuntime: false,
-  server: {
-    url: "${webAppUrl}/",
-    cleartext: ${allowHttp},
-    androidScheme: "https",
-  },
-  ios: {
-    contentInset: "automatic",
-    allowsLinkPreview: false,
-  },
-};
-
-export default config;
-`;
-fs.writeFileSync(path.join(root, "capacitor.config.ts"), capConfig, "utf8");
+const serverUrl = `${webAppUrl.replace(/\/+$/, "")}/`;
+const capLines = [
+  'import type { CapacitorConfig } from "@capacitor/cli";',
+  "",
+  "const config: CapacitorConfig = {",
+  `  appId: ${JSON.stringify(appId)},`,
+  '  appName: "Retweet",',
+  '  webDir: "spa-dist",',
+  "  server: {",
+  `    url: ${JSON.stringify(serverUrl)},`,
+  `    cleartext: ${allowHttp ? "true" : "false"},`,
+  '    androidScheme: "https"',
+  "  },",
+  "  ios: {",
+  '    contentInset: "automatic",',
+  "    allowsLinkPreview: false",
+  "  }",
+  "};",
+  "",
+  "export default config;",
+  "",
+];
+fs.writeFileSync(path.join(root, "capacitor.config.ts"), capLines.join("\n"), "utf8");
 console.log("  ✓ capacitor.config.ts");
 
 const iosDir = path.join(root, "ios");
