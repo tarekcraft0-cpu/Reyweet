@@ -149,3 +149,44 @@ for (const rel of appCandidates) {
 if (apiUrl) {
   console.log(`prepare-vercel-static: API العام للواجهة → ${apiUrl}`);
 }
+
+/** لا نستخدم vercel.json الخاص بـ landing (outputDirectory: ".") — يكسر مسار /app/ */
+const siteVercel = {
+  $schema: "https://openapi.vercel.sh/vercel.json",
+  framework: null,
+  rewrites: [
+    { source: "/app", destination: "/app/index.html" },
+    { source: "/app/", destination: "/app/index.html" },
+    { source: "/app/:path((?!.*\\.).*)", destination: "/app/index.html" },
+    { source: "/downloads/:path*", destination: "/public/downloads/:path*" },
+  ],
+  headers: [
+    {
+      source: "/downloads/(.*\\.plist)",
+      headers: [{ key: "Content-Type", value: "application/xml; charset=utf-8" }],
+    },
+    {
+      source: "/downloads/(.*\\.ipa)",
+      headers: [
+        { key: "Content-Type", value: "application/octet-stream" },
+        { key: "Content-Disposition", value: 'attachment; filename="Retweet.ipa"' },
+      ],
+    },
+    {
+      source: "/downloads/(.*\\.apk)",
+      headers: [
+        { key: "Content-Type", value: "application/vnd.android.package-archive" },
+        { key: "Content-Disposition", value: 'attachment; filename="Retweet.apk"' },
+      ],
+    },
+    {
+      source: "/downloads/android-version.json",
+      headers: [
+        { key: "Content-Type", value: "application/json; charset=utf-8" },
+        { key: "Cache-Control", value: "no-store, max-age=0" },
+      ],
+    },
+  ],
+};
+writeFileSync(path.join(outDir, "vercel.json"), JSON.stringify(siteVercel, null, 2) + "\n", "utf8");
+console.log("prepare-vercel-static: ✓ _vercel_site/vercel.json (rewrites لـ /app/)");

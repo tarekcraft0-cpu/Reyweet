@@ -3,6 +3,7 @@
  * استخدم: npm run dev:all
  */
 import { spawn, execSync } from "node:child_process";
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -70,11 +71,25 @@ const spa = spawn(
   },
 );
 
+const urlsDoc = `Retweet — تشغيل محلي
+قاعدة البيانات: D:\\RetweetSocial
+API:            http://${lan}:3000/health
+الموقع (SPA):   http://${lan}:3080/app/
+محلي:           http://localhost:3080/app/
+Expo WebView:   http://${lan}:3077/app/  (npm run dev:lan في طرفية ثانية إن لزم)
+`;
+try {
+  fs.writeFileSync(path.join(root, "LOCAL_URLS.txt"), urlsDoc, "utf8");
+} catch {
+  /* ignore */
+}
+
 console.log(`
 ✓ قاعدة البيانات: D:\\RetweetSocial
 ✓ API:           http://${lan}:3000/health
-✓ التطبيق:       http://${lan}:3080/app/   (بروكسي تلقائي — لا حاجة لعنوان API يدوي)
-✓ بديل موحّد:     شغّل STATIC_SITE_DIR ثم http://${lan}:3000/app/
+✓ الموقع:        http://${lan}:3080/app/   (بروكسي API تلقائي)
+✓ موبايل LAN:    http://${lan}:3077/app/  (مع npm run dev:lan)
+✓ LOCAL_URLS.txt محدّث
 
 أوقف: Ctrl+C
 `);

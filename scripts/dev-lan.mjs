@@ -56,13 +56,33 @@ function pickLanIPv4() {
 }
 
 const lanHost = process.env.DEV_LAN_HOST?.trim() || pickLanIPv4();
-console.log(`[dev:lan] DEV_LAN_HOST=${lanHost} (HMR + Network URL for mobile/.env)`);
+console.log(`[dev:lan] DEV_LAN_HOST=${lanHost}`);
+console.log(`[dev:lan] SPA على http://${lanHost}:${PORT}/app/ — بروكسي API → :3000`);
 
 const viteBin = path.join(root, "node_modules", "vite", "bin", "vite.js");
-const child = spawn(process.execPath, [viteBin, "dev", "--host", "--port", String(PORT), "--strictPort"], {
-  cwd: root,
-  stdio: "inherit",
-  env: { ...process.env, DEV_LAN_HOST: lanHost },
-});
+const child = spawn(
+  process.execPath,
+  [
+    viteBin,
+    "dev",
+    "--config",
+    "vite.spa.config.ts",
+    "--host",
+    "0.0.0.0",
+    "--port",
+    String(PORT),
+    "--strictPort",
+  ],
+  {
+    cwd: root,
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      DEV_LAN_HOST: lanHost,
+      SPA_DEV_PORT: String(PORT),
+      VITE_API_URL: "",
+    },
+  },
+);
 
 child.on("exit", code => process.exit(code ?? 0));

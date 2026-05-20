@@ -20,7 +20,67 @@ function trimUrl(raw: string | undefined): string {
 export function useViteDevProxy(): boolean {
   if (typeof window === "undefined") return false;
   const port = window.location.port;
-  return port === "3080" || port === "5173";
+  return port === "3080" || port === "3077" || port === "5173";
+}
+
+/** عند Vite (:3077 / :3080) نمرّر API عبر نفس الأصل (بروكسي → :3000). */
+export function viteDevWebOrigin(): string {
+  if (typeof window === "undefined") return "";
+  if (!useViteDevProxy() || !onAppPath()) return "";
+  return window.location.origin.replace(/\/$/, "");
+}
+
+/** عنوان API الذي يستعمله WebView — نفس منفذ الواجهة في التطوير المحلي. */
+export function resolveApiUrlForWebView(webAppUrl: string, fallbackApiUrl: string): string {
+  const fb = trimUrl(fallbackApiUrl);
+  try {
+    const u = new URL(trimUrl(webAppUrl) || "http://local/");
+    if (u.port === "3077" || u.port === "3080") return u.origin.replace(/\/$/, "");
+  } catch {
+    /* ignore */
+  }
+  const live = viteDevWebOrigin();
+  if (live) return live;
+  return fb;
+}
+
+/** مسار فحص صحة الخادم — يفضّل /health عبر بروكسي Vite عند التطوير. */
+export function resolveHealthCheckUrl(): string {
+  if (typeof window === "undefined") return "/health";
+  const injected = trimUrl(
+    (window as Window & { __RETWEET_API_URL__?: string }).__RETWEET_API_URL__,
+  );
+  const peek = peekApiBaseUrl();
+  const viteOrigin = viteDevWebOrigin();
+  if (viteOrigin) return "/health";
+  if (injected) {
+    try {
+      const inj = new URL(injected);
+      const here = new URL(window.location.href);
+      if (inj.port === "3000" && (here.port === "3077" || here.port === "3080")) return "/health";
+    } catch {
+      /* ignore */
+    }
+    return `${injected.replace(/\/$/, "")}/health`;
+  }
+  if (peek) return `${peek.replace(/\/$/, "")}/health`;
+  return "/health";
+}
+
+export async function probeHealth(): Promise<boolean> {
+  const urls = [resolveHealthCheckUrl()];
+  if (typeof window !== "undefined" && isLanOrLocalHostname(window.location.hostname)) {
+    const h = window.location.hostname;
+    urls.push(`http://${h}:3000/health`, "http://127.0.0.1:3000/health");
+  }
+  const seen = new Set<string>();
+  for (const path of urls) {
+    const key = path;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    if (await probeUrl(path.replace(/\/health$/, "").replace(/\/$/, "") || "")) return true;
+  }
+  return false;
 }
 
 function onAppPath(): boolean {
@@ -47,6 +107,13 @@ export function clearStaleApiConfig(): void {
     const u = trimUrl(j.apiUrl);
     if (!u) return;
     if (isPublicAppHost() && isPrivateApiUrl(u)) {
+      localStorage.removeItem(API_RUNTIME_KEY);
+      return;
+    }
+    if (
+      isLanOrLocalHostname(window.location.hostname) &&
+      (/\.trycloudflare\.com/i.test(u) || u.includes("vercel.app"))
+    ) {
       localStorage.removeItem(API_RUNTIME_KEY);
       return;
     }
@@ -141,7 +208,15 @@ export async function ensureApiRuntimeConfig(): Promise<string> {
 
   if (typeof window !== "undefined") {
     const injected = (window as Window & { __RETWEET_API_URL__?: string }).__RETWEET_API_URL__;
-    if (injected?.startsWith("http")) {
+    let skipInjected = false;
+    if (injected?.startsWith("http") && useViteDevProxy() && onAppPath()) {
+      try {
+        if (new URL(injected).port === "3000") skipInjected = true;
+      } catch {
+        /* ignore */
+      }
+    }
+    if (injected?.startsWith("http") && !skipInjected) {
       const u = injected.replace(/\/$/, "");
       if (!(isPublicAppHost() && isPrivateApiUrl(u)) && (await probeUrl(u))) {
         resolvedMode = "absolute";

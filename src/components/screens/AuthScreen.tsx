@@ -9,7 +9,7 @@ import {
 import { validateOptionalPhone } from "@/lib/phoneUtils";
 import logo from "@/assets/logo.png";
 import { apiBackendEnabled, apiRequestSignupVerification } from "@/lib/apiBackend";
-import { clearStaleApiConfig, ensureApiRuntimeConfig, peekApiBaseUrl } from "@/lib/apiConfig";
+import { clearStaleApiConfig, ensureApiRuntimeConfig, probeHealth } from "@/lib/apiConfig";
 
 type Mode = "login" | "signup" | "forgot" | "reset";
 type FormState = {
@@ -118,18 +118,7 @@ export function AuthScreen(props?: { onAuthSuccess?: () => void; /** false دا�
     clearStaleApiConfig();
     void (async () => {
       await ensureApiRuntimeConfig();
-      const base = peekApiBaseUrl();
-      const healthPath = base ? `${base.replace(/\/$/, "")}/health` : "/health";
-      try {
-        const res = await fetch(healthPath, { cache: "no-store" });
-        const j = (await res.json().catch(() => null)) as {
-          ok?: boolean;
-          dbOk?: boolean;
-        } | null;
-        setApiReady(res.ok && j?.ok === true && j?.dbOk !== false);
-      } catch {
-        setApiReady(false);
-      }
+      setApiReady(await probeHealth());
     })();
   }, []);
 

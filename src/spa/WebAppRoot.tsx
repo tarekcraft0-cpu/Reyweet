@@ -5,7 +5,7 @@ import { AppProvider, readPersistedAppState } from "@/lib/store";
 import type { AppState } from "@/lib/types";
 import { App } from "@/components/App";
 import { logAuthRoute } from "@/lib/authRouteDebug";
-import { clearStaleApiConfig, peekApiBaseUrl } from "@/lib/apiConfig";
+import { clearStaleApiConfig, probeHealth } from "@/lib/apiConfig";
 
 /** غلاف /app — نسخة الويب الكاملة مرتبطة بـ Retweet API وقاعدة البيانات على القرص D */
 export function WebAppRoot() {
@@ -45,23 +45,7 @@ export function WebAppRoot() {
           setApiMissing(true);
           return;
         }
-        const w = window as Window & { __RETWEET_API_URL__?: string };
-        const base = (w.__RETWEET_API_URL__ || peekApiBaseUrl()).replace(/\/$/, "");
-        const healthPath = base ? `${base}/health` : "/health";
-        try {
-          const ctl = new AbortController();
-          const healthTimer = window.setTimeout(() => ctl.abort(), 12_000);
-          const res = await fetch(healthPath, { cache: "no-store", signal: ctl.signal });
-          window.clearTimeout(healthTimer);
-          const j = (await res.json().catch(() => null)) as {
-            ok?: boolean;
-            dbOk?: boolean;
-          } | null;
-          if (!res.ok || j?.ok !== true || j?.dbOk === false) {
-            setApiMissing(true);
-            return;
-          }
-        } catch {
+        if (!(await probeHealth())) {
           setApiMissing(true);
           return;
         }
@@ -99,9 +83,13 @@ export function WebAppRoot() {
       <div className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-3 bg-background px-6 text-center text-sm">
         <p className="font-semibold text-foreground">التطبيق غير مربوط بالخادم</p>
         <p className="text-muted-foreground leading-relaxed">
-          الخادم غير متاح حالياً. تأكد أن جهازك يشغّل{" "}
-          <span className="font-mono text-xs">npm run api:tunnel</span>
-          {" "}وأن رابط النفق محدّث على الموقع. أعد فتح التطبيق بعد دقيقة.
+          الخادم غير متاح. على الكمبيوتر (نفس شبكة الـ Wi‑Fi) شغّل من جذر المشروع:{" "}
+          <span className="font-mono text-xs">npm run dev:all</span>
+          {" "}ثم افتح{" "}
+          <span className="font-mono text-xs">http://localhost:3080/app/</span>
+          {" "}أو عنوان LAN من الطرفية. للآيفون مع منفذ 3077 أضف{" "}
+          <span className="font-mono text-xs">npm run dev:lan</span>
+          {" "}في طرفية ثانية. امسح بيانات الموقع إن بقي خطأ قديم (نفق Cloudflare).
         </p>
         <a href="/" className="text-primary underline">
           العودة للصفحة الرئيسية

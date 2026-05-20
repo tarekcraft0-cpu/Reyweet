@@ -1,11 +1,13 @@
-# Retweet: موبايل + قاعدة البيانات المحلية
+# تطبيق الجوال وقاعدة البيانات
 
-راجع **`SERVER_AND_DATABASE.md`** للتفاصيل الكاملة.
+**تطبيق iOS:** راجع **[IOS_APP.md](./IOS_APP.md)** — Capacitor (بدون Expo)، نفس [reyweet.vercel.app/app/](https://reyweet.vercel.app/app/).
 
-## ملخص
+**قاعدة البيانات:** `D:\RetweetSocial` على جهازك.
 
-1. شغّل الخادم: `npm run backend:dev` (من جذر المشروع) أو `npm run dev` داخل `backend/`
-2. شغّل الواجهة: `npm run dev`
-3. على الهاتف: عيّن `expo.extra.apiUrl` في `mobile/app.json` إلى `http://<IPv4-الكمبيوتر>:3000`
+**تشغيل الخادم + النفق للإنترنت:**
 
-لا حاجة لـ Docker أو Supabase أو PostgreSQL.
+```bash
+npm run stack:reyweet
+```
+
+**بناء IPA على Codemagic:** workflow `retweet-ios-capacitor-ipa`

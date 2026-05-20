@@ -25,9 +25,13 @@ mobile/.env
 # Vercel static bundle (generated on deploy)
 _vercel_site
 
+# Capacitor — يُولَّد على Codemagic/Mac (npm run ios:prepare)
+/ios/
+
 # App binaries for landing (place files locally, do not commit large builds)
 landing/public/downloads/*.ipa
 landing/public/downloads/*.apk
+build/ios/
 
 # Wrangler / Cloudflare
 .wrangler/

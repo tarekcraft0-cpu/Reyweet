@@ -54,17 +54,7 @@ function patchEnvFile(envPath) {
   setLine("VITE_API_URL_MOBILE", apiUrl);
   setLine("LAN_API_URL", apiUrl);
   fs.writeFileSync(envPath, text, "utf8");
-  console.log(`  ✓ ${path.relative(root, envPath)} (mobile فقط — الويب عبر بروكسي)`);
-}
-
-function patchMobileAppJson() {
-  const p = path.join(root, "mobile/app.json");
-  const j = JSON.parse(fs.readFileSync(p, "utf8"));
-  j.expo = j.expo || {};
-  j.expo.extra = j.expo.extra || {};
-  j.expo.extra.apiUrl = apiUrl;
-  fs.writeFileSync(p, JSON.stringify(j, null, 2) + "\n", "utf8");
-  console.log(`  ✓ mobile/app.json (expo.extra.apiUrl)`);
+  console.log(`  ✓ ${path.relative(root, envPath)}`);
 }
 
 console.log(`\nRetweet API → ${apiUrl}\n`);
@@ -91,7 +81,6 @@ if (fs.existsSync(appConfigPath)) {
   }
 }
 writeJson(appConfigPath, { ...appConfig, apiUrl: "", siteUrl: `http://${host}:3080` });
-patchMobileAppJson();
 
 console.log(`
 التالي:

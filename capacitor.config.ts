@@ -1,16 +1,20 @@
 import type { CapacitorConfig } from "@capacitor/cli";
 
+/** مُولَّد — شغّل: npm run ios:prepare */
 const config: CapacitorConfig = {
-  appId: "com.retweet.app",
+  appId: "com.retweetmobile.app",
   appName: "Retweet",
-  webDir: "dist",
+  webDir: "spa-dist",
   bundledWebRuntime: false,
   server: {
+    url: "https://reyweet.vercel.app/app/",
+    cleartext: false,
     androidScheme: "https",
-    /** لـ `http://` على الشبكة المحلية أثناء التطوير (عنوان API على الهاتف) — عطّله في الإنتاج واستخدم HTTPS */
-    cleartext: true,
+  },
+  ios: {
+    contentInset: "automatic",
+    allowsLinkPreview: false,
   },
 };
 
 export default config;
-

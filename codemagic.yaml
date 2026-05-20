@@ -1,10 +1,13 @@
-# Codemagic — Retweet (Expo / React Native) — iOS بدون توقيع رقمي
-# المخرجات: ملف .ipa غير موقّع في Artifacts (للتوقيع لاحقاً عبر Sideloadly / Xcode)
-# Docs: https://docs.codemagic.io/yaml-quick-start/building-a-react-native-app/
+# Codemagic — Retweet iOS (Capacitor) — نفس https://reyweet.vercel.app/app/
+# بدون Expo. مخرجات: Retweet-unsigned.ipa للتوقيع اليدوي (شهادة Apple / أدوات صينية)
+#
+# عرّف في Codemagic → Environment variables (اختياري):
+#   RETWEET_PUBLIC_API_URL  — رابط نفق API (مثل https://xxx.trycloudflare.com)
+#   CAPACITOR_WEB_APP_URL   — افتراضي https://reyweet.vercel.app/app
 
 workflows:
-  retweet-ios-unsigned-ipa:
-    name: Retweet iOS — Unsigned IPA
+  retweet-ios-capacitor-ipa:
+    name: Retweet iOS — Capacitor IPA
     max_build_duration: 120
     instance_type: mac_mini_m2
 
@@ -13,42 +16,44 @@ workflows:
       xcode: latest
       cocoapods: default
       vars:
-        MOBILE_DIR: mobile
         BUNDLE_ID: com.retweetmobile.app
-      # بدون ios_signing — لا توقيع رقمي في هذه الووركفلو
-      # EXPO_PUBLIC_API_URL / EXPO_PUBLIC_WEB_APP_URL — عرّفهما في Codemagic → Environment variables إن لزم
+        CAPACITOR_WEB_APP_URL: https://reyweet.vercel.app/app
 
     scripts:
-      - name: تثبيت تبعيات Node (mobile)
+      - name: تثبيت تبعيات Node (جذر المشروع)
         script: |
           set -e
-          cd "$CM_BUILD_DIR/$MOBILE_DIR"
+          cd "$CM_BUILD_DIR"
           npm ci
 
-      - name: Expo prebuild — توليد مشروع ios/
+      - name: تهيئة Capacitor + بناء SPA (نسخة الموقع)
         script: |
           set -e
-          cd "$CM_BUILD_DIR/$MOBILE_DIR"
-          if [ -n "$EXPO_PUBLIC_API_URL" ]; then
-            export EXPO_PUBLIC_API_URL
+          cd "$CM_BUILD_DIR"
+          if [ -n "$RETWEET_PUBLIC_API_URL" ]; then
+            echo "$RETWEET_PUBLIC_API_URL" > PUBLIC_API_URL.txt
           fi
-          if [ -n "$EXPO_PUBLIC_WEB_APP_URL" ]; then
-            export EXPO_PUBLIC_WEB_APP_URL
-          fi
-          npx expo prebuild --platform ios --clean --non-interactive
+          export CAPACITOR_WEB_APP_URL="${CAPACITOR_WEB_APP_URL:-https://reyweet.vercel.app/app}"
+          node scripts/prepare-capacitor-ios.mjs
 
-      - name: CocoaPods
+      - name: CocoaPods (Capacitor iOS)
         script: |
           set -e
-          cd "$CM_BUILD_DIR/$MOBILE_DIR/ios"
+          IOS_APP="$CM_BUILD_DIR/ios/App"
+          if [ ! -d "$IOS_APP" ]; then
+            echo "لم يُعثر على ios/App — تحقق من npx cap add ios"
+            find "$CM_BUILD_DIR/ios" -maxdepth 3 -type d 2>/dev/null || true
+            exit 1
+          fi
+          cd "$IOS_APP"
           pod install
 
       - name: اكتشاف Xcode workspace و scheme
         script: |
           set -e
-          WS=$(find "$CM_BUILD_DIR/$MOBILE_DIR/ios" -maxdepth 1 -name "*.xcworkspace" | head -1)
+          WS=$(find "$CM_BUILD_DIR/ios" -name "*.xcworkspace" | head -1)
           if [ -z "$WS" ]; then
-            echo "لم يُعثر على .xcworkspace تحت mobile/ios"
+            echo "لم يُعثر على .xcworkspace"
             exit 1
           fi
           SCHEME=$(basename "$WS" .xcworkspace)
@@ -61,7 +66,7 @@ workflows:
         script: |
           set -e
           source "$CM_ENV"
-          DERIVED="$CM_BUILD_DIR/$MOBILE_DIR/build/DerivedData"
+          DERIVED="$CM_BUILD_DIR/build/ios/DerivedData"
           mkdir -p "$DERIVED"
           xcodebuild \
             -workspace "$XCODE_WORKSPACE" \
@@ -80,14 +85,14 @@ workflows:
       - name: تغليف Payload كملف IPA
         script: |
           set -e
-          DERIVED="$CM_BUILD_DIR/$MOBILE_DIR/build/DerivedData"
+          DERIVED="$CM_BUILD_DIR/build/ios/DerivedData"
           APP_PATH=$(find "$DERIVED" -path "*/Build/Products/*-iphoneos/*.app" -type d | head -1)
           if [ -z "$APP_PATH" ]; then
             echo "لم يُعثر على .app بعد البناء"
             find "$DERIVED" -name "*.app" 2>/dev/null || true
             exit 1
           fi
-          IPA_DIR="$CM_BUILD_DIR/$MOBILE_DIR/build/ios/ipa"
+          IPA_DIR="$CM_BUILD_DIR/build/ios/ipa"
           rm -rf "$IPA_DIR"
           mkdir -p "$IPA_DIR/Payload"
           cp -R "$APP_PATH" "$IPA_DIR/Payload/"
@@ -96,6 +101,67 @@ workflows:
           ls -la "$IPA_DIR"
 
     artifacts:
-      - mobile/build/ios/ipa/*.ipa
-      - mobile/build/DerivedData/**/Build/Products/**/*.app
+      - build/ios/ipa/*.ipa
+      - build/ios/DerivedData/**/Build/Products/**/*.app
+      - ios-app.config.json
       - /tmp/xcodebuild_logs/*.log
+
+  # الاسم القديم — يوجّه لنفس سير العمل (توافق مع روابط قديمة)
+  retweet-ios-unsigned-ipa:
+    name: Retweet iOS — Unsigned IPA (Capacitor)
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+    environment:
+      node: v22.11.0
+      xcode: latest
+      cocoapods: default
+      vars:
+        BUNDLE_ID: com.retweetmobile.app
+        CAPACITOR_WEB_APP_URL: https://reyweet.vercel.app/app
+    scripts:
+      - name: تثبيت تبعيات Node
+        script: |
+          set -e
+          cd "$CM_BUILD_DIR"
+          npm ci
+      - name: تهيئة Capacitor
+        script: |
+          set -e
+          cd "$CM_BUILD_DIR"
+          if [ -n "$RETWEET_PUBLIC_API_URL" ]; then
+            echo "$RETWEET_PUBLIC_API_URL" > PUBLIC_API_URL.txt
+          fi
+          node scripts/prepare-capacitor-ios.mjs
+      - name: CocoaPods
+        script: |
+          set -e
+          cd "$CM_BUILD_DIR/ios/App"
+          pod install
+      - name: اكتشاف workspace
+        script: |
+          set -e
+          WS=$(find "$CM_BUILD_DIR/ios" -name "*.xcworkspace" | head -1)
+          SCHEME=$(basename "$WS" .xcworkspace)
+          echo "XCODE_WORKSPACE=$WS" >> "$CM_ENV"
+          echo "XCODE_SCHEME=$SCHEME" >> "$CM_ENV"
+      - name: بناء بدون توقيع
+        script: |
+          set -e
+          source "$CM_ENV"
+          DERIVED="$CM_BUILD_DIR/build/ios/DerivedData"
+          mkdir -p "$DERIVED"
+          xcodebuild -workspace "$XCODE_WORKSPACE" -scheme "$XCODE_SCHEME" -configuration Release -sdk iphoneos -derivedDataPath "$DERIVED" CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM="" PROVISIONING_PROFILE_SPECIFIER="" build
+      - name: IPA
+        script: |
+          set -e
+          DERIVED="$CM_BUILD_DIR/build/ios/DerivedData"
+          APP_PATH=$(find "$DERIVED" -path "*/Build/Products/*-iphoneos/*.app" -type d | head -1)
+          IPA_DIR="$CM_BUILD_DIR/build/ios/ipa"
+          rm -rf "$IPA_DIR"
+          mkdir -p "$IPA_DIR/Payload"
+          cp -R "$APP_PATH" "$IPA_DIR/Payload/"
+          cd "$IPA_DIR"
+          zip -qr Retweet-unsigned.ipa Payload
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - ios-app.config.json

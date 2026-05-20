@@ -14,7 +14,8 @@ execSync("node scripts/build-for-vercel.mjs", { cwd: root, stdio: "inherit" });
 const apiUrl = readPublicApiUrl();
 console.log("\n══ نشر Vercel ══\n");
 
-const vercel = spawnSync("npx", ["--yes", "vercel", "--prod", "--yes"], {
+/** نشر المجلد الجاهز _vercel_site مباشرة — بدون إعادة build على Vercel (تجنّب SSR و404 على /app/) */
+const vercel = spawnSync("npx", ["--yes", "vercel", "deploy", path.join(root, "_vercel_site"), "--prod", "--yes"], {
   cwd: root,
   stdio: "inherit",
   shell: true,

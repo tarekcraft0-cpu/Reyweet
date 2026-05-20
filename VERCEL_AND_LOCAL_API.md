@@ -36,11 +36,9 @@ npm run vercel:deploy
 | الحسابات والرسائل | `D:\RetweetSocial` على جهازك |
 | API للإنترنت | نفق Cloudflare (من `api:tunnel`) |
 
-## تطبيق الجوال
+## تطبيق الجوال (iOS — Capacitor)
 
-```bash
-npm run mobile:sync -- --vercel
-```
+راجع [IOS_APP.md](./IOS_APP.md) — `npm run ios:prepare` ثم Codemagic.
 
 ## ملاحظات
 

@@ -1,7 +1,7 @@
 {
-  "apiUrl": "",
+  "apiUrl": "https://jumping-tom-promising-traditions.trycloudflare.com",
   "appPath": "/app/",
-  "siteUrl": "http://192.168.100.51:3080",
+  "siteUrl": "https://reyweet.vercel.app",
   "supabaseUrl": "",
   "supabaseAnonKey": ""
 }
