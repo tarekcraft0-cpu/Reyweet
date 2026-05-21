@@ -8,9 +8,11 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
-dist
 dist-ssr
 spa-dist
+# dist — مُتاح لـ Capacitor (capacitor.config.ts → webDir: dist)
+!dist/
+!dist/**
 _vercel_site
 .output
 .vinxi

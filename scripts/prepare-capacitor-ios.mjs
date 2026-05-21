@@ -42,12 +42,6 @@ function removeIosPlatform() {
   }
 }
 
-function hasCommittedIosProject() {
-  return fs.existsSync(
-    path.join(root, "ios", "App", "App.xcodeproj", "project.pbxproj"),
-  );
-}
-
 console.log("\n══ Retweet iOS — Capacitor (نسخة الموقع) ══\n");
 console.log(`  WebView:  ${webAppUrl}/`);
 console.log(`  API:      ${apiUrl || "(من إعدادات الموقع على Vercel)"}\n`);
@@ -78,21 +72,24 @@ if (apiUrl && fs.existsSync(indexPath)) {
 }
 
 const serverUrl = `${webAppUrl.replace(/\/+$/, "")}/`;
+// Copy SPA build to dist/ for capacitor.config webDir
+const distDir = path.join(root, "dist");
+if (fs.existsSync(spaDist)) {
+  fs.rmSync(distDir, { recursive: true, force: true });
+  fs.cpSync(spaDist, distDir, { recursive: true });
+  console.log("  ✓ dist/ (from spa-dist)");
+}
+
 const capConfigTs = [
-  'import type { CapacitorConfig } from "@capacitor/cli";',
+  "import { CapacitorConfig } from '@capacitor/cli';",
   "",
   "const config: CapacitorConfig = {",
   `  appId: ${JSON.stringify(appId)},`,
-  '  appName: "Retweet",',
-  '  webDir: "spa-dist",',
+  "  appName: 'Reyweet',",
+  "  webDir: 'dist',",
   "  server: {",
   `    url: ${JSON.stringify(serverUrl)},`,
   `    cleartext: ${allowHttp},`,
-  '    androidScheme: "https",',
-  "  },",
-  "  ios: {",
-  '    contentInset: "automatic",',
-  "    allowsLinkPreview: false,",
   "  },",
   "};",
   "",
@@ -102,16 +99,17 @@ const capConfigTs = [
 fs.writeFileSync(path.join(root, "capacitor.config.ts"), capConfigTs, "utf8");
 console.log("  ✓ capacitor.config.ts");
 
+const iosDir = path.join(root, "ios");
 const forceRegen = process.env.CAPACITOR_FORCE_IOS_REGEN === "1";
 if (forceRegen) {
-  console.log("\n→ إعادة إنشاء ios (CAPACITOR_FORCE_IOS_REGEN=1)…");
+  console.log("\n→ Regenerate ios (CAPACITOR_FORCE_IOS_REGEN=1)…");
   removeIosPlatform();
   run("npx cap add ios");
-} else if (hasCommittedIosProject()) {
-  console.log("\n→ مزامنة Capacitor (مشروع Xcode موجود في المستودع)…");
+} else if (fs.existsSync(iosDir)) {
+  console.log("\n→ Capacitor sync (ios/ present in repo)…");
   run("npx cap sync ios");
 } else {
-  console.log("\n→ إنشاء مشروع Xcode (npx cap add ios)…");
+  console.log("\n→ Create Xcode project (npx cap add ios)…");
   run("npx cap add ios");
 }
 
