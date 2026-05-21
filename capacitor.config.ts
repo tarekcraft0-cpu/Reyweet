@@ -5,9 +5,9 @@ const config: CapacitorConfig = {
   appName: 'Reyweet',
   webDir: 'dist',
   server: {
-    url: 'http://192.168.100.51:3077',
-    cleartext: true
-  }
+    url: 'https://reyweet.vercel.app/app/',
+    cleartext: false,
+  },
 };
 
 export default config;

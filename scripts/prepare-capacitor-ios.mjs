@@ -19,10 +19,11 @@ const webAppUrl = (
 ).replace(/\/$/, "");
 const apiUrl = readPublicApiUrl();
 const appId = process.env.CAPACITOR_APP_ID || "com.retweetmobile.app";
-const allowHttp =
+const cleartext = Boolean(
   process.env.CAPACITOR_ALLOW_HTTP === "1" ||
-  webAppUrl.startsWith("http://") ||
-  (apiUrl && apiUrl.startsWith("http://"));
+    webAppUrl.startsWith("http://") ||
+    (typeof apiUrl === "string" && apiUrl.length > 0 && apiUrl.startsWith("http://")),
+);
 
 function run(cmd, opts = {}) {
   execSync(cmd, {
@@ -89,7 +90,7 @@ const capConfigTs = [
   "  webDir: 'dist',",
   "  server: {",
   `    url: ${JSON.stringify(serverUrl)},`,
-  `    cleartext: ${allowHttp},`,
+  `    cleartext: ${cleartext},`,
   "  },",
   "};",
   "",
