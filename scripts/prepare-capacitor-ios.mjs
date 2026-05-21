@@ -78,6 +78,10 @@ const distDir = path.join(root, "dist");
 if (fs.existsSync(spaDist)) {
   fs.rmSync(distDir, { recursive: true, force: true });
   fs.cpSync(spaDist, distDir, { recursive: true });
+  const webAuthSrc = path.join(root, "spa/public/web-auth-config.json");
+  if (apiUrl && fs.existsSync(webAuthSrc)) {
+    fs.copyFileSync(webAuthSrc, path.join(distDir, "web-auth-config.json"));
+  }
   console.log("  ✓ dist/ (from spa-dist)");
 }
 

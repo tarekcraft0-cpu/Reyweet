@@ -15,6 +15,7 @@
     "ios:sync": "node scripts/prepare-capacitor-ios.mjs",
     "ios:icon": "node scripts/sync-ios-app-icon.mjs",
     "ios:publish": "node scripts/sync-ios-download.mjs",
+    "ios:ota-ready": "node scripts/sync-ios-download.mjs && npm run vercel:deploy",
     "ios:open": "npx cap open ios",
     "cap:sync": "npx cap sync ios",
     "cap:open:ios": "npx cap open ios",

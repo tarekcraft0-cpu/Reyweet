@@ -10,19 +10,20 @@
 | إعداد Capacitor | `capacitor.config.ts` |
 | تهيئة + بناء | `scripts/prepare-capacitor-ios.mjs` |
 | مشروع Xcode | `ios/` (يُنشأ بـ `npx cap add ios`) |
-| Codemagic | `codemagic.yaml` → workflow **`retweet-ios-capacitor-ipa`** |
-| IPA الناتج | `build/ios/ipa/Retweet-unsigned.ipa` |
+| Codemagic OTA (موقّع) | **`retweet-ios-ota-signed`** → للتثبيت من الموقع |
+| Codemagic تجريبي | **`retweet-ios-capacitor-ipa`** → unsigned |
+| IPA على الموقع | `landing/public/downloads/retweet.ipa` |
+| دليل OTA | [IOS_OTA_SETUP.md](./IOS_OTA_SETUP.md) |
 
 مجلد **`mobile/` (Expo) مُزال** — لا تستخدمه.
 
-## Codemagic
+## التثبيت من الموقع (OTA)
 
-1. اربط المستودع على [codemagic.io](https://codemagic.io)
-2. شغّل workflow: **`retweet-ios-capacitor-ipa`**
-3. (اختياري) Environment variables:
-   - `RETWEET_PUBLIC_API_URL` = رابط نفق API من `npm run stack:reyweet`
-4. حمّل Artifact: **`Retweet-unsigned.ipa`**
-5. وقّع IPA بشهادة Apple أو أداة التوقيع الصينية
+1. Codemagic + Apple Developer — راجع **[IOS_OTA_SETUP.md](./IOS_OTA_SETUP.md)**
+2. شغّل **`retweet-ios-ota-signed`**
+3. `IOS_IPA_SIGNED=1 COPY_IPA_PATH=...\Reyweet-signed.ipa npm run ios:publish`
+4. `npm run vercel:deploy`
+5. من Safari: **تثبيت على iPhone** على https://reyweet.vercel.app
 
 ## على الكمبيوتر (Mac)
 
@@ -43,5 +44,5 @@ npx cap open ios         # Xcode
 ## ملاحظات
 
 - يجب أن يبقاء **النفق + الخادم** شغّالين على PC وإلا الموقع والتطبيق لا يسجلان دخولاً.
-- `bundleId`: `com.retweetmobile.app`
+- `bundleId`: `com.reyweet.app`
 - للتطوير على LAN: `CAPACITOR_WEB_APP_URL=http://192.168.x.x:3080/app` و `CAPACITOR_ALLOW_HTTP=1`

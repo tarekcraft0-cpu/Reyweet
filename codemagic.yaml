@@ -1,13 +1,89 @@
-# Codemagic — Retweet iOS (Capacitor) — نفس https://reyweet.vercel.app/app/
-# بدون Expo. مخرجات: Retweet-unsigned.ipa للتوقيع اليدوي (شهادة Apple / أدوات صينية)
-#
-# عرّف في Codemagic → Environment variables (اختياري):
-#   RETWEET_PUBLIC_API_URL  — رابط نفق API (مثل https://xxx.trycloudflare.com)
-#   CAPACITOR_WEB_APP_URL   — افتراضي https://reyweet.vercel.app/app
+# Codemagic — Reyweet iOS (Capacitor)
+# OTA من الموقع يتطلب IPA موقّعاً → workflow: retweet-ios-ota-signed
+# بدون توقيع (للتجربة فقط): retweet-ios-capacitor-ipa
 
 workflows:
+  # ─── التثبيت من الموقع (Safari → تثبيت على iPhone) — يحتاج Apple Developer في Codemagic ───
+  retweet-ios-ota-signed:
+    name: Reyweet iOS — Signed OTA IPA
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+
+    environment:
+      node: v22.11.0
+      xcode: latest
+      cocoapods: default
+      ios_signing:
+        distribution_type: ad_hoc
+        bundle_identifier: com.reyweet.app
+      vars:
+        BUNDLE_ID: com.reyweet.app
+        CAPACITOR_WEB_APP_URL: https://reyweet.vercel.app/app
+        XCODE_SCHEME: App
+        XCODE_WORKSPACE: ios/App/App.xcworkspace
+
+    scripts:
+      - name: Install Node dependencies
+        script: |
+          set -e
+          cd "$CM_BUILD_DIR"
+          npm ci
+
+      - name: Prepare Capacitor + SPA (same as website)
+        script: |
+          set -e
+          cd "$CM_BUILD_DIR"
+          if [ -n "$RETWEET_PUBLIC_API_URL" ]; then
+            echo "$RETWEET_PUBLIC_API_URL" > PUBLIC_API_URL.txt
+          fi
+          export CAPACITOR_WEB_APP_URL="${CAPACITOR_WEB_APP_URL:-https://reyweet.vercel.app/app}"
+          node scripts/prepare-capacitor-ios.mjs
+
+      - name: CocoaPods
+        script: |
+          set -e
+          cd "$CM_BUILD_DIR/ios/App"
+          pod install
+
+      - name: Code signing setup
+        script: |
+          set -e
+          keychain initialize
+          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_ADHOC --create
+          keychain add-certificates
+          xcode-project use-profiles
+
+      - name: Build signed IPA
+        script: |
+          set -e
+          cd "$CM_BUILD_DIR"
+          xcode-project build-ipa \
+            --workspace "$XCODE_WORKSPACE" \
+            --scheme "$XCODE_SCHEME"
+
+      - name: Copy IPA for website
+        script: |
+          set -e
+          cd "$CM_BUILD_DIR"
+          IPA=$(find "$HOME/build/ios/ipa" "$CM_BUILD_DIR/build/ios/ipa" -name "*.ipa" 2>/dev/null | head -1)
+          if [ -z "$IPA" ]; then
+            IPA=$(find "$CM_BUILD_DIR" -name "*.ipa" | head -1)
+          fi
+          if [ -z "$IPA" ]; then
+            echo "No .ipa found after build-ipa"
+            find "$CM_BUILD_DIR" -name "*.ipa" 2>/dev/null || true
+            exit 1
+          fi
+          mkdir -p "$CM_BUILD_DIR/build/ios/ipa"
+          cp "$IPA" "$CM_BUILD_DIR/build/ios/ipa/Reyweet-signed.ipa"
+          ls -la "$CM_BUILD_DIR/build/ios/ipa/"
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - ios-app.config.json
+
   retweet-ios-capacitor-ipa:
-    name: Retweet iOS — Capacitor IPA
+    name: Retweet iOS — Capacitor IPA (unsigned)
     max_build_duration: 120
     instance_type: mac_mini_m2
 
@@ -22,13 +98,13 @@ workflows:
         XCODE_WORKSPACE: ios/App/App.xcworkspace
 
     scripts:
-      - name: تثبيت تبعيات Node (جذر المشروع)
+      - name: Install Node dependencies
         script: |
           set -e
           cd "$CM_BUILD_DIR"
           npm ci
 
-      - name: تهيئة Capacitor + بناء SPA (نسخة الموقع)
+      - name: Prepare Capacitor + SPA
         script: |
           set -e
           cd "$CM_BUILD_DIR"
@@ -38,19 +114,18 @@ workflows:
           export CAPACITOR_WEB_APP_URL="${CAPACITOR_WEB_APP_URL:-https://reyweet.vercel.app/app}"
           node scripts/prepare-capacitor-ios.mjs
 
-      - name: CocoaPods (Capacitor iOS)
+      - name: CocoaPods
         script: |
           set -e
           IOS_APP="$CM_BUILD_DIR/ios/App"
           if [ ! -d "$IOS_APP" ]; then
-            echo "لم يُعثر على ios/App — تحقق من npx cap add ios"
-            find "$CM_BUILD_DIR/ios" -maxdepth 3 -type d 2>/dev/null || true
+            echo "ios/App missing"
             exit 1
           fi
           cd "$IOS_APP"
           pod install
 
-      - name: Xcode workspace و scheme (Capacitor App)
+      - name: Xcode workspace
         script: |
           set -e
           WS="$CM_BUILD_DIR/$XCODE_WORKSPACE"
@@ -58,18 +133,11 @@ workflows:
           if [ ! -d "$WS" ]; then
             WS=$(find "$CM_BUILD_DIR/ios/App" -maxdepth 1 -name "*.xcworkspace" | head -1)
           fi
-          if [ -z "$WS" ] || [ ! -d "$WS" ]; then
-            echo "لم يُعثر على App.xcworkspace تحت ios/App"
-            find "$CM_BUILD_DIR/ios" -name "*.xcworkspace" 2>/dev/null || true
-            exit 1
-          fi
           echo "XCODE_WORKSPACE=$WS" >> "$CM_ENV"
           echo "XCODE_SCHEME=$SCHEME" >> "$CM_ENV"
-          echo "Using workspace: $WS"
-          echo "Using scheme: $SCHEME"
           xcodebuild -workspace "$WS" -list
 
-      - name: بناء iOS بدون توقيع (CODE_SIGNING_ALLOWED=NO)
+      - name: Build unsigned
         script: |
           set -e
           source "$CM_ENV"
@@ -89,16 +157,11 @@ workflows:
             PROVISIONING_PROFILE_SPECIFIER="" \
             build
 
-      - name: تغليف Payload كملف IPA
+      - name: Package IPA
         script: |
           set -e
           DERIVED="$CM_BUILD_DIR/build/ios/DerivedData"
           APP_PATH=$(find "$DERIVED" -path "*/Build/Products/*-iphoneos/*.app" -type d | head -1)
-          if [ -z "$APP_PATH" ]; then
-            echo "لم يُعثر على .app بعد البناء"
-            find "$DERIVED" -name "*.app" 2>/dev/null || true
-            exit 1
-          fi
           IPA_DIR="$CM_BUILD_DIR/build/ios/ipa"
           rm -rf "$IPA_DIR"
           mkdir -p "$IPA_DIR/Payload"
@@ -113,9 +176,8 @@ workflows:
       - ios-app.config.json
       - /tmp/xcodebuild_logs/*.log
 
-  # الاسم القديم — يوجّه لنفس سير العمل (توافق مع روابط قديمة)
   retweet-ios-unsigned-ipa:
-    name: Retweet iOS — Unsigned IPA (Capacitor)
+    name: Retweet iOS — Unsigned IPA (alias)
     max_build_duration: 120
     instance_type: mac_mini_m2
     environment:
@@ -128,12 +190,12 @@ workflows:
         XCODE_SCHEME: App
         XCODE_WORKSPACE: ios/App/App.xcworkspace
     scripts:
-      - name: تثبيت تبعيات Node
+      - name: Install Node dependencies
         script: |
           set -e
           cd "$CM_BUILD_DIR"
           npm ci
-      - name: تهيئة Capacitor
+      - name: Prepare Capacitor
         script: |
           set -e
           cd "$CM_BUILD_DIR"
@@ -146,7 +208,7 @@ workflows:
           set -e
           cd "$CM_BUILD_DIR/ios/App"
           pod install
-      - name: Xcode workspace و scheme
+      - name: Xcode
         script: |
           set -e
           WS="$CM_BUILD_DIR/${XCODE_WORKSPACE:-ios/App/App.xcworkspace}"
@@ -157,7 +219,7 @@ workflows:
           echo "XCODE_WORKSPACE=$WS" >> "$CM_ENV"
           echo "XCODE_SCHEME=$SCHEME" >> "$CM_ENV"
           xcodebuild -workspace "$WS" -list
-      - name: بناء بدون توقيع
+      - name: Build unsigned
         script: |
           set -e
           source "$CM_ENV"
