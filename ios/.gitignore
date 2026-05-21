@@ -1,5 +1,7 @@
 App/build
 App/Pods
+build/*
+!build/Reyweet-ready.ipa
 App/output
 App/App/public
 DerivedData

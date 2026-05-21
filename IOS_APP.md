@@ -9,10 +9,11 @@
 |--------|--------|
 | إعداد Capacitor | `capacitor.config.ts` |
 | تهيئة + بناء | `scripts/prepare-capacitor-ios.mjs` |
-| مشروع Xcode | `ios/` (يُنشأ بـ `npx cap add ios`) |
-| Codemagic OTA (موقّع) | **`retweet-ios-ota-signed`** → للتثبيت من الموقع |
-| Codemagic تجريبي | **`retweet-ios-capacitor-ipa`** → unsigned |
-| IPA على الموقع | `landing/public/downloads/retweet.ipa` |
+| مشروع Xcode (المصدر) | `ios/App/` |
+| **ملف IPA الجاهز** | **`ios/build/Reyweet-ready.ipa`** |
+| نسخة تحميل الموقع | `landing/public/downloads/retweet.ipa` |
+| Codemagic OTA (موقّع) | **`retweet-ios-ota-signed`** |
+| Codemagic تجريبي | **`retweet-ios-capacitor-ipa`** |
 | دليل OTA | [IOS_OTA_SETUP.md](./IOS_OTA_SETUP.md) |
 
 مجلد **`mobile/` (Expo) مُزال** — لا تستخدمه.
@@ -21,7 +22,7 @@
 
 1. Codemagic + Apple Developer — راجع **[IOS_OTA_SETUP.md](./IOS_OTA_SETUP.md)**
 2. شغّل **`retweet-ios-ota-signed`**
-3. `IOS_IPA_SIGNED=1 COPY_IPA_PATH=...\Reyweet-signed.ipa npm run ios:publish`
+3. انسخ الموقّع إلى `ios/build/Reyweet-ready.ipa` ثم `npm run ios:publish`
 4. `npm run vercel:deploy`
 5. من Safari: **تثبيت على iPhone** على https://reyweet.vercel.app
 

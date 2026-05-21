@@ -149,7 +149,7 @@ console.log(`║  الموقع:  ${VERCEL_SITE_URL}/app/`);
 console.log(`║  API:     ${publicUrl}`);
 console.log("║  الخادم + قاعدة D:\\RetweetSocial — يبقى شغّالاً هنا          ║");
 console.log("╚════════════════════════════════════════════════════════════╝");
-console.log("\n  IPA: dist/Reyweet-ready.ipa و Downloads\\Reyweet-ready.ipa\n");
+console.log("\n  IPA: ios/build/Reyweet-ready.ipa (+ نسخة الموقع landing/public/downloads/retweet.ipa)\n");
 
 process.on("SIGINT", () => {
   tunnelProc.kill();

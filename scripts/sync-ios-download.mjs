@@ -9,19 +9,16 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const defaultIpa = path.join(
-  process.env.USERPROFILE || "",
-  "Downloads",
-  "Retweet-unsigned (3).ipa",
-);
+const iosIpa = path.join(root, "ios", "build", "Reyweet-ready.ipa");
+const downloadsIpa = path.join(root, "landing", "public", "downloads", "retweet.ipa");
 const src =
   process.env.COPY_IPA_PATH?.trim() ||
-  (existsSync(defaultIpa) ? defaultIpa : "");
+  (existsSync(iosIpa) ? iosIpa : existsSync(downloadsIpa) ? downloadsIpa : "");
 const downloads = path.join(root, "landing", "public", "downloads");
 const destIpa = path.join(downloads, "retweet.ipa");
 
 if (!src || !existsSync(src)) {
-  console.error("sync-ios-download: set COPY_IPA_PATH or place IPA in Downloads");
+  console.error("sync-ios-download: run npm run ios:package or set COPY_IPA_PATH");
   process.exit(1);
 }
 
