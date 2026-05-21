@@ -34,6 +34,8 @@ const version = {
   version: process.env.IOS_BUNDLE_VERSION?.trim() || "1.0.0",
   bundleId: process.env.IOS_BUNDLE_ID?.trim() || "com.reyweet.app",
   title: process.env.IOS_APP_TITLE?.trim() || "Reyweet",
+  signed: process.env.IOS_IPA_SIGNED === "1",
+  installMethod: process.env.IOS_IPA_SIGNED === "1" ? "ota" : "sideloadly",
   ipaUrl: "https://reyweet.vercel.app/downloads/retweet.ipa",
   manifestUrl: "https://reyweet.vercel.app/downloads/manifest.plist",
   webAppUrl: "https://reyweet.vercel.app/app/",

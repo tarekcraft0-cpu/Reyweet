@@ -2,6 +2,8 @@
   "version": "1.0.0",
   "bundleId": "com.reyweet.app",
   "title": "Reyweet",
+  "signed": false,
+  "installMethod": "sideloadly",
   "ipaUrl": "https://reyweet.vercel.app/downloads/retweet.ipa",
   "manifestUrl": "https://reyweet.vercel.app/downloads/manifest.plist",
   "webAppUrl": "https://reyweet.vercel.app/app/",
