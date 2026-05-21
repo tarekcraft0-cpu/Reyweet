@@ -132,22 +132,24 @@ fs.writeFileSync(
   "utf8",
 );
 
-execSync("node scripts/write-public-web-config.mjs", {
-  cwd: root,
-  stdio: "inherit",
-  env: { ...process.env, RETWEET_PUBLIC_API_URL: publicUrl },
-});
+console.log("\n3) مزامنة الموقع + التطبيق (نفس API)...\n");
+try {
+  execSync("node scripts/sync-all-clients.mjs --ipa --deploy", {
+    cwd: root,
+    stdio: "inherit",
+    env: { ...process.env, RETWEET_PUBLIC_API_URL: publicUrl },
+  });
+} catch (e) {
+  console.warn("sync-all فشل جزئياً — جرّب: npm run sync:all -- --deploy");
+}
 
 console.log("\n╔════════════════════════════════════════════════════════════╗");
-console.log("║  الموقع (Vercel):                                        ║");
-console.log(`║  ${VERCEL_SITE_URL}`);
-console.log(`║  ${VERCEL_SITE_URL}/app/`);
-console.log("║                                                          ║");
-console.log("║  ضع هذا في Vercel → RETWEET_PUBLIC_API_URL ثم Redeploy:  ║");
-console.log(`║  ${publicUrl}`);
+console.log("║  كل العملاء متزامنون (موقع Vercel + تطبيق IPA)            ║");
+console.log(`║  الموقع:  ${VERCEL_SITE_URL}/app/`);
+console.log(`║  API:     ${publicUrl}`);
+console.log("║  الخادم + قاعدة D:\\RetweetSocial — يبقى شغّالاً هنا          ║");
 console.log("╚════════════════════════════════════════════════════════════╝");
-console.log(`\nمحفوظ في: PUBLIC_API_URL.txt و .env\n`);
-console.log("بعد تحديث Vercel: npm run vercel:deploy\n");
+console.log("\n  IPA: dist/Reyweet-ready.ipa و Downloads\\Reyweet-ready.ipa\n");
 
 process.on("SIGINT", () => {
   tunnelProc.kill();

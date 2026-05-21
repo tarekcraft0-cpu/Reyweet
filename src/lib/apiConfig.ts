@@ -156,8 +156,11 @@ async function loadConfigFileUrls(): Promise<string[]> {
   if (typeof window === "undefined") return [];
   const base = (import.meta.env.BASE_URL as string | undefined) || "/app/";
   const root = base.endsWith("/") ? base : `${base}/`;
+  const vercelSite = "https://reyweet.vercel.app";
   const urls: string[] = [];
   for (const file of [
+    `${vercelSite}/public/app-config.json`,
+    `${vercelSite}/app/web-auth-config.json`,
     `${root}web-auth-config.json`,
     `${window.location.origin}/app/web-auth-config.json`,
     `${window.location.origin}/public/app-config.json`,
