@@ -26,12 +26,30 @@ function siteBaseUrl() {
 
 const base = siteBaseUrl();
 const ipaUrl = base
-  ? `${base}/public/downloads/retweet.ipa`
-  : "https://YOUR-DOMAIN.example/public/downloads/retweet.ipa";
+  ? `${base}/downloads/retweet.ipa`
+  : "https://YOUR-DOMAIN.example/downloads/retweet.ipa";
 
-const bundleId = process.env.IOS_BUNDLE_ID?.trim() || "com.retweetmobile.app";
+const iconUrl = base ? `${base}/public/logo.png` : "";
+
+const bundleId = process.env.IOS_BUNDLE_ID?.trim() || "com.reyweet.app";
 const bundleVersion = process.env.IOS_BUNDLE_VERSION?.trim() || "1.0.0";
-const title = process.env.IOS_APP_TITLE?.trim() || "Retweet";
+const title = process.env.IOS_APP_TITLE?.trim() || "Reyweet";
+
+const imageAssets =
+  iconUrl &&
+  `
+        <dict>
+          <key>kind</key>
+          <string>display-image</string>
+          <key>url</key>
+          <string>${iconUrl}</string>
+        </dict>
+        <dict>
+          <key>kind</key>
+          <string>full-size-image</string>
+          <key>url</key>
+          <string>${iconUrl}</string>
+        </dict>`;
 
 const downloadsDir = path.join(outRoot, "public", "downloads");
 mkdirSync(downloadsDir, { recursive: true });
@@ -50,7 +68,7 @@ const plist = `<?xml version="1.0" encoding="UTF-8"?>
           <string>software-package</string>
           <key>url</key>
           <string>${ipaUrl}</string>
-        </dict>
+        </dict>${imageAssets || ""}
       </array>
       <key>metadata</key>
       <dict>

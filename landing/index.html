@@ -150,6 +150,7 @@
                 </svg>
                 <span id="apk-download-label">تحميل APK (أندرويد)</span>
               </a>
+              <p id="ios-version-hint" class="w-full text-xs text-slate-500 dark:text-neutral-500 sm:w-auto"></p>
               <p id="apk-version-hint" class="w-full text-xs text-slate-500 dark:text-neutral-500 sm:w-auto"></p>
             </div>
             <div class="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -559,7 +560,7 @@
         var origin = location.origin;
         var basePath = location.pathname.replace(/[^/]+$/, "");
         var siteRoot = origin + basePath;
-        var manifestUrl = siteRoot + "public/downloads/manifest.plist";
+        var manifestUrl = origin + "/downloads/manifest.plist";
 
         function wireItms(el) {
           if (!el) return;
@@ -568,6 +569,24 @@
         }
         wireItms(document.getElementById("ios-install"));
         wireItms(document.getElementById("footer-ios-install"));
+      })();
+
+      (function () {
+        var iosHint = document.getElementById("ios-version-hint");
+        fetch("/downloads/ios-version.json?t=" + Date.now(), { cache: "no-store" })
+          .then(function (r) {
+            return r.ok ? r.json() : null;
+          })
+          .then(function (info) {
+            if (!info || !iosHint) return;
+            iosHint.textContent =
+              "iOS v" +
+              (info.version || "1.0.0") +
+              " — يتصل بـ " +
+              (info.webAppUrl || "reyweet.vercel.app") +
+              ". شغّل الخادم والنفق على PC للحسابات.";
+          })
+          .catch(function () {});
       })();
 
       (function () {

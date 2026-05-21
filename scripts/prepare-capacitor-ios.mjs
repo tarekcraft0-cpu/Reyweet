@@ -18,7 +18,7 @@ const webAppUrl = (
   `${VERCEL_SITE_URL}/app`
 ).replace(/\/$/, "");
 const apiUrl = readPublicApiUrl();
-const appId = process.env.CAPACITOR_APP_ID || "com.retweetmobile.app";
+const appId = process.env.CAPACITOR_APP_ID || "com.reyweet.app";
 const cleartext = Boolean(
   process.env.CAPACITOR_ALLOW_HTTP === "1" ||
     webAppUrl.startsWith("http://") ||

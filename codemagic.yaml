@@ -16,7 +16,7 @@ workflows:
       xcode: latest
       cocoapods: default
       vars:
-        BUNDLE_ID: com.retweetmobile.app
+        BUNDLE_ID: com.reyweet.app
         CAPACITOR_WEB_APP_URL: https://reyweet.vercel.app/app
         XCODE_SCHEME: App
         XCODE_WORKSPACE: ios/App/App.xcworkspace
@@ -123,7 +123,7 @@ workflows:
       xcode: latest
       cocoapods: default
       vars:
-        BUNDLE_ID: com.retweetmobile.app
+        BUNDLE_ID: com.reyweet.app
         CAPACITOR_WEB_APP_URL: https://reyweet.vercel.app/app
         XCODE_SCHEME: App
         XCODE_WORKSPACE: ios/App/App.xcworkspace

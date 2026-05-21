@@ -1,0 +1,9 @@
+{
+  "version": "1.0.0",
+  "bundleId": "com.reyweet.app",
+  "title": "Reyweet",
+  "ipaUrl": "https://reyweet.vercel.app/downloads/retweet.ipa",
+  "manifestUrl": "https://reyweet.vercel.app/downloads/manifest.plist",
+  "webAppUrl": "https://reyweet.vercel.app/app/",
+  "builtAt": "2026-05-21T00:30:35.852Z"
+}

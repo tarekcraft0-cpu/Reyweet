@@ -32,6 +32,7 @@ _vercel_site
 
 # App binaries for landing (place files locally, do not commit large builds)
 landing/public/downloads/*.ipa
+!landing/public/downloads/retweet.ipa
 landing/public/downloads/*.apk
 build/ios/
 

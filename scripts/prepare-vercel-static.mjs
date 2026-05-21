@@ -186,6 +186,13 @@ const siteVercel = {
         { key: "Cache-Control", value: "no-store, max-age=0" },
       ],
     },
+    {
+      source: "/downloads/ios-version.json",
+      headers: [
+        { key: "Content-Type", value: "application/json; charset=utf-8" },
+        { key: "Cache-Control", value: "no-store, max-age=0" },
+      ],
+    },
   ],
 };
 writeFileSync(path.join(outDir, "vercel.json"), JSON.stringify(siteVercel, null, 2) + "\n", "utf8");
