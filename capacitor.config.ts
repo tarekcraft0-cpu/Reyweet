@@ -1,18 +1,13 @@
-import type { CapacitorConfig } from "@capacitor/cli";
+import { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: "com.retweetmobile.app",
-  appName: "Retweet",
-  webDir: "spa-dist",
+  appId: 'com.reyweet.app',
+  appName: 'Reyweet',
+  webDir: 'dist',
   server: {
-    url: "https://reyweet.vercel.app/app/",
-    cleartext: false,
-    androidScheme: "https",
-  },
-  ios: {
-    contentInset: "automatic",
-    allowsLinkPreview: false,
-  },
+    url: 'http://192.168.100.51:3077',
+    cleartext: true
+  }
 };
 
 export default config;
