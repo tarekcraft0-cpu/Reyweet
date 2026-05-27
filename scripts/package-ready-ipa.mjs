@@ -8,7 +8,7 @@ import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { readPublicApiUrl, VERCEL_SITE_URL } from "./lib/read-public-api-url.mjs";
+import { readPublicApiUrl, resolveMobileApiUrl, VERCEL_SITE_URL } from "./lib/read-public-api-url.mjs";
 import {
   applyRetweetIconsToAppBundle,
   springboardIconBuffers,
@@ -17,7 +17,7 @@ import {
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const webAppUrl = `${VERCEL_SITE_URL}/app/`;
-const apiUrl = readPublicApiUrl();
+const apiUrl = resolveMobileApiUrl();
 const appId = "com.reyweet.app";
 const appName = "Reyweet";
 
@@ -46,10 +46,10 @@ function run(cmd) {
 async function main() {
 console.log("\n══ Reyweet — تجهيز IPA (نفس الموقع والخادم) ══\n");
 console.log(`  الموقع:  ${webAppUrl}`);
-console.log(`  API:     ${apiUrl || "(شغّل npm run stack:reyweet)"}\n`);
+console.log(`  API:     ${apiUrl}\n`);
 
 if (!apiUrl) {
-  console.error("package-ready-ipa: لا يوجد API — شغّل npm run stack:reyweet أولاً");
+  console.error("package-ready-ipa: لا يوجد API");
   process.exit(1);
 }
 

@@ -58,3 +58,20 @@ export function readPublicApiUrl() {
   return "";
 }
 
+/** API للتطبيق (iOS/Android) — HTTPS عبر Vercel فقط (iOS يحظر HTTP VPS) */
+export function resolveMobileApiUrl() {
+  const explicit = (process.env.CAPACITOR_API_URL || process.env.RETWEET_MOBILE_API_URL || "")
+    .trim()
+    .replace(/\/$/, "");
+  if (explicit) return explicit;
+
+  const raw = readPublicApiUrl();
+  if (raw && raw.startsWith("https://") && !/\.trycloudflare\.com/i.test(raw)) {
+    return raw.replace(/\/$/, "");
+  }
+  if (raw && shouldUseVercelApiProxy(raw)) return VERCEL_SITE_URL;
+  if (raw && /\.trycloudflare\.com/i.test(raw)) return VERCEL_SITE_URL;
+  if (raw && raw.startsWith("http://")) return VERCEL_SITE_URL;
+  return VERCEL_SITE_URL;
+}
+

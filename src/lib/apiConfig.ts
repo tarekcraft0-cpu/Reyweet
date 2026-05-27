@@ -3,12 +3,15 @@
  */
 import {
   isLanOrLocalHostname,
+  isNativeCapacitorShell,
   isPrivateApiUrl,
   isProductionVpsApiUrl,
   isPublicAppHost,
+  isStaleMobileApiUrl,
   isTunnelPublicHost,
   isVpsProductionHost,
   PRODUCTION_VPS_API,
+  VERCEL_SITE_URL,
 } from "./apiUrlPolicy";
 
 const API_RUNTIME_KEY = "retweet_web_api_config";
@@ -154,8 +157,13 @@ export function clearStaleApiConfig(): void {
     }
     if (
       isLanOrLocalHostname(window.location.hostname) &&
+      !isNativeCapacitorShell() &&
       (/\.trycloudflare\.com/i.test(u) || u.includes("vercel.app"))
     ) {
+      localStorage.removeItem(API_RUNTIME_KEY);
+      return;
+    }
+    if (isNativeCapacitorShell() && isStaleMobileApiUrl(u)) {
       localStorage.removeItem(API_RUNTIME_KEY);
       return;
     }
@@ -189,7 +197,7 @@ async function probeUrl(base: string): Promise<boolean> {
         true ||
         !!(window as Window & { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor
           ?.isNativePlatform?.());
-    const timeoutMs = nativeShell ? 4_000 : 5_000;
+    const timeoutMs = nativeShell ? 10_000 : 5_000;
     const t = setTimeout(() => ctl.abort(), timeoutMs);
     const res = await fetch(path, { signal: ctl.signal, cache: "no-store" });
     clearTimeout(t);
@@ -247,6 +255,7 @@ async function loadConfigFileUrls(): Promise<string[]> {
       const u = trimUrl(j.apiUrl);
       if (!u) continue;
       if (isPublicAppHost() && isPrivateApiUrl(u)) continue;
+      if (isNativeCapacitorShell() && isStaleMobileApiUrl(u)) continue;
       if (isTunnelPublicHost() && new URL(u).origin !== window.location.origin) continue;
       urls.push(u);
     } catch {
@@ -296,6 +305,9 @@ export async function ensureApiRuntimeConfig(): Promise<string> {
         /* ignore */
       }
     }
+    if (injected?.startsWith("http") && isNativeCapacitorShell() && isStaleMobileApiUrl(injected)) {
+      skipInjected = true;
+    }
     if (injected?.startsWith("http") && !skipInjected) {
       const u = injected.replace(/\/$/, "");
       if (!(isPublicAppHost() && isPrivateApiUrl(u))) {
@@ -317,6 +329,16 @@ export async function ensureApiRuntimeConfig(): Promise<string> {
 
   if (resolvedMode !== "unset") {
     return resolvedMode === "relative" ? "" : resolvedAbsoluteUrl;
+  }
+
+  /** iOS/Android — HTTPS Vercel فقط (ATS يحظر HTTP VPS) */
+  if (isNativeCapacitorShell()) {
+    if (await probeUrl(VERCEL_SITE_URL)) {
+      resolvedMode = "absolute";
+      resolvedAbsoluteUrl = VERCEL_SITE_URL;
+      persistAbsolute(VERCEL_SITE_URL);
+      return VERCEL_SITE_URL;
+    }
   }
 
   /** VPS — نفس الأصل: API + WebSocket + SSE مباشرة عبر nginx بدون بروكسي */
@@ -452,6 +474,9 @@ export function peekApiBaseUrl(): string {
   if (fromBuild && !(isPublicAppHost() && isPrivateApiUrl(fromBuild))) {
     if (!isPublicAppHost() || isLanOrLocalHostname(window.location.hostname)) return fromBuild;
     if (onAppPath() && !isProductionVpsApiUrl(fromBuild)) return fromBuild;
+  }
+  if (typeof window !== "undefined" && isNativeCapacitorShell()) {
+    return VERCEL_SITE_URL;
   }
   if (typeof window !== "undefined" && isPublicAppHost() && !isVpsProductionHost() && onAppPath()) {
     return "";

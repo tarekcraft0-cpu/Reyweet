@@ -19,6 +19,8 @@ workflows:
       vars:
         BUNDLE_ID: com.reyweet.app
         CAPACITOR_WEB_APP_URL: https://reyweet.vercel.app/app
+        CAPACITOR_API_URL: https://reyweet.vercel.app
+        RETWEET_PUBLIC_API_URL: https://reyweet.vercel.app
         XCODE_SCHEME: App
         XCODE_WORKSPACE: ios/App/App.xcworkspace
 
@@ -94,6 +96,8 @@ workflows:
       vars:
         BUNDLE_ID: com.reyweet.app
         CAPACITOR_WEB_APP_URL: https://reyweet.vercel.app/app
+        CAPACITOR_API_URL: https://reyweet.vercel.app
+        RETWEET_PUBLIC_API_URL: https://reyweet.vercel.app
         XCODE_SCHEME: App
         XCODE_WORKSPACE: ios/App/App.xcworkspace
 
@@ -187,6 +191,8 @@ workflows:
       vars:
         BUNDLE_ID: com.reyweet.app
         CAPACITOR_WEB_APP_URL: https://reyweet.vercel.app/app
+        CAPACITOR_API_URL: https://reyweet.vercel.app
+        RETWEET_PUBLIC_API_URL: https://reyweet.vercel.app
         XCODE_SCHEME: App
         XCODE_WORKSPACE: ios/App/App.xcworkspace
     scripts:

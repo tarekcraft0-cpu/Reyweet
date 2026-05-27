@@ -1,6 +1,8 @@
 /** VPS الإنتاج — عنوان API المباشر (nginx :80 → :3000) */
 export const PRODUCTION_VPS_HOST = "109.199.111.29";
 export const PRODUCTION_VPS_API = `http://${PRODUCTION_VPS_HOST}`;
+/** الواجهة العامة — بروكسي API (HTTPS) */
+export const VERCEL_SITE_URL = "https://reyweet.vercel.app";
 
 /** الواجهة تُخدم من نفس الـ VPS (اتصال API/WebSocket مباشر بدون بروكسي) */
 export function isVpsProductionHost(hostname?: string): boolean {
@@ -61,5 +63,30 @@ export function isLanOrLocalHostname(hostname: string): boolean {
   if (/^192\.168\.\d{1,3}\.\d{1,3}$/i.test(hostname)) return true;
   if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/i.test(hostname)) return true;
   if (/^172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}$/i.test(hostname)) return true;
+  return false;
+}
+
+/** تطبيق iOS/Android (Capacitor) */
+export function isNativeCapacitorShell(): boolean {
+  if (typeof window === "undefined") return false;
+  const w = window as Window & {
+    __RETWEET_NATIVE_SHELL__?: boolean;
+    Capacitor?: { isNativePlatform?: () => boolean };
+  };
+  if (w.__RETWEET_NATIVE_SHELL__ === true) return true;
+  try {
+    return w.Capacitor?.isNativePlatform?.() === true;
+  } catch {
+    return false;
+  }
+}
+
+/** عناوين API قديمة/محظورة على iOS (HTTP VPS أو نفق منتهي) */
+export function isStaleMobileApiUrl(url: string): boolean {
+  const u = url.trim();
+  if (!u) return false;
+  if (/\.trycloudflare\.com/i.test(u)) return true;
+  if (isProductionVpsApiUrl(u)) return true;
+  if (u.startsWith("http://") && !isPrivateApiUrl(u)) return true;
   return false;
 }

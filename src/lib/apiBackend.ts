@@ -7,7 +7,7 @@ import {
   peekApiBaseUrl,
   useViteDevProxy,
 } from "./apiConfig";
-import { isPublicAppHost, isVpsProductionHost } from "./apiUrlPolicy";
+import { isNativeCapacitorShell, isPublicAppHost, isVpsProductionHost } from "./apiUrlPolicy";
 import { isGuestUserId } from "./guestUser";
 import { scopeAppStateToAccount } from "./scopeAppState";
 import { isReactNativeWebView } from "./nativeShell";
@@ -55,6 +55,10 @@ export function hasApiBackendConnection(): boolean {
       !isVpsProductionHost() &&
       (window.location.pathname || "").startsWith("/app")
     ) {
+      return true;
+    }
+    /** iOS/Android — API عبر Vercel HTTPS */
+    if (isNativeCapacitorShell()) {
       return true;
     }
   }

@@ -3,27 +3,27 @@
  * بدون Expo. يُشغَّل محلياً أو على Codemagic قبل xcodebuild.
  *
  * المتغيرات (اختياري في Codemagic):
- *   RETWEET_PUBLIC_API_URL — نفق API (من PUBLIC_API_URL.txt)
+ *   CAPACITOR_API_URL / RETWEET_PUBLIC_API_URL — افتراضي https://reyweet.vercel.app
  *   CAPACITOR_WEB_APP_URL   — افتراضي https://reyweet.vercel.app/app/
  */
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { readPublicApiUrl, VERCEL_SITE_URL } from "./lib/read-public-api-url.mjs";
+import {
+  resolveMobileApiUrl,
+  VERCEL_SITE_URL,
+} from "./lib/read-public-api-url.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const webAppUrl = (
   process.env.CAPACITOR_WEB_APP_URL ||
   `${VERCEL_SITE_URL}/app`
 ).replace(/\/$/, "");
-const apiUrl = readPublicApiUrl();
+/** iOS — HTTPS Vercel (بروكسي → VPS). لا نفق trycloudflare ولا IP HTTP */
+const apiUrl = resolveMobileApiUrl();
 const appId = process.env.CAPACITOR_APP_ID || "com.reyweet.app";
-const cleartext = Boolean(
-  process.env.CAPACITOR_ALLOW_HTTP === "1" ||
-    webAppUrl.startsWith("http://") ||
-    (typeof apiUrl === "string" && apiUrl.length > 0 && apiUrl.startsWith("http://")),
-);
+const cleartext = false;
 
 function run(cmd, opts = {}) {
   execSync(cmd, {
@@ -43,46 +43,61 @@ function removeIosPlatform() {
   }
 }
 
+function injectNativeShellIndex(indexPath) {
+  if (!fs.existsSync(indexPath)) return;
+  let html = fs.readFileSync(indexPath, "utf8");
+  const tag = `<script>window.__RETWEET_NATIVE_SHELL__=true;window.__RETWEET_API_URL__=${JSON.stringify(apiUrl)};</script>`;
+  html = html.replace(/<script>window\.__RETWEET[^<]*<\/script>\s*/gi, "");
+  if (!html.includes("__RETWEET_NATIVE_SHELL__")) {
+    html = html.replace("</head>", `${tag}\n</head>`);
+  }
+  fs.writeFileSync(indexPath, html, "utf8");
+  console.log(`  ✓ ${path.relative(root, indexPath)} (native → ${apiUrl})`);
+}
+
 console.log("\n══ Retweet iOS — Capacitor (نسخة الموقع) ══\n");
 console.log(`  WebView:  ${webAppUrl}/`);
-console.log(`  API:      ${apiUrl || "(من إعدادات الموقع على Vercel)"}\n`);
+console.log(`  API:      ${apiUrl}\n`);
 
-if (apiUrl) {
-  process.env.RETWEET_PUBLIC_API_URL = apiUrl;
-  run("node scripts/write-public-web-config.mjs", { env: process.env });
-}
+process.env.RETWEET_PUBLIC_API_URL = apiUrl;
+run("node scripts/write-public-web-config.mjs", { env: process.env });
 
 console.log("→ بناء SPA (نفس بناء الموقع)…");
 run("npm run build:spa", {
   env: {
     ...process.env,
-    RETWEET_PUBLIC_API_URL: apiUrl || process.env.RETWEET_PUBLIC_API_URL || "",
+    RETWEET_PUBLIC_API_URL: apiUrl,
+    VITE_API_URL: apiUrl,
+    VITE_API_URL_MOBILE: apiUrl,
   },
 });
 
 const spaDist = path.join(root, "spa-dist");
-const indexPath = path.join(spaDist, "index.html");
-if (apiUrl && fs.existsSync(indexPath)) {
-  let html = fs.readFileSync(indexPath, "utf8");
-  const tag = `<script>window.__RETWEET_API_URL__=${JSON.stringify(apiUrl)};</script>`;
-  if (!html.includes("__RETWEET_API_URL__")) {
-    html = html.replace("</head>", `${tag}\n</head>`);
-    fs.writeFileSync(indexPath, html, "utf8");
-    console.log("  ✓ spa-dist/index.html (__RETWEET_API_URL__)");
-  }
-}
+injectNativeShellIndex(path.join(spaDist, "index.html"));
+
+const webAuth = {
+  apiUrl,
+  supabaseUrl: "",
+  supabaseAnonKey: "",
+};
+fs.writeFileSync(
+  path.join(spaDist, "web-auth-config.json"),
+  JSON.stringify(webAuth, null, 2) + "\n",
+  "utf8",
+);
 
 const serverUrl = `${webAppUrl.replace(/\/+$/, "")}/`;
-// Copy SPA build to dist/ for capacitor.config webDir
 const distDir = path.join(root, "dist");
 if (fs.existsSync(spaDist)) {
   fs.rmSync(distDir, { recursive: true, force: true });
   fs.cpSync(spaDist, distDir, { recursive: true });
-  const webAuthSrc = path.join(root, "spa/public/web-auth-config.json");
-  if (apiUrl && fs.existsSync(webAuthSrc)) {
-    fs.copyFileSync(webAuthSrc, path.join(distDir, "web-auth-config.json"));
-  }
-  console.log("  ✓ dist/ (from spa-dist)");
+  fs.writeFileSync(
+    path.join(distDir, "web-auth-config.json"),
+    JSON.stringify(webAuth, null, 2) + "\n",
+    "utf8",
+  );
+  injectNativeShellIndex(path.join(distDir, "index.html"));
+  console.log("  ✓ dist/ (from spa-dist + web-auth-config)");
 }
 
 const capConfigTs = [
@@ -118,9 +133,30 @@ if (forceRegen) {
   run("npx cap add ios");
 }
 
+const iosPublic = path.join(root, "ios", "App", "App", "public");
+injectNativeShellIndex(path.join(iosPublic, "index.html"));
+fs.writeFileSync(
+  path.join(iosPublic, "web-auth-config.json"),
+  JSON.stringify(webAuth, null, 2) + "\n",
+  "utf8",
+);
+
+const iosCapJson = path.join(root, "ios", "App", "App", "capacitor.config.json");
+if (fs.existsSync(iosCapJson)) {
+  const capJson = {
+    appId,
+    appName: "Reyweet",
+    webDir: "public",
+    server: { url: serverUrl, cleartext },
+    packageClassList: [],
+  };
+  fs.writeFileSync(iosCapJson, JSON.stringify(capJson, null, 2) + "\n", "utf8");
+  console.log("  ✓ ios/App/App/capacitor.config.json");
+}
+
 const configJson = {
   webAppUrl: `${webAppUrl}/`,
-  apiUrl: apiUrl || "",
+  apiUrl,
   siteUrl: VERCEL_SITE_URL,
   bundleId: appId,
   builtAt: new Date().toISOString(),

@@ -6,7 +6,7 @@ import type { AppState } from "@/lib/types";
 import { App } from "@/components/App";
 import { logAuthRoute } from "@/lib/authRouteDebug";
 import { clearStaleApiConfig, probeHealth } from "@/lib/apiConfig";
-import { isPublicAppHost, isVpsProductionHost } from "@/lib/apiUrlPolicy";
+import { isNativeCapacitorShell, isPublicAppHost, isVpsProductionHost } from "@/lib/apiUrlPolicy";
 import { warmGlobalPointerBackRouter } from "@/lib/globalPointerBackRouter";
 
 /** غلاف /app — نسخة الويب الكاملة مرتبطة بـ Retweet API وقاعدة البيانات على القرص D */
@@ -114,6 +114,12 @@ export function WebAppRoot() {
                 http://109.199.111.29/app/
               </a>{" "}
               مباشرة.
+            </>
+          ) : isNativeCapacitorShell() ? (
+            <>
+              تأكد من اتصال الإنترنت. التطبيق يتصل عبر{" "}
+              <span className="font-mono text-xs">reyweet.vercel.app</span>. إن استمر
+              الخطأ، أعد تثبيت IPA بعد بناء جديد من Codemagic.
             </>
           ) : isPublicAppHost() ? (
             <>
