@@ -63,6 +63,8 @@ export async function mergeDbPostsIntoAppState(state: AppState): Promise<AppStat
       verified: row.verified === true,
       founderVerified: row.founderVerified === true,
       founderOfficialLabel: row.founderOfficialLabel,
+      appOfficialVerified: row.appOfficialVerified === true,
+      appOfficialLabel: row.appOfficialLabel,
     } as User);
   }
 

@@ -1,17 +1,28 @@
 /**
- * يكتب رابط API العام (نفق Cloudflare) في ملفات الويب والموبايل.
+ * يكتب رابط API للواجهة على Vercel (بروكسي) مع backend على VPS.
  */
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { readPublicApiUrl } from "./lib/read-public-api-url.mjs";
+import {
+  PRODUCTION_VPS_API,
+  readPublicApiUrl,
+  shouldUseVercelApiProxy,
+  VERCEL_SITE_URL,
+} from "./lib/read-public-api-url.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const apiUrl = readPublicApiUrl();
+const backendUrl = readPublicApiUrl() || PRODUCTION_VPS_API;
+const vercelSite = VERCEL_SITE_URL;
+const useProxy = shouldUseVercelApiProxy(backendUrl);
+const apiUrl = useProxy ? vercelSite : backendUrl;
+const siteUrl = useProxy ? vercelSite : backendUrl;
+const webAppUrl = `${vercelSite}/app/`;
 
-if (!apiUrl) {
-  console.warn("write-public-web-config: لا يوجد RETWEET_PUBLIC_API_URL أو PUBLIC_API_URL.txt — شغّل npm run api:tunnel");
-  process.exit(0);
+if (useProxy) {
+  console.log(`  (بروكسي Vercel: ${vercelSite} → ${backendUrl})`);
+} else {
+  console.log(`  (اتصال مباشر: ${backendUrl})`);
 }
 
 function writeJson(rel, extra = {}) {
@@ -34,11 +45,17 @@ function writeJson(rel, extra = {}) {
 }
 
 writeJson("spa/public/web-auth-config.json");
-writeJson("landing/public/app-config.json", { appPath: "/app/", siteUrl: "https://reyweet.vercel.app" });
+writeJson("landing/public/app-config.json", {
+  appPath: "/app/",
+  siteUrl,
+  webAppUrl,
+});
 
 const spaDist = path.join(root, "spa-dist/web-auth-config.json");
 if (fs.existsSync(path.dirname(spaDist))) {
   writeJson("spa-dist/web-auth-config.json");
 }
 
-console.log(`\nرابط API العام: ${apiUrl}\n`);
+console.log(`\nرابط API للواجهة: ${apiUrl}`);
+console.log(`Backend VPS:       ${backendUrl}`);
+console.log(`رابط التطبيق:      ${webAppUrl}\n`);

@@ -6,7 +6,7 @@ import { restoreActiveSessionOnLaunch } from "./accountSessions";
 import { logAuthRoute } from "./authRouteDebug";
 import { applyAuthoritativeProfile, mergeUserFromServer } from "./mergeUserSocial";
 import { scopeAppStateToAccount } from "./scopeAppState";
-import { isolateUsersForAccountCache, listAccountSessions } from "./accountSessions";
+import { isolateUsersForAccountCache, snapshotAccountIdsForOwner } from "./accountSessions";
 import { normalizePersistedAppState, readPersistedAppState } from "./store";
 import type { AppState } from "./types";
 
@@ -55,18 +55,30 @@ async function hydrateFromApiToken(): Promise<boolean> {
     byId.set(u.id, merged);
   }
 
+  const postById = new Map<string, import("./types").Post>();
+  for (const p of remote.posts || []) postById.set(p.id, p);
+  for (const p of base.posts || []) {
+    if (!postById.has(p.id)) postById.set(p.id, p);
+  }
+  const mergedPosts = [...postById.values()].sort(
+    (a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0),
+  );
+
   const merged = normalizePersistedAppState({
     ...base,
     ...remote,
     currentUserId: activeId,
     users: [...byId.values()],
+    posts: mergedPosts,
+    chats: remote.chats?.length ? remote.chats : base.chats ?? [],
   });
-  savePersisted(
-    scopeAppStateToAccount(activeId, merged, {
-      accountIds: listAccountSessions().map(s => s.userId),
-      isolateOwnedUsers: (ownerId, s) => isolateUsersForAccountCache(ownerId, s),
-    }),
-  );
+  const scoped = scopeAppStateToAccount(activeId, merged, {
+    accountIds: snapshotAccountIdsForOwner(activeId),
+    isolateOwnedUsers: (ownerId, s) => isolateUsersForAccountCache(ownerId, s),
+  });
+  savePersisted(scoped);
+  const { markServerHydrated } = await import("./remotePushGate");
+  markServerHydrated(activeId, scoped);
   logAuthRoute("bootstrap-hydrate", { currentUserId: activeId, users: byId.size });
   return true;
 }

@@ -9,6 +9,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { readPublicApiUrl, VERCEL_SITE_URL } from "./lib/read-public-api-url.mjs";
+import {
+  applyRetweetIconsToAppBundle,
+  springboardIconBuffers,
+  syncXcodeAssetCatalog,
+} from "./lib/ios-icon-buffers.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const webAppUrl = `${VERCEL_SITE_URL}/app/`;
@@ -21,47 +26,59 @@ const defaultBase = path.join(iosBuildDir, "Reyweet-ready.ipa");
 const fallbackBase = path.join(
   process.env.USERPROFILE || "",
   "Downloads",
-  "Retweet-unsigned (3).ipa",
+  "Retweet-unsigned (4).ipa",
 );
 const baseIpa =
   process.env.COPY_IPA_PATH?.trim() ||
   (fs.existsSync(defaultBase) ? defaultBase : fallbackBase);
 /** مخرجات IPA داخل مشروع iOS (Capacitor) — ليس خارج المستودع */
 const outIpa = path.join(iosBuildDir, "Reyweet-ready.ipa");
+const codemagicArchive = path.join(iosBuildDir, "codemagic-base.ipa");
 const outDownloads = path.join(root, "landing", "public", "downloads", "retweet.ipa");
+const iosAppPublic = path.join(root, "ios", "App", "App", "public");
+const iosAppConfigPath = path.join(root, "ios-app.config.json");
 const workDir = path.join(root, ".ipa-package-work");
 
 function run(cmd) {
   execSync(cmd, { cwd: root, stdio: "inherit", shell: true });
 }
 
+async function main() {
 console.log("\n══ Reyweet — تجهيز IPA (نفس الموقع والخادم) ══\n");
 console.log(`  الموقع:  ${webAppUrl}`);
-console.log(`  API:     ${apiUrl || "(من Vercel app-config)"}\n`);
+console.log(`  API:     ${apiUrl || "(شغّل npm run stack:reyweet)"}\n`);
+
+if (!apiUrl) {
+  console.error("package-ready-ipa: لا يوجد API — شغّل npm run stack:reyweet أولاً");
+  process.exit(1);
+}
 
 if (!fs.existsSync(baseIpa)) {
   console.error(`package-ready-ipa: لم يُعثر على ${baseIpa}`);
   process.exit(1);
 }
 
-if (apiUrl) {
-  process.env.RETWEET_PUBLIC_API_URL = apiUrl;
-  run("node scripts/write-public-web-config.mjs");
-}
+process.env.RETWEET_PUBLIC_API_URL = apiUrl;
+run("node scripts/write-public-web-config.mjs");
+
+console.log("→ مزامنة شعار التطبيق (iOS + PWA)…");
+run("node scripts/sync-ios-app-icon.mjs");
 
 console.log("→ بناء SPA…");
 run("npm run build:spa");
 
 const spaDist = path.join(root, "spa-dist");
 const indexPath = path.join(spaDist, "index.html");
-if (apiUrl && fs.existsSync(indexPath)) {
+if (fs.existsSync(indexPath)) {
   let html = fs.readFileSync(indexPath, "utf8");
-  const tag = `<script>window.__RETWEET_API_URL__=${JSON.stringify(apiUrl)};</script>`;
-  if (!html.includes("__RETWEET_API_URL__")) {
-    html = html.replace("</head>", `${tag}\n</head>`);
-    fs.writeFileSync(indexPath, html, "utf8");
-  }
+  const tag = `<script>window.__RETWEET_NATIVE_SHELL__=true;window.__RETWEET_API_URL__=${JSON.stringify(apiUrl)};</script>`;
+  html = html.replace(/<script>window\.__RETWEET[^<]*<\/script>\s*/g, "");
+  html = html.replace("</head>", `${tag}\n</head>`);
+  fs.writeFileSync(indexPath, html, "utf8");
+  console.log("  ✓ spa-dist/index.html (API + native shell)");
 }
+
+const icons = await springboardIconBuffers(root);
 
 const capConfig = {
   appId,
@@ -125,6 +142,14 @@ fs.writeFileSync(
   "utf8",
 );
 
+const iconResult = applyRetweetIconsToAppBundle(appPath, icons, { removeAssetsCar: true });
+syncXcodeAssetCatalog(root, icons);
+console.log(
+  iconResult.removedAssetsCar
+    ? "  ✓ أيقونة Retweet — حُذف Assets.car (كان يعرض شعار Capacitor القديم)"
+    : "  ✓ أيقونة Retweet (كل أحجام AppIcon*.png)",
+);
+
 const meta = {
   version: "1.0.0",
   bundleId: appId,
@@ -153,6 +178,34 @@ run(
 const ipaZip = fs.readFileSync(payloadZip);
 fs.writeFileSync(outIpa, ipaZip);
 fs.copyFileSync(outIpa, outDownloads);
+fs.copyFileSync(baseIpa, codemagicArchive);
+
+if (fs.existsSync(iosAppPublic)) fs.rmSync(iosAppPublic, { recursive: true, force: true });
+fs.cpSync(publicDir, iosAppPublic, { recursive: true });
+fs.writeFileSync(
+  path.join(root, "ios", "App", "App", "capacitor.config.json"),
+  JSON.stringify(capConfig, null, "\t") + "\n",
+  "utf8",
+);
+fs.writeFileSync(
+  iosAppConfigPath,
+  JSON.stringify(
+    {
+      webAppUrl,
+      apiUrl: apiUrl || "",
+      siteUrl: VERCEL_SITE_URL,
+      bundleId: appId,
+      sourceIpa: path.basename(baseIpa),
+      builtAt: new Date().toISOString(),
+    },
+    null,
+    2,
+  ) + "\n",
+  "utf8",
+);
+console.log("  ✓ ios/App/App/public + capacitor.config.json");
+console.log("  ✓ ios-app.config.json");
+console.log(`  ✓ أرشيف Codemagic: ${codemagicArchive}`);
 
 const mb = (fs.statSync(outIpa).size / (1024 * 1024)).toFixed(1);
 console.log(`\n✓ IPA جاهز (${mb} MB):`);
@@ -161,4 +214,10 @@ console.log(`    ${outDownloads}`);
 console.log(`\n  WebView → ${webAppUrl}`);
 console.log(`  API     → ${apiUrl || "من الموقع عند التشغيل"}`);
 console.log("\n  وقّعه عبر تطبيق بلس / Sideloadly ثم ثبّت.\n");
-console.log("  على PC: npm run stack:reyweet (خادم + نفق + قاعدة البيانات)\n");
+console.log("  على PC: npm run stack:reyweet (يجب أن يبقى شغالاً أثناء استخدام التطبيق)\n");
+}
+
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

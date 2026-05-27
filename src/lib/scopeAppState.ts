@@ -1,7 +1,7 @@
-import type { AppState, Chat, ID, Message } from "./types";
+import type { AppState, Chat, ID, Message, User } from "./types";
 import { canonicalizeDmChatId } from "./dmChatId";
 import { isGuestUserId } from "./guestUser";
-import { listAccountSessions } from "./accountSessions";
+import { storiesVisibleToViewer } from "./storyVisibility";
 
 function dmPeerIds(chat: Chat, ownerId: ID): ID[] {
   return (chat.members || []).filter(id => id !== ownerId);
@@ -120,6 +120,26 @@ export type ScopeAppStateOptions = {
   isolateOwnedUsers?: (ownerId: ID, state: AppState) => AppState["users"];
 };
 
+/** مستخدمون يجب إبقاؤهم لعرض المنشورات/المحادثات (حتى لو عُزّلوا من كاش الحساب) */
+function collectDisplayUserIds(state: AppState, ownerId: ID): Set<ID> {
+  const ids = new Set<ID>([ownerId]);
+  for (const p of state.posts ?? []) {
+    if (p?.userId) ids.add(p.userId);
+    for (const uid of p.likes ?? []) ids.add(uid);
+    for (const uid of p.reposts ?? []) ids.add(uid);
+    for (const c of p.comments ?? []) ids.add(c.userId);
+  }
+  for (const c of state.chats ?? []) {
+    for (const mid of c.members ?? []) ids.add(mid);
+    for (const m of c.messages ?? []) ids.add(m.senderId);
+  }
+  for (const st of state.stories ?? []) ids.add(st.userId);
+  for (const n of state.notifications ?? []) {
+    if (n.fromId) ids.add(n.fromId);
+  }
+  return ids;
+}
+
 /**
  * عزل لقطة التطبيق لحساب واحد — يمنع تسرّب محادثات/إشعارات/ستوريات حساب آخر.
  */
@@ -136,20 +156,21 @@ export function scopeAppStateToAccount(
 
   const notifications = (state.notifications || []).filter(n => n.userId === ownerId);
 
-  const stories = (state.stories || []).filter(st => st.userId === ownerId);
+  const stories = storiesVisibleToViewer(state, ownerId);
 
-  const accountIds =
-    options?.accountIds?.length
-      ? options.accountIds
-      : listAccountSessions().map(s => s.userId).length
-        ? listAccountSessions().map(s => s.userId)
-        : state.accountIds?.length
-          ? state.accountIds
-          : [ownerId];
+  const accountIds = options?.accountIds?.length ? options.accountIds : [ownerId];
 
-  const users = options?.isolateOwnedUsers
-    ? options.isolateOwnedUsers(ownerId, { ...state, users: state.users || [] })
-    : state.users || [];
+  const directory = state.users || [];
+  const baseUsers = options?.isolateOwnedUsers
+    ? options.isolateOwnedUsers(ownerId, { ...state, users: directory })
+    : directory;
+  const usersById = new Map<ID, User>(baseUsers.map(u => [u.id, u]));
+  for (const id of collectDisplayUserIds(state, ownerId)) {
+    if (usersById.has(id)) continue;
+    const u = directory.find(x => x.id === id);
+    if (u) usersById.set(id, u);
+  }
+  const users = [...usersById.values()];
 
   const me = users.find(u => u.id === ownerId);
 

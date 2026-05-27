@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "start": "tsx src/server.ts"
+    "start": "tsx src/server.ts",
+    "backup": "node scripts/backup-db.mjs"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

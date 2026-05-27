@@ -1,4 +1,7 @@
-import { useState, startTransition, useMemo } from "react";
+import { memo, useState, startTransition, useMemo } from "react";
+import { LazyInView } from "./LazyInView";
+import { postFeedSignature } from "@/lib/postFeedSignature";
+import { postShowsFeedMedia } from "@/lib/postMedia";
 import { PostOptionsMenu } from "./PostOptionsMenu";
 import { useApp, userById, visibleMediaNotes, isMutual } from "@/lib/store";
 import { notifyGuestActionBlocked } from "@/lib/guestBlocked";
@@ -6,13 +9,13 @@ import { formatRelativeTime } from "@/lib/formatRelativeTime";
 import type { MediaNote, Post, ProfileReturnContext } from "@/lib/types";
 import { Avatar } from "./Avatar";
 import { NoteReplySheet } from "./NoteReplySheet";
-import { AtSign } from "lucide-react";
+import { renderMentionHashtagNodes, createMentionRenderer } from "@/lib/renderMentionHashtagText";
 import { normalizePostMedia, resolvePostDisplayType } from "@/lib/postMedia";
-import { renderMentionHashtagNodes } from "@/lib/renderMentionHashtagText";
 import {
+  FeedPostColumnShell,
   PostFeedActions,
   PostFeedCaption,
-  PostFeedHeader,
+  ProfilePostMetaRow,
   PostFeedMediaBlock,
 } from "./PostFeedLayout";
 
@@ -27,7 +30,7 @@ interface Props {
   onOpenChat?: (chatId: string) => void;
 }
 
-export function PostCard({
+function PostCardInner({
   post,
   onShare,
   onOpenProfile,
@@ -72,30 +75,10 @@ export function PostCard({
   const renderedPostText = useMemo(() => {
     if (!post.text) return null;
     return renderMentionHashtagNodes(post.text, {
-      renderMention: (uname, key) => {
-        const u = state.users.find(x => x.username === uname);
-        if (u) {
-          return (
-            <button
-              key={key}
-              type="button"
-              onClick={e => {
-                e.stopPropagation();
-                openAuthorProfile(u.id);
-              }}
-              className="text-primary"
-            >
-              <AtSign size={12} className="inline" />
-              {uname}
-            </button>
-          );
-        }
-        return (
-          <span key={key} className="text-primary">
-            @{uname}
-          </span>
-        );
-      },
+      renderMention: createMentionRenderer({
+        users: state.users,
+        onUserClick: userId => startTransition(() => openAuthorProfile(userId)),
+      }),
       renderHashtag: (h, key) => (
         <span key={key} className="text-primary">
           {h}
@@ -146,10 +129,24 @@ export function PostCard({
       </div>
     ) : null;
 
+  const showFeedMedia = postShowsFeedMedia({ ...post, type: displayType });
+  const mediaLazyMinH =
+    postMedia.hasVideo || displayType === "reel" ? "min-h-[12rem]" : "min-h-[12rem]";
+
+  const mediaBlock = (
+    <PostFeedMediaBlock
+      post={{ ...post, type: displayType }}
+      postMedia={postMedia}
+      notesOverlay={notesOverlay}
+      onOpen={onOpen}
+      profileInset
+    />
+  );
+
   return (
-    <article dir="rtl" className="border-b border-border pb-3 text-right">
-      <div className="relative">
-        <PostFeedHeader
+    <article className="feed-post-card border-b border-border">
+      <FeedPostColumnShell author={author} onOpenAuthor={() => openAuthorProfile(author.id)}>
+        <ProfilePostMetaRow
           author={author}
           timeLabel={formatRelativeTime(post.createdAt, lang)}
           onOpenAuthor={() => openAuthorProfile(author.id)}
@@ -157,68 +154,74 @@ export function PostCard({
           onMenu={currentUser?.id === post.userId ? () => setMenuOpen(v => !v) : undefined}
         />
         {menuOpen && <PostOptionsMenu post={post} onClose={() => setMenuOpen(false)} />}
-      </div>
 
-      {renderedPostText && (
-        <PostFeedCaption variant={displayType === "tweet" ? "tweet" : "post"} onClick={onOpen}>
-          {renderedPostText}
-        </PostFeedCaption>
-      )}
+        {renderedPostText && (
+          <PostFeedCaption
+            variant={displayType === "tweet" ? "tweet" : "post"}
+            onClick={onOpen}
+            profileInset
+          >
+            {renderedPostText}
+          </PostFeedCaption>
+        )}
 
-      <PostFeedMediaBlock
-        post={{ ...post, type: displayType }}
-        postMedia={postMedia}
-        notesOverlay={displayType === "tweet" ? null : notesOverlay}
-        onOpen={onOpen}
-      />
+        {showFeedMedia ? (
+          <LazyInView minHeight={mediaLazyMinH} rootMargin="320px 0px">
+            {mediaBlock}
+          </LazyInView>
+        ) : (
+          mediaBlock
+        )}
 
-      <PostFeedActions
-        liked={liked}
-        reposted={reposted}
-        likeCount={post.likes.length}
-        commentCount={post.comments.length}
-        repostCount={post.reposts.length}
-        onLike={() => {
-          if (guestBlock()) return;
-          startTransition(() => toggleLike(post.id));
-        }}
-        onComment={() => startTransition(() => (onOpenCommentsSheet ?? onOpen)())}
-        onRepost={() => {
-          if (guestBlock()) return;
-          startTransition(() => toggleRepost(post.id));
-        }}
-        onShare={() => {
-          if (guestBlock()) return;
-          onShare(post);
-        }}
-      />
-
-      {!hideQuickComment && (
-        <form
-          onSubmit={e => {
-            e.preventDefault();
+        <PostFeedActions
+          liked={liked}
+          reposted={reposted}
+          likeCount={post.likes.length}
+          commentCount={post.comments.length}
+          repostCount={post.reposts.length}
+          onLike={() => {
             if (guestBlock()) return;
-            if (comment.trim()) {
-              addComment(post.id, comment);
-              setComment("");
-            }
+            startTransition(() => toggleLike(post.id));
           }}
-          dir="rtl"
-          className="flex flex-row gap-2 px-4 pt-2"
-        >
-          <input
-            value={comment}
-            onChange={e => setComment(e.target.value)}
-            placeholder="تعليق سريع..."
-            className="flex-1 rounded-full bg-input px-4 py-2 text-sm outline-none"
-          />
-          {comment && (
-            <button type="submit" className="text-sm font-semibold text-primary">
-              نشر
-            </button>
-          )}
-        </form>
-      )}
+          onComment={() => startTransition(() => (onOpenCommentsSheet ?? onOpen)())}
+          onRepost={() => {
+            if (guestBlock()) return;
+            startTransition(() => toggleRepost(post.id));
+          }}
+          onShare={() => {
+            if (guestBlock()) return;
+            onShare(post);
+          }}
+          profileInset
+        />
+
+        {!hideQuickComment && (
+          <form
+            onSubmit={e => {
+              e.preventDefault();
+              if (guestBlock()) return;
+              if (comment.trim()) {
+                addComment(post.id, comment);
+                setComment("");
+              }
+            }}
+            dir="rtl"
+            className="flex flex-row gap-2 px-0 pt-2"
+          >
+            <input
+              value={comment}
+              onChange={e => setComment(e.target.value)}
+              placeholder="تعليق سريع..."
+              className="flex-1 rounded-full bg-input px-4 py-2 text-sm outline-none"
+            />
+            {comment && (
+              <button type="submit" className="text-sm font-semibold text-primary">
+                نشر
+              </button>
+            )}
+          </form>
+        )}
+      </FeedPostColumnShell>
 
       <NoteReplySheet
         note={noteToReply}
@@ -229,3 +232,11 @@ export function PostCard({
     </article>
   );
 }
+
+export const PostCard = memo(
+  PostCardInner,
+  (prev, next) =>
+    postFeedSignature(prev.post) === postFeedSignature(next.post) &&
+    prev.hideQuickComment === next.hideQuickComment &&
+    prev.profileReturnTab === next.profileReturnTab,
+);

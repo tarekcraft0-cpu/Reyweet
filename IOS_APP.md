@@ -11,6 +11,13 @@
 | تهيئة + بناء | `scripts/prepare-capacitor-ios.mjs` |
 | مشروع Xcode (المصدر) | `ios/App/` |
 | **ملف IPA الجاهز** | **`ios/build/Reyweet-ready.ipa`** |
+
+### أيقونة التطبيق على الآيفون
+
+- المصدر الوحيد: **`src/assets/logo.png`** (شعار R).
+- عند `npm run ios:package` يُستبدل كل `AppIcon*.png` ويُحذف **`Assets.car`** إن وُجد (كان يعرض أيقونة Capacitor القديمة).
+- بعد التثبيت: احذف النسخة القديمة من الشاشة الرئيسية ثم ثبّت من جديد.
+- تحقق: `npm run ios:verify-icon`
 | نسخة تحميل الموقع | `landing/public/downloads/retweet.ipa` |
 | Codemagic OTA (موقّع) | **`retweet-ios-ota-signed`** |
 | Codemagic تجريبي | **`retweet-ios-capacitor-ipa`** |

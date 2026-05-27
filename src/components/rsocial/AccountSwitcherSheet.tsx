@@ -1,8 +1,9 @@
-import { getAccountSession } from "@/lib/accountSessions";
-import { useApp, userById } from "@/lib/store";
+import { getAccountSession, listAccountSessions } from "@/lib/accountSessions";
+import { useApp } from "@/lib/store";
 import { isGuestUserId } from "@/lib/guestUser";
 import { useT } from "@/lib/i18n";
 import { displayNameFromUsername } from "@/lib/rsocialUi";
+import { AppDismissSheet, SlideDismissBackButton } from "../SlideDismissShell";
 import { RSocialAvatar } from "./RSocialAvatar";
 import { ArrowRight } from "lucide-react";
 
@@ -18,24 +19,19 @@ export function AccountSwitcherSheet({ switchingAccountId, onSwitching, onClose,
   const t = useT();
 
   return (
-    <div
-      dir="rtl"
-      className="fixed inset-0 z-[200] flex flex-col pointer-events-auto bg-zinc-100 dark:bg-zinc-950"
-      onClick={onClose}
-    >
+    <AppDismissSheet onClose={onClose} overlayZIndex={200} contentClassName="bg-zinc-100 dark:bg-zinc-950">
       <div
-        className="mx-auto flex w-full max-w-md flex-1 flex-col px-4 pt-[max(0.75rem,env(safe-area-inset-top))] pb-8"
-        onClick={e => e.stopPropagation()}
+        dir="rtl"
+        className="mx-auto flex w-full max-w-md flex-1 flex-col px-4 pb-8 pt-[max(0.75rem,env(safe-area-inset-top))]"
       >
         <div className="mb-6 flex flex-row items-center gap-3">
-          <button
-            type="button"
-            onClick={onClose}
+          <SlideDismissBackButton
+            onDismiss={onClose}
             className="shrink-0 rounded-full p-2 text-zinc-900 active:bg-zinc-200 dark:text-zinc-50 dark:active:bg-zinc-800"
             aria-label={t("cancel")}
           >
             <ArrowRight size={22} strokeWidth={1.75} />
-          </button>
+          </SlideDismissBackButton>
           <h2 className="min-w-0 flex-1 text-center text-base font-bold text-zinc-900 dark:text-zinc-50">
             {t("activeAccountsAdd")}
           </h2>
@@ -58,20 +54,38 @@ export function AccountSwitcherSheet({ switchingAccountId, onSwitching, onClose,
           </div>
         </div>
 
-        {state.accountIds.filter(id => !isGuestUserId(id) && id !== currentUser.id).length > 0 && (
+        {(() => {
+          const seenCheck = new Set<string>();
+          return listAccountSessions().filter(s => {
+            if (isGuestUserId(s.userId) || s.userId === currentUser.id) return false;
+            if (seenCheck.has(s.userId) || seenCheck.has(s.username.toLowerCase())) return false;
+            seenCheck.add(s.userId);
+            seenCheck.add(s.username.toLowerCase());
+            return true;
+          }).length > 0;
+        })() && (
           <>
             <p className="mb-2 px-1 text-start text-xs font-medium text-zinc-500 dark:text-zinc-400">
               {t("activeAccountsAdd")}
             </p>
             <div className="mb-5 divide-y divide-zinc-100 overflow-hidden rounded-[20px] border border-zinc-200/60 bg-white shadow-sm dark:divide-zinc-800 dark:border-zinc-700 dark:bg-zinc-900">
-              {state.accountIds
-                .filter(id => !isGuestUserId(id) && id !== currentUser.id)
-                .map(id => {
-                  const u = userById(state, id);
-                  if (!u) return null;
-                  const sess = getAccountSession(id);
-                  const displayUsername = sess?.username ?? u.username;
-                  const displayAvatar = sess?.avatar ?? u.avatar;
+        {(() => {
+          const seen = new Set<string>();
+          return listAccountSessions()
+            .filter(s => {
+              if (isGuestUserId(s.userId)) return false;
+              if (s.userId === currentUser.id) return false;
+              // إلغاء التكرار: نفس الـ userId أو نفس الـ username
+              const key = s.userId + "|" + s.username.toLowerCase();
+              if (seen.has(s.userId) || seen.has(s.username.toLowerCase())) return false;
+              seen.add(s.userId);
+              seen.add(s.username.toLowerCase());
+              return true;
+            });
+        })().map(sess => {
+                  const id = sess.userId;
+                  const displayUsername = sess.username;
+                  const displayAvatar = sess.avatar;
                   const switching = switchingAccountId === id;
                   return (
                     <button
@@ -89,16 +103,18 @@ export function AccountSwitcherSheet({ switchingAccountId, onSwitching, onClose,
                           }
                         })();
                       }}
-                      className="flex w-full flex-row items-center gap-3 p-4 text-start disabled:opacity-60 active:bg-zinc-50 dark:active:bg-zinc-800/80"
+                      className="flex w-full flex-row items-center gap-3 p-4 text-start transition-colors active:bg-zinc-100 disabled:opacity-60 dark:active:bg-zinc-800"
                     >
-                      <RSocialAvatar name={displayUsername} src={displayAvatar} size={48} />
+                      <RSocialAvatar name={displayUsername} src={displayAvatar} size={44} />
                       <div className="min-w-0 flex-1">
-                        <div className="truncate font-bold text-zinc-900 dark:text-zinc-50">
+                        <div className="truncate font-semibold text-zinc-900 dark:text-zinc-50">
                           {displayNameFromUsername(displayUsername)}
                         </div>
                         <div className="truncate text-sm text-zinc-500 dark:text-zinc-400">@{displayUsername}</div>
                       </div>
-                      {switching && <span className="shrink-0 text-xs text-zinc-400">…</span>}
+                      {switching && (
+                        <span className="shrink-0 text-xs text-zinc-500">{t("switchingAccount")}</span>
+                      )}
                     </button>
                   );
                 })}
@@ -109,14 +125,11 @@ export function AccountSwitcherSheet({ switchingAccountId, onSwitching, onClose,
         <button
           type="button"
           onClick={onAddAccount}
-          className="flex w-full flex-row items-center gap-3 rounded-[20px] border border-zinc-200/60 bg-white p-4 text-start font-semibold text-[#0A84FF] shadow-sm active:scale-[0.99] dark:border-zinc-700 dark:bg-zinc-900"
+          className="w-full rounded-[20px] border border-dashed border-zinc-300 bg-white py-4 text-sm font-semibold text-[#0A84FF] dark:border-zinc-600 dark:bg-zinc-900"
         >
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#0A84FF] text-xl leading-none text-white">
-            +
-          </span>
-          {t("activeAccountsAdd")}
+          {t("addAccount")}
         </button>
       </div>
-    </div>
+    </AppDismissSheet>
   );
 }

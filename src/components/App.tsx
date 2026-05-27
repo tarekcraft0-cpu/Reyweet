@@ -1,28 +1,58 @@
-import { useEffect, useState, useCallback, useMemo, startTransition, type MouseEvent } from "react";
-import { useSlideDismissBack } from "@/hooks/useSlideDismissBack";
-import { SlideDismissContext } from "./SlideDismissShell";
-// import { MainTabPager, PAGER_TAB_CHAIN, type PagerTab } from "./MainTabPager";
+import {
+  memo,
+  useEffect,
+  useState,
+  useCallback,
+  useMemo,
+  startTransition,
+  type CSSProperties,
+} from "react";
+import { AppDismissSheet, SlideDismissBackButton } from "./SlideDismissShell";
+import { SETTINGS_DISMISS_PULL_CSS_VAR } from "@/lib/navigationDismiss";
+import { useGlobalOverlayBack } from "@/hooks/useGlobalOverlayBack";
+import { type PagerTab } from "./MainTabPager";
+import { MainTabStack } from "./MainTabStack";
 // import { StoryViewer } from "./StoryViewer";
 import { QURAN_CHANNEL_ID, useApp, userById } from "@/lib/store";
 import { STORY_FULLSCREEN_EVENT } from "@/lib/storyChrome";
 import { AppErrorBoundary } from "./AppErrorBoundary";
-import { TabPanelShell } from "./TabPanelShell";
+import {
+  ChatTabPanel,
+  HomeTabPanel,
+  ProfileTabPanel,
+  ReelsTabPanel,
+  SearchTabPanel,
+} from "./MainTabPanels";
 import { apiBackendEnabled, getApiToken } from "@/lib/apiBackend";
 import { logAuthRoute } from "@/lib/authRouteDebug";
 import { isGuestUserId } from "@/lib/guestUser";
 import { PROFILE_RETURN_POST_KEY, type ProfileReturnContext } from "@/lib/types";
 import { useT } from "@/lib/i18n";
-import { Home, Search, MessageCircle, Plus, Menu, ChevronDown, ChevronRight, Heart, Lock, User, Footprints, EyeOff, ArrowRight } from "lucide-react";
+import { Home, Search, Plus, Menu, ChevronDown, ChevronRight, Heart, Lock, Footprints, EyeOff, ArrowRight } from "lucide-react";
 import { BottomNavSheet } from "./BottomNavSheet";
 import { useBottomNavDragContext } from "@/lib/bottomNavDragContext";
 import { NAV_HIDE_PROGRESS_CSS_VAR } from "@/hooks/useBottomNavSheet";
+import {
+  BOTTOM_NAV_TAB_COUNT,
+  navIndexToTab,
+  tabToNavIndex,
+  NAV_FLOAT_INSET_CSS_VAR,
+  NAV_FLOAT_INSET_DEFAULT,
+  NAV_SCROLL_PADDING_CSS_VAR,
+  NAV_SCROLL_PADDING_DEFAULT,
+} from "@/lib/bottomNavConfig";
 import { InstagramReelsIcon } from "./icons/InstagramReelsIcon";
+import { DirectMessagesNavIcon } from "./icons/DirectMessagesNavIcon";
 import { VerifiedMarkForUser } from "./VerifiedBadge";
+
+/** أبيض صريح — مقاس الشريط */
+const NAV_ICON = "pointer-events-none h-6 w-6 shrink-0 text-white";
+const NAV_MSG_ICON = "pointer-events-none h-[26px] w-[26px] shrink-0 text-white";
 import { HomeScreen } from "./screens/HomeScreen";
 import { SearchScreen } from "./screens/SearchScreen";
 import { ReelsScreen } from "./screens/ReelsScreen";
 import { ChatScreen, CHAT_DISMISS_PULL_CSS_VAR, CHAT_STACK_PROGRESS_VAR } from "./screens/ChatScreen";
-import { isDocumentRtl } from "@/hooks/useSlideDismissBack";
+
 import { ProfileScreen } from "./screens/ProfileScreen";
 import { SettingsScreen } from "./screens/SettingsScreen";
 import { CreateScreen, type CreateScreenInitial } from "./screens/CreateScreen";
@@ -34,13 +64,19 @@ import { NotificationsPanel } from "./NotificationsPanel";
 import { NotificationBanner } from "./NotificationBanner";
 import { Avatar } from "./Avatar";
 import { AccountSwitcherSheet } from "./rsocial/AccountSwitcherSheet";
-import { ACCOUNT_SWITCHED_EVENT } from "@/lib/accountSessions";
+import { cn } from "@/lib/utils";
+import {
+  ACCOUNT_SWITCHED_EVENT,
+  ACCOUNT_SWITCH_FAILED_EVENT,
+  countLoggedInAccountSessions,
+  pruneStaleAccountSessions,
+  resolveProfileTogglePeer,
+} from "@/lib/accountSessions";
+import { useNavDoubleTap } from "@/hooks/useNavDoubleTap";
 import logo from "@/assets/logo.png";
 
 type Tab = "home" | "search" | "reels" | "chat" | "profile";
 type Modal = null | "settings" | "create" | "edit" | "switcher" | "addAccount" | "notifications" | "visitors";
-
-const NAV_HIDDEN_KEY = "retweet_nav_hidden";
 
 export function App() {
   const {
@@ -62,6 +98,7 @@ export function App() {
   const [createInitial, setCreateInitial] = useState<CreateScreenInitial | null>(null);
   const [switchingAccountId, setSwitchingAccountId] = useState<string | null>(null);
   const [guestToast, setGuestToast] = useState(false);
+  const [switchFailToast, setSwitchFailToast] = useState<string | null>(null);
   const [viewProfileId, setViewProfileId] = useState<string | null>(null);
   /** لمكدس الرجوع: فتح مستخدم من اقتراحات بروفايل ثم الرجوع يعيد الخطوة السابقة فقط */
   const [profileNavStack, setProfileNavStack] = useState<string[]>([]);
@@ -69,22 +106,77 @@ export function App() {
   const [profileReturnTargetTab, setProfileReturnTargetTab] = useState<Tab | null>(null);
   /** فُتحت المحادثة من بروفايل (مراسلة): الرجوع من الخيط يعيد نفس البروفايل */
   const [resumeProfileUserId, setResumeProfileUserId] = useState<string | null>(null);
+  /** بروفايل فوق المحادثة دون تبديل التبويب — يمنع وميض الشاشة السوداء عند الرجوع */
+  const [profileOverlayUserId, setProfileOverlayUserId] = useState<string | null>(null);
   const [openChatId, setOpenChatId] = useState<string | null>(null);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [chatThreadOpen, setChatThreadOpen] = useState(false);
   const [chatHideBottomNav, setChatHideBottomNav] = useState(false);
+  /** سحب خروج المحادثة نشط — التقدّم في NAV_HIDE_PROGRESS_CSS_VAR (بدون setState كل إطار) */
+  const [chatExitNavActive, setChatExitNavActive] = useState(false);
+  const [postDetailOpen, setPostDetailOpen] = useState(false);
   const [showWelcome, setShowWelcome] = useState(false);
   /** إعادة فتح منشور/تعليقات بعد الرجوع من بروفايل (لا يُفوَّض لحدث لأن الشاشة كانت مُزالة من الشجرة) */
   const [restorePostContext, setRestorePostContext] = useState<ProfileReturnContext | null>(null);
-  const [navHidden, setNavHidden] = useState(() => {
-    if (typeof window === "undefined") return false;
-    try {
-      return localStorage.getItem(NAV_HIDDEN_KEY) === "1";
-    } catch {
-      return false;
-    }
-  });
   const clearRestorePostContext = useCallback(() => setRestorePostContext(null), []);
+
+  useEffect(() => {
+    const onOpen = () => setPostDetailOpen(true);
+    const onClose = () => setPostDetailOpen(false);
+    window.addEventListener("retweet-post-detail-open", onOpen);
+    window.addEventListener("retweet-post-detail-close", onClose);
+    return () => {
+      window.removeEventListener("retweet-post-detail-open", onOpen);
+      window.removeEventListener("retweet-post-detail-close", onClose);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("subscription") !== "success") return;
+    const sessionId = params.get("session_id");
+    const paymentIntentId = params.get("payment_intent");
+    if (!sessionId && !paymentIntentId) return;
+    void (async () => {
+      const { confirmStripeReturn } = await import("@/lib/subscriptionBilling");
+      const { applyVerificationPayloadToUser } = await import("@/lib/verificationApi");
+      const r = await confirmStripeReturn({ sessionId, paymentIntentId });
+      if (r.ok && currentUser) {
+        updateProfile(applyVerificationPayloadToUser(currentUser, r.data) as Partial<import("@/lib/types").User>, {
+          commitRemote: false,
+        });
+        if (r.data.verificationStatus === "pending") {
+          window.alert(
+            "تم الدفع بنجاح. طلب التوثيق لدى فريق الدعم — سيتم إشعارك عند القبول أو الرفض.",
+          );
+        }
+      }
+      params.delete("subscription");
+      params.delete("session_id");
+      params.delete("payment_intent");
+      params.delete("payment_intent_client_secret");
+      params.delete("redirect_status");
+      const q = params.toString();
+      const path = window.location.pathname + (q ? `?${q}` : "");
+      window.history.replaceState({}, "", path);
+    })();
+  }, [currentUser, updateProfile]);
+
+  const closeProfileOverlay = useCallback(() => {
+    setProfileOverlayUserId(null);
+  }, []);
+
+  const closeTopOverlay = useCallback(() => {
+    if (modal) {
+      setModal(null);
+      setCreateInitial(null);
+      return;
+    }
+    if (profileOverlayUserId) closeProfileOverlay();
+  }, [modal, profileOverlayUserId, closeProfileOverlay]);
+
+  useGlobalOverlayBack(!!modal || !!profileOverlayUserId, closeTopOverlay);
 
   /** تنقل تبويبات ثابت (بدون سحب أفقي — مؤقتاً لاستقرار الواجهة) */
   const resetChatNavigation = useCallback(() => {
@@ -92,10 +184,14 @@ export function App() {
     setActiveChatId(null);
     setChatThreadOpen(false);
     setChatHideBottomNav(false);
+    setChatExitNavActive(false);
     setResumeProfileUserId(null);
+    setProfileOverlayUserId(null);
     try {
       document.documentElement.style.removeProperty(CHAT_DISMISS_PULL_CSS_VAR);
       document.documentElement.style.removeProperty(CHAT_STACK_PROGRESS_VAR);
+      document.documentElement.style.removeProperty(NAV_HIDE_PROGRESS_CSS_VAR);
+      document.documentElement.style.removeProperty(SETTINGS_DISMISS_PULL_CSS_VAR);
     } catch {
       /* ignore */
     }
@@ -107,11 +203,13 @@ export function App() {
     setProfileNavStack([]);
     setProfileReturnTargetTab(null);
     setResumeProfileUserId(null);
+    setProfileOverlayUserId(null);
     setRestorePostContext(null);
     if (next !== "chat") resetChatNavigation();
   }, [resetChatNavigation]);
 
   const [storyFullscreen, setStoryFullscreen] = useState(false);
+  const settingsImmersive = modal === "settings";
 
   useEffect(() => {
     const onStoryFullscreen = (e: Event) => {
@@ -125,14 +223,34 @@ export function App() {
     };
   }, []);
 
-  const persistNavHidden = useCallback((hidden: boolean) => {
-    setNavHidden(hidden);
-    try {
-      if (hidden) localStorage.setItem(NAV_HIDDEN_KEY, "1");
-      else localStorage.removeItem(NAV_HIDDEN_KEY);
-    } catch {
-      /* ignore */
-    }
+  const navActiveIndex = tabToNavIndex(tab);
+
+  const onNavSelectIndex = useCallback(
+    (index: number) => {
+      const clamped = Math.max(0, Math.min(BOTTOM_NAV_TAB_COUNT - 1, Math.round(index)));
+      const next = navIndexToTab(clamped);
+      goTab(next);
+    },
+    [goTab],
+  );
+
+  const handleProfileNavDoubleTap = useCallback(() => {
+    if (isGuest || accountSwitching || !currentUser) return;
+    pruneStaleAccountSessions();
+    if (countLoggedInAccountSessions() < 2) return;
+    const peerId = resolveProfileTogglePeer(currentUser.id);
+    if (!peerId || peerId === currentUser.id) return;
+    void switchAccount(peerId);
+  }, [isGuest, accountSwitching, currentUser, switchAccount]);
+
+  useEffect(() => {
+    const onSwitchFail = (e: Event) => {
+      const msg = (e as CustomEvent<{ message?: string }>).detail?.message?.trim();
+      setSwitchFailToast(msg || "تعذّر تبديل الحساب");
+      window.setTimeout(() => setSwitchFailToast(null), 4200);
+    };
+    window.addEventListener(ACCOUNT_SWITCH_FAILED_EVENT, onSwitchFail);
+    return () => window.removeEventListener(ACCOUNT_SWITCH_FAILED_EVENT, onSwitchFail);
   }, []);
 
   useEffect(() => {
@@ -281,12 +399,24 @@ export function App() {
       if (!currentUser) return;
 
       if (id === currentUser.id) {
+        setProfileOverlayUserId(null);
         setProfileNavStack([]);
         setProfileReturnTargetTab(null);
         setViewProfileId(null);
         setTab("profile");
         return;
       }
+
+      const openOverChatThread = tab === "chat" && !!activeChatId && !returnCtx;
+      if (openOverChatThread) {
+        setProfileOverlayUserId(id);
+        setOpenChatId(activeChatId);
+        setChatThreadOpen(true);
+        setChatHideBottomNav(true);
+        return;
+      }
+
+      setProfileOverlayUserId(null);
 
       if (tab === "profile") {
         setProfileNavStack(prev => {
@@ -301,7 +431,7 @@ export function App() {
       setViewProfileId(id);
       setTab("profile");
     },
-    [tab, viewProfileId, currentUser],
+    [tab, viewProfileId, currentUser, activeChatId],
   );
 
   const popProfileScreenBack = useCallback(() => {
@@ -357,7 +487,10 @@ export function App() {
             setViewProfileId(null);
             const rt = profileReturnTargetTab;
             setProfileReturnTargetTab(null);
-            if (rt && rt !== "profile") setTab(rt);
+            if (rt && rt !== "profile") {
+              if (rt === "chat" && activeChatId) setOpenChatId(activeChatId);
+              setTab(rt);
+            }
           } else {
             setViewProfileId(popped);
           }
@@ -380,12 +513,16 @@ export function App() {
         const rt = profileReturnTargetTab;
         setProfileReturnTargetTab(null);
         const nextTab = rt ?? "home";
-        setTab(nextTab);
         if (nextTab === "chat" && activeChatId) {
-          queueMicrotask(() => setOpenChatId(activeChatId));
-        } else {
-          queueMicrotask(() => setOpenChatId(null));
+          setOpenChatId(activeChatId);
+          setChatThreadOpen(true);
+          setChatHideBottomNav(true);
+        } else if (nextTab !== "chat") {
+          setOpenChatId(null);
+          setChatThreadOpen(false);
+          setChatHideBottomNav(false);
         }
+        setTab(nextTab);
       });
       return prev;
     });
@@ -410,32 +547,18 @@ export function App() {
     }
   }, [tab]);
 
-  if (!currentUser) {
-    if (getApiToken() && apiBackendEnabled()) {
-      return (
-        <div className="flex min-h-dvh flex-col items-center justify-center gap-3 bg-background px-6 text-center text-sm text-muted-foreground">
-          <p>جاري تحميل حسابك…</p>
-          <p className="text-xs">إن استمرت الشاشة فارغة، حدّث الصفحة (F5)</p>
-        </div>
-      );
+  useEffect(() => {
+    if (modal === "settings") return;
+    try {
+      document.documentElement.style.removeProperty(SETTINGS_DISMISS_PULL_CSS_VAR);
+    } catch {
+      /* ignore */
     }
-    logAuthRoute("gate-auth-screen");
-    return <AuthScreen />;
-  }
+  }, [modal]);
 
-  if (accountSwitching) {
-    return (
-      <div
-        key={`switch-${accountSessionKey}`}
-        className="flex min-h-dvh flex-col items-center justify-center gap-3 bg-background px-6 text-center text-sm text-muted-foreground"
-      >
-        <p className="font-medium text-foreground">جاري تبديل الحساب…</p>
-        <p className="text-xs">يتم قطع الاتصال الآمن وتحميل بيانات الحساب الجديد</p>
-      </div>
-    );
-  }
-
-  const goChat = (chatId: string) => {
+  /** يجب أن تبقى كل الـ hooks قبل أي return — وإلا React #310 عند تبديل الحساب */
+  const goChat = useCallback((chatId: string) => {
+    setProfileOverlayUserId(null);
     setOpenChatId(chatId);
     setTab("chat");
     setViewProfileId(null);
@@ -443,18 +566,48 @@ export function App() {
     setProfileReturnTargetTab(null);
     setResumeProfileUserId(null);
     setRestorePostContext(null);
-  };
-  const unreadNotifs = (state.notifications ?? []).filter(
-    n => n.userId === currentUser.id && !n.read && n.type !== "message",
-  ).length;
-  const showChatThreadChrome = tab === "chat" && chatThreadOpen;
+  }, []);
 
-  const profilePanel =
-    tab === "profile" && !viewProfileId && isGuest ? (
-      <GuestBrowseProfilePrompt onGoLogin={() => exitGuestBrowseMode()} />
-    ) : (
+  const onChatExitNavRevealProgress = useCallback((progress: number | null) => {
+    if (progress == null) {
+      setChatExitNavActive(false);
+      try {
+        document.documentElement.style.removeProperty(NAV_HIDE_PROGRESS_CSS_VAR);
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
+    setChatExitNavActive(true);
+    try {
+      document.documentElement.style.setProperty(NAV_HIDE_PROGRESS_CSS_VAR, String(progress));
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const openQuranChat = useCallback(() => {
+    setOpenChatId(QURAN_CHANNEL_ID);
+    setProfileReturnTargetTab(null);
+    setResumeProfileUserId(null);
+    setRestorePostContext(null);
+    setTab("chat");
+  }, []);
+
+  const onExitThreadToProfile = useCallback((profileUserId: string) => {
+    setResumeProfileUserId(null);
+    setProfileOverlayUserId(profileUserId);
+  }, []);
+
+  const profilePanel = useMemo(() => {
+    if (!currentUser) return null;
+    if (tab === "profile" && !viewProfileId && isGuest) {
+      return <GuestBrowseProfilePrompt onGoLogin={() => exitGuestBrowseMode()} />;
+    }
+    return (
       <ProfileScreen
         userId={viewProfileId || currentUser.id}
+        suppressChrome={settingsImmersive}
         showSuggestAccountsEntry={profileNavStack.length === 0}
         onOpenProfile={openProfile}
         onOpenExistingChat={chatId => {
@@ -489,17 +642,198 @@ export function App() {
         }}
       />
     );
+  }, [
+    currentUser,
+    tab,
+    viewProfileId,
+    isGuest,
+    settingsImmersive,
+    profileNavStack.length,
+    openProfile,
+    popProfileScreenBack,
+    openOrCreateChat,
+    exitGuestBrowseMode,
+  ]);
+
+  const tabPanels = useMemo((): Record<PagerTab, React.ReactNode> => {
+    if (!currentUser) {
+      return { home: null, search: null, reels: null, chat: null, profile: null };
+    }
+    const chatImmersive = tab === "chat" && (chatThreadOpen || chatHideBottomNav);
+    return {
+      home: (
+        <HomeTabPanel
+          onOpenProfile={openProfile}
+          onOpenChat={goChat}
+          restoreFromProfileContext={
+            restorePostContext?.tab === "home" ? restorePostContext : null
+          }
+          onConsumedRestoreFromProfile={clearRestorePostContext}
+        />
+      ),
+      search: (
+        <SearchTabPanel
+          onOpenProfile={openProfile}
+          onOpenChat={goChat}
+          onOpenQuranChat={openQuranChat}
+          restoreFromProfileContext={
+            restorePostContext?.tab === "search" ? restorePostContext : null
+          }
+          onConsumedRestoreFromProfile={clearRestorePostContext}
+        />
+      ),
+      reels: (
+        <ReelsTabPanel
+          onOpenProfile={openProfile}
+          onOpenChat={goChat}
+          restoreFromProfileContext={
+            restorePostContext?.tab === "reels" ? restorePostContext : null
+          }
+          onConsumedRestoreFromProfile={clearRestorePostContext}
+        />
+      ),
+      chat: (
+        <ChatTabPanel
+          onOpenProfile={openProfile}
+          initialChatId={openChatId}
+          onConsumedInitialChat={() => setOpenChatId(null)}
+          onThreadOpen={setChatThreadOpen}
+          onHideBottomNav={setChatHideBottomNav}
+          onExitNavRevealProgress={onChatExitNavRevealProgress}
+          onActiveChatChange={setActiveChatId}
+          resumeThreadToProfileUserId={resumeProfileUserId}
+          onExitThreadToProfile={onExitThreadToProfile}
+          chatImmersiveMode={chatImmersive}
+        />
+      ),
+      profile: (
+        <ProfileTabPanel lockScroll={!!viewProfileId}>
+          {!settingsImmersive && profilePanel}
+        </ProfileTabPanel>
+      ),
+    };
+  }, [
+    currentUser,
+    tab,
+    chatThreadOpen,
+    chatHideBottomNav,
+    openProfile,
+    goChat,
+    openQuranChat,
+    restorePostContext,
+    clearRestorePostContext,
+    openChatId,
+    resumeProfileUserId,
+    onExitThreadToProfile,
+    onChatExitNavRevealProgress,
+    settingsImmersive,
+    profilePanel,
+    viewProfileId,
+  ]);
+
+  /** رسائل غير مقروءة — يُحدَّث لحظياً عند وصول رسالة أو فتح محادثة
+   *  يجب أن يكون هنا (قبل أي return مشروط) حتى لا ينتهك قاعدة hooks */
+  const unreadMessages = useMemo(() => {
+    const meId = state.currentUserId;
+    if (!meId || isGuestUserId(meId)) return 0;
+    let count = 0;
+    for (const chat of state.chats ?? []) {
+      if (!Array.isArray(chat.members) || !chat.members.includes(meId)) continue;
+      const msgs = chat.messages ?? [];
+      count += msgs.filter(m => m.senderId !== meId && m.status !== "read").length;
+    }
+    return Math.min(count, 99);
+  }, [state.chats, state.currentUserId]);
+
+  if (!currentUser) {
+    if (getApiToken() && apiBackendEnabled()) {
+      return (
+        <div className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-background px-6 text-center text-sm text-muted-foreground">
+          <p className="font-medium text-foreground">جاري تحميل حسابك…</p>
+          <p className="text-xs leading-relaxed">
+            إن بقيت الشاشة بيضاء أكثر من ١٥ ثانية، حدّث الصفحة أو امسح الجلسة.
+          </p>
+          <button
+            type="button"
+            className="rounded-2xl border border-border bg-card px-5 py-2.5 text-sm font-medium text-foreground"
+            onClick={() => {
+              import("@/lib/uiErrorMessage").then(({ clearRetweetLocalSession }) => {
+                clearRetweetLocalSession();
+                window.location.reload();
+              });
+            }}
+          >
+            مسح الجلسة وإعادة المحاولة
+          </button>
+        </div>
+      );
+    }
+    logAuthRoute("gate-auth-screen");
+    return <AuthScreen />;
+  }
+
+  if (accountSwitching) {
+    return (
+      <div
+        key={`switch-${accountSessionKey}`}
+        className="flex min-h-dvh flex-col items-center justify-center gap-3 bg-background px-6 text-center text-sm text-muted-foreground"
+      >
+        <p className="font-medium text-foreground">جاري تبديل الحساب…</p>
+        <p className="text-xs">يتم قطع الاتصال الآمن وتحميل بيانات الحساب الجديد</p>
+      </div>
+    );
+  }
+
+  const unreadNotifs = (state.notifications ?? []).filter(
+    n => n.userId === currentUser.id && !n.read && n.type !== "message",
+  ).length;
+  const showChatThreadChrome = tab === "chat" && chatThreadOpen;
+  /** محادثة مفتوحة — إخفاء الشريط السفلي وملء الشاشة (يُحدَّث من ChatScreen عبر onThreadOpen) */
+  const chatImmersiveMode =
+    tab === "chat" && (chatThreadOpen || chatHideBottomNav) && !chatExitNavActive;
+  const postImmersiveMode = postDetailOpen;
+  const immersiveOverlay = chatImmersiveMode || postImmersiveMode;
+
+  const pagerEnabled =
+    !chatImmersiveMode &&
+    !storyFullscreen &&
+    !profileOverlayUserId &&
+    !settingsImmersive &&
+    !postDetailOpen &&
+    // إذا كان المستخدم يشاهد بروفايل شخص آخر (inline) — أوقف سحب التبويبات
+    !(viewProfileId && viewProfileId !== currentUser.id);
 
   const onProfileTab = tab === "profile" && !viewProfileId;
-  const hideAppHeader = tab === "chat" || tab === "search" || onProfileTab || storyFullscreen;
-  const hideBottomBar = showChatThreadChrome || storyFullscreen || chatHideBottomNav;
+  const viewingOtherUserProfile = tab === "profile" && !!viewProfileId;
+  const hideAppHeader =
+    tab === "chat" ||
+    tab === "search" ||
+    onProfileTab ||
+    viewingOtherUserProfile ||
+    storyFullscreen ||
+    postDetailOpen ||
+    settingsImmersive;
+  const hideBottomBar =
+    (immersiveOverlay && !chatExitNavActive) ||
+    storyFullscreen ||
+    !!profileOverlayUserId ||
+    settingsImmersive;
+  const showBottomNav = !hideBottomBar || chatExitNavActive;
 
   return (
     <div
       key={accountSessionKey}
       className={
-        "relative mx-auto flex w-full max-w-md flex-col overflow-x-hidden overscroll-none bg-background pt-[env(safe-area-inset-top,0px)] supports-[height:100dvh]:min-h-dvh " +
-        (chatThreadOpen ? "h-dvh max-h-dvh overflow-hidden" : "min-h-dvh [-webkit-overflow-scrolling:touch]")
+        "relative mx-auto flex w-full max-w-md flex-col overflow-x-hidden overscroll-none bg-background supports-[height:100dvh] " +
+        (immersiveOverlay || settingsImmersive
+          ? "h-dvh max-h-dvh overflow-hidden pt-0"
+          : "h-dvh max-h-dvh overflow-hidden pt-[env(safe-area-inset-top,0px)]")
+      }
+      style={
+        {
+          [NAV_FLOAT_INSET_CSS_VAR]: NAV_FLOAT_INSET_DEFAULT,
+          [NAV_SCROLL_PADDING_CSS_VAR]: NAV_SCROLL_PADDING_DEFAULT,
+        } as CSSProperties
       }
     >
       {guestToast && (
@@ -507,7 +841,12 @@ export function App() {
           سجّل الدخول أو أنشئ حساباً لاستخدام هذه الميزة (إعجاب، رسائل، متابعة…).
         </div>
       )}
-      {!storyFullscreen && !chatThreadOpen && <NotificationBanner />}
+      {switchFailToast && (
+        <div className="fixed left-3 right-3 top-[max(0.75rem,env(safe-area-inset-top,0px))] z-[501] mx-auto max-w-md rounded-2xl border border-destructive/40 bg-card px-4 py-3 text-start text-sm text-destructive shadow-lg">
+          {switchFailToast}
+        </div>
+      )}
+      {!storyFullscreen && !immersiveOverlay && !settingsImmersive && <NotificationBanner />}
       {!hideAppHeader && (
       <header
         className={
@@ -518,9 +857,7 @@ export function App() {
           showChatThreadChrome
             ? {
                 opacity: `calc(1 - var(${CHAT_STACK_PROGRESS_VAR}, 0) * 0.4)`,
-                transform: isDocumentRtl()
-                  ? `translate3d(calc(var(${CHAT_STACK_PROGRESS_VAR}, 0) * -18%), 0, 0)`
-                  : `translate3d(calc(var(${CHAT_STACK_PROGRESS_VAR}, 0) * 18%), 0, 0)`,
+                transform: `translate3d(calc(var(${CHAT_STACK_PROGRESS_VAR}, 0) * 18%), 0, 0)`,
               }
             : undefined
         }
@@ -570,106 +907,154 @@ export function App() {
       </header>
       )}
 
-      <main
-        className={"flex min-h-0 flex-1 flex-col break-words text-start " + (chatThreadOpen ? "overflow-hidden pb-4 " : "")}
-        style={
-          !chatThreadOpen && !hideBottomBar
-            ? {
-                paddingBottom: `calc((1 - var(${NAV_HIDE_PROGRESS_CSS_VAR}, ${navHidden ? 1 : 0})) * (5.25rem + max(0.75rem, env(safe-area-inset-bottom, 0px))) + var(${NAV_HIDE_PROGRESS_CSS_VAR}, ${navHidden ? 1 : 0}) * (2.25rem + max(0.5rem, env(safe-area-inset-bottom, 0px))))`,
-              }
-            : undefined
-        }
-      >
-        <AppErrorBoundary key={tab} label={`تبويب: ${tab}`}>
-          <TabPanelShell lockScroll={tab === "reels"}>
-            {tab === "home" && (
-              <HomeScreen
-                onOpenProfile={openProfile}
-                onOpenChat={goChat}
-                restoreFromProfileContext={restorePostContext?.tab === "home" ? restorePostContext : null}
-                onConsumedRestoreFromProfile={clearRestorePostContext}
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        <main
+          className={
+            "flex min-h-0 flex-1 flex-col overflow-hidden break-words text-start " +
+            (chatImmersiveMode ? "" : "")
+          }
+        >
+          <AppErrorBoundary key={accountSessionKey} label="main-tabs">
+            <MainTabStack
+              activeTab={tab as PagerTab}
+              swipeEnabled={pagerEnabled}
+              onTabChange={goTab}
+              panels={tabPanels}
+            />
+          </AppErrorBoundary>
+        </main>
+
+        {showBottomNav && (
+          <BottomNavSheet
+            progressIndex={navActiveIndex}
+            onSelectTabIndex={onNavSelectIndex}
+            externalHideDrive={chatExitNavActive}
+          >
+            <NavBtn tabIndex={0} onClick={() => onNavSelectIndex(0)}>
+              <Home className={NAV_ICON} strokeWidth={2} />
+            </NavBtn>
+            <NavBtn tabIndex={1} onClick={() => onNavSelectIndex(1)}>
+              <Search className={NAV_ICON} strokeWidth={2} />
+            </NavBtn>
+            <NavBtn tabIndex={2} onClick={() => onNavSelectIndex(2)}>
+              <InstagramReelsIcon className={NAV_ICON} strokeWidth={2} />
+            </NavBtn>
+            <NavBtn tabIndex={3} onClick={() => onNavSelectIndex(3)}>
+              <div className="relative">
+                <DirectMessagesNavIcon className={NAV_MSG_ICON} strokeWidth={2} />
+                {unreadMessages > 0 && (
+                  <span
+                    className="pointer-events-none absolute -top-1.5 -right-1.5 flex min-w-[16px] h-4 items-center justify-center rounded-full px-[3px] text-[10px] font-bold leading-none text-white"
+                    style={{ backgroundColor: "#FF3B30" }}
+                  >
+                    {unreadMessages > 9 ? "9+" : unreadMessages}
+                  </span>
+                )}
+              </div>
+            </NavBtn>
+            <ProfileNavBtn
+              tabIndex={4}
+              onSingleTap={() => onNavSelectIndex(4)}
+              onDoubleTap={handleProfileNavDoubleTap}
+            >
+              <Avatar
+                name={currentUser.username}
+                src={currentUser.avatar}
+                size={26}
+                className={cn(
+                  "pointer-events-none shrink-0 border-2",
+                  navActiveIndex === 4 ? "border-white" : "border-white/35",
+                )}
               />
-            )}
-            {tab === "search" && (
-              <SearchScreen
-                onOpenProfile={openProfile}
-                onOpenChat={goChat}
-                onOpenQuranChat={() => {
-                  setOpenChatId(QURAN_CHANNEL_ID);
-                  setProfileReturnTargetTab(null);
-                  setResumeProfileUserId(null);
-                  setRestorePostContext(null);
-                  setTab("chat");
-                }}
-                restoreFromProfileContext={restorePostContext?.tab === "search" ? restorePostContext : null}
-                onConsumedRestoreFromProfile={clearRestorePostContext}
-              />
-            )}
-            {tab === "reels" && (
-              <ReelsScreen
-                onOpenProfile={openProfile}
-                onOpenChat={goChat}
-                restoreFromProfileContext={restorePostContext?.tab === "reels" ? restorePostContext : null}
-                onConsumedRestoreFromProfile={clearRestorePostContext}
-              />
-            )}
-            {tab === "chat" && (
-              <ChatScreen
-                key={accountSessionKey}
-                onOpenProfile={openProfile}
-                initialChatId={openChatId}
-                onConsumedInitialChat={() => setOpenChatId(null)}
-                onThreadOpen={setChatThreadOpen}
-                onHideBottomNav={setChatHideBottomNav}
-                onActiveChatChange={setActiveChatId}
-                resumeThreadToProfileUserId={resumeProfileUserId}
-                onExitThreadToProfile={profileUserId => {
-                  setResumeProfileUserId(null);
-                  setOpenChatId(null);
-                  startTransition(() => {
-                    setViewProfileId(profileUserId);
-                    setTab("profile");
-                  });
-                }}
-              />
-            )}
-            {tab === "profile" && profilePanel}
-          </TabPanelShell>
-        </AppErrorBoundary>
-      </main>
+            </ProfileNavBtn>
+          </BottomNavSheet>
+        )}
+      </div>
+
+      {profileOverlayUserId && (
+            <ProfileScreen
+              userId={profileOverlayUserId}
+              suppressChrome={settingsImmersive}
+              dismissPresentation="overlay"
+              dismissOverlayZIndex={280}
+              showSuggestAccountsEntry
+              onOpenProfile={id => {
+                if (id === currentUser.id) {
+                  closeProfileOverlay();
+                  setViewProfileId(null);
+                  setTab("profile");
+                  return;
+                }
+                setProfileOverlayUserId(id);
+              }}
+              onOpenExistingChat={chatId => {
+                closeProfileOverlay();
+                setOpenChatId(chatId);
+                setChatThreadOpen(true);
+                setChatHideBottomNav(true);
+              }}
+              onOpenChannel={chatId => {
+                closeProfileOverlay();
+                setOpenChatId(chatId);
+                setChatThreadOpen(true);
+                setChatHideBottomNav(true);
+              }}
+              onBack={closeProfileOverlay}
+              onEdit={() => {
+                closeProfileOverlay();
+                setModal("edit");
+              }}
+              onOpenAccountSwitcher={isGuest ? undefined : () => {
+                closeProfileOverlay();
+                setModal("switcher");
+              }}
+              onOpenSettings={isGuest ? undefined : () => {
+                closeProfileOverlay();
+                setModal("settings");
+              }}
+              onOpenVisitors={isGuest ? undefined : () => {
+                closeProfileOverlay();
+                setModal("visitors");
+              }}
+              onOpenChat={targetUserId => {
+                if (targetUserId === currentUser.id) return;
+                const ch = openOrCreateChat(targetUserId);
+                if (!ch) {
+                  if (isGuest) notifyGuestActionBlocked();
+                  else
+                    window.alert("تعذّر فتح المحادثة. أعد المحاولة أو حدّث الصفحة إن استمرت المشكلة.");
+                  return;
+                }
+                closeProfileOverlay();
+                setOpenChatId(ch.id);
+                setChatThreadOpen(true);
+                setChatHideBottomNav(true);
+              }}
+            />
+      )}
 
       {/* مؤقتاً: عارض ستوري عام من App (يُعاد عبر storyChrome لاحقاً) */}
 
-      {!hideBottomBar && (
-        <BottomNavSheet initialHidden={navHidden} onPersistHidden={persistNavHidden}>
-          <NavBtn active={tab === "home"} onClick={() => goTab("home")}>
-            <Home strokeWidth={2} />
-          </NavBtn>
-          <NavBtn active={tab === "search"} onClick={() => goTab("search")}>
-            <Search strokeWidth={2} />
-          </NavBtn>
-          <NavBtn active={tab === "reels"} onClick={() => goTab("reels")}>
-            <InstagramReelsIcon size={26} strokeWidth={2} />
-          </NavBtn>
-          <NavBtn active={tab === "chat"} onClick={() => goTab("chat")}>
-            <MessageCircle strokeWidth={2} />
-          </NavBtn>
-          <NavBtn active={onProfileTab} onClick={() => goTab("profile")}>
-            <User strokeWidth={2} />
-          </NavBtn>
-        </BottomNavSheet>
+      {modal === "settings" && (
+        <AppDismissSheet
+          onClose={() => setModal(null)}
+          overlayZIndex={120}
+          dismissPullCssVar={SETTINGS_DISMISS_PULL_CSS_VAR}
+          darkPanelChrome={state.theme === "dark"}
+          contentClassName="min-h-dvh bg-background text-foreground"
+        >
+          <AppErrorBoundary label="settings-screen">
+            <SettingsScreen
+              onBack={() => setModal(null)}
+              onOpenAccounts={() => {
+                setModal("switcher");
+              }}
+            />
+          </AppErrorBoundary>
+        </AppDismissSheet>
       )}
-
-      {modal === "settings" && <Sheet onClose={() => setModal(null)} contentClassName="bg-black">
-        <SettingsScreen
-          onBack={() => setModal(null)}
-          onOpenAccounts={() => {
-            setModal("switcher");
-          }}
-        />
-      </Sheet>}
       {modal === "create" && (
-        <Sheet
+        <AppDismissSheet
           onClose={() => {
             setCreateInitial(null);
             setModal(null);
@@ -682,22 +1067,28 @@ export function App() {
               setModal(null);
             }}
           />
-        </Sheet>
+        </AppDismissSheet>
       )}
-      {modal === "edit" && <Sheet onClose={() => setModal(null)}><EditProfileScreen onBack={() => setModal(null)} /></Sheet>}
-      {modal === "notifications" && <NotificationsPanel onClose={() => setModal(null)} onOpenProfile={openProfile} onOpenChat={goChat} />}
+      {modal === "edit" && (
+        <AppDismissSheet onClose={() => setModal(null)}>
+          <EditProfileScreen onBack={() => setModal(null)} />
+        </AppDismissSheet>
+      )}
+      {modal === "notifications" && (
+        <NotificationsPanel onClose={() => setModal(null)} onOpenProfile={openProfile} onOpenChat={goChat} />
+      )}
       {modal === "visitors" && (
-        <Sheet onClose={() => setModal(null)}>
+        <AppDismissSheet onClose={() => setModal(null)} contentClassName="bg-background">
           <div className="p-4">
             <div className="flex items-center justify-between gap-2 mb-3">
-              <button
-                type="button"
-                onClick={() => setModal(null)}
+              <SlideDismissBackButton
+                onDismiss={() => setModal(null)}
                 className="inline-flex items-center gap-1.5 text-sm font-semibold text-foreground px-3 py-2 rounded-full hover:bg-secondary active:scale-[0.98] transition"
+                aria-label="رجوع"
               >
                 <ArrowRight size={18} aria-hidden />
                 رجوع
-              </button>
+              </SlideDismissBackButton>
               <button
                 type="button"
                 onClick={() => setModal(null)}
@@ -741,7 +1132,7 @@ export function App() {
               {(currentUser.profileViews || []).length === 0 && <p className="text-sm text-muted-foreground text-center py-6">لا يوجد زوار بعد</p>}
             </div>
           </div>
-        </Sheet>
+        </AppDismissSheet>
       )}
       {modal === "switcher" && (
         <AccountSwitcherSheet
@@ -752,16 +1143,19 @@ export function App() {
         />
       )}
       {modal === "addAccount" && (
-        <div className="fixed inset-0 z-[250] bg-background flex flex-col overflow-y-auto">
-          <div className="sticky top-0 flex items-center gap-2 p-3 border-b border-border bg-background z-10">
-            <button type="button" onClick={() => setModal(null)} className="text-sm font-semibold text-primary px-2 py-1 rounded-full hover:bg-secondary">
+        <AppDismissSheet onClose={() => setModal(null)} overlayZIndex={250} contentClassName="bg-background flex flex-col">
+          <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-background p-3">
+            <SlideDismissBackButton
+              onDismiss={() => setModal(null)}
+              className="rounded-full px-2 py-1 text-sm font-semibold text-primary hover:bg-secondary"
+            >
               {t("cancel")}
-            </button>
+            </SlideDismissBackButton>
             <span className="flex-1 text-center text-sm font-semibold">إضافة حساب</span>
             <span className="w-16" />
           </div>
           <AuthScreen onAuthSuccess={() => setModal(null)} allowGuestBrowse={false} />
-        </div>
+        </AppDismissSheet>
       )}
       {showWelcome && (
         <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4" onClick={() => setShowWelcome(false)}>
@@ -778,82 +1172,77 @@ export function App() {
   );
 }
 
-function NavBtn({
-  active,
+const NavBtn = memo(function NavBtn({
+  tabIndex = 0,
   onClick,
   children,
-  variant = "icon",
 }: {
-  active: boolean;
+  tabIndex?: number;
   onClick: () => void;
   children: React.ReactNode;
-  variant?: "icon" | "create";
 }) {
   const { shouldSuppressTap } = useBottomNavDragContext();
 
-  const handleClick = (e: MouseEvent) => {
-    e.stopPropagation();
+  const fire = useCallback(() => {
     if (shouldSuppressTap()) return;
     onClick();
-  };
+  }, [onClick, shouldSuppressTap]);
 
-  if (variant === "create") {
-    return (
-      <button
-        type="button"
-        onClick={handleClick}
-        className="w-12 h-12 shrink-0 touch-manipulation select-none rounded-2xl border border-zinc-300/80 dark:border-zinc-600 flex items-center justify-center text-zinc-900 dark:text-zinc-100 active:scale-[0.92] transition-transform"
-        aria-label="Create"
-      >
-        {children}
-      </button>
-    );
-  }
   return (
     <button
       type="button"
-      onClick={handleClick}
-      className={
-        "w-12 h-12 shrink-0 touch-manipulation select-none rounded-full flex items-center justify-center " +
-        "transition-[transform,background-color,color] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] " +
-        (active
-          ? "bg-[#E8F4FC] dark:bg-sky-950/50 text-[#0A84FF] scale-[1.02]"
-          : "text-zinc-900 dark:text-zinc-100 active:scale-[0.88]")
-      }
+      data-nav-tab-btn
+      data-nav-tab-index={tabIndex}
+      onClick={e => {
+        e.stopPropagation();
+        fire();
+      }}
+      className="relative z-10 flex h-11 w-11 shrink-0 touch-none select-none items-center justify-center text-white active:scale-[0.92]"
     >
       {children}
     </button>
   );
-}
+});
 
-function Sheet({
+/** تبويب البروفايل: نقرة = الملف؛ نقرتان سريعتان = التبديل بين آخر حسابين */
+const ProfileNavBtn = memo(function ProfileNavBtn({
+  tabIndex = 4,
+  onSingleTap,
+  onDoubleTap,
   children,
-  onClose,
-  contentClassName,
 }: {
+  tabIndex?: number;
+  onSingleTap: () => void;
+  onDoubleTap: () => void;
   children: React.ReactNode;
-  onClose: () => void;
-  contentClassName?: string;
 }) {
-  const { containerRef, panelStyle, requestDismiss, edgeStripProps } = useSlideDismissBack({ onDismiss: onClose });
-  const ctx = useMemo(() => ({ requestDismiss }), [requestDismiss]);
-  return (
-    <>
-      <div className="fixed inset-0 z-40 bg-black/50" onClick={requestDismiss} aria-hidden />
-      <div className="pointer-events-none fixed inset-x-0 z-50 flex justify-center" style={{ top: 0, bottom: 0 }}>
-        <div ref={containerRef} className="pointer-events-auto relative h-full w-full max-w-md overflow-hidden">
-          <div {...edgeStripProps} />
-          <SlideDismissContext.Provider value={ctx}>
-            <div
-              className={"h-full overflow-y-auto bg-background " + (contentClassName ?? "")}
-              style={panelStyle}
-              onClick={e => e.stopPropagation()}
-            >
-              {children}
-            </div>
-          </SlideDismissContext.Provider>
-        </div>
-      </div>
-    </>
+  const { shouldSuppressTap } = useBottomNavDragContext();
+
+  const handleTap = useNavDoubleTap(
+    useCallback(() => {
+      if (shouldSuppressTap()) return;
+      onSingleTap();
+    }, [onSingleTap, shouldSuppressTap]),
+    useCallback(() => {
+      if (shouldSuppressTap()) return;
+      onDoubleTap();
+    }, [onDoubleTap, shouldSuppressTap]),
   );
-}
+
+  return (
+    <button
+      type="button"
+      data-nav-tab-btn
+      data-nav-tab-index={tabIndex}
+      onClick={e => {
+        e.stopPropagation();
+        handleTap();
+      }}
+      className="relative z-10 flex h-11 w-11 shrink-0 touch-none select-none items-center justify-center text-white active:scale-[0.92]"
+      aria-label="الملف الشخصي"
+    >
+      {children}
+    </button>
+  );
+});
+

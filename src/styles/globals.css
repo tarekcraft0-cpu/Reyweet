@@ -1,3 +1,39 @@
+/** منطقة تمرير التبويبات الرئيسية — بدون شريط أبيض على الجانب (RTL) */
+.tab-panel-scroll {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  scrollbar-gutter: auto;
+}
+
+.tab-panel-scroll::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+  background: transparent;
+}
+
+/** المحتوى يمتد تحت الشريط العائم — تمرير اختياري لآخر العناصر */
+.tab-panel-immersive {
+  scroll-padding-bottom: var(--retweet-nav-scroll-padding, 4.75rem);
+}
+
+/** بروفايل مستخدم آخر — تمرير عمودي داخل الشاشة (body لديه overflow:hidden) */
+.profile-scroll-pane {
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  /* ارتفاع التمرير = مساحة الشاشة ناقص الهيدر عند وجود flex-1 */
+  min-height: 0;
+}
+
+/** لا خلفية على منطقة الـ viewport حول الكبسولة — المحتوى يظهر من تحتها */
+[data-floating-nav-host] {
+  background: transparent !important;
+  box-shadow: none;
+  min-height: 0;
+  height: auto;
+}
+
 /* إخفاء شريط التمرير في جميع المتصفحات */
 .hide-scrollbar {
   -ms-overflow-style: none;  /* Internet Explorer 10+ */
@@ -22,10 +58,49 @@
   height: 0 !important;
 }
 
-/* منطقة رسائل المحادثة — بدون ارتداد/فراغ أسود عند السحب */
+/* منطقة رسائل المحادثة — بدون ارتداد وبدون شريط تمرير ظاهر */
 .chat-scroll-pane {
   overscroll-behavior: none;
   -webkit-overflow-scrolling: auto;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.chat-scroll-pane::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+  background: transparent;
+}
+
+/**
+ * غرفة المحادثة — بدون تحديد نص أو شريط iOS الأزرق عند الضغط المطوّل.
+ * الضغط المطوّل يمر عبر pointer handlers المخصصة (رد / تفاعل / حذف).
+ */
+.chat-no-select,
+.chat-no-select *:not(.chat-allow-select):not(.chat-allow-select *) {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
+}
+
+.chat-no-select img,
+.chat-no-select video {
+  -webkit-user-drag: none;
+  user-drag: none;
+}
+
+.chat-no-select .chat-allow-select,
+.chat-no-select .chat-allow-select * {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+  -webkit-touch-callout: default;
+}
+
+/* غرفة المحادثة في المكدس — ارتفاع ثابت فوق شريط الإدخال (بدون فراغ شريط التنقل) */
+.chat-room-stack {
+  min-height: 0;
+  max-height: 100dvh;
 }
 
 /* وضع ملء الشاشة عند فتح الستوري */
@@ -40,10 +115,23 @@ html.retweet-overscroll-lock body {
 }
 
 .reels-snap-viewport {
-  overscroll-behavior: none;
-  -webkit-overflow-scrolling: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
   scroll-snap-type: y mandatory;
+  scroll-padding: 0;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.reels-snap-viewport::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.reels-snap-viewport > [data-reel-slide] {
+  scroll-snap-align: start;
   scroll-snap-stop: always;
 }
 
@@ -51,6 +139,35 @@ html.retweet-overscroll-lock body {
   overscroll-behavior: none;
   -webkit-overflow-scrolling: auto;
   touch-action: pan-y;
+}
+
+.chat-inbox-pane,
+.chat-inbox-scroll {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.chat-inbox-pane::-webkit-scrollbar,
+.chat-inbox-scroll::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+  background: transparent;
+}
+
+/* لوحات التطبيق (تنبيهات، إعدادات، …) */
+.app-dismiss-sheet-panel,
+.notifications-panel-scroll {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.app-dismiss-sheet-panel::-webkit-scrollbar,
+.notifications-panel-scroll::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+  background: transparent;
 }
 
 /* إزالة الحواف البيضاء من الملصقات */

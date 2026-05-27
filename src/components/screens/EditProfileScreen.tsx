@@ -1,7 +1,10 @@
 import { useState } from "react";
+import { getUserEntitlements } from "@/lib/verificationEntitlements";
+import { AvatarChangeModal } from "../verification/AvatarChangeModal";
 import { useApp } from "@/lib/store";
 import { isFounderAccount } from "@/lib/founderAccount";
 import { isShortUsernameException } from "@/lib/shortUsernameAccounts";
+import { getAccountSession, upsertAccountSession, ensureApiTokenMatchesUser } from "@/lib/accountSessions";
 import {
   isUsernameTaken,
   normalizeUsername,
@@ -16,16 +19,19 @@ import {
   ensureApiRuntimeConfig,
   getApiToken,
 } from "@/lib/apiBackend";
+import { toStoredMediaRef } from "@/lib/mediaUrl";
 import { Avatar } from "../Avatar";
 import { ArrowRight } from "lucide-react";
 import { SlideDismissBackButton } from "../SlideDismissShell";
+import { MentionComposerField } from "../MentionComposerField";
 
 async function uploadAvatarFile(
   token: string,
   file: File,
+  opts?: { timeoutMs?: number },
 ): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
   await ensureApiRuntimeConfig();
-  return apiUploadMedia(token, file);
+  return apiUploadMedia(token, file, opts);
 }
 
 async function uploadAvatarDataUrl(
@@ -52,53 +58,68 @@ export function EditProfileScreen({ onBack }: { onBack: () => void }) {
   const [profileLink, setProfileLink] = useState(u.profileLink || "");
   const [saving, setSaving] = useState(false);
   const [avatarBusy, setAvatarBusy] = useState(false);
+  const [avatarModalOpen, setAvatarModalOpen] = useState(false);
+  const ent = getUserEntitlements(u);
 
   const onAvatarFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     if (!f) return;
     void (async () => {
-      const token = getApiToken();
-      if (apiBackendEnabled() && token && f.type.startsWith("image/")) {
-        setAvatarBusy(true);
-        const up = await uploadAvatarFile(token, f);
-        setAvatarBusy(false);
-        e.target.value = "";
-        if (up.ok) {
+      setAvatarBusy(true);
+      const prevAvatar = avatar;
+      try {
+        const token = ensureApiTokenMatchesUser(u.id) ?? getApiToken();
+        if (apiBackendEnabled() && token && f.type.startsWith("image/")) {
+          const up = await uploadAvatarFile(token, f, { timeoutMs: 60_000 });
+          e.target.value = "";
+          if (!up.ok) {
+            alert(up.error || "فشل رفع الصورة");
+            return;
+          }
           setAvatar(up.url);
-          void persistAvatarOnly(up.url);
+          const saved = await persistAvatarOnly(up.url);
+          if (!saved) setAvatar(prevAvatar);
           return;
         }
-        alert(up.error || "فشل رفع الصورة");
-        return;
-      }
-      if (f.size > 4 * 1024 * 1024) {
-        alert("الصورة كبيرة جداً (الحد 4 ميجا)");
+        if (f.size > 4 * 1024 * 1024) {
+          alert("الصورة كبيرة جداً (الحد 4 ميجا)");
+          e.target.value = "";
+          return;
+        }
+        const r = new FileReader();
+        r.onload = () => setAvatar(String(r.result));
+        r.readAsDataURL(f);
+      } catch {
+        alert("تعذر رفع الصورة — تحقق من الاتصال بالخادم وحاول مرة أخرى");
+      } finally {
         e.target.value = "";
-        return;
+        setAvatarBusy(false);
       }
-      const r = new FileReader();
-      r.onload = () => setAvatar(String(r.result));
-      r.readAsDataURL(f);
     })();
   };
 
   const persistAvatarOnly = async (avatarUrl: string): Promise<boolean> => {
-    const token = getApiToken();
-    if (!apiBackendEnabled() || !token) return false;
-    const remote = await apiPatchProfile(token, { avatar: avatarUrl });
-    if (!remote.ok) {
-      alert(remote.error || "فشل حفظ الصورة الشخصية");
-      return false;
-    }
-    updateProfile(
-      { avatar: remote.user.avatar },
-      { commitRemote: true },
-    );
+      const token = ensureApiTokenMatchesUser(u.id) ?? getApiToken();
+      if (!apiBackendEnabled() || !token) return false;
+      const remote = await apiPatchProfile(token, { avatar: avatarUrl });
+      if (!remote.ok) {
+        const err = remote.error || "فشل حفظ الصورة الشخصية";
+        if (/اسم المستخدم/i.test(err)) {
+          alert("تعذر حفظ الصورة الشخصية. جرّب مرة أخرى.");
+        } else {
+          alert(err);
+        }
+        return false;
+      }
+      const av = toStoredMediaRef(remote.user.avatar || avatarUrl);
+    const sess = getAccountSession(u.id);
+    if (sess) upsertAccountSession({ ...sess, avatar: av });
+    updateProfile({ avatar: av }, { skipRemotePush: true });
     return true;
   };
 
   const save = async () => {
-    const trimmed = normalizeUsername(username);
+    const trimmed = normalizeUsername(sanitizeUsernameInput(username));
     const usernameChanged = trimmed !== normalizeUsername(u.username);
     if (usernameChanged) {
       const nameErr = validateUsernameFormat(trimmed, u.id);
@@ -111,53 +132,65 @@ export function EditProfileScreen({ onBack }: { onBack: () => void }) {
         return;
       }
     }
-    const token = getApiToken();
+    const token = ensureApiTokenMatchesUser(u.id) ?? getApiToken();
     if (apiBackendEnabled() && token) {
       setSaving(true);
-      if (usernameChanged) {
-        const available = await apiIsUsernameAvailable(trimmed, u.id);
-        if (!available) {
-          setSaving(false);
-          alert("اسم المستخدم مستخدم من قبل — اختر اسماً آخر");
-          return;
+      try {
+        if (usernameChanged && !isShortUsernameException(trimmed, u.id)) {
+          const available = await apiIsUsernameAvailable(trimmed, u.id);
+          if (!available) {
+            alert("اسم المستخدم مستخدم من قبل — اختر اسماً آخر");
+            return;
+          }
         }
-      }
-      let avatarToSave = avatar;
-      if (avatar.startsWith("data:")) {
-        const up = await uploadAvatarDataUrl(token, avatar);
-        if (!up.ok) {
-          setSaving(false);
-          alert(up.error || "فشل رفع الصورة — جرّب صورة أصغر");
-          return;
+        let avatarToSave = avatar;
+        if (avatar.startsWith("data:")) {
+          const up = await uploadAvatarDataUrl(token, avatar);
+          if (!up.ok) {
+            alert(up.error || "فشل رفع الصورة — جرّب صورة أصغر");
+            return;
+          }
+          avatarToSave = up.url;
         }
-        avatarToSave = up.url;
-      }
-      const profilePatch: Parameters<typeof apiPatchProfile>[1] = {
-        displayName: displayName.trim(),
-        bio,
-        note: note.trim(),
-        profileLink: profileLink.trim(),
-      };
-      if (usernameChanged) profilePatch.username = trimmed;
-      if (avatarToSave.trim()) profilePatch.avatar = avatarToSave;
-      const remote = await apiPatchProfile(token, profilePatch);
-      setSaving(false);
-      if (!remote.ok) {
-        alert(remote.error);
-        return;
-      }
-      updateProfile(
-        {
-          username: remote.user.username,
-          displayName: remote.user.displayName?.trim() || displayName.trim() || undefined,
-          avatar: remote.user.avatar,
-          bio: remote.user.bio ?? bio,
+        const profilePatch: Parameters<typeof apiPatchProfile>[1] = {
+          displayName: displayName.trim(),
+          bio,
+          note: note.trim(),
           profileLink: profileLink.trim(),
-        },
-        { commitRemote: true },
-      );
-      setNote(note);
-      onBack();
+        };
+        if (usernameChanged) profilePatch.username = trimmed;
+        if (avatarToSave.trim()) profilePatch.avatar = avatarToSave;
+        const remote = await apiPatchProfile(token, profilePatch);
+        if (!remote.ok) {
+          alert(
+            remote.error === "unauthorized" || remote.error?.includes("401")
+              ? "انتهت جلستك — سجّل الدخول مرة أخرى"
+              : remote.error || "تعذر حفظ الملف الشخصي",
+          );
+          return;
+        }
+        updateProfile(
+          {
+            username: remote.user.username,
+            displayName: remote.user.displayName?.trim() || displayName.trim() || undefined,
+            avatar: toStoredMediaRef(remote.user.avatar),
+            bio: remote.user.bio ?? bio,
+            note: note.trim(),
+            profileLink: profileLink.trim(),
+          },
+          { skipRemotePush: true },
+        );
+        setNote(note);
+        onBack();
+      } catch (e) {
+        alert(
+          e instanceof Error && e.message.includes("fetch")
+            ? "تعذر الاتصال بالخادم — تأكد من اتصالك وحاول مرة أخرى"
+            : "حدث خطأ غير متوقع — حاول مرة أخرى",
+        );
+      } finally {
+        setSaving(false);
+      }
       return;
     }
     updateProfile({
@@ -189,15 +222,33 @@ export function EditProfileScreen({ onBack }: { onBack: () => void }) {
       </div>
 
       <div className="flex flex-col items-center gap-2">
-        <Avatar name={username} src={avatar} size={100} />
-        <label className="text-sm text-primary font-semibold cursor-pointer">
-          {avatarBusy ? "جاري الرفع…" : "تغيير الصورة (يدعم GIF المتحرك)"}
-          <input type="file" accept="image/*,.gif" hidden onChange={onAvatarFile} disabled={avatarBusy} />
-        </label>
-        <p className="text-[11px] text-muted-foreground text-center max-w-xs">
-          يمكنك رفع صورة متحركة GIF كصورة شخصية؛ ستظهر متحركة في البروفايل والمحادثات.
+        <button type="button" onClick={() => setAvatarModalOpen(true)} className="rounded-full">
+          <Avatar name={username} src={avatar} size={100} />
+        </button>
+        <button
+          type="button"
+          onClick={() => setAvatarModalOpen(true)}
+          disabled={avatarBusy}
+          className="text-sm font-semibold text-primary"
+        >
+          {avatarBusy ? "جاري الرفع…" : "تغيير الصورة"}
+        </button>
+        <p className="max-w-xs text-center text-[11px] text-muted-foreground">
+          {ent.canUseAnimatedAvatar
+            ? "صورة عادية أو افتار GIF متحرك"
+            : "صورة ثابتة — الافتار المتحرك يتطلب التوثيق"}
         </p>
       </div>
+
+      <AvatarChangeModal
+        open={avatarModalOpen}
+        onOpenChange={setAvatarModalOpen}
+        onNeedSubscription={() => {
+          setAvatarModalOpen(false);
+          alert("اشترك من الإعدادات → Get Verified");
+        }}
+        onAvatarUpdated={url => setAvatar(url)}
+      />
 
       <div>
         <label className="text-sm text-muted-foreground">الاسم</label>
@@ -227,12 +278,17 @@ export function EditProfileScreen({ onBack }: { onBack: () => void }) {
       </div>
       <div>
         <label className="text-sm text-muted-foreground">البايو</label>
-        <textarea
+        <MentionComposerField
           value={bio}
-          onChange={e => setBio(e.target.value)}
+          onChange={v => setBio(v.slice(0, 160))}
           rows={3}
-          className="w-full bg-input rounded-2xl px-4 py-3 outline-none mt-1 resize-none"
+          placeholder="اكتب بايو مختصر… يمكنك منشن @شخص"
+          wrapperClassName="rounded-2xl bg-input mt-1"
+          className="w-full px-4 py-3 text-sm text-foreground outline-none resize-none"
+          overlayClassName="px-4 py-3 text-sm leading-relaxed"
+          maxLength={160}
         />
+        <p className="mt-1 text-[11px] text-muted-foreground text-end">{bio.length}/160</p>
       </div>
       <div>
         <label className="text-sm text-muted-foreground">رابط (يظهر تحت البايو)</label>

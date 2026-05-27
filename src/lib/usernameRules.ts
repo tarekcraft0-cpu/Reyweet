@@ -1,5 +1,6 @@
 import type { ID, User } from "./types";
-import { isReservedShortUsername, isShortUsernameException } from "./shortUsernameAccounts";
+import { isFounderAccount } from "./founderAccount";
+import { getUserIdForReservedShortUsername, isShortUsernameException } from "./shortUsernameAccounts";
 
 export const USERNAME_RE = /^[a-z0-9_]{3,30}$/;
 
@@ -38,6 +39,14 @@ export function validateUsernameFormat(username: string, userId?: ID): string | 
 
 export function isUsernameTaken(username: string, users: User[], exceptUserId?: ID): boolean {
   const tl = normalizeUsername(username);
-  if (isReservedShortUsername(tl, exceptUserId)) return true;
+  const me = exceptUserId ? users.find(u => u.id === exceptUserId) : undefined;
+  if (me && normalizeUsername(me.username) === tl) return false;
+  const reservedOwner = getUserIdForReservedShortUsername(tl);
+  if (reservedOwner) {
+    if (exceptUserId && exceptUserId === reservedOwner) return false;
+    if (me && isFounderAccount(me) && tl === "t") return false;
+    if (me && isShortUsernameException(tl, exceptUserId)) return false;
+    return true;
+  }
   return users.some(u => u.id !== exceptUserId && u.username.toLowerCase() === tl);
 }

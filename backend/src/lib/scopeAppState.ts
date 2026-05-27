@@ -1,5 +1,6 @@
 import type { AppState, Chat, ID, Message } from "../../../src/lib/types.js";
 import { canonicalizeDmChatId } from "./dmChatId.js";
+import { storiesOwnedByUser } from "./storyVisibility.js";
 
 function dmPeerIds(chat: Chat, ownerId: ID): string[] {
   return (chat.members || []).filter(id => id !== ownerId);
@@ -105,7 +106,7 @@ export function scopeAppStateToOwner(ownerId: string, state: AppState): AppState
     .filter((c): c is Chat => c != null);
 
   const notifications = (state.notifications || []).filter(n => n.userId === ownerId);
-  const stories = (state.stories || []).filter(st => st.userId === ownerId);
+  const stories = storiesOwnedByUser(state, ownerId);
 
   return {
     ...state,

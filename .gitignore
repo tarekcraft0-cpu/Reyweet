@@ -21,6 +21,7 @@ _vercel_site
 *.local
 .env
 .env.*
+backups-local/
 !.env.example
 mobile/.env
 
@@ -63,3 +64,15 @@ PUBLIC_TUNNEL_URL.txt
 .tunnel-log.txt
 tunnel-err.txt
 mobile/dist-ipa/*.ipa
+
+# Local DB snapshots / IPA inspect temp (do not publish)
+backend/data/
+.ipa-inspect/
+.ipa-inspect.zip
+.ipa-package-work/
+.user-ipa-inspect/
+.ipa-verify/
+.ipa-verify.zip
+ios/build/
+.vercel-deploy-dir.txt
+dist/*.ipa

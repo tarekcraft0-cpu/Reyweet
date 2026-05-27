@@ -4,8 +4,11 @@
 import {
   isLanOrLocalHostname,
   isPrivateApiUrl,
+  isProductionVpsApiUrl,
   isPublicAppHost,
   isTunnelPublicHost,
+  isVpsProductionHost,
+  PRODUCTION_VPS_API,
 } from "./apiUrlPolicy";
 
 const API_RUNTIME_KEY = "retweet_web_api_config";
@@ -26,7 +29,7 @@ export function useViteDevProxy(): boolean {
 /** عند Vite (:3077 / :3080) نمرّر API عبر نفس الأصل (بروكسي → :3000). */
 export function viteDevWebOrigin(): string {
   if (typeof window === "undefined") return "";
-  if (!useViteDevProxy() || !onAppPath()) return "";
+  if (!useViteDevProxy()) return "";
   return window.location.origin.replace(/\/$/, "");
 }
 
@@ -47,6 +50,8 @@ export function resolveApiUrlForWebView(webAppUrl: string, fallbackApiUrl: strin
 /** مسار فحص صحة الخادم — يفضّل /health عبر بروكسي Vite عند التطوير. */
 export function resolveHealthCheckUrl(): string {
   if (typeof window === "undefined") return "/health";
+  if (isVpsProductionHost() && onAppPath()) return "/health";
+  if (isPublicAppHost() && !isVpsProductionHost() && onAppPath()) return "/health";
   const injected = trimUrl(
     (window as Window & { __RETWEET_API_URL__?: string }).__RETWEET_API_URL__,
   );
@@ -83,6 +88,30 @@ export async function probeHealth(): Promise<boolean> {
   return false;
 }
 
+function readInjectedApiUrl(): string {
+  if (typeof window === "undefined") return "";
+  const injected = trimUrl(
+    (window as Window & { __RETWEET_API_URL__?: string }).__RETWEET_API_URL__,
+  );
+  if (injected?.startsWith("http") && !(isPublicAppHost() && isPrivateApiUrl(injected))) {
+    return injected;
+  }
+  return "";
+}
+
+function readCachedApiUrl(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    const raw = localStorage.getItem(API_RUNTIME_KEY);
+    if (!raw) return "";
+    const u = trimUrl((JSON.parse(raw) as { apiUrl?: string }).apiUrl);
+    if (!u || (isPublicAppHost() && isPrivateApiUrl(u))) return "";
+    return u;
+  } catch {
+    return "";
+  }
+}
+
 function onAppPath(): boolean {
   if (typeof window === "undefined") return false;
   return (window.location.pathname || "").startsWith("/app");
@@ -110,6 +139,19 @@ export function clearStaleApiConfig(): void {
       localStorage.removeItem(API_RUNTIME_KEY);
       return;
     }
+    if (isVpsProductionHost() && (u.includes("vercel.app") || u.includes(":3000") || isPrivateApiUrl(u))) {
+      localStorage.removeItem(API_RUNTIME_KEY);
+      return;
+    }
+    if (
+      isPublicAppHost() &&
+      !isVpsProductionHost() &&
+      onAppPath() &&
+      isProductionVpsApiUrl(u)
+    ) {
+      localStorage.removeItem(API_RUNTIME_KEY);
+      return;
+    }
     if (
       isLanOrLocalHostname(window.location.hostname) &&
       (/\.trycloudflare\.com/i.test(u) || u.includes("vercel.app"))
@@ -119,6 +161,9 @@ export function clearStaleApiConfig(): void {
     }
     if (useViteDevProxy() && u.includes(":3000")) {
       localStorage.removeItem(API_RUNTIME_KEY);
+      return;
+    }
+    if (isPublicAppHost() && onAppPath() && u.startsWith("http")) {
       return;
     }
     try {
@@ -138,7 +183,14 @@ async function probeUrl(base: string): Promise<boolean> {
   const path = base ? `${trimUrl(base)}/health` : "/health";
   try {
     const ctl = new AbortController();
-    const t = setTimeout(() => ctl.abort(), 8000);
+    const nativeShell =
+      typeof window !== "undefined" &&
+      ((window as Window & { __RETWEET_NATIVE_SHELL__?: boolean }).__RETWEET_NATIVE_SHELL__ ===
+        true ||
+        !!(window as Window & { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor
+          ?.isNativePlatform?.());
+    const timeoutMs = nativeShell ? 4_000 : 5_000;
+    const t = setTimeout(() => ctl.abort(), timeoutMs);
     const res = await fetch(path, { signal: ctl.signal, cache: "no-store" });
     clearTimeout(t);
     if (!res.ok) return false;
@@ -152,17 +204,40 @@ async function probeUrl(base: string): Promise<boolean> {
   }
 }
 
+/** أول عنوان API يستجيب — يُجرى بالتوازي لتسريع الاتصال الأول */
+async function firstReachableApiUrl(candidates: string[]): Promise<string | null> {
+  const seen = new Set<string>();
+  const unique = candidates
+    .map(u => trimUrl(u))
+    .filter(u => {
+      if (!u || seen.has(u)) return false;
+      seen.add(u);
+      return true;
+    });
+  if (unique.length === 0) return null;
+  const probes = unique.map(
+    u =>
+      probeUrl(u).then(ok => {
+        if (!ok) throw new Error("unreachable");
+        return u;
+      }),
+  );
+  try {
+    return await Promise.any(probes);
+  } catch {
+    return null;
+  }
+}
+
 async function loadConfigFileUrls(): Promise<string[]> {
   if (typeof window === "undefined") return [];
   const base = (import.meta.env.BASE_URL as string | undefined) || "/app/";
   const root = base.endsWith("/") ? base : `${base}/`;
-  const vercelSite = "https://reyweet.vercel.app";
   const urls: string[] = [];
   for (const file of [
-    `${vercelSite}/public/app-config.json`,
-    `${vercelSite}/app/web-auth-config.json`,
     `${root}web-auth-config.json`,
     `${window.location.origin}/app/web-auth-config.json`,
+    `${PRODUCTION_VPS_API}/app/web-auth-config.json`,
     `${window.location.origin}/public/app-config.json`,
   ]) {
     try {
@@ -207,7 +282,9 @@ async function resolveSameOriginApi(): Promise<string | null> {
 }
 
 export async function ensureApiRuntimeConfig(): Promise<string> {
-  clearStaleApiConfig();
+  if (resolvedMode === "unset") {
+    clearStaleApiConfig();
+  }
 
   if (typeof window !== "undefined") {
     const injected = (window as Window & { __RETWEET_API_URL__?: string }).__RETWEET_API_URL__;
@@ -221,17 +298,31 @@ export async function ensureApiRuntimeConfig(): Promise<string> {
     }
     if (injected?.startsWith("http") && !skipInjected) {
       const u = injected.replace(/\/$/, "");
-      if (!(isPublicAppHost() && isPrivateApiUrl(u)) && (await probeUrl(u))) {
-        resolvedMode = "absolute";
-        resolvedAbsoluteUrl = u;
-        persistAbsolute(u);
-        return u;
+      if (!(isPublicAppHost() && isPrivateApiUrl(u))) {
+        if (isPublicAppHost() && onAppPath()) {
+          resolvedMode = "absolute";
+          resolvedAbsoluteUrl = u;
+          persistAbsolute(u);
+          return u;
+        }
+        if (await probeUrl(u)) {
+          resolvedMode = "absolute";
+          resolvedAbsoluteUrl = u;
+          persistAbsolute(u);
+          return u;
+        }
       }
     }
   }
 
   if (resolvedMode !== "unset") {
     return resolvedMode === "relative" ? "" : resolvedAbsoluteUrl;
+  }
+
+  /** VPS — نفس الأصل: API + WebSocket + SSE مباشرة عبر nginx بدون بروكسي */
+  if (isVpsProductionHost() && onAppPath()) {
+    const r = await resolveSameOriginApi();
+    if (r !== null) return r;
   }
 
   if (useViteDevProxy() && onAppPath()) {
@@ -246,6 +337,12 @@ export async function ensureApiRuntimeConfig(): Promise<string> {
 
   const fileUrls = await loadConfigFileUrls();
 
+  /** Vercel — API عبر بروكسي نفس النطاق (HTTPS → VPS) */
+  if (isPublicAppHost() && onAppPath() && !isVpsProductionHost()) {
+    const r = await resolveSameOriginApi();
+    if (r !== null) return r;
+  }
+
   if (isPublicAppHost() && onAppPath()) {
     for (const u of fileUrls) {
       if (await probeUrl(u)) {
@@ -259,6 +356,14 @@ export async function ensureApiRuntimeConfig(): Promise<string> {
 
   const candidates = [
     ...fileUrls,
+    ...(isPublicAppHost() &&
+    !isVpsProductionHost() &&
+    !isLanOrLocalHostname(window.location.hostname)
+      ? []
+      : isPublicAppHost() && !isLanOrLocalHostname(window.location.hostname)
+        ? [PRODUCTION_VPS_API]
+        : []),
+    trimUrl(import.meta.env.VITE_API_URL_MOBILE as string | undefined),
     trimUrl(import.meta.env.VITE_API_URL as string | undefined),
     ...((() => {
       try {
@@ -275,7 +380,7 @@ export async function ensureApiRuntimeConfig(): Promise<string> {
 
   if (typeof window !== "undefined") {
     const host = window.location.hostname;
-    if (isLanOrLocalHostname(host)) {
+    if (isLanOrLocalHostname(host) && (useViteDevProxy() || import.meta.env.DEV)) {
       candidates.push(
         `http://${host}:3000`,
         "http://127.0.0.1:3000",
@@ -285,11 +390,19 @@ export async function ensureApiRuntimeConfig(): Promise<string> {
   }
 
   const seen = new Set<string>();
+  const ordered: string[] = [];
   for (const raw of candidates) {
     const u = trimUrl(raw);
     if (!u || seen.has(u)) continue;
-    seen.add(u);
     if (isPublicAppHost() && isPrivateApiUrl(u)) continue;
+    if (
+      isPublicAppHost() &&
+      !isVpsProductionHost() &&
+      onAppPath() &&
+      isProductionVpsApiUrl(u)
+    ) {
+      continue;
+    }
     if (isTunnelPublicHost()) {
       try {
         if (new URL(u).origin !== window.location.origin) continue;
@@ -297,17 +410,29 @@ export async function ensureApiRuntimeConfig(): Promise<string> {
         continue;
       }
     }
-    if (await probeUrl(u)) {
-      resolvedMode = "absolute";
-      resolvedAbsoluteUrl = u;
-      persistAbsolute(u);
-      return u;
-    }
+    seen.add(u);
+    ordered.push(u);
+  }
+
+  const hit = await firstReachableApiUrl(ordered);
+  if (hit) {
+    resolvedMode = "absolute";
+    resolvedAbsoluteUrl = hit;
+    persistAbsolute(hit);
+    return hit;
   }
 
   if (onAppPath() && isTunnelPublicHost()) {
     const r = await resolveSameOriginApi();
     if (r !== null) return r;
+  }
+
+  const injectedFallback = readInjectedApiUrl();
+  if (injectedFallback && (await probeUrl(injectedFallback))) {
+    resolvedMode = "absolute";
+    resolvedAbsoluteUrl = injectedFallback;
+    persistAbsolute(injectedFallback);
+    return injectedFallback;
   }
 
   resolvedMode = "relative";
@@ -318,13 +443,22 @@ export async function ensureApiRuntimeConfig(): Promise<string> {
 export function peekApiBaseUrl(): string {
   if (resolvedMode === "relative") return "";
   if (resolvedMode === "absolute") return resolvedAbsoluteUrl;
-  if (useViteDevProxy() && onAppPath()) return "";
+  const cached = readCachedApiUrl();
+  if (cached) return cached;
+  if (useViteDevProxy()) return "";
+  if (isVpsProductionHost() && onAppPath()) return "";
   if (useUnifiedLocalServer() || (onAppPath() && isTunnelPublicHost())) return "";
   const fromBuild = trimUrl(import.meta.env.VITE_API_URL as string | undefined);
-  if (fromBuild && !(isPublicAppHost() && isPrivateApiUrl(fromBuild))) return fromBuild;
+  if (fromBuild && !(isPublicAppHost() && isPrivateApiUrl(fromBuild))) {
+    if (!isPublicAppHost() || isLanOrLocalHostname(window.location.hostname)) return fromBuild;
+    if (onAppPath() && !isProductionVpsApiUrl(fromBuild)) return fromBuild;
+  }
+  if (typeof window !== "undefined" && isPublicAppHost() && !isVpsProductionHost() && onAppPath()) {
+    return "";
+  }
   if (typeof window !== "undefined") {
     const h = window.location.hostname;
-    if (isLanOrLocalHostname(h)) return `http://${h}:3000`;
+    if (isLanOrLocalHostname(h) && (useViteDevProxy() || import.meta.env.DEV)) return `http://${h}:3000`;
   }
   return "";
 }

@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -9,6 +10,9 @@ const _tokenKey = 'retweet_api_token';
 // محاكاة لـ QueryClientProvider و AuthProvider
 // في فلاتر نستخدم عادة Provider أو Bloc أو GetX
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  // تهيئة موجه الإيماءات (لا يُعطّل السحب للخلف — يُفعَّل مع CupertinoPageRoute لاحقاً)
+  GestureBinding.instance.pointerRouter;
   runApp(
     // هذا الجزء يعادل الـ Providers في كود React الخاص بك
     const RootComponent(
@@ -46,6 +50,7 @@ class _RorkMaxAppState extends State<RorkMaxApp> {
   @override
   void initState() {
     super.initState();
+    GestureBinding.instance.pointerRouter;
     _api.health().then((ok) {
       if (mounted) setState(() => _apiReachable = ok);
     });

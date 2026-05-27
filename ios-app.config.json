@@ -1,7 +1,7 @@
 {
   "webAppUrl": "https://reyweet.vercel.app/app/",
-  "apiUrl": "https://jumping-tom-promising-traditions.trycloudflare.com",
+  "apiUrl": "https://reyweet.vercel.app",
   "siteUrl": "https://reyweet.vercel.app",
-  "bundleId": "com.retweetmobile.app",
-  "note": "يُحدَّث عند npm run ios:prepare — Capacitor بدون Expo"
+  "bundleId": "com.reyweet.app",
+  "sourceIpa": "Retweet-unsigned (4).ipa"
 }

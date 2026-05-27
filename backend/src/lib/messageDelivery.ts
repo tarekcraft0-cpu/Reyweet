@@ -47,6 +47,8 @@ function rowToChatUser(row: UserRow): User {
     verified: row.verified === true,
     founderVerified: row.founderVerified === true,
     founderOfficialLabel: row.founderOfficialLabel,
+    appOfficialVerified: row.appOfficialVerified === true,
+    appOfficialLabel: row.appOfficialLabel,
     note: row.note || undefined,
     phone: row.phone || undefined,
     profileLink: row.profileLink || row.officialSiteUrl || undefined,
@@ -79,8 +81,13 @@ function findDmChat(state: AppState, a: string, b: string): Chat | undefined {
 function isMessageRequest(state: AppState, recipientId: string, senderId: string): boolean {
   const me = state.users.find(u => u.id === recipientId);
   const sender = state.users.find(u => u.id === senderId);
-  const following = me?.following?.includes(senderId) ?? false;
-  return !following && (sender?.isPrivate ?? false);
+  if (!me || !sender) return false;
+  /** أتلقيت من شخص أتابعه → ليست طلبًا */
+  if (me.following?.includes(senderId)) return false;
+  /** المُرسِل يتابعني → لا نخبي المحادثة في «طلبات المراسلة» (يتوافق مع mergeSocialGraph بعد التأكد من صف المرسل) */
+  if (sender.following?.includes(recipientId)) return false;
+  /** غريبان: حساب المرسل الخاص يبقى «طلب» مثل الغالبية؛ الحساب العام يظهر في القائمة العادية */
+  return sender.isPrivate === true;
 }
 
 function messagePreview(msg: Message): string {
@@ -95,6 +102,63 @@ function messagePreview(msg: Message): string {
   if (msg.type === "shared_post") return "منشور";
   if (msg.type === "shared_story") return "ستوري";
   return "رسالة";
+}
+
+/**
+ * يضمن وجود المحادثة في لقطة المُرسِل حتى يتمكن من الإرسال مجدداً حتى لو لم
+ * تكن المحادثة موجودة أصلاً في لقطته (أول رسالة، أو معرّفات قديمة).
+ */
+export async function ensureDmChatInSenderSnapshot(
+  senderId: string,
+  receiverId: string,
+): Promise<void> {
+  const canonicalId = dmChatId(senderId, receiverId);
+
+  const raw = await getSnapshot(senderId);
+  const state = (raw as AppState | null) ?? (await buildMinimalAppState(senderId));
+
+  const alreadyHasChat =
+    Array.isArray((state as AppState).chats) &&
+    (state as AppState).chats.some(
+      c =>
+        c.id === canonicalId ||
+        (!c.isGroup && !c.isChannel && c.members.includes(senderId) && c.members.includes(receiverId)),
+    );
+  if (alreadyHasChat) return;
+
+  const receiverRow = await getUserById(receiverId);
+  let nextState = state as AppState;
+  nextState = await mergeDbUsersIntoAppState(nextState);
+  nextState = await mergeSocialGraphIntoAppState(nextState);
+  if (receiverRow) nextState = ensureUserInState(nextState, receiverRow);
+  nextState.currentUserId = senderId;
+
+  const chat: Chat = {
+    id: canonicalId,
+    isGroup: false,
+    members: [senderId, receiverId],
+    admins: [],
+    messages: [],
+    lastOpenAtByUser: {},
+    lastReadMessageIdByUser: {},
+  };
+
+  const chatsWithout = (nextState.chats || []).filter(
+    c =>
+      !(
+        !c.isGroup &&
+        !c.isChannel &&
+        c.members.includes(senderId) &&
+        c.members.includes(receiverId)
+      ),
+  );
+
+  nextState = scopeAppStateToOwner(senderId, {
+    ...nextState,
+    chats: [...chatsWithout, chat],
+  });
+
+  await setSnapshot(senderId, stripPasswords(nextState));
 }
 
 /** يحدّث لقطة المستلم على D: (يُستدعى بعد البث الفوري) */

@@ -36,6 +36,26 @@ export function isRealtimeSocketConnected(): boolean {
   return Boolean(socket?.connected);
 }
 
+/** انتظر اتصال Socket قصيراً قبل الإرسال — يقلّل fallback البطيء إلى REST */
+export function waitForRealtimeSocket(maxMs = 2000): Promise<boolean> {
+  if (typeof window === "undefined") return Promise.resolve(false);
+  if (socket?.connected) return Promise.resolve(true);
+  const s = socket;
+  if (!s) return Promise.resolve(false);
+  return new Promise(resolve => {
+    const timer = window.setTimeout(() => {
+      s.off("connect", onConnect);
+      resolve(false);
+    }, maxMs);
+    const onConnect = () => {
+      window.clearTimeout(timer);
+      s.off("connect", onConnect);
+      resolve(true);
+    };
+    s.on("connect", onConnect);
+  });
+}
+
 /** WebSocket فقط — بدون polling البطيء */
 export async function connectRealtimeSocket(
   onEvent: (event: string, data: unknown) => void,
@@ -82,6 +102,8 @@ export async function connectRealtimeSocket(
   s.on("group_invite", forward("group_invite"));
   s.on("call:signal", forward("call:signal"));
   s.on("call:ring", forward("call:ring"));
+  s.on("typing", forward("typing"));
+  s.on("message_status", forward("message_status"));
 
   s.on("connect", () => {
     if (gen !== connectGen) return;
@@ -117,6 +139,8 @@ export type DirectMessageEmitBody = {
   viewOnce?: boolean;
   viewOnceOpenedByUserIds?: string[];
   replyTo?: { id: string; content: string; type: string };
+  parentMessageId?: string;
+  status?: "sent" | "delivered" | "read";
   reactions?: { emoji: string; userId: string }[];
   forwardedFrom?: { sourceChatLabel: string };
 };
@@ -126,15 +150,21 @@ export function getRealtimeSocket(): Socket | null {
   return socket;
 }
 
-export function emitDirectMessage(body: DirectMessageEmitBody, senderId: ID): Promise<boolean> {
+export async function emitDirectMessage(body: DirectMessageEmitBody, senderId: ID): Promise<boolean> {
+  const activeToken = ensureApiTokenMatchesUser(senderId);
+  if (!activeToken || activeToken !== socketAuthToken) return false;
+  if (!socket?.connected) {
+    const ready = await waitForRealtimeSocket(1800);
+    if (!ready || !socket?.connected) return false;
+  }
   return new Promise(resolve => {
-    const activeToken = ensureApiTokenMatchesUser(senderId);
-    if (!socket?.connected || !activeToken || activeToken !== socketAuthToken) {
+    const s = socket;
+    if (!s?.connected) {
       resolve(false);
       return;
     }
-    const timer = window.setTimeout(() => resolve(false), 1200);
-    socket.emit("message:send", body, (ack?: { ok?: boolean }) => {
+    const timer = window.setTimeout(() => resolve(false), 2800);
+    s.emit("message:send", body, (ack?: { ok?: boolean }) => {
       window.clearTimeout(timer);
       resolve(Boolean(ack?.ok));
     });

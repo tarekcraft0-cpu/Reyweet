@@ -1,7 +1,13 @@
 import { Capacitor } from "@capacitor/core";
-import { isolateUsersForAccountCache, listAccountSessions } from "./accountSessions";
+import { isolateUsersForAccountCache, snapshotAccountIdsForOwner } from "./accountSessions";
 import type { AppState, Chat, ID, Message, User } from "./types";
-import { defaultDevApiUrl, ensureApiRuntimeConfig, peekApiBaseUrl } from "./apiConfig";
+import {
+  defaultDevApiUrl,
+  ensureApiRuntimeConfig,
+  peekApiBaseUrl,
+  useViteDevProxy,
+} from "./apiConfig";
+import { isPublicAppHost, isVpsProductionHost } from "./apiUrlPolicy";
 import { isGuestUserId } from "./guestUser";
 import { scopeAppStateToAccount } from "./scopeAppState";
 import { isReactNativeWebView } from "./nativeShell";
@@ -11,7 +17,6 @@ const TOKEN_KEY = "retweet_api_token";
 /** عنوان الخادم: عيّن VITE_API_URL و VITE_API_URL_MOBILE إلى http://<IPv4-الكمبيوتر>:8788 لنفس شبكة الـ Wi‑Fi (الآيفون لا يصل إلى localhost للكمبيوتر). */
 export function getApiBaseUrl(): string {
   const fromPeek = peekApiBaseUrl();
-  if (fromPeek === "") return "";
 
   let raw = "";
   try {
@@ -36,7 +41,22 @@ export function hasApiBackendConnection(): boolean {
   if (typeof window !== "undefined") {
     const injected = (window as Window & { __RETWEET_API_URL__?: string }).__RETWEET_API_URL__;
     if (injected?.startsWith("http")) return true;
-    if (import.meta.env.DEV && (window.location.pathname || "").startsWith("/app")) return true;
+    /** منفذ Vite (:3077 / :3080) — بروكسي /health و /v1 حتى على `/` وليس `/app` فقط */
+    if (useViteDevProxy()) {
+      return true;
+    }
+    /** VPS — الواجهة والـ API على نفس الأصل (nginx) */
+    if (isVpsProductionHost() && (window.location.pathname || "").startsWith("/app")) {
+      return true;
+    }
+    /** Vercel — API عبر بروكسي نفس النطاق */
+    if (
+      isPublicAppHost() &&
+      !isVpsProductionHost() &&
+      (window.location.pathname || "").startsWith("/app")
+    ) {
+      return true;
+    }
   }
   return false;
 }
@@ -71,7 +91,7 @@ export function sanitizeAppStateForSync(state: AppState): AppState {
   const base =
     ownerId && !isGuestUserId(ownerId)
       ? scopeAppStateToAccount(ownerId, state, {
-          accountIds: listAccountSessions().map(s => s.userId),
+          accountIds: snapshotAccountIdsForOwner(ownerId),
           isolateOwnedUsers: (id, s) => isolateUsersForAccountCache(id, s),
         })
       : state;
@@ -101,20 +121,26 @@ function buildApiUrl(path: string, base: string): string {
   return `${base.replace(/\/$/, "")}${p}`;
 }
 
-async function apiFetch(
+export async function apiFetch(
   path: string,
   init: RequestInit & { token?: string | null; timeoutMs?: number } = {},
 ) {
   await ensureApiRuntimeConfig();
   const base = getApiBaseUrl();
-  if (!base && typeof window !== "undefined" && !import.meta.env.DEV) {
-    const injected = (window as Window & { __RETWEET_API_URL__?: string }).__RETWEET_API_URL__;
-    if (!injected?.startsWith("http")) {
-      return new Response(
-        JSON.stringify({ error: "الخادم غير مربوط — شغّل npm run api:tunnel ثم أعد نشر الموقع" }),
-        { status: 503, headers: { "Content-Type": "application/json" } },
-      );
-    }
+  const devProxy =
+    import.meta.env.DEV &&
+    useViteDevProxy() &&
+    typeof window !== "undefined" &&
+    (window.location.pathname || "").startsWith("/app");
+  if (!base && !devProxy) {
+    return new Response(
+      JSON.stringify({
+        error: isPublicAppHost()
+          ? "الخادم غير متصل — تأكد من اتصال الإنترنت أو جرّب لاحقاً"
+          : "الخادم غير متصل — شغّل npm run stack:reyweet للتطوير المحلي",
+      }),
+      { status: 503, headers: { "Content-Type": "application/json" } },
+    );
   }
   const url = buildApiUrl(path, base);
   const headers = new Headers(init.headers);
@@ -293,8 +319,25 @@ export type ApiSearchUser = {
   avatar: string;
   bio?: string;
   verified?: boolean;
+  /** حساب خاص — يُرجَع من نهايات المستخدم العامة */
+  isPrivate?: boolean;
+  followers?: string[];
+  following?: string[];
+  followerCount?: number;
+  followingCount?: number;
+  isSubscribed?: boolean;
+  subscriptionPlan?: string;
+  subscriptionExpiresAt?: string;
+  verificationStatus?: "none" | "pending" | "approved" | "rejected";
+  verificationBadgeColor?: "blue" | "pink";
+  canUseAnimatedAvatar?: boolean;
+  storyMaxDuration?: number;
+  storyExpiryOptions?: number[];
+  postCharacterLimit?: number;
   founderVerified?: boolean;
   founderOfficialLabel?: string;
+  appOfficialVerified?: boolean;
+  appOfficialLabel?: string;
 };
 
 /** حساب minimal للعرض بعد البحث — يُدمَج في الحالة عبر mergeDiscoveredUsers */
@@ -307,9 +350,11 @@ export function userFromSearchResult(row: ApiSearchUser): User {
     password: "",
     avatar: row.avatar || row.username.slice(0, 2).toUpperCase(),
     bio: row.bio ?? "",
-    isPrivate: false,
-    followers: [],
-    following: [],
+    isPrivate: row.isPrivate === true,
+    followers: Array.isArray(row.followers) ? row.followers : [],
+    following: Array.isArray(row.following) ? row.following : [],
+    displayFollowerCount:
+      typeof row.followerCount === "number" ? row.followerCount : undefined,
     highlights: [],
     followRequestIn: [],
     followRequestOut: [],
@@ -323,8 +368,19 @@ export function userFromSearchResult(row: ApiSearchUser): User {
     pinnedChatIds: [],
     mutedChatIds: [],
     verified: row.verified === true,
+    isSubscribed: row.isSubscribed === true,
+    subscriptionPlan: row.subscriptionPlan,
+    subscriptionExpiresAt: row.subscriptionExpiresAt,
+    verificationStatus: row.verificationStatus,
+    verificationBadgeColor: row.verificationBadgeColor,
+    canUseAnimatedAvatar: row.canUseAnimatedAvatar === true,
+    storyMaxDuration: row.storyMaxDuration,
+    storyExpiryOptions: row.storyExpiryOptions,
+    postCharacterLimit: row.postCharacterLimit,
     founderVerified: row.founderVerified === true,
     founderOfficialLabel: row.founderOfficialLabel,
+    appOfficialVerified: row.appOfficialVerified === true,
+    appOfficialLabel: row.appOfficialLabel,
   };
 }
 
@@ -334,6 +390,20 @@ export async function apiLookupUserByUsername(username: string): Promise<ApiSear
   const token = getApiToken();
   if (!token) return null;
   const res = await apiFetch(`/v1/users/by-username/${encodeURIComponent(u)}`, {
+    method: "GET",
+    token,
+  });
+  if (!res.ok) return null;
+  const data = (await res.json().catch(() => null)) as { user?: ApiSearchUser } | null;
+  return data?.user ?? null;
+}
+
+export async function apiFetchUserById(userId: ID): Promise<ApiSearchUser | null> {
+  const id = userId.trim();
+  if (!id) return null;
+  const token = getApiToken();
+  if (!token) return null;
+  const res = await apiFetch(`/v1/users/${encodeURIComponent(id)}`, {
     method: "GET",
     token,
   });
@@ -424,6 +494,8 @@ export async function pullRemoteAppState(token: string): Promise<AppState | null
 }
 
 export async function pushRemoteAppState(token: string, state: AppState): Promise<boolean> {
+  const { shouldAllowRemotePush } = await import("./remotePushGate");
+  if (!shouldAllowRemotePush(state)) return false;
   const body = JSON.stringify({ state: sanitizeAppStateForSync(state) });
   const res = await apiFetch("/v1/app-state", { method: "PUT", body, token });
   return res.ok;
@@ -439,6 +511,7 @@ export async function apiCreateStory(
     createdAt: number;
     audience: "all" | "close";
     stickers?: unknown[];
+    expiryHours?: number;
   },
 ): Promise<{ ok: true; story: AppState["stories"][number] } | { ok: false; error: string }> {
   const res = await apiFetch("/v1/stories", {
@@ -452,6 +525,7 @@ export async function apiCreateStory(
       audience: story.audience,
       stickers: story.stickers,
       createdAt: story.createdAt,
+      expiryHours: story.expiryHours,
     }),
   });
   const data = (await res.json().catch(() => ({}))) as {
@@ -558,6 +632,25 @@ export async function apiPostMessage(
   return data?.message ?? message;
 }
 
+/** إرسال حالة الكتابة عبر REST عندما WebSocket غير متصل */
+export async function apiPostChatTyping(
+  token: string,
+  chatId: ID,
+  peerId: ID | null,
+  active: boolean,
+): Promise<boolean> {
+  const res = await apiFetch("/v1/chats/typing", {
+    method: "POST",
+    token,
+    body: JSON.stringify({
+      chatId,
+      peerId: peerId ?? undefined,
+      active,
+    }),
+  });
+  return res.ok;
+}
+
 export type SocialToggleMode = "following" | "unfollowed" | "requested" | "request_cancelled";
 
 export type SocialRelation = {
@@ -631,6 +724,20 @@ export async function apiDeclineFollowRequest(
   return { ok: true };
 }
 
+export async function apiRecordProfileVisit(
+  token: string,
+  targetUserId: string,
+): Promise<void> {
+  try {
+    await apiFetch(`/v1/users/${encodeURIComponent(targetUserId)}/visit`, {
+      method: "POST",
+      token,
+    });
+  } catch {
+    /* silent — visits are non-critical */
+  }
+}
+
 export async function apiPatchProfile(
   token: string,
   patch: {
@@ -641,7 +748,8 @@ export async function apiPatchProfile(
     note?: string;
     profileLink?: string;
     isPrivate?: boolean;
-    verified?: boolean;
+    email?: string;
+    phone?: string;
   },
 ): Promise<{ ok: true; user: ApiSearchUser } | { ok: false; error: string }> {
   const res = await apiFetch("/v1/me/profile", {
@@ -660,7 +768,7 @@ export async function apiPatchProfile(
 export async function apiUploadMedia(
   token: string,
   file: File,
-  opts?: { timeoutMs?: number; storyVideo?: boolean },
+  opts?: { timeoutMs?: number; storyVideo?: boolean; avatarAnimated?: boolean },
 ): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
   await ensureApiRuntimeConfig();
   const base = getApiBaseUrl().replace(/\/$/, "");
@@ -670,7 +778,11 @@ export async function apiUploadMedia(
       error: "الخادم غير متصل — تأكد أن API يعمل (npm run api:tunnel)",
     };
   }
-  const uploadPath = opts?.storyVideo ? "/v1/media/upload?story=1" : "/v1/media/upload";
+  let uploadPath = "/v1/media/upload";
+  const q: string[] = [];
+  if (opts?.storyVideo) q.push("story=1");
+  if (opts?.avatarAnimated) q.push("avatar=1");
+  if (q.length) uploadPath += `?${q.join("&")}`;
   const url = `${base}${uploadPath}`;
   const fd = new FormData();
   fd.append("file", file);

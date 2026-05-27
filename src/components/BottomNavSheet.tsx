@@ -1,54 +1,67 @@
-import type { ReactNode } from "react";
-import { ChevronUp } from "lucide-react";
+import { useCallback, useRef, type ReactNode } from "react";
 import { useBottomNavSheet } from "@/hooks/useBottomNavSheet";
 import { BottomNavDragContext } from "@/lib/bottomNavDragContext";
+import { BOTTOM_NAV_TAB_COUNT } from "@/lib/bottomNavConfig";
+import { BottomNavTabRow } from "./BottomNavTabRow";
 
 type Props = {
-  initialHidden: boolean;
-  onPersistHidden: (hidden: boolean) => void;
+  progressIndex: number;
+  onSelectTabIndex: (index: number) => void;
+  /** أثناء سحب خروج المحادثة — التقدّم يُكتب في NAV_HIDE_PROGRESS_CSS_VAR */
+  externalHideDrive?: boolean;
   children: ReactNode;
 };
 
-export function BottomNavSheet({ initialHidden, onPersistHidden, children }: Props) {
-  const { navRef, navStyle, hideProgress, isMostlyHidden, shouldSuppressTap, dragHandlers } =
-    useBottomNavSheet(initialHidden, onPersistHidden);
+/** كبسولة زجاجية عائمة */
+const IG_GLASS_PILL =
+  "pointer-events-auto isolate w-full overflow-hidden rounded-[22px] " +
+  "border border-white/12 bg-[rgba(30,30,30,0.48)] shadow-[0_6px_28px_rgba(0,0,0,0.2)] " +
+  "backdrop-blur-[24px] backdrop-saturate-[1.5] [-webkit-backdrop-filter:blur(24px)_saturate(1.5)] " +
+  "supports-[backdrop-filter]:bg-[rgba(30,30,30,0.3)]";
+
+export function BottomNavSheet({
+  progressIndex,
+  onSelectTabIndex,
+  externalHideDrive = false,
+  children,
+}: Props) {
+  const tabSuppressRef = useRef<() => boolean>(() => false);
+
+  const { navRef, navStyle, shouldSuppressTap } = useBottomNavSheet({
+    externalHideDrive,
+  });
+
+  const combinedSuppress = useCallback(
+    () => shouldSuppressTap() || tabSuppressRef.current(),
+    [shouldSuppressTap],
+  );
 
   return (
-    <BottomNavDragContext.Provider value={{ shouldSuppressTap }}>
-      <nav
+    <BottomNavDragContext.Provider value={{ shouldSuppressTap: combinedSuppress }}>
+      <div
+        data-floating-nav-host
         dir="ltr"
-        className="pointer-events-none fixed inset-x-0 bottom-0 z-30 flex justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]"
+        role="navigation"
+        aria-label="شريط التنقل"
+        className="pointer-events-none fixed inset-x-0 bottom-0 z-[90] mx-auto flex w-full max-w-md justify-center px-4"
+        style={{
+          paddingBottom: "max(12px, env(safe-area-inset-bottom, 0px))",
+        }}
       >
-        <div
-          ref={navRef}
-          className="pointer-events-auto w-full max-w-md overflow-hidden rounded-[2rem] border border-zinc-200/90 bg-white shadow-[0_8px_28px_rgba(0,0,0,0.12)] dark:border-zinc-700 dark:bg-zinc-900"
-          style={navStyle}
-          aria-label={isMostlyHidden ? "شريط التنقل — اسحب للأعلى" : "شريط التنقل — اسحب للأسفل للإخفاء"}
-        >
-          <div
-            className="flex touch-none select-none cursor-grab flex-col items-center justify-center gap-0.5 px-2 pt-2.5 pb-1 active:cursor-grabbing"
-            {...dragHandlers}
+        <div ref={navRef} data-no-tab-swipe className={IG_GLASS_PILL} style={navStyle}>
+          <BottomNavTabRow
+            progressIndex={progressIndex}
+            tabCount={BOTTOM_NAV_TAB_COUNT}
+            onSelectIndex={onSelectTabIndex}
+            shouldSuppressTap={shouldSuppressTap}
+            onSuppressTapChange={fn => {
+              tabSuppressRef.current = fn;
+            }}
           >
-            <span
-              role="presentation"
-              className="h-1 w-10 shrink-0 rounded-full bg-zinc-300/90 dark:bg-zinc-600"
-              style={{ opacity: 1 - hideProgress * 0.25 }}
-            />
-            <ChevronUp
-              size={16}
-              strokeWidth={2.25}
-              className={
-                "text-zinc-500 transition-all duration-200 dark:text-zinc-400 " +
-                (isMostlyHidden ? "opacity-100" : "h-0 opacity-0")
-              }
-              aria-hidden={!isMostlyHidden}
-            />
-          </div>
-          <div className="flex h-[4.25rem] flex-row items-center justify-around px-1 pb-0.5">
             {children}
-          </div>
+          </BottomNavTabRow>
         </div>
-      </nav>
+      </div>
     </BottomNavDragContext.Provider>
   );
 }

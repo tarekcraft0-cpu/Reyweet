@@ -1,7 +1,8 @@
 {
-  "apiUrl": "https://jumping-tom-promising-traditions.trycloudflare.com",
+  "apiUrl": "https://reyweet.vercel.app",
   "appPath": "/app/",
   "siteUrl": "https://reyweet.vercel.app",
   "supabaseUrl": "",
-  "supabaseAnonKey": ""
+  "supabaseAnonKey": "",
+  "webAppUrl": "https://reyweet.vercel.app/app/"
 }

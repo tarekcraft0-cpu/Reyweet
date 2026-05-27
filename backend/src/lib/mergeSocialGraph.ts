@@ -1,10 +1,9 @@
 import type { AppState, StoryItem } from "../../../src/lib/types.js";
 import { listFollowRequests, listFollows, listStories } from "../db/engine.js";
 
-const STORY_TTL_MS = 24 * 60 * 60 * 1000;
-
-function isStoryActive(createdAt: number, now = Date.now()): boolean {
-  return createdAt > now - STORY_TTL_MS;
+function isStoryActive(createdAt: number, now = Date.now(), expiryHours?: number): boolean {
+  const hours = typeof expiryHours === "number" && [24, 48, 72].includes(expiryHours) ? expiryHours : 24;
+  return createdAt > now - hours * 60 * 60 * 1000;
 }
 
 /** يدمج المتابعات وطلبات المتابعة والستوريات من القرص D في لقطة المستخدم */
@@ -29,10 +28,10 @@ export async function mergeSocialGraphIntoAppState(state: AppState): Promise<App
     if (!requestIn.get(r.toId)!.includes(r.fromId)) requestIn.get(r.toId)!.push(r.fromId);
   }
 
-  const dbStories = (await listStories()).filter(s => isStoryActive(s.createdAt));
+  const dbStories = (await listStories()).filter(s => isStoryActive(s.createdAt, Date.now(), s.expiryHours));
   const storyById = new Map<string, StoryItem>();
   for (const s of state.stories || []) {
-    if (isStoryActive(s.createdAt)) storyById.set(s.id, s);
+    if (isStoryActive(s.createdAt, Date.now(), s.expiryHours)) storyById.set(s.id, s);
   }
   for (const s of dbStories) {
     const item = s as StoryItem;

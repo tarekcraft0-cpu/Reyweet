@@ -19,10 +19,26 @@ type SessionsStore = {
 const SESSIONS_KEY = "retweet_account_sessions";
 const CACHE_PREFIX = "retweet_account_state_";
 const LAST_ACTIVE_USER_KEY = "retweet_last_active_user_id";
+/** آخر حسابين تبدّلت بينهما — للضغط مرتين على بروفايل الشريط */
+const PROFILE_TOGGLE_PEER_KEY = "retweet_profile_toggle_peer";
 
 export const ACCOUNT_SWITCHED_EVENT = "retweet-account-switched";
 export const ACCOUNT_SWITCH_BEGIN_EVENT = "retweet-account-switch-begin";
 export const ACCOUNT_SWITCH_END_EVENT = "retweet-account-switch-end";
+export const ACCOUNT_SWITCH_FAILED_EVENT = "retweet-account-switch-failed";
+
+/** حسابات محذوفة من المنصة — لا تُستخدم للتبديل السريع */
+export const REMOVED_ACCOUNT_IDS = new Set<string>([
+  "u_t_account",
+  "u_omar",
+  "u_sara",
+  "u_lina",
+]);
+
+export function isValidAccountSwitchTarget(userId: ID): boolean {
+  if (!userId || REMOVED_ACCOUNT_IDS.has(userId)) return false;
+  return !!getAccountSession(userId)?.token;
+}
 
 function readSessions(): SessionsStore {
   if (typeof window === "undefined") return { order: [], sessions: {} };
@@ -96,6 +112,104 @@ export function setLastActiveUserId(userId: ID | null): void {
   }
 }
 
+/** يحفظ الزوج (الحساب الحالي ↔ الذي غادرته) للتبديل بالضغط مرتين على أيقونة البروفايل */
+export function setProfileTogglePeer(activeUserId: ID, peerUserId: ID): void {
+  if (typeof window === "undefined" || activeUserId === peerUserId) return;
+  try {
+    localStorage.setItem(
+      PROFILE_TOGGLE_PEER_KEY,
+      JSON.stringify({ active: activeUserId, peer: peerUserId }),
+    );
+  } catch {
+    /* ignore */
+  }
+}
+
+/** الحساب الآخر في آخر تبديل (ليس كل الحسابات — فقط الثنائي الأخير) */
+export function getProfileTogglePeer(currentUserId: ID): ID | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(PROFILE_TOGGLE_PEER_KEY);
+    if (!raw) return null;
+    const j = JSON.parse(raw) as { active?: ID; peer?: ID };
+    let peer: ID | null = null;
+    if (j.active === currentUserId && j.peer) peer = j.peer;
+    else if (j.peer === currentUserId && j.active) peer = j.active;
+    if (peer && isValidAccountSwitchTarget(peer)) return peer;
+    if (peer) {
+      try {
+        localStorage.removeItem(PROFILE_TOGGLE_PEER_KEY);
+      } catch {
+        /* ignore */
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/** إن فشل الزوج المحفوظ — أول حساب آخر صالح على الجهاز */
+export function resolveProfileTogglePeer(currentUserId: ID): ID | null {
+  const saved = getProfileTogglePeer(currentUserId);
+  if (saved) return saved;
+  const other = listAccountSessions().find(
+    s => s.userId !== currentUserId && isValidAccountSwitchTarget(s.userId),
+  );
+  return other?.userId ?? null;
+}
+
+/** يزيل جلسات الحسابات المحذوفة ويُنظّف التكرار والضغط مرتين */
+export function pruneStaleAccountSessions(): void {
+  if (typeof window === "undefined") return;
+  for (const id of REMOVED_ACCOUNT_IDS) removeAccountSession(id);
+  const store = readSessions();
+  let changed = false;
+  // أزل جلسات بدون token
+  for (const id of [...store.order]) {
+    if (!store.sessions[id]?.token) {
+      delete store.sessions[id];
+      store.order = store.order.filter(x => x !== id);
+      changed = true;
+      try {
+        localStorage.removeItem(`${CACHE_PREFIX}${id}`);
+      } catch { /* ignore */ }
+    }
+  }
+  // أزل تكرار الـ username: احتفظ بأحدث جلسة (الأخيرة في القائمة)
+  const seenUsernames = new Set<string>();
+  for (const id of [...store.order].reverse()) {
+    const sess = store.sessions[id];
+    if (!sess) continue;
+    const uname = sess.username.toLowerCase();
+    if (seenUsernames.has(uname)) {
+      delete store.sessions[id];
+      store.order = store.order.filter(x => x !== id);
+      changed = true;
+      try { localStorage.removeItem(`${CACHE_PREFIX}${id}`); } catch { /* ignore */ }
+    } else {
+      seenUsernames.add(uname);
+    }
+  }
+  if (changed) writeSessions(store);
+  try {
+    const raw = localStorage.getItem(PROFILE_TOGGLE_PEER_KEY);
+    if (!raw) return;
+    const j = JSON.parse(raw) as { active?: ID; peer?: ID };
+    const bad =
+      (j.active && !isValidAccountSwitchTarget(j.active)) ||
+      (j.peer && !isValidAccountSwitchTarget(j.peer));
+    if (bad) localStorage.removeItem(PROFILE_TOGGLE_PEER_KEY);
+  } catch {
+    localStorage.removeItem(PROFILE_TOGGLE_PEER_KEY);
+  }
+}
+
+/** عدد الحسابات المسجّلة على الجهاز (للتبديل السريع) */
+export function countLoggedInAccountSessions(): number {
+  return listAccountSessions().filter(s => !!s.token).length;
+}
+
 /** يفعّل توكن آخر حساب نشط (أو أول جلسة) قبل أي طلب API */
 export function restoreActiveSessionOnLaunch(): ID | null {
   const last = getLastActiveUserId();
@@ -136,11 +250,35 @@ export function ensureApiTokenMatchesUser(userId: ID): string | null {
   return meta.token;
 }
 
-export function activateAccountSession(userId: ID): string | null {
+/** يبدّل التوكن دون إعادة ربط Socket — يُستدعى أثناء التبديل قبل اكتمال الحالة */
+export function applyAccountSessionToken(userId: ID): string | null {
   const meta = getAccountSession(userId);
   if (!meta?.token) return null;
   setApiToken(meta.token);
   setLastActiveUserId(userId);
+  return meta.token;
+}
+
+export function activateAccountSession(
+  userId: ID,
+  opts?: { emitSwitchedEvent?: boolean },
+): string | null {
+  const token = applyAccountSessionToken(userId);
+  if (!token) return null;
+  if (opts?.emitSwitchedEvent !== false) {
+    try {
+      window.dispatchEvent(
+        new CustomEvent(ACCOUNT_SWITCHED_EVENT, { detail: { userId } }),
+      );
+    } catch {
+      /* ignore */
+    }
+  }
+  return token;
+}
+
+export function emitAccountSwitchedEvent(userId: ID): void {
+  if (typeof window === "undefined") return;
   try {
     window.dispatchEvent(
       new CustomEvent(ACCOUNT_SWITCHED_EVENT, { detail: { userId } }),
@@ -148,7 +286,6 @@ export function activateAccountSession(userId: ID): string | null {
   } catch {
     /* ignore */
   }
-  return meta.token;
 }
 
 /** مزامنة التوكن الحالي مع جلسة حساب نشط */
@@ -172,7 +309,7 @@ export function readRawAccountStateCache(userId: ID): AppState | null {
   }
 }
 
-/** ملف حساب مسجّل — الجلسة (meta) أولوية؛ لا يستدعي loadAccountStateCache */
+/** ملف حساب مسجّل — الجلسة (meta) لليوزر/الإيميل فقط؛ الأفتار من السيرفر */
 export function canonicalOwnedProfileFields(userId: ID): (Partial<User> & { id: ID }) | null {
   const sess = getAccountSession(userId);
   const fromCache = readRawAccountStateCache(userId)?.users.find(u => u.id === userId);
@@ -181,63 +318,49 @@ export function canonicalOwnedProfileFields(userId: ID): (Partial<User> & { id: 
     id: userId,
     username: sess?.username ?? fromCache!.username,
     email: sess?.email ?? fromCache?.email ?? "",
-    avatar: sess?.avatar ?? fromCache?.avatar,
-    displayName: fromCache?.displayName,
-    bio: fromCache?.bio,
-    note: fromCache?.note,
-    profileLink: fromCache?.profileLink,
-    isPrivate: fromCache?.isPrivate,
-    verified: fromCache?.verified,
-    founderVerified: fromCache?.founderVerified,
-    founderOfficialLabel: fromCache?.founderOfficialLabel,
   };
 }
 
-/** عند حفظ كاش حساب: لا نكتب يوزر/أفاتار حساب آخر من لقطة الحساب النشط */
-export function isolateUsersForAccountCache(ownerId: ID, state: AppState): User[] {
-  const owned = new Set(listAccountSessions().map(s => s.userId));
-  return state.users.map(u => {
-    if (u.id === ownerId) return u;
-    if (!owned.has(u.id)) return u;
-    const sess = getAccountSession(u.id);
-    if (sess) {
-      return mergeUserProfilePatch(u, {
-        id: u.id,
-        username: sess.username,
-        email: sess.email,
-        avatar: sess.avatar ?? u.avatar,
-      });
-    }
-    const fromRaw = readRawAccountStateCache(u.id)?.users.find(x => x.id === u.id);
-    if (!fromRaw) return u;
-    return mergeUserProfilePatch(u, {
-      id: u.id,
-      username: fromRaw.username,
-      email: fromRaw.email,
-      avatar: fromRaw.avatar ?? u.avatar,
-    });
-  });
+/** في لقطة التطبيق: الحساب النشط فقط — الجلسات الأخرى تبقى في retweet_account_sessions */
+export function snapshotAccountIdsForOwner(ownerId: ID): ID[] {
+  return ownerId ? [ownerId] : [];
 }
 
-/** بعد دمج متعدد الحسابات — كل حساب يستعيد يوزره من جلسته/كاشه */
+/** إزالة ملفات الحسابات الأخرى المسجّلة من مصفوفة users (منع تداخل المتابعات/الملف) */
+export function stripOtherOwnedAccountsFromUsers(ownerId: ID, users: User[]): User[] {
+  const owned = new Set(listAccountSessions().map(s => s.userId));
+  return users.filter(u => u.id === ownerId || !owned.has(u.id));
+}
+
+/** عند حفظ كاش حساب: لا نخزّن بيانات حسابات أخرى مسجّلة في نفس الجهاز */
+export function isolateUsersForAccountCache(ownerId: ID, state: AppState): User[] {
+  return stripOtherOwnedAccountsFromUsers(ownerId, state.users || []);
+}
+
+/** تصحيح ملف الحساب النشط — يوزر/إيميل من الجلسة؛ الأفتار من state (السيرفر) */
 export function reconcileOwnedAccountProfiles(state: AppState): AppState {
-  const owned = listAccountSessions().map(s => s.userId);
-  if (!owned.length) return state;
-  const ownedSet = new Set(owned);
+  const cur = state.currentUserId;
+  if (!cur) return state;
+  const live = (state.users || []).find(u => u.id === cur);
+  const canon = canonicalOwnedProfileFields(cur);
+  if (!live && !canon) return state;
+  let merged = live ?? ({ id: cur, username: "?", email: "", password: "", avatar: "?" } as User);
+  if (canon) {
+    merged = mergeUserProfilePatch(merged, {
+      id: cur,
+      username: canon.username ?? merged.username,
+      email: canon.email ?? merged.email,
+    });
+  }
   return {
     ...state,
-    users: state.users.map(u => {
-      if (!ownedSet.has(u.id)) return u;
-      const canon = canonicalOwnedProfileFields(u.id);
-      if (!canon) return u;
-      return mergeUserProfilePatch(u, canon);
-    }),
+    users: (state.users || []).map(u => (u.id === cur ? merged : u)),
   };
 }
 
 function scopeCacheState(userId: ID, state: AppState): AppState {
   return scopeAppStateToAccount(userId, state, {
-    accountIds: listAccountSessions().map(s => s.userId),
+    accountIds: snapshotAccountIdsForOwner(userId),
     isolateOwnedUsers: (ownerId, s) => isolateUsersForAccountCache(ownerId, s),
   });
 }
@@ -280,7 +403,16 @@ export function mergeUsersForAccounts(
     const canon = canonicalOwnedProfileFields(accId);
     if (canon) {
       const prev = byId.get(accId);
-      byId.set(accId, prev ? mergeUserProfilePatch(prev, canon) : ({ ...canon, password: "" } as User));
+      if (prev) {
+        byId.set(
+          accId,
+          mergeUserProfilePatch(prev, {
+            id: accId,
+            username: canon.username ?? prev.username,
+            email: canon.email ?? prev.email,
+          }),
+        );
+      }
     }
   }
   return [...byId.values()];

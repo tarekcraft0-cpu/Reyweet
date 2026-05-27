@@ -6,6 +6,8 @@ import type { AppState } from "@/lib/types";
 import { App } from "@/components/App";
 import { logAuthRoute } from "@/lib/authRouteDebug";
 import { clearStaleApiConfig, probeHealth } from "@/lib/apiConfig";
+import { isPublicAppHost, isVpsProductionHost } from "@/lib/apiUrlPolicy";
+import { warmGlobalPointerBackRouter } from "@/lib/globalPointerBackRouter";
 
 /** غلاف /app — نسخة الويب الكاملة مرتبطة بـ Retweet API وقاعدة البيانات على القرص D */
 export function WebAppRoot() {
@@ -14,6 +16,7 @@ export function WebAppRoot() {
   const [apiMissing, setApiMissing] = useState(false);
 
   useEffect(() => {
+    warmGlobalPointerBackRouter();
     clearStaleApiConfig();
     logAuthRoute("webapp-root-mount", {
       apiEnabled: apiBackendEnabled(),
@@ -51,11 +54,22 @@ export function WebAppRoot() {
         }
         await Promise.race([
           bootstrapWebAppSession(),
-          new Promise<void>(resolve => window.setTimeout(resolve, 20_000)),
+          new Promise<void>(resolve => window.setTimeout(resolve, 12_000)),
         ]);
       })
+      .catch(err => {
+        console.error("[Retweet] WebAppRoot bootstrap failed:", err);
+        if (!cancelled) setApiMissing(true);
+      })
       .then(() => {
-        if (!cancelled) setBootState(readPersistedAppState());
+        if (!cancelled) {
+          try {
+            setBootState(readPersistedAppState());
+          } catch (e) {
+            console.warn("[Retweet] readPersistedAppState failed:", e);
+            setBootState(null);
+          }
+        }
       })
       .finally(() => {
         if (!cancelled) {
@@ -79,20 +93,54 @@ export function WebAppRoot() {
   }
 
   if (apiMissing || !apiBackendEnabled()) {
+    const retry = () => {
+      try {
+        localStorage.removeItem("retweet_web_api_config");
+      } catch {
+        /* ignore */
+      }
+      clearStaleApiConfig();
+      window.location.reload();
+    };
     return (
-      <div className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-3 bg-background px-6 text-center text-sm">
-        <p className="font-semibold text-foreground">التطبيق غير مربوط بالخادم</p>
+      <div className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-4 bg-background px-6 text-center text-sm">
+        <p className="font-semibold text-foreground">تعذر الاتصال بالخادم</p>
         <p className="text-muted-foreground leading-relaxed">
-          الخادم غير متاح. على الكمبيوتر (نفس شبكة الـ Wi‑Fi) شغّل من جذر المشروع:{" "}
-          <span className="font-mono text-xs">npm run dev:all</span>
-          {" "}ثم افتح{" "}
-          <span className="font-mono text-xs">http://localhost:3080/app/</span>
-          {" "}أو عنوان LAN من الطرفية. للآيفون مع منفذ 3077 أضف{" "}
-          <span className="font-mono text-xs">npm run dev:lan</span>
-          {" "}في طرفية ثانية. امسح بيانات الموقع إن بقي خطأ قديم (نفق Cloudflare).
+          {isVpsProductionHost() ? (
+            <>
+              تأكد أن خدمة <span className="font-mono text-xs">retweet-api</span> تعمل على السيرفر،
+              ثم جرّب فتح{" "}
+              <a href="http://109.199.111.29/app/" className="text-primary underline">
+                http://109.199.111.29/app/
+              </a>{" "}
+              مباشرة.
+            </>
+          ) : isPublicAppHost() ? (
+            <>
+              افتح التطبيق من السيرفر مباشرة:{" "}
+              <a href="http://109.199.111.29/app/" className="text-primary underline">
+                http://109.199.111.29/app/
+              </a>
+              . رابط Vercel يوجّه تلقائياً — إن بقيت هنا فعّل التحويل أو امسح الكاش.
+            </>
+          ) : (
+            <>
+              على كمبيوترك (حيث قاعدة البيانات) شغّل واتركه مفتوحاً:{" "}
+              <span className="font-mono text-xs block mt-2">npm run stack:reyweet</span>
+              ثم اضغط «إعادة المحاولة». التطبيق والموقع يستخدمان نفس الخادم — يجب أن يبقى
+              شغّالاً.
+            </>
+          )}
         </p>
-        <a href="/" className="text-primary underline">
-          العودة للصفحة الرئيسية
+        <button
+          type="button"
+          onClick={retry}
+          className="rounded-2xl bg-primary px-6 py-3 font-semibold text-primary-foreground"
+        >
+          إعادة المحاولة
+        </button>
+        <a href="https://reyweet.vercel.app" className="text-primary underline">
+          فتح الموقع في Safari
         </a>
       </div>
     );

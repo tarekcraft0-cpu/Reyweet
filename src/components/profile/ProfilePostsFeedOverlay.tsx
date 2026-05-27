@@ -5,9 +5,10 @@ import type { Post, ProfileGridTab } from "@/lib/types";
 import { ProfileFeedItem } from "./ProfileFeedItem";
 
 const TAB_TITLE_AR: Record<ProfileGridTab, string> = {
-  posts: "المنشورات",
-  reposts: "إعادات النشر",
-  likes: "الإعجابات",
+  all: "الخلاصة الشاملة",
+  tweets: "التغريدات",
+  reposts: "إعادة النشر",
+  reels: "الريلز",
 };
 
 export function ProfilePostsFeedOverlay({
@@ -61,8 +62,8 @@ export function ProfilePostsFeedOverlay({
 
   return (
     <div data-no-tab-swipe>
-      <SlideDismissShell onDismiss={onClose} overlayZIndex={220} className="bg-background">
-        <div className="flex h-[100dvh] w-full flex-col overflow-hidden border-x border-border shadow-xl">
+      <SlideDismissShell onDismiss={onClose} overlayZIndex={220} panelSwipeDismiss edgeTopInsetPx={56}>
+        <div className="flex h-[100dvh] w-full flex-col overflow-hidden border-x border-border bg-background shadow-xl">
           <RtlScreenHeader
             onBack={onClose}
             className="bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80"
@@ -80,6 +81,7 @@ export function ProfilePostsFeedOverlay({
                   post={p}
                   profileOwnerId={profileOwnerId}
                   gridTab={gridTab}
+                  showRepostBadge={gridTab === "reposts"}
                   onOpenProfile={onOpenProfile}
                   onOpenChat={onOpenChat}
                 />

@@ -1,4 +1,5 @@
-import { useApp } from "./store";
+import { useContext } from "react";
+import { AppLanguageCtx } from "./languageContext";
 
 const dict = {
   ar: {
@@ -63,7 +64,7 @@ const dict = {
     verifiedAccount: "حسابك موثّق",
     howYouUseApp: "طريقة استخدام التطبيق",
     saved: "العناصر المحفوظة",
-    archive: "الأرشيف",
+    archive: "أرشيف القصص",
     timeManagement: "إدارة الوقت",
     whoCanSee: "من يمكنه رؤية محتواك",
     allowStoryReplies: "السماح بالرد على ستورياتي",
@@ -84,7 +85,10 @@ const dict = {
     notificationsSettings: "إعدادات الإشعارات",
     timeMgmtHint: "تذكيرات الاستخدام وحدود وقت التصفّح.",
     savedHint: "المنشورات والريلز التي حفظتها.",
-    archiveHint: "المحتوى المؤرشف الذي أخفيته عن ملفك.",
+    archiveHint: "قصصك التي انتهت صلاحيتها (٢٤ ساعة). يمكنك إعادة نشرها أو حفظها في الهايلايت.",
+    archiveEmpty: "لا توجد قصص في الأرشيف بعد.",
+    archiveEmptyDetail: "عند انتهاء صلاحية قصة (بعد ٢٤ ساعة) تُنقل تلقائياً إلى هنا.",
+    storiesArchive: "أرشيف القصص",
     addToCloseFriends: "إضافة",
   },
   en: {
@@ -149,7 +153,7 @@ const dict = {
     verifiedAccount: "Your account is verified",
     howYouUseApp: "How you use Retweet",
     saved: "Saved",
-    archive: "Archive",
+    archive: "Stories archive",
     timeManagement: "Time management",
     whoCanSee: "Who can see your content",
     allowStoryReplies: "Allow replies to my stories",
@@ -170,7 +174,10 @@ const dict = {
     notificationsSettings: "Notification settings",
     timeMgmtHint: "Usage reminders and time limits.",
     savedHint: "Posts and reels you saved.",
-    archiveHint: "Archived content hidden from your profile.",
+    archiveHint: "Stories that expired after 24 hours. Repost or save to highlights.",
+    archiveEmpty: "No stories in your archive yet.",
+    archiveEmptyDetail: "When a story expires after 24 hours, it moves here automatically.",
+    storiesArchive: "Stories archive",
     addToCloseFriends: "Add",
   },
 } as const;
@@ -178,18 +185,10 @@ const dict = {
 export type TKey = keyof typeof dict["ar"];
 
 export function useT() {
-  const { state } = useApp();
-  /** العربية افتراضياً — الإنجليزية فقط إذا اختارها المستخدم صراحةً من الإعدادات */
-  const lang =
-    state.language === "en" &&
-    typeof localStorage !== "undefined" &&
-    localStorage.getItem("retweet_lang_en") === "1"
-      ? "en"
-      : "ar";
+  const lang = useContext(AppLanguageCtx);
   return (k: TKey) => (dict[lang] as any)[k] ?? k;
 }
 
 export function useLang() {
-  const { state } = useApp();
-  return state.language === "en" ? "en" : "ar";
+  return useContext(AppLanguageCtx);
 }

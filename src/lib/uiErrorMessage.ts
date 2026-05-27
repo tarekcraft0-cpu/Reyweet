@@ -45,4 +45,5 @@ export function clearRetweetLocalSession(): void {
   } catch {
     /* ignore */
   }
+  void import("./remotePushGate").then(m => m.resetServerHydrated());
 }

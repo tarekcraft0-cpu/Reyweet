@@ -1,3 +1,15 @@
+/** VPS الإنتاج — عنوان API المباشر (nginx :80 → :3000) */
+export const PRODUCTION_VPS_HOST = "109.199.111.29";
+export const PRODUCTION_VPS_API = `http://${PRODUCTION_VPS_HOST}`;
+
+/** الواجهة تُخدم من نفس الـ VPS (اتصال API/WebSocket مباشر بدون بروكسي) */
+export function isVpsProductionHost(hostname?: string): boolean {
+  const h =
+    hostname ??
+    (typeof window !== "undefined" ? window.location.hostname : "");
+  return h === PRODUCTION_VPS_HOST;
+}
+
 /** عناوين لا تصل إليها متصفحات الإنترنت (LAN / localhost). */
 export function isPrivateApiUrl(url: string): boolean {
   const u = url.trim();
@@ -27,10 +39,20 @@ export function isPublicAppHost(): boolean {
   if (typeof window === "undefined") return false;
   const h = window.location.hostname;
   return (
+    isVpsProductionHost(h) ||
     h === "reyweet.vercel.app" ||
     h.endsWith(".vercel.app") ||
     isTunnelPublicHost(h)
   );
+}
+
+/** عنوان API يطابق VPS الإنتاج */
+export function isProductionVpsApiUrl(url: string): boolean {
+  try {
+    return new URL(url.trim()).hostname === PRODUCTION_VPS_HOST;
+  } catch {
+    return false;
+  }
 }
 
 /** لا تستخدم http://hostname:3000 إلا على LAN/localhost */

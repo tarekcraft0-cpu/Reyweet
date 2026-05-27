@@ -21,11 +21,25 @@ export type UserRow = {
   verified?: boolean;
   founderVerified?: boolean;
   founderOfficialLabel?: string;
+  appOfficialVerified?: boolean;
+  appOfficialLabel?: string;
   profileLink?: string;
   note?: string;
   officialSiteUrl?: string;
   /** حساب خاص — يؤثر على طلبات المراسلة */
   isPrivate?: boolean;
+  /** اشتراك التوثيق المدفوع */
+  isSubscribed?: boolean;
+  subscriptionPlan?: string;
+  subscriptionExpiresAt?: string;
+  verificationStatus?: "none" | "pending" | "approved" | "rejected";
+  verificationBadgeColor?: "blue" | "pink";
+  verificationRequestedAt?: string;
+  verificationRejectReason?: string;
+  canUseAnimatedAvatar?: boolean;
+  storyMaxDuration?: number;
+  storyExpiryOptions?: number[];
+  postCharacterLimit?: number;
 };
 
 export type PostRow = {
@@ -51,6 +65,8 @@ export type StoryRow = {
   video?: string;
   createdAt: number;
   audience: "all" | "close";
+  /** مدة الظهور بالساعات (24 | 48 | 72 للموثق) */
+  expiryHours?: number;
   stickers?: unknown[];
   likes?: string[];
   viewedByUserIds?: string[];
@@ -83,7 +99,21 @@ type CollectionName =
   | "followRequests"
   | "stories"
   | "otp"
-  | "messages";
+  | "messages"
+  | "streaks";
+
+/** سترك محادثة خاصة — مفتاح: dm:userA:userB */
+export type StreakRow = {
+  chatId: string;
+  streakCount: number;
+  lastExchangeAt: number | null;
+  user1Id: string;
+  user2Id: string;
+  user1LastSentAt: number | null;
+  user2LastSentAt: number | null;
+  streakExpiresAt: number | null;
+  isStreakActive: boolean;
+};
 
 const filePaths: Record<CollectionName, string> = {
   users: path.join(DB_DIR, "users.json"),
@@ -94,6 +124,7 @@ const filePaths: Record<CollectionName, string> = {
   stories: path.join(DB_DIR, "stories.json"),
   otp: path.join(DB_DIR, "otp.json"),
   messages: path.join(DB_DIR, "messages.json"),
+  streaks: path.join(DB_DIR, "streaks.json"),
 };
 
 const locks = new Map<string, Promise<void>>();
@@ -170,6 +201,16 @@ export async function initDatabase(): Promise<void> {
       await writeJsonAtomic(f, empty);
     }
   }
+  if (process.env.NODE_ENV !== "production" || process.env.SEED_DEMO === "1") {
+    const { ensureDemoDatabaseContent } = await import("../lib/seedDemoContent.js");
+    await ensureDemoDatabaseContent();
+  }
+  const { runVerificationMigration } = await import("../lib/verificationMigration.js");
+  const mig = await runVerificationMigration();
+  if (mig.updated > 0) {
+    // eslint-disable-next-line no-console
+    console.log(`[verification] migration updated ${mig.updated} user(s)`);
+  }
 }
 
 // ——— Users ———
@@ -227,8 +268,18 @@ export async function createUser(
       appLanguage: data.appLanguage ?? "ar",
       isPrivate: data.isPrivate === true,
       verified: data.verified === true,
+      isSubscribed: false,
+      subscriptionPlan: "",
+      verificationStatus: "none",
+      verificationBadgeColor: "blue",
+      canUseAnimatedAvatar: false,
+      storyMaxDuration: 30,
+      storyExpiryOptions: [24],
+      postCharacterLimit: 300,
       founderVerified: data.founderVerified === true,
       founderOfficialLabel: data.founderOfficialLabel,
+      appOfficialVerified: data.appOfficialVerified === true,
+      appOfficialLabel: data.appOfficialLabel,
       profileLink: data.profileLink,
       note: data.note,
       phone: data.phone,
@@ -259,8 +310,16 @@ export async function updateUser(
 
 export async function usernameExists(username: string, excludeId?: string): Promise<boolean> {
   const u = username.trim().toLowerCase();
-  const { isReservedShortUsername } = await import("../lib/shortUsernameAccounts.js");
-  if (isReservedShortUsername(u, excludeId)) return true;
+  const { getUserIdForReservedShortUsername } = await import("../lib/shortUsernameAccounts.js");
+  const reservedOwner = getUserIdForReservedShortUsername(u);
+  if (reservedOwner) {
+    if (excludeId) {
+      const cur = await getUserById(excludeId);
+      if (cur && cur.username.trim().toLowerCase() === u) return false;
+      return excludeId !== reservedOwner;
+    }
+    return true;
+  }
   const users = await listUsers();
   return users.some(x => x.id !== excludeId && x.username.toLowerCase() === u);
 }
@@ -325,6 +384,15 @@ export async function upsertPost(row: PostRow): Promise<void> {
   return withLock("posts", async () => {
     const map = await readJson<Record<string, PostRow>>(filePaths.posts, {});
     map[row.id] = { ...row, updatedAt: new Date().toISOString() };
+    await writeJsonAtomic(filePaths.posts, map);
+  });
+}
+
+export async function deletePost(postId: string): Promise<void> {
+  return withLock("posts", async () => {
+    const map = await readJson<Record<string, PostRow>>(filePaths.posts, {});
+    if (!map[postId]) return;
+    delete map[postId];
     await writeJsonAtomic(filePaths.posts, map);
   });
 }
@@ -486,4 +554,38 @@ export async function listMessagesForUser(userId: string): Promise<MessageRow[]>
   return Object.values(map)
     .filter(m => m.senderId === userId || m.receiverId === userId)
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
+// ——— Streaks (سترك المحادثات الخاصة 🔥) ———
+
+async function readStreaksMap(): Promise<Record<string, StreakRow>> {
+  return readJson<Record<string, StreakRow>>(filePaths.streaks, {});
+}
+
+export async function getStreak(chatId: string): Promise<StreakRow | null> {
+  const map = await readStreaksMap();
+  return map[chatId] ?? null;
+}
+
+export async function saveStreak(row: StreakRow): Promise<StreakRow> {
+  return withLock("streaks", async () => {
+    const map = await readStreaksMap();
+    map[row.chatId] = row;
+    await writeJsonAtomic(filePaths.streaks, map);
+    return row;
+  });
+}
+
+export async function listAllStreaks(): Promise<StreakRow[]> {
+  const map = await readStreaksMap();
+  return Object.values(map);
+}
+
+export async function saveStreaksBatch(rows: StreakRow[]): Promise<void> {
+  if (rows.length === 0) return;
+  return withLock("streaks", async () => {
+    const map = await readStreaksMap();
+    for (const row of rows) map[row.chatId] = row;
+    await writeJsonAtomic(filePaths.streaks, map);
+  });
 }

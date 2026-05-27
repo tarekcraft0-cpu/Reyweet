@@ -4,7 +4,7 @@ import { useT } from "@/lib/i18n";
 import { isStickerImageContent, isStickerVideoContent } from "@/lib/stickerUtils";
 
 function truncateText(s: string, max: number) {
-  const t = s.trim();
+  const t = (s ?? "").trim();
   if (t.length <= max) return t;
   return t.slice(0, max) + "…";
 }
@@ -22,6 +22,7 @@ export function ChatInlineReplyQuote({
   state,
   mine,
   isQuran,
+  onJumpToOriginal,
 }: {
   replyTo: NonNullable<Message["replyTo"]>;
   messages: Message[];
@@ -29,6 +30,7 @@ export function ChatInlineReplyQuote({
   state: AppState;
   mine: boolean;
   isQuran: boolean;
+  onJumpToOriginal?: (messageId: string) => void;
 }) {
   const t = useT();
   const orig = messages.find(m => m.id === replyTo.id);
@@ -41,10 +43,32 @@ export function ChatInlineReplyQuote({
       ? `${t("chatRepliedTo")} @${origSender.username}`
       : t("chatReply");
 
+  const canJump = !!orig && !!onJumpToOriginal;
+
   return (
     <div
+      role={canJump ? "button" : undefined}
+      tabIndex={canJump ? 0 : undefined}
+      onClick={
+        canJump
+          ? () => {
+              onJumpToOriginal!(replyTo.id);
+            }
+          : undefined
+      }
+      onKeyDown={
+        canJump
+          ? e => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onJumpToOriginal!(replyTo.id);
+              }
+            }
+          : undefined
+      }
       className={
-        "mb-1.5 max-w-full rounded-lg border-s-[3px] px-2 py-1.5 " +
+        "mb-1.5 max-w-full select-none rounded-lg border-s-[3px] px-2 py-1.5 " +
+        (canJump ? "cursor-pointer touch-manipulation active:opacity-80 " : "") +
         (isQuran
           ? mine
             ? "border-emerald-300/70 bg-black/25"

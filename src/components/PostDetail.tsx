@@ -5,14 +5,14 @@ import { formatRelativeTime } from "@/lib/formatRelativeTime";
 import { useT } from "@/lib/i18n";
 import { Avatar } from "./Avatar";
 import { ShareSheet } from "./ShareSheet";
-import { Heart, MessageCircle, Repeat2, Send, AtSign, MoreHorizontal } from "lucide-react";
-import { RtlScreenHeader, SlideDismissShell } from "./SlideDismissShell";
-import { PostOptionsMenu, CommentOptionsMenu } from "./PostOptionsMenu";
+import { Heart, MessageCircle, Repeat2, Send, AtSign, MoreHorizontal, Trash2, ArrowRight } from "lucide-react";
+import { SlideDismissBackButton, SlideDismissShell } from "./SlideDismissShell";
+import { PostOptionsMenu } from "./PostOptionsMenu";
 import { VerifiedMarkForUser } from "./VerifiedBadge";
 import type { MediaNote, Post, ProfileHomeSurface, ProfileReturnContext } from "@/lib/types";
 import { NoteReplySheet } from "./NoteReplySheet";
-import { isRenderableMediaUrl } from "@/lib/mediaUrl";
-import { renderMentionHashtagNodes } from "@/lib/renderMentionHashtagText";
+import { isRenderableMediaUrl, resolveMediaUrl } from "@/lib/mediaUrl";
+import { renderMentionHashtagNodes, createMentionRenderer } from "@/lib/renderMentionHashtagText";
 
 interface Props {
   post: Post;
@@ -24,11 +24,14 @@ interface Props {
   initialFocusComments?: boolean;
 }
 
-export function PostDetail({ post, onBack, onOpenProfile, onOpenChat, profileReturnTab, initialFocusComments }: Props) {
-  const { state, currentUser, toggleLike, toggleRepost, addComment, isGuest } = useApp();
+export function PostDetail({ post: postProp, onBack, onOpenProfile, onOpenChat, profileReturnTab, initialFocusComments }: Props) {
+  const { state, currentUser, toggleLike, toggleRepost, addComment, deleteComment, isGuest } = useApp();
+  const post = useMemo(
+    () => state.posts.find(p => p.id === postProp.id) ?? postProp,
+    [state.posts, postProp],
+  );
   const [noteToReply, setNoteToReply] = useState<MediaNote | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [commentMenuId, setCommentMenuId] = useState<string | null>(null);
   const lang = state.language;
   const t = useT();
   const author = userById(state, post.userId);
@@ -63,6 +66,24 @@ export function PostDetail({ post, onBack, onOpenProfile, onOpenChat, profileRet
   );
 
   useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    try {
+      window.dispatchEvent(new CustomEvent("retweet-post-detail-open"));
+    } catch {
+      /* ignore */
+    }
+    return () => {
+      document.body.style.overflow = prev;
+      try {
+        window.dispatchEvent(new CustomEvent("retweet-post-detail-close"));
+      } catch {
+        /* ignore */
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (!initialFocusComments) return;
     const t = window.setTimeout(() => {
       document.getElementById("post-comments-anchor")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -73,27 +94,10 @@ export function PostDetail({ post, onBack, onOpenProfile, onOpenChat, profileRet
   const renderedPostText = useMemo(() => {
     if (!post.text) return null;
     return renderMentionHashtagNodes(post.text, {
-      renderMention: (uname, key) => {
-        const u = state.users.find((x) => x.username === uname);
-        if (u) {
-          return (
-            <button
-              key={key}
-              type="button"
-              onClick={() => startTransition(() => onOpenProfile(u.id, returnCtx(false)))}
-              className="text-primary"
-            >
-              <AtSign size={12} className="inline" />
-              {uname}
-            </button>
-          );
-        }
-        return (
-          <span key={key} className="text-primary">
-            @{uname}
-          </span>
-        );
-      },
+      renderMention: createMentionRenderer({
+        users: state.users,
+        onUserClick: userId => startTransition(() => onOpenProfile(userId, returnCtx(false))),
+      }),
       renderHashtag: (h, key) => (
         <span key={key} className="text-primary">
           {h}
@@ -104,45 +108,167 @@ export function PostDetail({ post, onBack, onOpenProfile, onOpenChat, profileRet
 
   if (!author) return null;
 
-  return (
-    <SlideDismissShell onDismiss={onBack} variant="overlay" overlayZIndex={180} className="bg-background">
-    <div className="flex h-full min-h-0 flex-col">
-      <RtlScreenHeader onBack={onBack} className="shrink-0 z-20 bg-background shadow-sm">
-        <div className="flex min-w-0 flex-1 flex-row items-center gap-2 pe-1">
-        <button type="button" onClick={() => startTransition(() => onOpenProfile(author.id, returnCtx(false)))} className="shrink-0">
-          <Avatar name={author.username} src={author.avatar} size={36} />
+  const submitComment = () => {
+    if (guestBlock()) return;
+    const text = comment.trim();
+    if (!text) return;
+    addComment(post.id, text);
+    setComment("");
+  };
+
+  const ownerMenu =
+    me.id === post.userId ? (
+      <div className="relative shrink-0">
+        <button
+          type="button"
+          onClick={() => setMenuOpen(v => !v)}
+          className="rounded-full p-2 hover:bg-secondary"
+          aria-label="خيارات"
+        >
+          <MoreHorizontal size={22} />
         </button>
+        {menuOpen && <PostOptionsMenu post={post} onClose={() => setMenuOpen(false)} onDeleted={onBack} />}
+      </div>
+    ) : null;
+
+  return (
+    <SlideDismissShell onDismiss={onBack} variant="overlay" overlayZIndex={220} panelSwipeDismiss>
+    <div className="flex h-[100dvh] w-full max-w-md flex-col overflow-hidden bg-background shadow-2xl">
+      <header
+        dir="rtl"
+        className="shrink-0 z-20 border-b border-border bg-background/95 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/80 pt-[max(0.75rem,env(safe-area-inset-top,0px))]"
+      >
+        <div className="flex items-center justify-between gap-2 px-3 pb-1 sm:hidden">
+          <SlideDismissBackButton
+            onDismiss={onBack}
+            className="shrink-0 rounded-full p-2 hover:bg-secondary active:bg-secondary/80"
+            aria-label="رجوع"
+          >
+            <ArrowRight size={22} strokeWidth={1.75} />
+          </SlideDismissBackButton>
+          {ownerMenu ?? <span className="w-10 shrink-0" aria-hidden />}
+        </div>
+        <div className="flex min-w-0 items-center gap-2.5 px-3 pb-2.5 pt-0.5 sm:gap-3 sm:py-2">
+          <SlideDismissBackButton
+            onDismiss={onBack}
+            className="hidden shrink-0 rounded-full p-2 hover:bg-secondary active:bg-secondary/80 sm:inline-flex"
+            aria-label="رجوع"
+          >
+            <ArrowRight size={22} strokeWidth={1.75} />
+          </SlideDismissBackButton>
+          <button
+            type="button"
+            onClick={() => startTransition(() => onOpenProfile(author.id, returnCtx(false)))}
+            className="shrink-0"
+          >
+            <Avatar name={author.username} src={author.avatar} size={36} />
+          </button>
           <div className="min-w-0 flex-1 text-start">
             <button
               type="button"
               onClick={() => startTransition(() => onOpenProfile(author.id, returnCtx(false)))}
-              className="inline-flex max-w-full items-center gap-1 truncate font-semibold text-sm"
+              className="inline-flex max-w-full items-center gap-1 truncate font-semibold text-sm leading-tight"
             >
               @{author.username}
               <VerifiedMarkForUser user={author} size={16} />
             </button>
-            <span className="block text-xs text-muted-foreground">{formatRelativeTime(post.createdAt, lang)}</span>
+            <span className="mt-0.5 block text-xs leading-snug text-muted-foreground">
+              {formatRelativeTime(post.createdAt, lang)}
+            </span>
           </div>
-          {me.id === post.userId && (
-            <div className="relative shrink-0">
-              <button
-                type="button"
-                onClick={() => setMenuOpen(v => !v)}
-                className="rounded-full p-2 hover:bg-secondary"
-                aria-label="خيارات"
-              >
-                <MoreHorizontal size={22} />
-              </button>
-              {menuOpen && (
-                <PostOptionsMenu post={post} onClose={() => setMenuOpen(false)} onDeleted={onBack} />
-              )}
-            </div>
-          )}
+          {ownerMenu && <div className="hidden sm:block">{ownerMenu}</div>}
         </div>
-      </RtlScreenHeader>
+      </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain pb-4">
-      {detailNotes.length > 0 && (
+      {post.text && (
+        <p dir="rtl" className="whitespace-pre-wrap px-4 py-3 text-right text-base leading-relaxed break-words">
+          {renderedPostText}
+        </p>
+      )}
+      {post.image && (
+        <div className="relative flex items-center justify-center bg-muted">
+          {detailNotes.length > 0 && (
+            <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex gap-2 overflow-x-auto bg-gradient-to-b from-black/55 via-black/25 to-transparent px-2.5 pb-8 pt-2.5">
+              {detailNotes.map(n => {
+                const nu = userById(state, n.authorId)!;
+                const canReplyNote = n.authorId !== me.id;
+                return (
+                  <div key={n.id} className="pointer-events-auto flex max-w-[7.5rem] shrink-0 flex-col items-start gap-1">
+                    {canReplyNote ? (
+                      <button
+                        type="button"
+                        title="رد على النوت"
+                        onClick={() => {
+                          if (guestBlock()) return;
+                          setNoteToReply(n);
+                        }}
+                        className="line-clamp-2 w-full rounded-xl border border-white/25 bg-black/45 px-2 py-1 text-start text-[11px] font-medium leading-snug text-white backdrop-blur-sm hover:bg-black/55"
+                      >
+                        {n.text}
+                      </button>
+                    ) : (
+                      <div className="line-clamp-2 w-full rounded-xl border border-white/25 bg-black/45 px-2 py-1 text-start text-[11px] font-medium leading-snug text-white backdrop-blur-sm">
+                        {n.text}
+                      </div>
+                    )}
+                    <button type="button" onClick={() => startTransition(() => onOpenProfile(nu.id, returnCtx(false)))}>
+                      <Avatar name={nu.username} src={nu.avatar} size={26} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {isRenderableMediaUrl(post.image) ? (
+            <img src={resolveMediaUrl(post.image)} className="max-h-[70vh] w-full object-contain" alt="" />
+          ) : (
+            <div className="flex min-h-[10rem] items-center justify-center py-12 text-5xl">{post.image}</div>
+          )}
+        </div>
+      )}
+      {post.video && (
+        <div className="relative flex items-center justify-center bg-black">
+          {detailNotes.length > 0 && (
+            <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex gap-2 overflow-x-auto bg-gradient-to-b from-black/55 via-black/25 to-transparent px-2.5 pb-8 pt-2.5">
+              {detailNotes.map(n => {
+                const nu = userById(state, n.authorId)!;
+                const canReplyNote = n.authorId !== me.id;
+                return (
+                  <div key={n.id} className="pointer-events-auto flex max-w-[7.5rem] shrink-0 flex-col items-start gap-1">
+                    {canReplyNote ? (
+                      <button
+                        type="button"
+                        title="رد على النوت"
+                        onClick={() => {
+                          if (guestBlock()) return;
+                          setNoteToReply(n);
+                        }}
+                        className="line-clamp-2 w-full rounded-xl border border-white/25 bg-black/45 px-2 py-1 text-start text-[11px] font-medium leading-snug text-white backdrop-blur-sm hover:bg-black/55"
+                      >
+                        {n.text}
+                      </button>
+                    ) : (
+                      <div className="line-clamp-2 w-full rounded-xl border border-white/25 bg-black/45 px-2 py-1 text-start text-[11px] font-medium leading-snug text-white backdrop-blur-sm">
+                        {n.text}
+                      </div>
+                    )}
+                    <button type="button" onClick={() => startTransition(() => onOpenProfile(nu.id, returnCtx(false)))}>
+                      <Avatar name={nu.username} src={nu.avatar} size={26} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {isRenderableMediaUrl(post.video) ? (
+            <video src={resolveMediaUrl(post.video)} controls playsInline className="max-h-[70vh] w-full object-contain" />
+          ) : (
+            <div className="flex min-h-[10rem] items-center justify-center py-12 text-5xl text-white">{post.video}</div>
+          )}
+        </div>
+      )}
+      {!post.image && !post.video && detailNotes.length > 0 && (
         <div className="px-4 pb-2 flex gap-2 overflow-x-auto no-scrollbar">
           {detailNotes.map(n => {
             const nu = userById(state, n.authorId)!;
@@ -152,17 +278,18 @@ export function PostDetail({ post, onBack, onOpenProfile, onOpenChat, profileRet
                 {canReplyNote ? (
                   <button
                     type="button"
-                    title="رد في الخاص"
                     onClick={() => {
                       if (guestBlock()) return;
                       setNoteToReply(n);
                     }}
-                    className="text-[9px] leading-tight text-start bg-secondary rounded-lg px-1.5 py-0.5 mb-0.5 line-clamp-3 border border-border hover:bg-secondary/80"
+                    className="text-[9px] leading-tight text-start bg-secondary rounded-lg px-1.5 py-0.5 mb-0.5 line-clamp-3 border border-border"
                   >
                     {n.text}
                   </button>
                 ) : (
-                  <div className="text-[9px] leading-tight text-start bg-secondary rounded-lg px-1.5 py-0.5 mb-0.5 line-clamp-3 border border-border">{n.text}</div>
+                  <div className="text-[9px] leading-tight text-start bg-secondary rounded-lg px-1.5 py-0.5 mb-0.5 line-clamp-3 border border-border">
+                    {n.text}
+                  </div>
                 )}
                 <button type="button" onClick={() => startTransition(() => onOpenProfile(nu.id, returnCtx(false)))}>
                   <Avatar name={nu.username} src={nu.avatar} size={28} />
@@ -170,30 +297,6 @@ export function PostDetail({ post, onBack, onOpenProfile, onOpenChat, profileRet
               </div>
             );
           })}
-        </div>
-      )}
-
-      {post.text && (
-        <p dir="rtl" className="whitespace-pre-wrap px-4 py-3 text-right text-base leading-relaxed break-words">
-          {renderedPostText}
-        </p>
-      )}
-      {post.image && (
-        <div className="flex items-center justify-center bg-muted">
-          {isRenderableMediaUrl(post.image) ? (
-            <img src={post.image} className="max-h-[70vh] w-full object-contain" alt="" />
-          ) : (
-            <div className="flex min-h-[10rem] items-center justify-center py-12 text-5xl">{post.image}</div>
-          )}
-        </div>
-      )}
-      {post.video && (
-        <div className="flex items-center justify-center bg-black">
-          {isRenderableMediaUrl(post.video) ? (
-            <video src={post.video} controls playsInline className="max-h-[70vh] w-full object-contain" />
-          ) : (
-            <div className="flex min-h-[10rem] items-center justify-center py-12 text-5xl text-white">{post.video}</div>
-          )}
         </div>
       )}
 
@@ -211,8 +314,8 @@ export function PostDetail({ post, onBack, onOpenProfile, onOpenChat, profileRet
         <div><b>{post.likes.length}</b> {t("likes")} · <b>{post.reposts.length}</b> {t("reposts")} · <b>{post.comments.length}</b> {t("comments")}</div>
       </div>
 
-      <div className="px-4 pt-3 space-y-2 border-t border-border mt-3">
-        <h3 id="post-comments-anchor" className="font-semibold text-sm pt-2 scroll-mt-20">{t("comments")}</h3>
+      <div className="px-4 pt-3 space-y-2 border-t border-border mt-3 pb-2">
+        <h3 id="post-comments-anchor" className="font-semibold text-sm pt-2 scroll-mt-24 sm:scroll-mt-20">{t("comments")}</h3>
         {post.comments.map(c => {
           const u = userById(state, c.userId);
           return (
@@ -229,33 +332,22 @@ export function PostDetail({ post, onBack, onOpenProfile, onOpenChat, profileRet
                 </span>
               </div>
               {c.userId === me.id && (
-                <div className="relative shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setCommentMenuId(commentMenuId === c.id ? null : c.id)}
-                    className="rounded-full p-1 text-muted-foreground hover:bg-secondary"
-                    aria-label="خيارات التعليق"
-                  >
-                    <MoreHorizontal size={18} />
-                  </button>
-                  {commentMenuId === c.id && (
-                    <CommentOptionsMenu
-                      postId={post.id}
-                      commentId={c.id}
-                      authorId={c.userId}
-                      onClose={() => setCommentMenuId(null)}
-                    />
-                  )}
-                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!window.confirm("حذف هذا التعليق؟")) return;
+                    deleteComment(post.id, c.id);
+                  }}
+                  className="shrink-0 rounded-full p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                  aria-label="حذف التعليق"
+                >
+                  <Trash2 size={16} />
+                </button>
               )}
             </div>
           );
         })}
         {post.comments.length === 0 && <p className="text-xs text-muted-foreground">—</p>}
-        <form onSubmit={e => { e.preventDefault(); if (guestBlock()) return; if (comment.trim()) { addComment(post.id, comment); setComment(""); } }} className="flex gap-2 pt-2 sticky bottom-0 bg-background py-2">
-          <input value={comment} onChange={e => setComment(e.target.value)} placeholder={t("send")} className="flex-1 bg-input rounded-full px-4 py-2 text-sm outline-none" />
-          <button type="submit" className="text-primary text-sm font-semibold">{t("send")}</button>
-        </form>
       </div>
 
       {shareOpen && <ShareSheet target={{ kind: "post", post }} onClose={() => setShareOpen(false)} />}
@@ -267,6 +359,28 @@ export function PostDetail({ post, onBack, onOpenProfile, onOpenChat, profileRet
         onSent={onOpenChat}
       />
       </div>
+
+      <form
+        onSubmit={e => {
+          e.preventDefault();
+          submitComment();
+        }}
+        className="flex shrink-0 gap-2 border-t border-border bg-background px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]"
+      >
+        <input
+          value={comment}
+          onChange={e => setComment(e.target.value)}
+          placeholder="أضف تعليقاً..."
+          className="flex-1 rounded-full bg-input px-4 py-2.5 text-sm outline-none"
+        />
+        <button
+          type="submit"
+          disabled={!comment.trim()}
+          className="shrink-0 text-sm font-semibold text-primary disabled:opacity-40"
+        >
+          {t("send")}
+        </button>
+      </form>
     </div>
     </SlideDismissShell>
   );

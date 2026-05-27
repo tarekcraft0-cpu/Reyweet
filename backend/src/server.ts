@@ -69,6 +69,7 @@ import {
 } from "./db/groupInvites.js";
 import type { Chat } from "../../src/lib/types.js";
 import { attachRealtimeSocket } from "./lib/realtimeSocket.js";
+import { clearUserTyping, setUserTyping } from "./lib/chatPresence.js";
 import {
   hydrateChatsFromUserMessages,
   hydrateStateWithMessages,
@@ -76,6 +77,7 @@ import {
 } from "./lib/chatMessages.js";
 import { mergeDbUsersIntoAppState } from "./lib/mergeDbUsers.js";
 import { scopeAppStateToOwner } from "./lib/scopeAppState.js";
+import { storiesVisibleToViewer } from "./lib/storyVisibility.js";
 import { mergeDbPostsIntoAppState } from "./lib/mergeDbPosts.js";
 import { mergeSocialGraphIntoAppState } from "./lib/mergeSocialGraph.js";
 import { signAccessToken, verifyAccessToken } from "./lib/jwt.js";
@@ -108,6 +110,7 @@ import {
   toggleFollowOnServer,
 } from "./lib/socialActions.js";
 import { getSocialRelation } from "./lib/socialGraph.js";
+import { socialListsForUser } from "./lib/socialCounts.js";
 
 const DUMMY_PASSWORD_HASH =
   "$2a$10$dXJ3SW6G7P50lGmMkkmwe.20cQQubK3.HZWzG3YB1tlRy.fqvM/BG";
@@ -169,12 +172,13 @@ app.get("/health", async (_req, res) => {
     publicUrl: PUBLIC_BASE_URL,
     dbOk,
     usersCount,
+    smtpConfigured: isSmtpConfigured(),
   });
 });
 
 app.get("/auth/config", (_req, res) => {
   res.json({
-    signupOtpRequired: true,
+    signupOtpRequired: isSignupOtpRequired(),
     loginOtpRequired: isLoginOtpRequired(),
     passwordResetUsesLink: false,
     smtpConfigured: isSmtpConfigured(),
@@ -182,8 +186,9 @@ app.get("/auth/config", (_req, res) => {
 });
 
 function authUserPayload(user: UserRow) {
+  const av = toClientMediaRef(user.avatar) || user.username.slice(0, 2).toUpperCase();
   const avatar =
-    toClientMediaRef(user.avatar) || user.username.slice(0, 2).toUpperCase();
+    av.startsWith("/media/") ? `${av}?v=${Date.parse(user.updatedAt) || 0}` : av;
   return {
     id: user.id,
     username: user.username,
@@ -193,8 +198,9 @@ function authUserPayload(user: UserRow) {
 }
 
 function publicUserPayload(user: UserRow) {
+  const av = toClientMediaRef(user.avatar) || user.username.slice(0, 2).toUpperCase();
   const avatar =
-    toClientMediaRef(user.avatar) || user.username.slice(0, 2).toUpperCase();
+    av.startsWith("/media/") ? `${av}?v=${Date.parse(user.updatedAt) || 0}` : av;
   return {
     id: user.id,
     username: user.username,
@@ -204,6 +210,30 @@ function publicUserPayload(user: UserRow) {
     verified: user.verified === true,
     founderVerified: user.founderVerified === true,
     founderOfficialLabel: user.founderOfficialLabel,
+    appOfficialVerified: user.appOfficialVerified === true,
+    appOfficialLabel: user.appOfficialLabel,
+    isSubscribed: user.isSubscribed === true,
+    subscriptionPlan: user.subscriptionPlan,
+    subscriptionExpiresAt: user.subscriptionExpiresAt,
+    verificationStatus: user.verificationStatus,
+    verificationBadgeColor: user.verificationBadgeColor,
+    canUseAnimatedAvatar: user.canUseAnimatedAvatar === true,
+    storyMaxDuration: user.storyMaxDuration,
+    storyExpiryOptions: user.storyExpiryOptions,
+    postCharacterLimit: user.postCharacterLimit,
+  };
+}
+
+async function publicUserPayloadWithSocial(user: UserRow) {
+  const base = publicUserPayload(user);
+  const { followers, following } = await socialListsForUser(user.id);
+  return {
+    ...base,
+    isPrivate: user.isPrivate === true,
+    followers,
+    following,
+    followerCount: followers.length,
+    followingCount: following.length,
   };
 }
 
@@ -657,7 +687,11 @@ app.get("/v1/app-state", authMiddleware, async (req, res) => {
   state = await mergeSocialGraphIntoAppState(state);
   state = await hydrateChatsFromUserMessages(state, userId);
   state = await hydrateStateWithMessages(state, userId);
+  const feedStories = storiesVisibleToViewer(state as AppState, userId);
   state = scopeAppStateToOwner(userId, state as AppState);
+  state = { ...(state as AppState), stories: feedStories };
+  const { sanitizeCorruptHiddenMessages } = await import("./lib/sanitizeHiddenMessages.js");
+  state = sanitizeCorruptHiddenMessages(state as AppState, userId);
   return res.json({ state: coerceAppStateForClient(state as AppState) });
 });
 
@@ -667,7 +701,7 @@ app.get("/v1/users/search", authMiddleware, async (req, res) => {
   if (!q) return res.json({ users: [] });
   if (q.length > 64) return res.status(400).json({ error: "استعلام طويل جداً" });
   const rows = await searchUsers(q, 40);
-  const users = rows.map(row => publicUserPayload(row));
+  const users = await Promise.all(rows.map(row => publicUserPayloadWithSocial(row)));
   return res.json({ users });
 });
 
@@ -675,7 +709,8 @@ app.get("/v1/users/recent", authMiddleware, async (req, res) => {
   setNoStoreApi(res);
   const limit = Math.min(80, Math.max(1, Number(req.query.limit) || 30));
   const rows = await listRecentUsers(limit);
-  return res.json({ users: rows.map(row => publicUserPayload(row)) });
+  const users = await Promise.all(rows.map(row => publicUserPayloadWithSocial(row)));
+  return res.json({ users });
 });
 
 /** كل الحسابات من users.json — للبحث والمنشن (قراءة حية من القرص) */
@@ -683,7 +718,8 @@ app.get("/v1/users/directory", authMiddleware, async (_req, res) => {
   setNoStoreApi(res);
   const rows = await listUsers();
   rows.sort((a, b) => (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0));
-  return res.json({ users: rows.map(row => publicUserPayload(row)) });
+  const users = await Promise.all(rows.map(row => publicUserPayloadWithSocial(row)));
+  return res.json({ users });
 });
 
 app.get("/v1/events", authMiddleware, (req, res) => {
@@ -713,7 +749,16 @@ app.get("/v1/users/by-username/:username", authMiddleware, async (req, res) => {
   const row = await findUserByUsername(String(req.params.username ?? ""));
   if (!row) return res.status(404).json({ error: "not found" });
   setNoStoreApi(res);
-  return res.json({ user: publicUserPayload(row) });
+  return res.json({ user: await publicUserPayloadWithSocial(row) });
+});
+
+app.get("/v1/users/:userId", authMiddleware, async (req, res) => {
+  const userId = String(req.params.userId ?? "").trim();
+  if (!userId) return res.status(400).json({ error: "invalid id" });
+  const row = await getUserById(userId);
+  if (!row) return res.status(404).json({ error: "not found" });
+  setNoStoreApi(res);
+  return res.json({ user: await publicUserPayloadWithSocial(row) });
 });
 
 app.get("/v1/me/username-available/:username", authMiddleware, async (req, res) => {
@@ -743,6 +788,19 @@ app.post("/v1/stories", authMiddleware, async (req, res) => {
   const parsed = createStorySchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "بيانات الستوري غير صالحة" });
 
+  const author = await getUserById(userId);
+  if (!author) return res.status(404).json({ error: "not found" });
+  const { getUserEntitlements } = await import("../../src/lib/verificationEntitlements.js");
+  const ent = getUserEntitlements(author);
+  const expiryHours = parsed.data.expiryHours ?? 24;
+  if (!ent.storyExpiryHoursOptions.includes(expiryHours)) {
+    return res.status(403).json({
+      error: ent.isVerified
+        ? "مدة الظهور غير مسموحة"
+        : "تمديد مدة الستوري متاح للحسابات الموثقة فقط",
+    });
+  }
+
   let image = parsed.data.image.trim();
   let video = parsed.data.video?.trim() || undefined;
   try {
@@ -764,6 +822,7 @@ app.post("/v1/stories", authMiddleware, async (req, res) => {
     video: video ? toClientMediaRef(video) || video : undefined,
     createdAt,
     audience: parsed.data.audience === "close" ? "close" : "all",
+    expiryHours,
     stickers: parsed.data.stickers,
     likes: [],
     viewedByUserIds: [],
@@ -797,6 +856,9 @@ app.put("/v1/app-state", authMiddleware, async (req, res) => {
 
   st = scopeAppStateToOwner(userId, st);
 
+  const { enforceVerificationOnAppState } = await import("./lib/enforceVerificationLimits.js");
+  st = await enforceVerificationOnAppState(userId, st);
+
   try {
     st = (await rewriteDataUrlsInValue(st)) as AppState;
   } catch (e) {
@@ -806,9 +868,16 @@ app.put("/v1/app-state", authMiddleware, async (req, res) => {
 
   const clean = sanitizeStateForStorage(st);
   try {
-    await setSnapshot(userId, clean);
+    const cleanWithProfiles = await mergeDbUsersIntoAppState(clean);
+    /** لقطة العميل قد تكون أقدم من posts.json — ندمج المنشورات من القرص قبل الحفظ */
+    let snapshotReady = await mergeDbPostsIntoAppState(cleanWithProfiles);
+    snapshotReady = await hydrateChatsFromUserMessages(snapshotReady, userId);
+    snapshotReady = await hydrateStateWithMessages(snapshotReady, userId);
+    const { sanitizeCorruptHiddenMessages } = await import("./lib/sanitizeHiddenMessages.js");
+    snapshotReady = sanitizeCorruptHiddenMessages(snapshotReady, userId);
+    await setSnapshot(userId, snapshotReady);
     try {
-      await syncNormalizedFromAppState(clean, userId);
+      await syncNormalizedFromAppState(snapshotReady, userId);
     } catch (e) {
       // eslint-disable-next-line no-console
       console.warn("[app-state] sync normalized collections failed", e);
@@ -883,6 +952,25 @@ app.post("/v1/social/follow-request/decline", authMiddleware, async (req, res) =
 const pwdChangeSchema = z.object({
   oldPassword: z.string().min(1),
   newPassword: z.string().min(6).max(128),
+});
+
+const chatTypingSchema = z.object({
+  chatId: z.string().min(1),
+  peerId: z.string().min(1).optional(),
+  active: z.boolean(),
+});
+
+app.post("/v1/chats/typing", authMiddleware, (req, res) => {
+  const userId = (req as Request & { userId: string }).userId;
+  const parsed = chatTypingSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "بيانات غير صالحة" });
+  const { chatId, peerId, active } = parsed.data;
+  if (active) {
+    setUserTyping(userId, { chatId, peerId: peerId ?? null });
+  } else {
+    clearUserTyping(userId, { chatId, peerId: peerId ?? null });
+  }
+  return res.json({ ok: true });
 });
 
 app.post("/v1/messages", authMiddleware, async (req, res) => {
@@ -1042,7 +1130,7 @@ app.patch("/v1/chats/group/:chatId", authMiddleware, async (req, res) => {
     }
   }
   let inviteCode = chat.inviteCode;
-  if (parsed.data.regenerateInvite) {
+  if (!inviteCode) {
     inviteCode = generateInviteCode();
     await registerGroupInvite(inviteCode, chatId, actorId);
   }
@@ -1196,7 +1284,8 @@ const patchProfileSchema = z.object({
   note: z.string().max(200).optional(),
   profileLink: z.string().max(500).optional(),
   isPrivate: z.boolean().optional(),
-  verified: z.boolean().optional(),
+  email: z.string().email().optional(),
+  phone: z.string().max(24).optional(),
 });
 
 function broadcastProfileUpdated(user: UserRow): void {
@@ -1212,16 +1301,19 @@ app.patch("/v1/me/profile", authMiddleware, async (req, res) => {
 
   const patch: Parameters<typeof updateUser>[1] = {};
   const d = parsed.data;
-  if (d.username != null) {
-    const norm = normalizeUsername(d.username);
-    const nameErr = validateUsernameFormat(norm, userId);
-    if (nameErr) return res.status(400).json({ error: nameErr });
-    const curNorm = normalizeUsername(cur.username);
-    if (norm !== curNorm) {
-      if (await usernameExists(norm, userId)) {
-        return res.status(409).json({ error: "اسم المستخدم مستخدم" });
+  if (typeof d.username === "string") {
+    const rawUsername = d.username.trim();
+    if (rawUsername.length > 0) {
+      const norm = normalizeUsername(rawUsername);
+      const nameErr = validateUsernameFormat(norm, userId);
+      if (nameErr) return res.status(400).json({ error: nameErr });
+      const curNorm = normalizeUsername(cur.username);
+      if (norm !== curNorm) {
+        if (await usernameExists(norm, userId)) {
+          return res.status(409).json({ error: "اسم المستخدم مستخدم" });
+        }
+        patch.username = norm;
       }
-      patch.username = norm;
     }
   }
   if (d.avatar != null) {
@@ -1233,14 +1325,33 @@ app.patch("/v1/me/profile", authMiddleware, async (req, res) => {
         return res.status(400).json({ error: "فشل معالجة الصورة" });
       }
     }
-    patch.avatar = av;
+    const avRef = toClientMediaRef(av) || av;
+    const { assertAvatarAllowed } = await import("./routes/verificationRoutes.js");
+    const avatarErr = await assertAvatarAllowed(cur, avRef);
+    if (avatarErr) return res.status(403).json({ error: avatarErr });
+    patch.avatar = avRef;
   }
   if (d.displayName != null) patch.displayName = d.displayName.trim();
   if (d.bio != null) patch.bio = d.bio;
+  const prevBio = cur.bio ?? "";
+  const newBio  = d.bio   ?? cur.bio ?? "";
   if (d.note != null) patch.note = d.note.trim();
   if (d.profileLink != null) patch.profileLink = d.profileLink.trim();
   if (d.isPrivate != null) patch.isPrivate = d.isPrivate === true;
-  if (d.verified === true) patch.verified = true;
+  if (d.email != null) {
+    const emailNorm = d.email.trim().toLowerCase();
+    if (emailNorm !== cur.email.trim().toLowerCase()) {
+      if (await findUserByEmailOrUsername(emailNorm)) {
+        return res.status(409).json({ error: "البريد مستخدم من قبل" });
+      }
+      patch.email = emailNorm;
+    }
+  }
+  if (d.phone != null) {
+    const phoneErr = validateOptionalPhone(d.phone);
+    if (phoneErr) return res.status(400).json({ error: phoneErr });
+    patch.phone = normalizePhone(d.phone) || undefined;
+  }
 
   const user = await updateUser(userId, patch);
   if (!user) return res.status(404).json({ error: "not found" });
@@ -1254,7 +1365,7 @@ app.patch("/v1/me/profile", authMiddleware, async (req, res) => {
             ...u,
             username: user.username,
             displayName: user.displayName?.trim() || u.displayName,
-            avatar: user.avatar,
+            avatar: toClientMediaRef(user.avatar) || user.avatar,
             bio: user.bio ?? u.bio,
             note: user.note ?? u.note,
             profileLink: user.profileLink ?? u.profileLink,
@@ -1262,6 +1373,15 @@ app.patch("/v1/me/profile", authMiddleware, async (req, res) => {
             verified: user.verified === true,
             founderVerified: user.founderVerified === true,
             founderOfficialLabel: user.founderOfficialLabel ?? u.founderOfficialLabel,
+            isSubscribed: user.isSubscribed === true,
+            subscriptionPlan: user.subscriptionPlan,
+            subscriptionExpiresAt: user.subscriptionExpiresAt,
+            verificationStatus: user.verificationStatus,
+            verificationBadgeColor: user.verificationBadgeColor,
+            canUseAnimatedAvatar: user.canUseAnimatedAvatar === true,
+            storyMaxDuration: user.storyMaxDuration,
+            storyExpiryOptions: user.storyExpiryOptions,
+            postCharacterLimit: user.postCharacterLimit,
           }
         : u,
     );
@@ -1272,7 +1392,58 @@ app.patch("/v1/me/profile", authMiddleware, async (req, res) => {
   }
 
   broadcastProfileUpdated(user);
+
+  // إشعارات المنشن في البايو — فقط للمنشنات الجديدة
+  if (d.bio != null && newBio !== prevBio) {
+    const extractMentions = (text: string) =>
+      Array.from(new Set((text.match(/@([a-z0-9_]{1,30})/gi) || []).map(m => m.slice(1).toLowerCase())));
+    const prevMentions = new Set(extractMentions(prevBio));
+    const newMentions  = extractMentions(newBio);
+    const addedMentions = newMentions.filter(uname => !prevMentions.has(uname));
+    if (addedMentions.length > 0) {
+      const { listUsers } = await import("./db/engine.js");
+      const { deliverBioMentionNotification } = await import("./lib/socialActions.js");
+      const allUsers = await listUsers();
+      for (const uname of addedMentions) {
+        const target = allUsers.find(u => u.username.toLowerCase() === uname);
+        if (!target || target.id === userId) continue;
+        void deliverBioMentionNotification(target.id, userId, newBio);
+      }
+    }
+  }
+
   return res.json({ user: publicUserPayload(user) });
+});
+
+/** تنظيف الريلزات القديمة (شاشة سوداء) — مشرفون فقط في وضع التطوير */
+app.post("/v1/admin/cleanup-stale-reels", authMiddleware, async (req, res) => {
+  if (process.env.NODE_ENV === "production" && process.env.SEED_DEMO !== "1") {
+    return res.status(403).json({ error: "غير مصرح في وضع الإنتاج" });
+  }
+  const { cleanupStaleReels } = await import("./lib/seedDemoContent.js");
+  const deleted = await cleanupStaleReels();
+  return res.json({ ok: true, deleted });
+});
+
+/** تسجيل زيارة ملف شخصي — يُحدّث قائمة الزوار في لقطة المُزار */
+app.post("/v1/users/:targetId/visit", authMiddleware, async (req, res) => {
+  setNoStoreApi(res);
+  const visitorId = (req as Request & { userId: string }).userId;
+  const { targetId } = req.params;
+  if (!targetId || targetId === visitorId) return res.json({ ok: true });
+  const snap = (await getSnapshot(targetId)) as AppState | null;
+  if (!snap) return res.json({ ok: true });
+  const now = Date.now();
+  const users = (snap.users || []).map(u => {
+    if (u.id !== targetId) return u;
+    const views = [
+      { userId: visitorId, at: now },
+      ...(u.profileViews || []).filter(v => v.userId !== visitorId),
+    ].slice(0, 60);
+    return { ...u, profileViews: views };
+  });
+  await setSnapshot(targetId, { ...snap, users });
+  return res.json({ ok: true });
 });
 
 app.put("/v1/me/password", authMiddleware, async (req, res) => {
@@ -1296,9 +1467,19 @@ const upload = multer({
 });
 
 app.post("/v1/media/upload", authMiddleware, upload.single("file"), async (req, res) => {
+  const userId = (req as Request & { userId: string }).userId;
   const file = req.file;
   if (!file) return res.status(400).json({ error: "no file" });
   const mime = (file.mimetype || "").toLowerCase();
+  const forAvatar = String(req.query.avatar ?? "") === "1";
+  if (forAvatar && mime === "image/gif") {
+    const author = await getUserById(userId);
+    if (!author) return res.status(404).json({ error: "not found" });
+    const { getUserEntitlements } = await import("../../src/lib/verificationEntitlements.js");
+    if (!getUserEntitlements(author).canUseAnimatedAvatar) {
+      return res.status(403).json({ error: "الافتار المتحرك (GIF) للحسابات الموثقة فقط" });
+    }
+  }
   try {
     if (mime.startsWith("image/")) {
       const { url, kind } = await saveUploadedImage(file.buffer, mime);
@@ -1362,6 +1543,12 @@ function logListenUrls(p: number, host: string) {
 }
 
 await initDatabase();
+
+const { registerVerificationRoutes } = await import("./routes/verificationRoutes.js");
+registerVerificationRoutes(app, authMiddleware, broadcastProfileUpdated);
+
+const { registerGameRoutes } = await import("./routes/gameRoutes.js");
+registerGameRoutes(app, authMiddleware);
 if (isSmtpConfigured()) {
   const smtpCheck = await verifySmtpConnection();
   if (smtpCheck.ok) {
@@ -1390,3 +1577,18 @@ if (staticSiteDir) {
 const httpServer = http.createServer(app);
 attachRealtimeSocket(httpServer);
 httpServer.listen(PORT, HOST, () => logListenUrls(PORT, HOST));
+
+// ——— كرون سترك المحادثات: فحص كل ساعة ———
+setInterval(async () => {
+  try {
+    const { expireOldStreaks } = await import("./lib/chatStreak.js");
+    const n = await expireOldStreaks();
+    if (n > 0) {
+      // eslint-disable-next-line no-console
+      console.log(`[streak] أعاد تصفير ${n} سترك منتهي`);
+    }
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn("[streak] cron error", e);
+  }
+}, 60 * 60 * 1000);

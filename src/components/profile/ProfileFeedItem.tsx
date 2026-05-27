@@ -5,18 +5,20 @@ import { formatRelativeTime } from "@/lib/formatRelativeTime";
 import { useT } from "@/lib/i18n";
 import { Avatar } from "../Avatar";
 import { ShareSheet } from "../ShareSheet";
-import { AtSign, Repeat2 } from "lucide-react";
+import { AtSign, Repeat2, Trash2 } from "lucide-react";
 import {
   PostFeedActions,
   PostFeedCaption,
-  PostFeedHeader,
+  FeedPostColumnShell,
+  ProfilePostMetaRow,
   PostFeedMediaBlock,
 } from "../PostFeedLayout";
+import { PostMediaNotesOverlay } from "../PostMediaNotesOverlay";
 import { ProfileTweetCard } from "./ProfileTweetCard";
 import type { MediaNote, Post, ProfileGridTab, ProfileReturnContext } from "@/lib/types";
 import { NoteReplySheet } from "../NoteReplySheet";
 import { isDisplayTweet, normalizePostMedia, resolvePostDisplayType } from "@/lib/postMedia";
-import { renderMentionHashtagNodes } from "@/lib/renderMentionHashtagText";
+import { renderMentionHashtagNodes, createMentionRenderer } from "@/lib/renderMentionHashtagText";
 
 export function sortProfilePostsNewestFirst(posts: Post[]): Post[] {
   return posts.slice().sort((a, b) => b.createdAt - a.createdAt);
@@ -46,7 +48,11 @@ export function ProfileFeedItem({
   onOpenChat: (chatId: string) => void;
   showRepostBadge?: boolean;
 }) {
-  const { state, currentUser, toggleLike, toggleRepost, addComment } = useApp();
+  const { state, currentUser, toggleLike, toggleRepost, addComment, deleteComment } = useApp();
+  const livePost = useMemo(
+    () => state.posts.find(p => p.id === post.id) ?? post,
+    [state.posts, post],
+  );
   const [noteToReply, setNoteToReply] = useState<MediaNote | null>(null);
   const [comment, setComment] = useState("");
   const [shareOpen, setShareOpen] = useState(false);
@@ -56,8 +62,8 @@ export function ProfileFeedItem({
   const t = useT();
   const me = currentUser!;
   const author = userById(state, post.userId);
-  const liked = post.likes.includes(me.id);
-  const reposted = post.reposts.includes(me.id);
+  const liked = livePost.likes.includes(me.id);
+  const reposted = livePost.reposts.includes(me.id);
   const postKindAr = post.type === "tweet" ? "التغريدة" : post.type === "reel" ? "الريلز" : "المنشور";
   const displayType = useMemo(
     () => resolvePostDisplayType(post),
@@ -77,27 +83,10 @@ export function ProfileFeedItem({
   const renderedPostText = useMemo(() => {
     if (!post.text) return null;
     return renderMentionHashtagNodes(post.text, {
-      renderMention: (uname, key) => {
-        const u = state.users.find(x => x.username === uname);
-        if (u) {
-          return (
-            <button
-              key={key}
-              type="button"
-              onClick={() => startTransition(() => onOpenProfile(u.id, returnCtx(false)))}
-              className="text-primary"
-            >
-              <AtSign size={12} className="inline" />
-              {uname}
-            </button>
-          );
-        }
-        return (
-          <span key={key} className="text-primary">
-            @{uname}
-          </span>
-        );
-      },
+      renderMention: createMentionRenderer({
+        users: state.users,
+        onUserClick: userId => startTransition(() => onOpenProfile(userId, returnCtx(false))),
+      }),
       renderHashtag: (h, key) => (
         <span key={key} className="text-primary">
           {h}
@@ -139,75 +128,67 @@ export function ProfileFeedItem({
     return nu && (n.authorId === me.id || isMutual(state, me.id, n.authorId));
   });
 
-  return (
-    <article dir="rtl" className="border-b border-border/80 text-right">
-      {showRepostBadge && <ProfileRepostBadge />}
-      {detailNotes.length > 0 && (
-        <div className="flex gap-2 overflow-x-auto border-b border-border/60 px-4 pb-2 pt-2 no-scrollbar">
-          {detailNotes.map(n => {
-            const nu = userById(state, n.authorId)!;
-            const canReplyNote = n.authorId !== me.id;
-            return (
-              <div key={n.id} className="flex max-w-[4rem] shrink-0 flex-col items-center">
-                {canReplyNote ? (
-                  <button
-                    type="button"
-                    title="رد في الخاص"
-                    onClick={() => setNoteToReply(n)}
-                    className="mb-0.5 line-clamp-3 rounded-lg border border-border bg-secondary px-1.5 py-0.5 text-start text-[9px] leading-tight hover:bg-secondary/80"
-                  >
-                    {n.text}
-                  </button>
-                ) : (
-                  <div className="mb-0.5 line-clamp-3 rounded-lg border border-border bg-secondary px-1.5 py-0.5 text-start text-[9px] leading-tight">
-                    {n.text}
-                  </div>
-                )}
-                <button type="button" onClick={() => startTransition(() => onOpenProfile(nu.id, returnCtx(false)))}>
-                  <Avatar name={nu.username} src={nu.avatar} size={28} />
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      )}
+  const notesOverlay =
+    detailNotes.length > 0 ? (
+      <PostMediaNotesOverlay
+        notes={detailNotes}
+        noteUsers={detailNotes.map(n => userById(state, n.authorId)!).filter(Boolean)}
+        canReply={n => n.authorId !== me.id}
+        onReply={n => setNoteToReply(n)}
+        onOpenAuthor={id => startTransition(() => onOpenProfile(id, returnCtx(false)))}
+      />
+    ) : null;
 
-      <div className="relative">
-        <PostFeedHeader
+  return (
+    <article className="border-b border-border/80">
+      {showRepostBadge && <ProfileRepostBadge />}
+
+      <FeedPostColumnShell
+        author={author}
+        onOpenAuthor={() => startTransition(() => onOpenProfile(author.id, returnCtx(false)))}
+      >
+        <ProfilePostMetaRow
           author={author}
           timeLabel={formatRelativeTime(post.createdAt, lang)}
           onOpenAuthor={() => startTransition(() => onOpenProfile(author.id, returnCtx(false)))}
           onMenu={me.id === post.userId ? () => setMenuOpen(v => !v) : undefined}
         />
         {menuOpen && <PostOptionsMenu post={post} onClose={() => setMenuOpen(false)} />}
-      </div>
 
-      {renderedPostText && <PostFeedCaption>{renderedPostText}</PostFeedCaption>}
+        {renderedPostText && <PostFeedCaption profileInset>{renderedPostText}</PostFeedCaption>}
 
-      <PostFeedMediaBlock post={{ ...post, type: displayType }} postMedia={postMedia} />
+        <PostFeedMediaBlock
+          post={{ ...post, type: displayType }}
+          postMedia={postMedia}
+          notesOverlay={notesOverlay}
+          profileInset
+        />
 
-      <PostFeedActions
-        liked={liked}
-        reposted={reposted}
-        likeCount={post.likes.length}
-        commentCount={post.comments.length}
-        repostCount={post.reposts.length}
-        onLike={() => startTransition(() => toggleLike(post.id))}
-        onComment={() => setCommentsOpen(o => !o)}
-        onRepost={() => startTransition(() => toggleRepost(post.id))}
-        onShare={() => setShareOpen(true)}
-      />
+        <PostFeedActions
+          liked={liked}
+          reposted={reposted}
+          likeCount={post.likes.length}
+          commentCount={post.comments.length}
+          repostCount={post.reposts.length}
+          onLike={() => startTransition(() => toggleLike(post.id))}
+          onComment={() => setCommentsOpen(o => !o)}
+          onRepost={() => startTransition(() => toggleRepost(post.id))}
+          onShare={() => setShareOpen(true)}
+          profileInset
+        />
+      </FeedPostColumnShell>
 
       {commentsOpen && (
         <div
           id={`profile-feed-comments-${post.id}`}
-          className="space-y-2 border-t border-border/60 px-4 pb-4 pt-3 scroll-mt-24"
+          dir="rtl"
+          className="space-y-2 border-t border-border/60 px-3 pb-4 pt-3 scroll-mt-24 ms-[3.25rem] me-3"
         >
           <h3 className="text-sm font-semibold">{t("comments")}</h3>
-          {post.comments.map(c => {
+          {livePost.comments.map(c => {
             const u = userById(state, c.userId);
             return (
-              <div key={c.id} className="flex gap-2 text-sm">
+              <div key={c.id} className="flex gap-2 text-sm" dir="ltr">
                 <button
                   type="button"
                   className="shrink-0 rounded-full"
@@ -215,7 +196,7 @@ export function ProfileFeedItem({
                 >
                   <Avatar name={u?.username || "?"} src={u?.avatar} size={28} />
                 </button>
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1" dir="rtl">
                   <button
                     type="button"
                     className="font-semibold"
@@ -225,15 +206,28 @@ export function ProfileFeedItem({
                   </button>{" "}
                   <span className="[overflow-wrap:break-word]">{c.text}</span>
                 </div>
+                {c.userId === me.id && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!window.confirm("حذف هذا التعليق؟")) return;
+                      deleteComment(livePost.id, c.id);
+                    }}
+                    className="shrink-0 rounded-full p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                    aria-label="حذف التعليق"
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                )}
               </div>
             );
           })}
-          {post.comments.length === 0 && <p className="text-xs text-muted-foreground">—</p>}
+          {livePost.comments.length === 0 && <p className="text-xs text-muted-foreground">—</p>}
           <form
             onSubmit={e => {
               e.preventDefault();
               if (comment.trim()) {
-                addComment(post.id, comment);
+                addComment(livePost.id, comment);
                 setComment("");
               }
             }}

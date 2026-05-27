@@ -25,6 +25,9 @@ export class AppErrorBoundary extends Component<Props, State> {
           <p className="text-lg font-semibold text-foreground">حدث خطأ في الواجهة</p>
           {this.props.label ? <p className="text-xs text-muted-foreground">{this.props.label}</p> : null}
           <p className="text-sm text-muted-foreground leading-relaxed">{hint}</p>
+          {this.state.error?.message ? (
+            <p className="text-xs font-mono text-muted-foreground/90 break-all">{this.state.error.message}</p>
+          ) : null}
           <details className="w-full max-w-sm text-start text-xs text-muted-foreground">
             <summary className="cursor-pointer py-1 font-medium text-foreground">تفاصيل الخطأ</summary>
             <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-secondary/60 p-3 text-[11px] leading-snug">

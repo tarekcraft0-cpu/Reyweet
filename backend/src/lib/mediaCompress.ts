@@ -17,8 +17,7 @@ export function isDataUrl(s: string): boolean {
 }
 
 function mediaPublicUrl(kind: "images" | "videos", filename: string): string {
-  const base = PUBLIC_BASE_URL.replace(/\/$/, "");
-  return `${base}/media/${kind}/${filename}`;
+  return `/media/${kind}/${filename}`;
 }
 
 function imageExtFromMime(mime: string): string {

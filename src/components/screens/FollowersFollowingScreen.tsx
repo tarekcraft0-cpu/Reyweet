@@ -31,8 +31,8 @@ export function FollowersFollowingScreen({
   const users = ids.map(id => userById(state, id)).filter((x): x is User => !!x);
 
   return (
-    <SlideDismissShell onDismiss={onBack} overlayZIndex={210} className="bg-background">
-      <div className="flex h-full flex-col">
+    <SlideDismissShell onDismiss={onBack} overlayZIndex={210}>
+      <div className="flex h-full flex-col bg-background shadow-2xl">
         <RtlScreenHeader onBack={onBack} title={`@${u.username}`} />
 
         <div className="flex shrink-0 border-b border-border">

@@ -2,7 +2,7 @@ import { useApp, userById } from "@/lib/store";
 import { Avatar } from "./Avatar";
 import { VerifiedMarkForUser } from "./VerifiedBadge";
 import { Heart, MessageCircle, Repeat2, Film } from "lucide-react";
-import { isRenderableMediaUrl } from "@/lib/mediaUrl";
+import { isRenderableMediaUrl, resolveMediaUrl } from "@/lib/mediaUrl";
 import { normalizeStoryMedia } from "@/lib/storyMedia";
 import { userDisplayName } from "@/lib/userDisplay";
 
@@ -36,7 +36,8 @@ export function SharedPostPreview({ postId, comment, compact = false, variant = 
       (post.image && !isRenderableMediaUrl(post.image) ? post.image : "") ||
       "…";
     const img = post.image?.trim();
-    const hasImg = !!(img && (img.startsWith("data:") || img.startsWith("http")));
+    const resolvedImg = img ? resolveMediaUrl(img) : "";
+    const hasImg = !!(resolvedImg && isRenderableMediaUrl(resolvedImg));
     const emojiOnly = img && !hasImg && img.length <= 6;
     /** ارتفاع وسيط يملأ العرض حتى لا يظهر شريط أسود جانبي مع object-cover */
     const mediaFrame = "relative w-full overflow-hidden rounded-none bg-transparent";
@@ -60,7 +61,7 @@ export function SharedPostPreview({ postId, comment, compact = false, variant = 
           {hasImg && (
             <div className={mediaFrame}>
               <img
-                src={img}
+                src={resolvedImg}
                 alt=""
                 className="block max-h-[min(52vh,400px)] min-h-[220px] w-full object-cover object-center"
               />
@@ -72,7 +73,7 @@ export function SharedPostPreview({ postId, comment, compact = false, variant = 
           {post.video && isRenderableMediaUrl(post.video) && (
             <div className={mediaFrame}>
               <video
-                src={post.video}
+                src={resolveMediaUrl(post.video)}
                 controls
                 className="block max-h-[min(52vh,400px)] min-h-[220px] w-full object-cover object-center"
                 playsInline
@@ -115,7 +116,7 @@ export function SharedPostPreview({ postId, comment, compact = false, variant = 
         {post.image && (
           <div className="mb-2 aspect-video overflow-hidden rounded-lg bg-muted/50">
             {isRenderableMediaUrl(post.image) ? (
-              <img src={post.image} className="h-full w-full object-cover" alt="" />
+              <img src={resolveMediaUrl(post.image)} className="h-full w-full object-cover" alt="" />
             ) : (
               <div className="flex h-full items-center justify-center text-3xl">{post.image}</div>
             )}
@@ -151,7 +152,7 @@ export function SharedPostPreview({ postId, comment, compact = false, variant = 
         {post.image && (
           <div className="aspect-square overflow-hidden rounded-lg bg-muted/40 dark:bg-zinc-800/50">
             {isRenderableMediaUrl(post.image) ? (
-              <img src={post.image} className="h-full w-full object-cover" alt="" />
+              <img src={resolveMediaUrl(post.image)} className="h-full w-full object-cover" alt="" />
             ) : (
               <div className="flex h-full items-center justify-center text-5xl">{post.image}</div>
             )}
@@ -160,7 +161,7 @@ export function SharedPostPreview({ postId, comment, compact = false, variant = 
 
         {post.video && isRenderableMediaUrl(post.video) && (
           <div className="overflow-hidden rounded-lg bg-muted/50 dark:bg-zinc-800/60">
-            <video src={post.video} controls className="w-full" playsInline preload="metadata" />
+            <video src={resolveMediaUrl(post.video)} controls className="w-full" playsInline preload="metadata" />
           </div>
         )}
 

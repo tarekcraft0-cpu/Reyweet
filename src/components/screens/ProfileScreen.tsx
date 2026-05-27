@@ -7,23 +7,36 @@ import {
   canViewPrivatePosts,
   userHasVisibleStories,
 } from "@/lib/store";
+import {
+  apiBackendEnabled,
+  apiFetchUserById,
+  ensureApiRuntimeConfig,
+  getApiToken,
+  userFromSearchResult,
+} from "@/lib/apiBackend";
+import { resolveDisplayFollowerCount } from "@/lib/publicProfileCache";
 import { notifyGuestActionBlocked } from "@/lib/guestBlocked";
 import { useT } from "@/lib/i18n";
 import type { HighlightEntry, StoryItem, Post, ProfileGridTab, ProfileReturnContext, User, AppState } from "@/lib/types";
 import { ProfilePostsFeedOverlay } from "../profile/ProfilePostsFeedOverlay";
 import { ProfileFeedItem, sortProfilePostsNewestFirst } from "../profile/ProfileFeedItem";
 import { Avatar } from "../Avatar";
-import { Grid3x3, Repeat2, Heart, ArrowRight, MoreVertical, Lock, Plus, Link as LinkIcon, Megaphone, ChevronLeft, ChevronRight, MessageCircle, ChevronDown, Menu, Footprints } from "lucide-react";
+import { LayoutList, Repeat2, ArrowRight, MoreVertical, Lock, Plus, Link as LinkIcon, Megaphone, ChevronLeft, ChevronRight, MessageCircle, MessageSquare, ChevronDown, Menu, Footprints } from "lucide-react";
+import { InstagramReelsIcon } from "../icons/InstagramReelsIcon";
+import { isDisplayTweet, isReelFeedPost } from "@/lib/postMedia";
+import { resolveMediaUrl } from "@/lib/mediaUrl";
 import { RS_ACCENT } from "@/lib/rsocialUi";
 import { FollowersFollowingScreen } from "./FollowersFollowingScreen";
 import { SlideDismissBackButton, SlideDismissShell } from "../SlideDismissShell";
 import { RSocialAvatar } from "../rsocial/RSocialAvatar";
 import { VerifiedMarkForUser } from "../VerifiedBadge";
 import { FounderOfficialBanner } from "../FounderOfficialBanner";
+import { AppOfficialBanner } from "../AppOfficialBanner";
 import { withFounderProfileFields } from "@/lib/founderAccount";
 import { userDisplayName } from "@/lib/userDisplay";
 import { ProfileShareModal } from "../ProfileShareModal";
 import { StoryViewer } from "../StoryViewer";
+import { renderMentionHashtagNodes, createMentionRenderer } from "@/lib/renderMentionHashtagText";
 
 interface Props {
   userId: string;
@@ -40,6 +53,11 @@ interface Props {
   onOpenAccountSwitcher?: () => void;
   onOpenSettings?: () => void;
   onOpenVisitors?: () => void;
+  /** overlay = بروفايل فوق التطبيق؛ inline = داخل التبويب */
+  dismissPresentation?: "overlay" | "inline";
+  dismissOverlayZIndex?: number;
+  /** إخفاء شريط البروفايل العلوي (اليوزر، الزوار، القائمة) — مثلاً عند فتح الإعدادات */
+  suppressChrome?: boolean;
 }
 
 /** متابعون مشتركون + اقتراحات من شبكة صاحب الملف */
@@ -107,6 +125,9 @@ export function ProfileScreen({
   onOpenAccountSwitcher,
   onOpenSettings,
   onOpenVisitors,
+  dismissPresentation = "inline",
+  dismissOverlayZIndex = 280,
+  suppressChrome = false,
 }: Props) {
   const {
     state,
@@ -119,14 +140,33 @@ export function ProfileScreen({
     declineFollowRequest,
     isGuest,
     refreshSocialRelation,
+    mergeDiscoveredUsers,
   } = useApp();
   const t = useT();
   const rawU = userById(state, userId);
   const u = rawU ? withFounderProfileFields(rawU) : null;
-  const [tab, setTab] = useState<ProfileGridTab>("posts");
+  const [tab, setTab] = useState<ProfileGridTab>("all");
   const [profileFeed, setProfileFeed] = useState<null | { orderedIds: string[]; initialIndex: number; gridTab: ProfileGridTab; scrollToComments?: boolean }>(null);
   const [showFollowers, setShowFollowers] = useState<"followers" | "following" | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    let close: ((ev: PointerEvent) => void) | null = null;
+    const t = window.setTimeout(() => {
+      close = (ev: PointerEvent) => {
+        const node = ev.target as HTMLElement | null;
+        if (node?.closest?.("[data-profile-menu], [data-profile-menu-btn]")) return;
+        setMenuOpen(false);
+      };
+      document.addEventListener("pointerdown", close, true);
+    }, 80);
+    return () => {
+      clearTimeout(t);
+      if (close) document.removeEventListener("pointerdown", close, true);
+    };
+  }, [menuOpen]);
+
   const [showHL, setShowHL] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [hlView, setHlView] = useState<HighlightEntry | null>(null);
@@ -135,6 +175,8 @@ export function ProfileScreen({
   /** لوحة حسابات مقترحة تُفتح من زر + بجانب المراسلة */
   const [suggestPanelOpen, setSuggestPanelOpen] = useState(false);
   const [storyViewerUserId, setStoryViewerUserId] = useState<string | null>(null);
+  /** يُحدَّث بعد جلب عدد المتابعين من الخادم (خارج state.users لحسابات أخرى على الجهاز) */
+  const [socialHydratedAt, setSocialHydratedAt] = useState(0);
 
   useEffect(() => {
     setProfileFeed(null);
@@ -149,19 +191,23 @@ export function ProfileScreen({
       const uu = userById(state, userId);
       if (!uu) return;
       let list: Post[];
-      if (d.profileGridTab === "posts")
+      const gridTab =
+        (d.profileGridTab as string) === "posts" ? ("all" as ProfileGridTab) : d.profileGridTab;
+      if (gridTab === "all")
         list = sortProfilePostsNewestFirst(state.posts.filter(p => p.userId === userId));
-      else if (d.profileGridTab === "reposts")
+      else if (gridTab === "tweets")
+        list = sortProfilePostsNewestFirst(state.posts.filter(p => p.userId === userId && isDisplayTweet(p)));
+      else if (gridTab === "reposts")
         list = sortProfilePostsNewestFirst(state.posts.filter(p => p.reposts.includes(userId)));
-      else list = sortProfilePostsNewestFirst(state.posts.filter(p => p.likes.includes(userId)));
+      else list = sortProfilePostsNewestFirst(state.posts.filter(p => p.userId === userId && isReelFeedPost(p)));
       const orderedIds = list.map(p => p.id);
       const idx = orderedIds.indexOf(d.postId);
-      setTab(d.profileGridTab);
+      setTab(gridTab);
       if (idx >= 0)
         setProfileFeed({
           orderedIds,
           initialIndex: idx,
-          gridTab: d.profileGridTab,
+          gridTab,
           scrollToComments: !!d.commentsOpen,
         });
       else setProfileFeed(null);
@@ -181,23 +227,27 @@ export function ProfileScreen({
   const followerCountFormatted = useMemo(() => {
     const usr = userById(state, userId);
     if (!usr) return "0";
-    const n = usr.displayFollowerCount ?? usr.followers.length;
-    return formatCompactCount(n);
-  }, [state.users, userId]);
+    return formatCompactCount(resolveDisplayFollowerCount(usr));
+  }, [state.users, userId, socialHydratedAt]);
 
-  const myPosts = useMemo(
+  const myAllFeed = useMemo(
     () => sortProfilePostsNewestFirst(state.posts.filter(p => p.userId === userId)),
     [state.posts, userId],
   );
-  const reposts = useMemo(
+  const myTweets = useMemo(
+    () => sortProfilePostsNewestFirst(state.posts.filter(p => p.userId === userId && isDisplayTweet(p))),
+    [state.posts, userId],
+  );
+  const myReposts = useMemo(
     () => sortProfilePostsNewestFirst(state.posts.filter(p => p.reposts.includes(userId))),
     [state.posts, userId],
   );
-  const likes = useMemo(
-    () => sortProfilePostsNewestFirst(state.posts.filter(p => p.likes.includes(userId))),
+  const myReels = useMemo(
+    () => sortProfilePostsNewestFirst(state.posts.filter(p => p.userId === userId && isReelFeedPost(p))),
     [state.posts, userId],
   );
-  const tabPosts = tab === "posts" ? myPosts : tab === "reposts" ? reposts : likes;
+  const tabPosts =
+    tab === "all" ? myAllFeed : tab === "tweets" ? myTweets : tab === "reposts" ? myReposts : myReels;
 
   const publicChannels = useMemo(() => {
     const usr = userById(state, userId);
@@ -208,7 +258,7 @@ export function ProfileScreen({
 
   useEffect(() => {
     visitRecordedFor.current = null;
-    setTab("posts");
+    setTab("all");
   }, [userId]);
 
   useEffect(() => {
@@ -225,12 +275,6 @@ export function ProfileScreen({
     if (hlSlide >= slides.length) setHlSlide(0);
   }, [hlView, hlSlide]);
 
-  useEffect(() => {
-    const usr = userById(state, userId);
-    if (!usr) return;
-    const showLikesFav = currentUser?.id === usr.id || usr.showLikesAndFavoritesOnProfile !== false;
-    if (!showLikesFav && tab === "likes") setTab("posts");
-  }, [currentUser?.id, userId, state.users, tab]);
 
   const profileSuggestions = useMemo(() => {
     if (!currentUser || currentUser.id === userId) return [];
@@ -250,6 +294,23 @@ export function ProfileScreen({
     refreshSocialRelation(userId);
   }, [userId, currentUser?.id, refreshSocialRelation]);
 
+  /** جلب عدد المتابعين والقوائم الكاملة من الخادم — يصلح @t من @512 على نفس الجهاز */
+  useEffect(() => {
+    if (!currentUser || currentUser.id === userId || isGuest) return;
+    if (!apiBackendEnabled() || !getApiToken()) return;
+    let cancelled = false;
+    void (async () => {
+      await ensureApiRuntimeConfig();
+      const row = await apiFetchUserById(userId);
+      if (cancelled || !row || row.id !== userId) return;
+      mergeDiscoveredUsers([userFromSearchResult(row)]);
+      setSocialHydratedAt(Date.now());
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, currentUser?.id, mergeDiscoveredUsers, isGuest]);
+
   if (!u) {
     return (
       <div className="flex min-h-full h-full items-center justify-center bg-background p-6 text-muted-foreground text-sm">
@@ -268,7 +329,6 @@ export function ProfileScreen({
   const isBlocked = currentUser?.blocked.includes(u.id);
   const isHiddenByBlock = !!(currentUser && currentUser.blocked.includes(u.id));
   /** صاحب الملف يرى تبويبي الإعجابات والمحفوظات دائماً؛ الزائر يرونهما فقط إذا لم يخفِهما المستخدم */
-  const showLikesFavoritesToVisitors = isMe || u.showLikesAndFavoritesOnProfile !== false;
   /** زائر لا يرى أعداد/قوائم المتابعة إن فعّل صاحب الحساب الإخفاء */
   const hideFollowStatsFromVisitor = !isMe && u.hideFollowListsFromOthers === true;
 
@@ -310,12 +370,33 @@ export function ProfileScreen({
   const profileHandle = `@${u.username}`;
   const profileDisplayName = userDisplayName(u);
 
+  const isOtherUserProfile = Boolean(onBack);
+  const profileScrollClass =
+    "profile-scroll-pane tab-panel-scroll tab-panel-immersive min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain touch-pan-y [-webkit-overflow-scrolling:touch]";
+  const profileShellClass = isOtherUserProfile
+    ? dismissPresentation === "overlay"
+      ? "flex h-full min-h-0 w-full flex-col overflow-hidden bg-white dark:bg-background"
+      : "absolute inset-0 z-0 flex min-h-0 flex-col overflow-hidden bg-white dark:bg-background"
+    : "flex w-full flex-col bg-white pb-24 dark:bg-background";
+
   const profileBody = (
-    <div className="flex min-h-0 flex-1 flex-col bg-white pb-4 dark:bg-background">
-      <div dir="rtl" className="px-4 pt-3 pb-2 flex items-center justify-between gap-2">
+    <div data-no-tab-swipe className={profileShellClass}>
+      {!suppressChrome && !onBack && (
+      <div
+        dir="rtl"
+        data-no-dismiss-drag
+        className="relative z-[10001] px-4 pt-3 pb-2 flex items-center justify-between gap-2"
+        onPointerDownCapture={e => {
+          const t = e.target;
+          if (t instanceof HTMLElement && t.closest("button, a, [data-profile-menu-btn], [data-profile-back-btn]")) return;
+          e.stopPropagation();
+        }}
+      >
         <div className="flex flex-row items-center gap-2 min-w-0 flex-1">
           {onBack && (
             <SlideDismissBackButton
+              data-no-dismiss-drag
+              data-profile-back-btn
               onDismiss={onBack}
               onClick={e => {
                 if (profileFeed) {
@@ -326,9 +407,9 @@ export function ProfileScreen({
                   setShowFollowers(null);
                 }
               }}
-              className="shrink-0 rounded-full p-1 text-zinc-900 hover:bg-secondary active:opacity-90 dark:text-white"
+              className="relative z-[10002] flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-zinc-900 hover:bg-secondary active:opacity-90 dark:text-white"
             >
-              <ArrowRight />
+              <ArrowRight size={22} />
             </SlideDismissBackButton>
           )}
           {onBack ? (
@@ -364,10 +445,28 @@ export function ProfileScreen({
           </div>
         )}
         {!isMe && (
-          <div className="relative">
-            <button onClick={() => setMenuOpen(o => !o)}><MoreVertical /></button>
+          <div className="relative z-[10002] shrink-0">
+            <button
+              type="button"
+              data-no-dismiss-drag
+              data-profile-menu-btn
+              aria-label={t("settings")}
+              aria-expanded={menuOpen}
+              className="touch-manipulation flex h-11 w-11 items-center justify-center rounded-full hover:bg-zinc-100 active:bg-zinc-200 dark:hover:bg-secondary dark:active:bg-secondary/80"
+              onPointerDownCapture={e => e.stopPropagation()}
+              onClick={e => {
+                e.stopPropagation();
+                setMenuOpen(o => !o);
+              }}
+            >
+              <MoreVertical size={22} />
+            </button>
             {menuOpen && (
-              <div className="absolute end-0 mt-1 bg-card border border-border rounded-2xl shadow-lg z-20 w-44 overflow-hidden">
+              <div
+                data-profile-menu
+                className="absolute end-0 mt-1 bg-card border border-border rounded-2xl shadow-lg z-[60] w-44 overflow-hidden"
+                onPointerDownCapture={e => e.stopPropagation()}
+              >
                 <button onClick={() => { if (isGuest) { notifyGuestActionBlocked(); setMenuOpen(false); return; } toggleBlock(u.id); setMenuOpen(false); alert(isBlocked ? t("unblock") : t("blocked")); }} className="w-full text-start px-3 py-2 hover:bg-secondary text-destructive text-sm">
                   {isBlocked ? t("unblock") : t("block")} @{u.username}
                 </button>
@@ -395,8 +494,100 @@ export function ProfileScreen({
           </div>
         )}
       </div>
+      )}
 
-      <div className="px-4 pt-2">
+      <div
+        {...(isOtherUserProfile
+          ? { "data-profile-scroll": true as const, "data-no-dismiss-drag": true as const, "data-no-tab-swipe": true as const }
+          : {})}
+        className={(isOtherUserProfile ? profileScrollClass : "px-4 pt-2") + (isOtherUserProfile ? "" : "")}
+      >
+        {isOtherUserProfile && !suppressChrome && (
+      <div
+        dir="rtl"
+        data-no-dismiss-drag
+        className="relative z-[10001] shrink-0 px-4 pt-3 pb-2 flex items-center justify-between gap-2"
+        onPointerDownCapture={e => {
+          const t = e.target;
+          if (t instanceof HTMLElement && t.closest("button, a, [data-profile-menu-btn], [data-profile-back-btn]")) return;
+          e.stopPropagation();
+        }}
+      >
+        <div className="flex flex-row items-center gap-2 min-w-0 flex-1">
+          {onBack && (
+            <SlideDismissBackButton
+              data-no-dismiss-drag
+              data-profile-back-btn
+              onDismiss={onBack}
+              onClick={e => {
+                if (profileFeed) {
+                  e.preventDefault();
+                  setProfileFeed(null);
+                } else if (showFollowers) {
+                  e.preventDefault();
+                  setShowFollowers(null);
+                }
+              }}
+              className="relative z-[10002] flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-zinc-900 hover:bg-secondary active:opacity-90 dark:text-white"
+            >
+              <ArrowRight size={22} />
+            </SlideDismissBackButton>
+          )}
+          <div className="font-bold text-lg truncate flex items-center gap-1 min-w-0 text-zinc-900 dark:text-white">
+            <span className="truncate">{profileHandle}</span>
+            <VerifiedMarkForUser user={u} size={14} className="shrink-0" />
+          </div>
+        </div>
+        <div className="relative z-[10002] shrink-0">
+          <button
+            type="button"
+            data-no-dismiss-drag
+            data-profile-menu-btn
+            aria-label={t("settings")}
+            aria-expanded={menuOpen}
+            className="touch-manipulation flex h-11 w-11 items-center justify-center rounded-full hover:bg-zinc-100 active:bg-zinc-200 dark:hover:bg-secondary dark:active:bg-secondary/80"
+            onPointerDownCapture={e => e.stopPropagation()}
+            onClick={e => {
+              e.stopPropagation();
+              setMenuOpen(o => !o);
+            }}
+          >
+            <MoreVertical size={22} />
+          </button>
+          {menuOpen && (
+            <div
+              data-profile-menu
+              className="absolute end-0 mt-1 bg-card border border-border rounded-2xl shadow-lg z-[60] w-44 overflow-hidden"
+              onPointerDownCapture={e => e.stopPropagation()}
+            >
+              <button onClick={() => { if (isGuest) { notifyGuestActionBlocked(); setMenuOpen(false); return; } toggleBlock(u.id); setMenuOpen(false); alert(isBlocked ? t("unblock") : t("blocked")); }} className="w-full text-start px-3 py-2 hover:bg-secondary text-destructive text-sm">
+                {isBlocked ? t("unblock") : t("block")} @{u.username}
+              </button>
+              <button onClick={() => { shareProfile(); setMenuOpen(false); }} className="w-full text-start px-3 py-2 hover:bg-secondary text-sm">{t("share")}</button>
+              {u.isPrivate && (
+                <button
+                  type="button"
+                  className="w-full flex items-center gap-2 text-start px-3 py-2 hover:bg-secondary text-sm border-t border-border"
+                  onClick={() => {
+                    if (isGuest) {
+                      notifyGuestActionBlocked();
+                      setMenuOpen(false);
+                      return;
+                    }
+                    onOpenChat?.(u.id);
+                    setMenuOpen(false);
+                  }}
+                >
+                  <MessageCircle size={16} className="shrink-0 opacity-80" aria-hidden />
+                  {t("message")}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+        )}
+        <div className={"px-4 pt-2" + (isOtherUserProfile ? " pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))]" : "")}>
         <div className="flex items-center gap-6">
           {profileHasStories ? (
             <button
@@ -418,7 +609,7 @@ export function ProfileScreen({
           )}
           <div className="flex-1 grid grid-cols-3 text-center">
             <div>
-              <div className="font-bold">{isHiddenByBlock ? "—" : formatCompactCount(myPosts.length)}</div>
+              <div className="font-bold">{isHiddenByBlock ? "—" : formatCompactCount(myAllFeed.length)}</div>
               <div className="text-xs text-muted-foreground">منشورات</div>
             </div>
             {hideFollowStatsFromVisitor ? (
@@ -454,10 +645,33 @@ export function ProfileScreen({
         </div>
 
         <FounderOfficialBanner user={u} />
+        <AppOfficialBanner user={u} />
 
         <div className="mt-2 flex items-start gap-2">
           <div className="flex-1 min-w-0">
-            {u.bio?.trim() ? <div className="text-sm whitespace-pre-wrap mt-0">{u.bio}</div> : null}
+            {u.bio?.trim() ? (
+              <div className="text-sm whitespace-pre-wrap mt-0">
+                {renderMentionHashtagNodes(u.bio, {
+                  renderMention: createMentionRenderer({
+                    users: state.users,
+                    onUserClick: uid => onOpenProfile?.(uid),
+                    onUsernameClick: uname => {
+                      // المستخدم غير موجود محلياً → جلبه من API ثم فتح بروفايله
+                      void (async () => {
+                        const { apiLookupUserByUsername } = await import("@/lib/apiBackend");
+                        const row = await apiLookupUserByUsername(uname);
+                        if (!row) return;
+                        mergeDiscoveredUsers([row]);
+                        onOpenProfile?.(row.id);
+                      })();
+                    },
+                  }),
+                  renderHashtag: (h, key) => (
+                    <span key={key} className="text-primary">{h}</span>
+                  ),
+                })}
+              </div>
+            ) : null}
             {u.profileLink?.trim() && (
               <a href={u.profileLink.startsWith("http") ? u.profileLink : `https://${u.profileLink}`} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-sm text-primary break-all">
                 <LinkIcon size={14} /> reyweet.vercel.app
@@ -647,28 +861,22 @@ export function ProfileScreen({
           </div>
         ) : (
           <>
-            <div
-              className={
-                (showLikesFavoritesToVisitors ? "grid-cols-3" : "grid-cols-2") + " grid mt-6 border-b border-border"
-              }
-            >
-              {(showLikesFavoritesToVisitors
-                ? ([
-                    { k: "posts" as const, icon: Grid3x3 },
-                    { k: "reposts" as const, icon: Repeat2 },
-                    { k: "likes" as const, icon: Heart },
-                  ] as const)
-                : ([
-                    { k: "posts" as const, icon: Grid3x3 },
-                    { k: "reposts" as const, icon: Repeat2 },
-                  ] as const)
-              ).map(({ k, icon: Icon }) => (
+            <div className="grid grid-cols-4 mt-6 border-b border-border">
+              {(
+                [
+                  { k: "all" as const, icon: LayoutList, label: "الخلاصة الشاملة" },
+                  { k: "tweets" as const, icon: MessageSquare, label: "التغريدات" },
+                  { k: "reposts" as const, icon: Repeat2, label: "إعادة النشر" },
+                  { k: "reels" as const, icon: InstagramReelsIcon, label: "الريلز" },
+                ] as const
+              ).map(({ k, icon: Icon, label }) => (
                 <button
                   key={k}
                   type="button"
                   onClick={() => setTab(k)}
                   className={"py-3 flex justify-center " + (tab === k ? "border-b-2 -mb-px" : "")}
                   style={tab === k ? { borderColor: RS_ACCENT } : undefined}
+                  aria-label={label}
                 >
                   <Icon size={20} />
                 </button>
@@ -676,7 +884,9 @@ export function ProfileScreen({
             </div>
 
             {tabPosts.length === 0 ? (
-              <div className="py-16 text-center text-sm text-muted-foreground">لا توجد منشورات في هذا القسم</div>
+              <div className="py-16 text-center text-sm text-muted-foreground">
+                {tab === "all" ? "لا يوجد محتوى في الخلاصة الشاملة" : "لا توجد منشورات في هذا القسم"}
+              </div>
             ) : onOpenProfile && onOpenExistingChat ? (
               <div className="mt-0 w-full border-t border-border/60">
                 {tabPosts.map(p => (
@@ -685,7 +895,6 @@ export function ProfileScreen({
                     post={p}
                     profileOwnerId={userId}
                     gridTab={tab}
-                    showRepostBadge={tab === "reposts"}
                     onOpenProfile={onOpenProfile}
                     onOpenChat={onOpenExistingChat}
                   />
@@ -694,8 +903,8 @@ export function ProfileScreen({
             ) : null}
           </>
         )}
+        </div>
       </div>
-
       {showFollowers && onOpenProfile ? (
         <FollowersFollowingScreen
           userId={userId}
@@ -776,9 +985,9 @@ export function ProfileScreen({
               </button>
             )}
             {hlSlides[hlSlide]?.video ? (
-              <video src={hlSlides[hlSlide].video} controls playsInline className="max-h-[78vh] max-w-full object-contain" />
+              <video src={resolveMediaUrl(hlSlides[hlSlide].video)} controls playsInline className="max-h-[78vh] max-w-full object-contain" />
             ) : (
-              <img src={hlSlides[hlSlide].image} alt="" className="max-h-[78vh] max-w-full object-contain" />
+              <img src={resolveMediaUrl(hlSlides[hlSlide].image)} alt="" className="max-h-[78vh] max-w-full object-contain" />
             )}
           </div>
           <div className="text-center text-white/80 text-xs pb-4">{hlSlide + 1} / {hlSlides.length}</div>
@@ -815,9 +1024,17 @@ export function ProfileScreen({
     </div>
   );
 
-  if (onBack) {
+  if (onBack && dismissPresentation === "overlay") {
     return (
-      <SlideDismissShell onDismiss={onBack} variant="inline" blocked={!!profileFeed} className="flex min-h-0 flex-1 flex-col">
+      <SlideDismissShell
+        onDismiss={onBack}
+        variant="overlay"
+        overlayZIndex={dismissOverlayZIndex}
+        panelSwipeDismiss={false}
+        edgeTopInsetPx={56}
+        blocked={!!profileFeed || !!storyViewerUserId}
+        className="h-full min-h-0"
+      >
         {profileBody}
       </SlideDismissShell>
     );

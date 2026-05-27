@@ -35,12 +35,28 @@ export interface User {
   /** السماح للآخرين بالرد على ستورياتك */
   allowStoryReplies?: boolean;
   isPrivate: boolean;
-  /** توثيق الحساب (يظهر بجانب اليوزر) */
+  /** توثيق الحساب (يظهر بجانب اليوزر) — بعد موافقة الإدارة فقط */
   verified?: boolean;
+  /** اشتراك التوثيق ($4/شهر) */
+  isSubscribed?: boolean;
+  subscriptionPlan?: string;
+  subscriptionExpiresAt?: string;
+  verificationStatus?: "none" | "pending" | "approved" | "rejected";
+  verificationBadgeColor?: "blue" | "pink";
+  verificationRequestedAt?: string;
+  verificationRejectReason?: string;
+  canUseAnimatedAvatar?: boolean;
+  storyMaxDuration?: number;
+  storyExpiryOptions?: number[];
+  postCharacterLimit?: number;
   /** توثيق منشئ التطبيق — شارة مميزة غير التوثيق الأزرق العادي */
   founderVerified?: boolean;
   /** نص الملاحظة الرسمية (تُعرض في إطار خارج البايو) */
   founderOfficialLabel?: string;
+  /** حساب التطبيق الرسمي — شارة بنفسجية مميزة */
+  appOfficialVerified?: boolean;
+  /** نص الإطار الرسمي لحساب التطبيق */
+  appOfficialLabel?: string;
   followers: ID[];
   following: ID[];
   /** إن وُجد، يُعرض كعدد المتابعين في البروفايل (بدل `followers.length` فقط) */
@@ -163,6 +179,8 @@ export interface StoryItem {
   video?: string;
   createdAt: number;
   audience: "all" | "close";
+  /** مدة الظهور بالساعات */
+  expiryHours?: number;
   stickers?: StorySticker[];
   /** من أعجبهم الستوري (قلب) */
   likes?: ID[];
@@ -185,9 +203,15 @@ export interface Post {
   createdAt: number;
 }
 
+export type MessageDeliveryStatus = "sent" | "delivered" | "read" | "failed";
+
 export interface Message {
   id: ID;
   senderId: ID;
+  /** حالة التسليم — رسائلك فقط في الواجهة */
+  status?: MessageDeliveryStatus;
+  /** مرجع الرد في قاعدة البيانات */
+  parentMessageId?: ID;
   type:
     | "text"
     | "image"
@@ -218,10 +242,22 @@ export interface Message {
   forwardedFrom?: { sourceChatLabel: string };
 }
 
+/** بيانات السترك بين مستخدمَين في محادثة خاصة */
+export interface ChatStreak {
+  streakCount: number;
+  lastExchangeAt: number | null;
+  user1LastSentAt: number | null;
+  user2LastSentAt: number | null;
+  streakExpiresAt: number | null;
+  isStreakActive: boolean;
+}
+
 export interface Chat {
   id: ID;
   isGroup: boolean;
   isChannel?: boolean;
+  /** سترك المحادثة الخاصة (Snapchat-style 🔥) */
+  streak?: ChatStreak;
   /** من أنشأ القناة (لعرضها في البروفايل) */
   createdByUserId?: ID;
   name?: string;
@@ -246,6 +282,8 @@ export interface Chat {
   isPublicGroup?: boolean;
   /** طلبات انضمام (مجموعات خاصة بالرابط) */
   joinRequests?: { userId: ID; at: number }[];
+  /** ألقاب ذاتية داخل المجموعة (معرف العضو → الاسم المعروض، حتى 30 حرفاً) */
+  groupNicknames?: Record<ID, string>;
 }
 
 export interface Sticker { id: ID; userId: ID; emoji: string; label: string; }
@@ -280,8 +318,8 @@ export interface MediaNote {
 /** سطح الرئيسية عند الرجوع من البروفايل (ورقة التعليقات على الكرت vs صفحة المنشور الكاملة) */
 export type ProfileHomeSurface = "feed_comments_sheet" | "post_detail_full";
 
-/** تبويب شبكة البروفايل (منشورات / ريبوستات / إعجابات / محفوظات) */
-export type ProfileGridTab = "posts" | "reposts" | "likes";
+/** تبويبات البروفايل: خلاصة شاملة / تغريدات / إعادة نشر / ريلز */
+export type ProfileGridTab = "all" | "tweets" | "reposts" | "reels";
 
 /** عند فتح بروفايل من تعليق: الرجوع يعيد المنشور أو نافذة التعليقات */
 export interface ProfileReturnContext {
@@ -302,6 +340,8 @@ export interface AppState {
   users: User[];
   posts: Post[];
   stories: StoryItem[];
+  /** قصص المستخدم بعد انتهاء ٢٤ ساعة (أرشيف القصص) */
+  storyArchive?: StoryItem[];
   chats: Chat[];
   stickers: Sticker[];
   notifications: Notification[];

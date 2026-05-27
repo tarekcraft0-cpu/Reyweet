@@ -55,7 +55,7 @@ export function SearchScreen({
   const [remoteHits, setRemoteHits] = useState<User[]>([]);
   const [recentUsers, setRecentUsers] = useState<User[]>([]);
   const [searching, setSearching] = useState(false);
-  const [openPost, setOpenPost] = useState<Post | null>(null);
+  const [openPostId, setOpenPostId] = useState<string | null>(null);
   const [focusCommentsOnOpen, setFocusCommentsOnOpen] = useState(false);
   const [sharePost, setSharePost] = useState<Post | null>(null);
   const searchSeqRef = useRef(0);
@@ -177,27 +177,23 @@ export function SearchScreen({
     const p = state.posts.find(x => x.id === d.postId);
     if (!p) return;
     setFocusCommentsOnOpen(!!d.commentsOpen);
-    setOpenPost(p);
+    setOpenPostId(d.postId);
   }, [restoreFromProfileContext, state.posts, onConsumedRestoreFromProfile]);
 
-  if (openPost) {
-    return (
-      <PostDetail
-        post={openPost}
-        onBack={() => {
-          setOpenPost(null);
-          setFocusCommentsOnOpen(false);
-        }}
-        onOpenProfile={onOpenProfile}
-        onOpenChat={onOpenChat}
-        profileReturnTab="search"
-        initialFocusComments={focusCommentsOnOpen}
-      />
-    );
-  }
+  const openPost = useMemo(
+    () => (openPostId ? state.posts.find(p => p.id === openPostId) ?? null : null),
+    [openPostId, state.posts],
+  );
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col bg-white pb-24 dark:bg-background">
+    <div className="relative flex min-h-0 flex-1 flex-col bg-background">
+    <div
+      className={
+        "flex min-h-full flex-1 flex-col bg-white dark:bg-background " +
+        (openPost ? "pointer-events-none select-none" : "")
+      }
+      aria-hidden={openPost ? true : undefined}
+    >
       <h1 className="px-4 pt-3 text-[2rem] font-bold text-zinc-900 dark:text-zinc-50 tracking-tight">Explore</h1>
       <div className="px-4 mt-3">
         <div className="flex items-center gap-2 rounded-full bg-zinc-100 dark:bg-zinc-800/80 px-4 py-3">
@@ -294,6 +290,21 @@ export function SearchScreen({
       )}
 
       {sharePost && <ShareSheet target={{ kind: "post", post: sharePost }} onClose={() => setSharePost(null)} />}
+    </div>
+
+    {openPost && (
+      <PostDetail
+        post={openPost}
+        onBack={() => {
+          setOpenPostId(null);
+          setFocusCommentsOnOpen(false);
+        }}
+        onOpenProfile={onOpenProfile}
+        onOpenChat={onOpenChat}
+        profileReturnTab="search"
+        initialFocusComments={focusCommentsOnOpen}
+      />
+    )}
     </div>
   );
 }

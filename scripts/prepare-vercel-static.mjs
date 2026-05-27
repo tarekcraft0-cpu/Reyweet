@@ -5,6 +5,12 @@
 import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
+import {
+  PRODUCTION_VPS_API,
+  readPublicApiUrl,
+  shouldUseVercelApiProxy,
+  VERCEL_SITE_URL,
+} from "./lib/read-public-api-url.mjs";
 
 const root = process.cwd();
 const landingDir = path.join(root, "landing");
@@ -15,11 +21,22 @@ if (!existsSync(landingDir)) {
   process.exit(1);
 }
 
-if (existsSync(outDir)) {
-  rmSync(outDir, { recursive: true, force: true });
+function resolveSiteOutDir(dir) {
+  if (!existsSync(dir)) return dir;
+  try {
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 300 });
+    return dir;
+  } catch (e) {
+    if (e?.code !== "EBUSY" && e?.code !== "EPERM") throw e;
+    const alt = `${dir}-${Date.now()}`;
+    console.warn(`prepare-vercel-static: ${path.basename(dir)} مقفول — استخدام ${path.basename(alt)}`);
+    return alt;
+  }
 }
 
-cpSync(landingDir, outDir, {
+const siteOutDir = resolveSiteOutDir(outDir);
+
+cpSync(landingDir, siteOutDir, {
   recursive: true,
   filter: (src) => {
     const n = src.split(path.sep).join("/");
@@ -28,7 +45,7 @@ cpSync(landingDir, outDir, {
 });
 
 const manifestScript = path.join(landingDir, "scripts", "write-manifest.mjs");
-const manifestRun = spawnSync(process.execPath, [manifestScript, outDir], {
+const manifestRun = spawnSync(process.execPath, [manifestScript, siteOutDir], {
   stdio: "inherit",
   env: process.env,
 });
@@ -52,7 +69,6 @@ function readRepoApiUrl() {
   return "";
 }
 
-/** عند ضبط RETWEET_PUBLIC_API_URL أو VITE_API_URL يُربط تسجيل الدخول بقاعدة البيانات المحلية */
 const sameOrigin = process.env.RETWEET_SAME_ORIGIN === "1";
 const envApi = sameOrigin
   ? ""
@@ -60,12 +76,32 @@ const envApi = sameOrigin
       .trim()
       .replace(/\/$/, "");
 const repoApi = readRepoApiUrl();
-const apiUrl = repoApi || envApi;
+const backendFromEnv = (process.env.RETWEET_BACKEND_URL || "").trim().replace(/\/$/, "");
+const backendApiUrl = (
+  backendFromEnv ||
+  readPublicApiUrl() ||
+  PRODUCTION_VPS_API ||
+  envApi ||
+  repoApi
+).replace(/\/$/, "");
+const vercelSite = (process.env.RETWEET_VERCEL_SITE_URL || VERCEL_SITE_URL).replace(/\/$/, "");
+/** HTTPS على Vercel — بروكسي API/WebSocket إلى VPS HTTP (افتراضي) */
+const useApiProxy = shouldUseVercelApiProxy(backendApiUrl);
+const apiUrl = useApiProxy ? vercelSite : backendApiUrl;
+const siteUrl = useApiProxy ? vercelSite : backendApiUrl;
+const webAppUrl = `${vercelSite}/app/`;
+
 if (repoApi && envApi && repoApi !== envApi) {
   console.warn(
     `prepare-vercel-static: repo API (${repoApi}) overrides stale Vercel env (${envApi})`,
   );
 }
+if (useApiProxy) {
+  console.log(
+    `prepare-vercel-static: بروكسي API ${backendApiUrl} ← ${vercelSite} (بدون تحويل إلى IP)`,
+  );
+}
+
 const supabaseUrl = apiUrl
   ? ""
   : (process.env.VITE_SUPABASE_URL || "").trim().replace(/\/$/, "");
@@ -78,7 +114,7 @@ const supabaseAnonKey = apiUrl
       ""
     ).trim();
 
-const configPath = path.join(outDir, "public/app-config.json");
+const configPath = path.join(siteOutDir, "public/app-config.json");
 let baseConfig = { apiUrl: "", appPath: "/app/", supabaseUrl: "", supabaseAnonKey: "" };
 if (existsSync(configPath)) {
   try {
@@ -87,18 +123,14 @@ if (existsSync(configPath)) {
     /* ignore */
   }
 }
-const vercelSite = (process.env.RETWEET_VERCEL_SITE_URL || "https://reyweet.vercel.app").replace(
-  /\/$/,
-  "",
-);
-
 writeFileSync(
   configPath,
   JSON.stringify(
     {
       ...baseConfig,
       apiUrl: apiUrl || baseConfig.apiUrl || "",
-      siteUrl: vercelSite,
+      siteUrl,
+      webAppUrl,
       supabaseUrl: supabaseUrl || baseConfig.supabaseUrl || "",
       supabaseAnonKey: supabaseAnonKey || baseConfig.supabaseAnonKey || "",
       appPath: "/app/",
@@ -109,32 +141,28 @@ writeFileSync(
   "utf8",
 );
 
+const appDest = path.join(outDir, "app");
 const appCandidates = ["spa-dist", "dist/client", "dist", ".output/public"];
 for (const rel of appCandidates) {
   const src = path.join(root, rel);
   if (!existsSync(path.join(src, "index.html"))) continue;
-  const dest = path.join(outDir, "app");
-  cpSync(src, dest, { recursive: true });
+  if (existsSync(appDest)) rmSync(appDest, { recursive: true, force: true });
+  cpSync(src, appDest, { recursive: true });
   console.log(`prepare-vercel-static: copied web app from ${rel} → app/`);
   const favSrc = path.join(root, "public/favicon.png");
-  const favDest = path.join(dest, "favicon.png");
+  const favDest = path.join(appDest, "favicon.png");
   if (existsSync(favSrc)) cpSync(favSrc, favDest);
   const webAuth = {
     apiUrl: apiUrl || baseConfig.apiUrl || "",
     supabaseUrl: supabaseUrl || baseConfig.supabaseUrl || "",
     supabaseAnonKey: supabaseAnonKey || baseConfig.supabaseAnonKey || "",
   };
-  const webAuthFull = {
-    apiUrl: apiUrl || webAuth.apiUrl || "",
-    supabaseUrl: webAuth.supabaseUrl || "",
-    supabaseAnonKey: webAuth.supabaseAnonKey || "",
-  };
   writeFileSync(
-    path.join(dest, "web-auth-config.json"),
-    JSON.stringify(webAuthFull, null, 2) + "\n",
+    path.join(appDest, "web-auth-config.json"),
+    JSON.stringify(webAuth, null, 2) + "\n",
     "utf8",
   );
-  const indexPath = path.join(dest, "index.html");
+  const indexPath = path.join(appDest, "index.html");
   if (apiUrl && existsSync(indexPath)) {
     let html = readFileSync(indexPath, "utf8");
     const tag = `<script>window.__RETWEET_API_URL__=${JSON.stringify(apiUrl)};</script>`;
@@ -150,14 +178,29 @@ if (apiUrl) {
   console.log(`prepare-vercel-static: API العام للواجهة → ${apiUrl}`);
 }
 
-/** لا نستخدم vercel.json الخاص بـ landing (outputDirectory: ".") — يكسر مسار /app/ */
+const apiProxyRewrites = useApiProxy
+  ? [
+      { source: "/health", destination: `${backendApiUrl}/health` },
+      { source: "/auth/:path*", destination: `${backendApiUrl}/auth/:path*` },
+      { source: "/v1/:path*", destination: `${backendApiUrl}/v1/:path*` },
+      { source: "/media/:path*", destination: "/api/media-stream?path=:path*" },
+      { source: "/socket.io", destination: `${backendApiUrl}/socket.io` },
+      { source: "/socket.io/:path*", destination: `${backendApiUrl}/socket.io/:path*` },
+      { source: "/app", destination: "/app/index.html" },
+      { source: "/app/", destination: "/app/index.html" },
+      { source: "/app/:path((?!.*\\.).*)", destination: "/app/index.html" },
+    ]
+  : [
+      { source: "/app", destination: "/app/index.html" },
+      { source: "/app/", destination: "/app/index.html" },
+      { source: "/app/:path((?!.*\\.).*)", destination: "/app/index.html" },
+    ];
+
 const siteVercel = {
   $schema: "https://openapi.vercel.sh/vercel.json",
   framework: null,
   rewrites: [
-    { source: "/app", destination: "/app/index.html" },
-    { source: "/app/", destination: "/app/index.html" },
-    { source: "/app/:path((?!.*\\.).*)", destination: "/app/index.html" },
+    ...apiProxyRewrites,
     { source: "/downloads/:path*", destination: "/public/downloads/:path*" },
   ],
   headers: [
@@ -195,5 +238,22 @@ const siteVercel = {
     },
   ],
 };
-writeFileSync(path.join(outDir, "vercel.json"), JSON.stringify(siteVercel, null, 2) + "\n", "utf8");
-console.log("prepare-vercel-static: ✓ _vercel_site/vercel.json (rewrites لـ /app/)");
+
+if (useApiProxy) {
+  siteVercel.functions = {
+    "api/media-stream.js": { maxDuration: 60 },
+  };
+  const apiRoot = path.join(root, "api");
+  const apiDestSite = path.join(siteOutDir, "api");
+  if (existsSync(apiRoot)) {
+    if (existsSync(apiDestSite)) rmSync(apiDestSite, { recursive: true, force: true });
+    cpSync(apiRoot, apiDestSite, { recursive: true });
+    console.log("prepare-vercel-static: نسخ api/ → _vercel_site/api (بروكسي الفيديو)");
+  }
+}
+
+writeFileSync(path.join(siteOutDir, "vercel.json"), JSON.stringify(siteVercel, null, 2) + "\n", "utf8");
+if (siteOutDir !== outDir) {
+  writeFileSync(path.join(root, ".vercel-deploy-dir.txt"), siteOutDir + "\n", "utf8");
+}
+console.log(`prepare-vercel-static: ✓ ${path.basename(siteOutDir)}/vercel.json (SPA على Vercel + بروكسي API)`);

@@ -7,18 +7,20 @@ const SWIPE_THRESHOLD = 48;
 const SWIPE_MAX = 76;
 
 /**
- * محاذاة فيزيائية ثابتة (لا تعتمد على RTL الصفحة):
- * - رسائلي: يمين الشاشة، بدون أفاتار
- * - الطرف الآخر: يسار الشاشة، مع أفاتار
+ * محاذاة فيزيائية ثابتة (لا تتأثر بلغة الواجهة):
+ * - رسائلي: يمين الشاشة
+ * - الطرف الآخر: يسار الشاشة + أفاتار يسار الفقاعة
  */
 export function ChatSwipeMessageRow({
   message,
   mine,
   avatarName,
   avatarSrc,
+  reservePeerAvatarSlot,
   isQuran,
   children,
   onSwipeReply,
+  onAvatarClick,
   onPointerDown,
   onPointerMove,
   onPointerUp,
@@ -26,20 +28,24 @@ export function ChatSwipeMessageRow({
   mine: boolean;
   avatarName?: string;
   avatarSrc?: string;
+  reservePeerAvatarSlot?: boolean;
   isQuran: boolean;
   children: React.ReactNode;
   onSwipeReply: () => void;
+  onAvatarClick?: () => void;
   onPointerDown: (e: React.PointerEvent, m: Message) => void;
   onPointerMove: (e: React.PointerEvent) => void;
   onPointerUp: (e: React.PointerEvent, m: Message) => void;
   message: Message;
 }) {
   const [dragX, setDragX] = useState(0);
+  const dragXRef = useRef(0);
   const swipeRef = useRef<{ x: number; y: number; active: boolean } | null>(null);
 
   const handleDown = useCallback(
     (e: React.PointerEvent) => {
       swipeRef.current = { x: e.clientX, y: e.clientY, active: true };
+      dragXRef.current = 0;
       setDragX(0);
       onPointerDown(e, message);
     },
@@ -53,9 +59,22 @@ export function ChatSwipeMessageRow({
         const dx = e.clientX - s.x;
         const dy = e.clientY - s.y;
         if (dx > 6 && Math.abs(dx) > Math.abs(dy) * 1.1) {
-          setDragX(Math.min(SWIPE_MAX, dx * 0.92));
-        } else if (Math.abs(dy) > 18) {
+          if (dragXRef.current === 0) {
+            try {
+              (e.currentTarget as Element).setPointerCapture(e.pointerId);
+            } catch {
+              /* ignore */
+            }
+          }
+          e.stopPropagation();
+          const next = Math.min(SWIPE_MAX, dx * 0.92);
+          dragXRef.current = next;
+          setDragX(next);
+          return;
+        }
+        if (Math.abs(dy) > 18) {
           swipeRef.current = { ...s, active: false };
+          dragXRef.current = 0;
           setDragX(0);
         }
       }
@@ -66,13 +85,19 @@ export function ChatSwipeMessageRow({
 
   const handleUp = useCallback(
     (e: React.PointerEvent) => {
-      const dx = dragX;
+      const dx = dragXRef.current;
       if (dx >= SWIPE_THRESHOLD) onSwipeReply();
+      dragXRef.current = 0;
       setDragX(0);
       swipeRef.current = null;
+      try {
+        (e.currentTarget as Element).releasePointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
       onPointerUp(e, message);
     },
-    [dragX, message, onPointerUp, onSwipeReply],
+    [message, onPointerUp, onSwipeReply],
   );
 
   const replyOpacity = Math.min(1, dragX / SWIPE_THRESHOLD);
@@ -80,7 +105,7 @@ export function ChatSwipeMessageRow({
   return (
     <div
       data-mine={mine ? "1" : "0"}
-      className="chat-msg-row w-full touch-manipulation"
+      className="chat-msg-row w-full touch-manipulation select-none"
       style={{
         direction: "ltr",
         display: "flex",
@@ -94,9 +119,29 @@ export function ChatSwipeMessageRow({
         onPointerUp={handleUp}
         onPointerCancel={handleUp}
         onContextMenu={e => e.preventDefault()}
+        onSelectStart={e => e.preventDefault()}
+        onDragStart={e => e.preventDefault()}
       >
-        {!mine && avatarName != null && avatarName !== "" && (
-          <Avatar name={avatarName} src={avatarSrc} size={28} className="mb-0.5 shrink-0 self-end" />
+        {!mine && reservePeerAvatarSlot && (
+          <span className="mb-0.5 h-7 w-7 shrink-0 self-end" aria-hidden />
+        )}
+        {!mine && !reservePeerAvatarSlot && avatarName != null && avatarName !== "" && (
+          onAvatarClick ? (
+            <button
+              type="button"
+              className="mb-0.5 shrink-0 self-end touch-manipulation rounded-full transition active:scale-95 hover:opacity-90"
+              aria-label={`@${avatarName}`}
+              onPointerDown={e => e.stopPropagation()}
+              onClick={e => {
+                e.stopPropagation();
+                onAvatarClick();
+              }}
+            >
+              <Avatar name={avatarName} src={avatarSrc} size={28} />
+            </button>
+          ) : (
+            <Avatar name={avatarName} src={avatarSrc} size={28} className="mb-0.5 shrink-0 self-end" />
+          )
         )}
         <div className="relative w-max max-w-full">
           {dragX > 6 && (

@@ -1,18 +1,35 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, startTransition } from "react";
-import { createPortal } from "react-dom";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  startTransition,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
+import { flushSync } from "react-dom";
 import { useLockPageScroll } from "@/hooks/useLockPageScroll";
 import {
   useSlideDismissBack,
   APP_COLUMN_MAX_PX,
   SLIDE_DISMISS_MS,
   SLIDE_DISMISS_EASE,
-  chatStackLayerTransforms,
+  chatStackOpenFromLeftTransforms,
   isDocumentRtl,
 } from "@/hooks/useSlideDismissBack";
+import { chatStackDismissTransforms, isChatDismissSwipeDelta } from "@/lib/edgeSwipeDismiss";
+import {
+  DEFAULT_LAYOUT_WIDTH_PX,
+  readSafeStackCapPx,
+  readSafeViewportWidth,
+} from "@/lib/safeLayoutDimensions";
+import { ChatStackRoomGestureShell } from "../chat/ChatStackRoomGestureShell";
 import { useVisualViewportLayout } from "@/hooks/useVisualViewportLayout";
-import { SlideDismissBackButton, SlideDismissShell } from "../SlideDismissShell";
+import { SlideDismissBackButton, SlideDismissContext, SlideDismissShell } from "../SlideDismissShell";
 import { QURAN_CHANNEL_ID, isProfileNoteActive, useApp, userById, visibleChatMessages } from "@/lib/store";
 import { notifyGuestActionBlocked } from "@/lib/guestBlocked";
+import { chatNoSelectCaptureHandlers } from "@/lib/chatNoTextSelection";
 import { useT } from "@/lib/i18n";
 import { Avatar } from "../Avatar";
 import { ChatDmIntroCard } from "../chat/ChatDmIntroCard";
@@ -27,15 +44,34 @@ import { SharedPostPreview, SharedStoryChatPreview } from "../SharedPostPreview"
 import { SharedGroupInvitePreview } from "../chat/SharedGroupInvitePreview";
 import { ChatNoteReplyBubble, ChatStoryReplyStack } from "../chat/ChatReplyContext";
 import { ChatSwipeMessageRow } from "../chat/ChatSwipeMessageRow";
+import { ChatMessageStatus, ChatListOutgoingStatusIcon } from "../chat/ChatMessageStatus";
+import { flushTypingStop, scheduleTypingPulse } from "@/lib/chatRealtimeExtras";
+import { compressChatMediaFile } from "@/lib/chatMediaCompress";
 import { isOwnChatMessage, resolveActiveViewerId } from "@/lib/chatViewer";
-import { chatMergeKey, findChatByOpenId, openChatIdFor } from "@/lib/dmChatId";
+import { messageContent, normalizeChatRecord } from "@/lib/chatNormalize";
+import { chatMergeKey, dmChatId, findChatByOpenId, openChatIdFor } from "@/lib/dmChatId";
 import { ChatInlineReplyQuote } from "../chat/ChatInlineReplyQuote";
 import { ChatComposerReplyBar } from "../chat/ChatComposerReplyBar";
 import { GroupDetailsScreen } from "../chat/GroupDetailsScreen";
 import { EXTENDED_REACTION_EMOJIS } from "@/lib/reactionEmojiGrid";
 import { isStickerImageContent, isStickerVideoContent } from "@/lib/stickerUtils";
-import { renderMentionHashtagNodes } from "@/lib/renderMentionHashtagText";
-import { Mic, Image as ImageIcon, Sticker, Phone, Video, MicOff, MonitorUp, X, Plus, ArrowRight, Settings as SettingsIcon, Check, Camera, Search, Square, Megaphone, Users, LogOut, AtSign, MoreVertical, ChevronLeft, Reply, Forward, Copy, Trash2, Flag, MoreHorizontal, ChevronRight, Pin, Play, Pause, Star, Bell, BellOff, Mail, Send, PenLine, SquarePen } from "lucide-react";
+import { renderMentionHashtagNodes, createMentionRenderer } from "@/lib/renderMentionHashtagText";
+import { MentionComposerField } from "../MentionComposerField";
+import { Mic, Image as ImageIcon, Sticker, Phone, Video, MicOff, MonitorUp, X, Plus, ArrowRight, Settings as SettingsIcon, Check, Camera, Search, Square, Megaphone, Users, LogOut, AtSign, MoreVertical, ChevronLeft, Reply, Forward, Copy, Trash2, Flag, MoreHorizontal, ChevronRight, Pin, Play, Pause, Star, Bell, BellOff, Mail, Send, PenLine, SquarePen, MessageCirclePlus, Smile } from "lucide-react";
+import { PoolGame } from "../games/PoolGame";
+import {
+  buildChatTimelineRows,
+  chatBubbleAlignClasses,
+  chatDmIsRtl,
+  chatDmLayoutDir,
+  chatDmPeerBubbleStyle,
+  chatReactionAlignClasses,
+  formatChatBubbleTime,
+  getChatDmPalette,
+  isIgDmChat,
+  CHAT_DM_ACCENT,
+} from "@/lib/chatDmTheme";
+import type { ChatDmPalette } from "@/lib/chatDmTheme";
 import { RSocialAvatar } from "../rsocial/RSocialAvatar";
 import { displayNameFromUsername, formatChatListTime, RS_BADGE } from "@/lib/rsocialUi";
 import type { AppState, Chat, Message, User } from "@/lib/types";
@@ -61,9 +97,18 @@ const PREVIEW_MAX = 96;
 const APP_TOP_BAR_BELOW_SAFE_AREA = "3.5rem";
 /** يقرأها App.tsx (header/nav) أثناء سحب الرجوع من المحادثة — 0…1 */
 export const CHAT_DISMISS_PULL_CSS_VAR = "--retweet-chat-dismiss-pull";
-/** 0…1 — تقدّم فتح المحادثة (قائمة تزيح لليمين + الخيط من اليسار) */
+/** ارتفاع شريط الرأس — يُستثنى من حافة السحب اليمنى حتى لا تغطي زر الرجوع */
+const CHAT_ROOM_HEADER_EDGE_INSET_PX = 72;
+/** 0…1 — تقدّم فتح المحادثة (سحب يسار→يمين: القائمة لليمين + الغرفة من اليسار) */
 export const CHAT_STACK_PROGRESS_VAR = "--retweet-chat-stack-progress";
-const CHAT_STACK_OPEN_FRACTION = 0.34;
+const CHAT_STACK_OPEN_FRACTION = 0.5;
+/** دخول المحادثة بالنقر — انزلاق مكدس تفاعلي (نفس إحساس السحب) */
+const CHAT_TAP_OPEN_MS = 280;
+const CHAT_TAP_OPEN_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
+/** ارتفاع سطر شريط الكتابة (text-[15px] + leading-5) */
+const CHAT_COMPOSER_LINE_PX = 20;
+const CHAT_COMPOSER_MAX_LINES = 5;
+const CHAT_COMPOSER_MAX_HEIGHT_PX = CHAT_COMPOSER_LINE_PX * CHAT_COMPOSER_MAX_LINES;
 
 function viewOnceOpenedForViewer(m: Message, viewerId: string) {
   return !!(m.viewOnce && (m.viewOnceOpenedByUserIds || []).includes(viewerId));
@@ -116,25 +161,63 @@ const CHAT_BUBBLE_MAX_W = "max-w-[min(75vw,280px)]";
 /** عمود فقاعة نص/محتوى — عرض جوهري (يلتف حول النص) وليس full-width */
 const CHAT_TEXT_BUBBLE_COL = "w-max " + CHAT_BUBBLE_MAX_W + " shrink-0";
 
-/** فقاعة نصية في الشات؛ رسائلي: زجاج شفاف بنفس منطق رسالة الفويس (بدون أزرق) */
-function chatBubbleFilledClass(mine: boolean, isQuran: boolean): string {
-  const base = "inline-block w-max max-w-full rounded-2xl px-3 py-2 text-sm align-top ";
+type ChatVisualTheme = "default" | "blue" | "pink";
+
+/** لون رسائلك وأزرار الكاميرا — يتبع ثيم المحادثة (افتراضي = أزرق دايركت مثل زر الإرسال) */
+function chatMineAccentClass(theme: ChatVisualTheme, isQuran: boolean, igDm = false): string {
+  if (igDm) return "bg-[#1B72E8] text-white";
+  if (isQuran) return "bg-emerald-700 text-white";
+  if (theme === "blue") return "bg-blue-600 text-white dark:bg-blue-500";
+  if (theme === "pink") return "bg-pink-600 text-white dark:bg-pink-500";
+  return "bg-[#0084ff] text-white";
+}
+
+/** فقاعة نصية — متناسقة مع ثيم المحادثة */
+function chatBubbleFilledClass(
+  mine: boolean,
+  isQuran: boolean,
+  theme: ChatVisualTheme = "default",
+  igDm = false,
+  dmPalette?: ChatDmPalette,
+): string {
+  // Liquid Glass bubble — rounded corners أكبر
+  const base =
+    "inline-block w-max max-w-full rounded-[20px] text-[15px] leading-[1.4] align-top select-text " +
+    (igDm ? "px-[15px] py-[10px] " : "px-[14px] py-[10px] ");
   if (isQuran) {
     return (
       base +
       (mine
-        ? "bg-emerald-950/88 text-emerald-50 shadow-sm ring-1 ring-emerald-800/35"
-        : "bg-zinc-800 text-zinc-100 shadow-sm ring-1 ring-zinc-600/40")
+        ? "bg-emerald-950/90 text-emerald-50 shadow-sm"
+        : "bg-zinc-800 text-zinc-100 shadow-sm")
+    );
+  }
+  if (igDm) {
+    if (mine) {
+      // رسالتي: أبيض ناصع — Liquid Glass
+      return (
+        base +
+        "bg-white text-black shadow-[0_2px_16px_rgba(0,0,0,0.18)]"
+      );
+    }
+    // رسالة الآخر: Glass شفاف
+    return (
+      base +
+      "shadow-[0_1px_8px_rgba(0,0,0,0.12)]"
     );
   }
   if (mine) {
-    return (
-      base +
-      "border-0 shadow-none ring-0 outline-none backdrop-blur-xl backdrop-saturate-150 " +
-      "bg-black/[0.052] text-zinc-900 dark:bg-white/[0.065] dark:text-zinc-50"
-    );
+    return base + chatMineAccentClass(theme, false) + " shadow-sm";
   }
-  return base + "bg-zinc-100 text-zinc-900 shadow-sm ring-1 ring-black/[0.07] dark:bg-zinc-800 dark:text-zinc-100 dark:ring-white/12";
+  return base + "bg-zinc-200 text-zinc-900 dark:bg-[#262626] dark:text-zinc-100";
+}
+
+function chatCameraButtonClass(theme: ChatVisualTheme, isQuran: boolean): string {
+  return (
+    "flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full shadow-sm transition active:scale-[0.93] " +
+    chatMineAccentClass(theme, isQuran) +
+    (theme === "default" && !isQuran ? " hover:bg-[#0073e6]" : "")
+  );
 }
 
 function formatMsgContextTime(createdAt: number, lang: string) {
@@ -192,9 +275,14 @@ function ForwardChatSheet({
     if (!meFull || meFull.id !== me.id) return filtered;
     const pins = meFull.pinnedChatIds || [];
     const lastActivityAt = (c: Chat) => {
-      const vis = visibleChatMessages(c, me.id);
-      const last = vis[vis.length - 1];
-      return last?.createdAt ?? 0;
+      const hidden = c.hiddenMessageIdsByUser?.[me.id];
+      const msgs = c.messages;
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        const m = msgs[i];
+        if (hidden?.includes(m.id)) continue;
+        return m.createdAt;
+      }
+      return 0;
     };
     return [...filtered].sort((a, b) => {
       const ia = pins.indexOf(a.id);
@@ -257,15 +345,16 @@ function ForwardChatSheet({
 }
 
 function truncateText(s: string, max = PREVIEW_MAX) {
-  const t = s.trim();
+  const t = (s ?? "").trim();
   if (t.length <= max) return t;
   return t.slice(0, max) + "…";
 }
 
 function lastMessagePreview(last: Message | undefined): string {
   if (!last) return "—";
-  if (last.type === "text") return truncateText(last.content);
-  if (last.type === "sticker") return (isStickerImageContent(last.content) || isStickerVideoContent(last.content)) ? "ملصق" : truncateText(last.content, 24);
+  const c = messageContent(last);
+  if (last.type === "text") return truncateText(c);
+  if (last.type === "sticker") return (isStickerImageContent(c) || isStickerVideoContent(c)) ? "ملصق" : truncateText(c, 24);
   if (last.type === "image") return last.viewOnce ? "صورة (مرة واحدة)" : "صورة";
   if (last.type === "drawing") return last.viewOnce ? "رسم (مرة واحدة)" : "رسم";
   if (last.type === "video") return last.viewOnce ? "فيديو (مرة واحدة)" : "فيديو";
@@ -277,8 +366,9 @@ function lastMessagePreview(last: Message | undefined): string {
 
 /** نفس معاينة الرسالة المختصرة داخل ChatRoom (مثبتات، رد، حافظة، نسخ…) */
 function chatReplyPreview(m: Message): string {
-  if (m.type === "text") return truncateText(m.content, 100);
-  if (m.type === "sticker") return (isStickerImageContent(m.content) || isStickerVideoContent(m.content)) ? "[ملصق]" : truncateText(m.content, 40);
+  const c = messageContent(m);
+  if (m.type === "text") return truncateText(c, 100);
+  if (m.type === "sticker") return (isStickerImageContent(c) || isStickerVideoContent(c)) ? "[ملصق]" : truncateText(c, 40);
   if (m.type === "image" && m.viewOnce) return "[صورة مرة واحدة]";
   if (m.type === "video" && m.viewOnce) return "[فيديو مرة واحدة]";
   if (m.type === "drawing" && m.viewOnce) return "[رسم مرة واحدة]";
@@ -706,8 +796,9 @@ function InlineVoicePlayer({
 }
 
 function peekMessageLine(m: Message): string {
-  if (m.type === "text") return truncateText(m.content, 220);
-  if (m.type === "sticker") return truncateText(m.content, 48);
+  const c = messageContent(m);
+  if (m.type === "text") return truncateText(c, 220);
+  if (m.type === "sticker") return truncateText(c, 48);
   if (m.type === "image") return m.viewOnce ? "صورة · مرة واحدة" : "صورة";
   if (m.type === "drawing") return m.viewOnce ? "رسم · مرة واحدة" : "رسم";
   if (m.type === "video") return m.viewOnce ? "فيديو · مرة واحدة" : "فيديو";
@@ -729,17 +820,18 @@ function ChatPeekMessageBody({
   viewerId: string;
   bubbleMine: boolean;
 }) {
+  const mc = messageContent(m);
   if (m.type === "text")
     return (
-      <span className="block max-w-full whitespace-pre-wrap break-words text-sm leading-relaxed text-start [overflow-wrap:anywhere] [word-break:break-word]">
-        {m.content}
+      <span className="block max-w-full select-none whitespace-pre-wrap break-words text-sm leading-relaxed text-start [overflow-wrap:anywhere] [word-break:break-word]">
+        {mc}
       </span>
     );
   if (m.type === "shared_post") {
     return (
       <div className="max-w-[min(96vw,360px)]">
         {m.shareText && <p className="mb-1 line-clamp-2 text-[11px] opacity-80">{m.shareText}</p>}
-        <SharedPostPreview postId={m.content} variant="chat" />
+        <SharedPostPreview postId={mc} variant="chat" />
       </div>
     );
   }
@@ -747,15 +839,15 @@ function ChatPeekMessageBody({
     return (
       <div className="max-w-[min(96vw,360px)]">
         {m.shareText && <p className="mb-1 line-clamp-2 text-[11px] opacity-80">{m.shareText}</p>}
-        <SharedStoryChatPreview storyId={m.content} />
+        <SharedStoryChatPreview storyId={mc} />
       </div>
     );
   }
   if (m.type === "voice") {
-    if (m.content.startsWith("data:") || isRenderableMediaUrl(m.content)) {
+    if (mc.startsWith("data:") || isRenderableMediaUrl(mc)) {
       return (
         <InlineVoicePlayer
-          src={m.content.startsWith("data:") ? m.content : resolveMediaUrl(m.content)}
+          src={mc.startsWith("data:") ? mc : resolveMediaUrl(mc)}
           durationSec={m.durationSec}
           isQuran={isQuran}
           mine={bubbleMine}
@@ -765,14 +857,14 @@ function ChatPeekMessageBody({
     return (
       <span className="inline-flex items-center gap-2">
         <span className="text-xl">🎙️</span>
-        <span className="break-all text-xs opacity-80">{m.content}</span>
+        <span className="break-all text-xs opacity-80">{mc}</span>
       </span>
     );
   }
-  if (m.type === "sticker" && isStickerImageContent(m.content)) {
+  if (m.type === "sticker" && isStickerImageContent(mc)) {
     return (
       <img
-        src={m.content}
+        src={mc}
         alt=""
         className={CHAT_STICKER_MEDIA_CLASS}
         loading="lazy"
@@ -780,10 +872,10 @@ function ChatPeekMessageBody({
       />
     );
   }
-  if (m.type === "sticker" && isStickerVideoContent(m.content)) {
+  if (m.type === "sticker" && isStickerVideoContent(mc)) {
     return (
       <video
-        src={m.content}
+        src={mc}
         className={CHAT_STICKER_MEDIA_CLASS}
         autoPlay
         loop
@@ -797,7 +889,7 @@ function ChatPeekMessageBody({
   if (m.type === "sticker") {
     return (
       <span className="inline-flex items-center justify-center min-w-[44px] min-h-[44px] px-2 rounded-[22px] bg-secondary/40 text-2xl leading-none select-none">
-        {m.content}
+        {mc}
       </span>
     );
   }
@@ -813,7 +905,7 @@ function ChatPeekMessageBody({
     );
   }
   if (m.type === "drawing") {
-    const p = parseDrawingPayload(m.content);
+    const p = parseDrawingPayload(mc);
     return p ? (
       <div className={CHAT_IMAGE_WRAP + " overflow-hidden"}>
         <ChatDrawingCanvas payload={p} className="w-full" maxHeightPx={240} forChatDisplay />
@@ -848,7 +940,7 @@ function ChatPeekMessageBody({
     return (
       <div className={CHAT_IMAGE_WRAP}>
         <img
-          src={m.content}
+          src={mc}
           alt=""
           className={CHAT_IMAGE_EL}
           loading="lazy"
@@ -861,7 +953,7 @@ function ChatPeekMessageBody({
     return (
       <div className={CHAT_VIDEO_WRAP}>
         <video
-          src={m.content}
+          src={mc}
           controls
           playsInline
           className={`${CHAT_VIDEO_EL} rounded-none`}
@@ -884,18 +976,50 @@ const PEEK_OPEN_CHAT_FRACTION = 0.5;
 const PEEK_CAMERA_TAP_FRACTION = 0.2;
 
 /** سحب من جهة أيقونة الكاميرا نحو عرض المحادثة (معاينة مثل السناب) */
+/** بادج السترك 🔥 — يظهر في قائمة المحادثات ورأس الغرفة */
+function StreakBadge({ streak, compact = false }: { streak: import("@/lib/types").ChatStreak; compact?: boolean }) {
+  const now = Date.now();
+  const soonToExpire =
+    streak.streakExpiresAt != null && streak.streakExpiresAt - now < 6 * 60 * 60 * 1000;
+  return (
+    <span
+      className={
+        "inline-flex shrink-0 items-center gap-px rounded-full font-bold tabular-nums " +
+        (compact
+          ? "px-1 py-px text-[11px] leading-none"
+          : "px-1.5 py-0.5 text-[11px] leading-none")
+      }
+      style={{ backgroundColor: "rgba(255,59,48,0.12)", color: "#FF3B30" }}
+      title={soonToExpire ? "السترك على وشك الانتهاء! أرسل رسالة قبل 6 ساعات" : `سترك: ${streak.streakCount} يوم`}
+    >
+      {soonToExpire ? "⏳" : ""}🔥{streak.streakCount > 99 ? "99+" : streak.streakCount}
+    </span>
+  );
+}
+
 function ChatListRowWithPeek({
   chat: c,
   me,
   onOpenChat,
+  onOpenProfile,
   onStackDrag,
   onStackDragEnd,
+  onStackChromeHide,
+  onStackChromeShow,
+  onRowOpenCommit,
 }: {
   chat: Chat;
   me: { id: string };
   onOpenChat: (id: string) => void;
+  onOpenProfile: (id: string) => void;
   onStackDrag?: (chatId: string, px: number) => void;
   onStackDragEnd?: (chatId: string, px: number) => void;
+  /** بداية سحب فتح المحادثة — إخفاء الشريط السفلي فوراً */
+  onStackChromeHide?: () => void;
+  /** إلغاء سحب قصير — إعادة الشريط السفلي */
+  onStackChromeShow?: () => void;
+  /** مسار واحد لإنهاء السحب/النقر — يمنع فتح مكرر */
+  onRowOpenCommit?: (chatId: string, px: number, mode: "tap" | "swipe-end") => void;
 }) {
   const { state, openOrCreateChat, sendMessage, toggleChatListPin, toggleChatMute, deleteChat, isGuest, joinChannel } = useApp();
   const t = useT();
@@ -942,6 +1066,41 @@ function ChatListRowWithPeek({
   const cameraBtnRef = useRef<HTMLButtonElement | null>(null);
   const rowOpenDownRef = useRef<{ x0: number; y0: number; pointerId: number } | null>(null);
   const rowOpenArmedRef = useRef(false);
+  const rowOpenLastPullRef = useRef(0);
+  const rowPointerEndedRef = useRef(false);
+  const rowShellRef = useRef<HTMLDivElement>(null);
+  const chatRowOpenId = openChatIdFor(c, me.id);
+
+  const setRowPressedVisual = (pressed: boolean) => {
+    const el = rowShellRef.current;
+    if (!el) return;
+    el.classList.toggle("bg-secondary/60", pressed);
+  };
+
+  useEffect(() => {
+    if (peekPx > 0) onStackChromeHide?.();
+    else onStackChromeShow?.();
+  }, [peekPx, onStackChromeHide, onStackChromeShow]);
+
+  const scrollPeekToBottom = useCallback(() => {
+    const el = peekScrollRef.current;
+    if (!el) return;
+    const top = Math.max(0, el.scrollHeight - el.clientHeight);
+    try {
+      el.scrollTo({ top, behavior: "instant" });
+    } catch {
+      el.scrollTop = top;
+    }
+  }, []);
+
+  useLayoutEffect(() => {
+    if (peekPx <= 0) return;
+    scrollPeekToBottom();
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(() => scrollPeekToBottom());
+    });
+    return () => cancelAnimationFrame(id);
+  }, [peekPx, peekMessages.length, scrollPeekToBottom]);
 
   const clearLongPressTimerOnly = useCallback(() => {
     if (longPressTimerRef.current) {
@@ -1056,12 +1215,15 @@ function ChatListRowWithPeek({
     if (!el) return;
     const prev = prevPeekPxForScrollRef.current;
     prevPeekPxForScrollRef.current = peekPx;
+    const scrollPeekToEnd = () => {
+      el.scrollTop = el.scrollHeight;
+    };
     if (prev <= 0 && peekPx > 0) {
-      requestAnimationFrame(() => {
-        el.scrollTop = el.scrollHeight;
-      });
+      requestAnimationFrame(scrollPeekToEnd);
+      return;
     }
-  }, [peekPx]);
+    scrollPeekToEnd();
+  }, [peekPx, peekMessages.length]);
 
   /** iOS/WebKit: يمنع الحاوية الأب من سرقة الإيماءة أثناء الضغط على الكاميرا والسحب */
   useLayoutEffect(() => {
@@ -1113,9 +1275,10 @@ function ChatListRowWithPeek({
         peekRef.current = 0;
         setPeekPx(0);
         if (cap > 0 && px >= cap * PEEK_OPEN_CHAT_FRACTION) {
-          queueMicrotask(() => {
-            onOpenChat(openChatIdFor(c, me.id));
-          });
+          if (onRowOpenCommit) onRowOpenCommit(chatRowOpenId, px, "swipe-end");
+          else onStackDragEnd?.(chatRowOpenId, px);
+        } else if (cap > 0 && px > 0) {
+          onStackDragEnd?.(chatRowOpenId, 0);
         } else if (cap > 0 && px < cap * PEEK_CAMERA_TAP_FRACTION && down && Date.now() - down.downAt < 520) {
           cameraInputRef.current?.click();
         }
@@ -1128,7 +1291,7 @@ function ChatListRowWithPeek({
         cameraInputRef.current?.click();
       }
     },
-    [clearCameraLongPress, onOpenChat, c.id],
+    [clearCameraLongPress, onRowOpenCommit, onStackDragEnd, chatRowOpenId],
   );
 
   const onCameraPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
@@ -1157,12 +1320,24 @@ function ChatListRowWithPeek({
   const rowOpenPullPx = (e: React.PointerEvent) => {
     const down = rowOpenDownRef.current;
     if (!down) return 0;
-    const rtl = typeof document !== "undefined" && document.documentElement.getAttribute("dir") === "rtl";
-    return rtl ? e.clientX - down.x0 : down.x0 - e.clientX;
+    /** سحب يسار→يمين فقط — يتبع الإصبع */
+    return Math.max(0, e.clientX - down.x0);
   };
 
+  const openChatFromRowTap = useCallback(() => {
+    try {
+      (navigator as Navigator & { vibrate?: (n: number | number[]) => boolean }).vibrate?.(10);
+    } catch {
+      /* ignore */
+    }
+    if (onRowOpenCommit) onRowOpenCommit(chatRowOpenId, 0, "tap");
+    else onOpenChat(chatRowOpenId);
+  }, [onOpenChat, onRowOpenCommit, chatRowOpenId]);
+
   const onRowOpenPointerDown = (e: React.PointerEvent) => {
-    if (e.button !== 0 || c.isGroup || c.isChannel) return;
+    if (e.button !== 0) return;
+    rowPointerEndedRef.current = false;
+    setRowPressedVisual(true);
     rowOpenDownRef.current = { x0: e.clientX, y0: e.clientY, pointerId: e.pointerId };
     rowOpenArmedRef.current = false;
     try {
@@ -1175,54 +1350,126 @@ function ChatListRowWithPeek({
   const onRowOpenPointerMove = (e: React.PointerEvent) => {
     const down = rowOpenDownRef.current;
     if (!down || down.pointerId !== e.pointerId) return;
-    const pull = rowOpenPullPx(e);
     const dx = e.clientX - down.x0;
     const dy = e.clientY - down.y0;
+    if (dx < -6) {
+      if (rowOpenArmedRef.current) {
+        rowOpenArmedRef.current = false;
+        rowOpenDownRef.current = null;
+        setRowPressedVisual(false);
+        if (onRowOpenCommit) onRowOpenCommit(chatRowOpenId, rowOpenLastPullRef.current, "swipe-end");
+        else onStackDragEnd?.(chatRowOpenId, rowOpenLastPullRef.current);
+      }
+      return;
+    }
+    const pull = rowOpenPullPx(e);
     if (!rowOpenArmedRef.current) {
-      if (pull < 8) return;
+      if (pull < 8 || dx <= 0) return;
       if (Math.abs(dy) > Math.abs(dx) * 1.2 && dy * dy > 64) {
         rowOpenDownRef.current = null;
+        setRowPressedVisual(false);
         return;
       }
       rowOpenArmedRef.current = true;
+      setRowPressedVisual(false);
+      onStackChromeHide?.();
+      try {
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+    }
+    if (rowOpenArmedRef.current) {
+      if (Math.abs(dy) > Math.abs(dx) * 1.2 && dy * dy > 64) {
+        rowOpenArmedRef.current = false;
+        rowOpenDownRef.current = null;
+        setRowPressedVisual(false);
+        const abortPx = rowOpenLastPullRef.current;
+        if (onRowOpenCommit) onRowOpenCommit(chatRowOpenId, abortPx, "swipe-end");
+        else onStackDragEnd?.(chatRowOpenId, abortPx);
+        return;
+      }
+      if (e.cancelable) e.preventDefault();
     }
     const cap = capWidth();
     const px = Math.max(0, Math.min(cap, pull));
+    rowOpenLastPullRef.current = px;
     onStackDrag?.(openChatIdFor(c, me.id), px);
   };
 
   const onRowOpenPointerEnd = (e: React.PointerEvent) => {
+    if (rowPointerEndedRef.current) return;
+    rowPointerEndedRef.current = true;
+    window.setTimeout(() => {
+      rowPointerEndedRef.current = false;
+    }, 420);
+
     const down = rowOpenDownRef.current;
     rowOpenDownRef.current = null;
     const armed = rowOpenArmedRef.current;
     rowOpenArmedRef.current = false;
+    setRowPressedVisual(false);
     try {
       (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
     } catch {
       /* ignore */
     }
-    if (!armed || !down) return;
-    const cap = capWidth();
-    const pull = rowOpenPullPx(e);
-    const px = Math.max(0, Math.min(cap, pull));
-    onStackDragEnd?.(openChatIdFor(c, me.id), px);
+    if (armed && down) {
+      const dx = e.clientX - down.x0;
+      const dy = e.clientY - down.y0;
+      const cap = capWidth();
+      const pull = rowOpenPullPx(e);
+      const px = Math.max(0, Math.min(cap, pull));
+      const mode = Math.hypot(dx, dy) < 14 ? "tap" : "swipe-end";
+      if (onRowOpenCommit) {
+        onRowOpenCommit(chatRowOpenId, px, mode);
+      } else if (mode === "tap") {
+        openChatFromRowTap();
+      } else {
+        onStackDragEnd?.(chatRowOpenId, px);
+      }
+      return;
+    }
+    if (!down || down.pointerId !== e.pointerId) return;
+    const dx = e.clientX - down.x0;
+    const dy = e.clientY - down.y0;
+    if (Math.hypot(dx, dy) < 14) {
+      if (onRowOpenCommit) onRowOpenCommit(chatRowOpenId, 0, "tap");
+      else openChatFromRowTap();
+    } else {
+      onStackChromeShow?.();
+    }
+  };
+
+  const onRowOpenPointerCancel = () => {
+    const wasArmed = rowOpenArmedRef.current;
+    rowOpenDownRef.current = null;
+    rowOpenArmedRef.current = false;
+    rowOpenLastPullRef.current = 0;
+    setRowPressedVisual(false);
+    if (wasArmed) {
+      if (onRowOpenCommit) onRowOpenCommit(chatRowOpenId, 0, "swipe-end");
+      else onStackDragEnd?.(chatRowOpenId, 0);
+    } else {
+      onStackChromeShow?.();
+    }
   };
 
   const onCameraPointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
     const down = cameraDownRef.current;
     if (!down) return;
-    const rtl = typeof document !== "undefined" && document.documentElement.getAttribute("dir") === "rtl";
-    /** سحب لفتح المعاينة: ثابت من أول إحداثية x للضغط على الكاميرا */
-    const openPull = rtl ? e.clientX - down.x0 : down.x0 - e.clientX;
+    const dxCam = e.clientX - down.x0;
+    const openPull = Math.max(0, dxCam);
 
     if (!cameraPeekArmedRef.current) {
+      if (dxCam < -6) return;
       if (openPull >= CAMERA_EARLY_PULL_PX) {
         clearCameraLongPress();
         cameraPeekArmedRef.current = true;
         const cap = capWidth();
         const v = Math.max(0, Math.min(cap, openPull));
         peekRef.current = v;
-        setPeekPx(v);
+        onStackDrag?.(chatRowOpenId, v);
         try {
           navigator.vibrate?.(6);
         } catch {
@@ -1239,7 +1486,7 @@ function ChatListRowWithPeek({
     const cap = capWidth();
     const v = Math.max(0, Math.min(cap, openPull));
     peekRef.current = v;
-    setPeekPx(v);
+    onStackDrag?.(chatRowOpenId, v);
   };
 
   return (
@@ -1252,12 +1499,12 @@ function ChatListRowWithPeek({
         className="hidden"
         onChange={onCameraFile}
       />
-      {peekPx > 0 && (
+      {false && peekPx > 0 && (
         <>
-          <div className="fixed inset-0 z-[75] flex justify-center pointer-events-none" aria-hidden>
+          <div className="fixed inset-0 z-[239] flex justify-center pointer-events-none" aria-hidden>
             <div className="h-full w-full max-w-md bg-black/25" />
           </div>
-          <div className="fixed inset-0 z-[76] flex justify-center pointer-events-none">
+          <div className="fixed inset-0 z-[240] flex justify-center pointer-events-none">
             <div className="relative h-full w-full max-w-md pointer-events-auto">
               <div
                 className="absolute top-0 bottom-0 end-0 flex min-h-0 flex-row justify-end overflow-hidden border-s border-border bg-background shadow-xl [transform:translateZ(0)]"
@@ -1358,7 +1605,7 @@ function ChatListRowWithPeek({
                     </div>
                   </div>
 
-                  {(c.pinnedMessageIds || []).some(mid => c.messages.some(x => x.id === mid)) && (
+                  {(c.pinnedMessageIds || []).some(mid => (c.messages || []).some(x => x.id === mid)) && (
                     <div
                       className={
                         "no-scrollbar flex shrink-0 flex-nowrap gap-2 overflow-x-scroll overflow-y-hidden overscroll-x-none border-b px-2 py-1.5 touch-pan-x snap-x snap-mandatory " +
@@ -1366,9 +1613,9 @@ function ChatListRowWithPeek({
                       }
                     >
                       {(c.pinnedMessageIds || [])
-                        .filter(mid => c.messages.some(x => x.id === mid))
+                        .filter(mid => (c.messages || []).some(x => x.id === mid))
                         .map(mid => {
-                          const pm = c.messages.find(x => x.id === mid)!;
+                          const pm = (c.messages || []).find(x => x.id === mid)!;
                           return (
                             <button
                               key={mid}
@@ -1408,7 +1655,7 @@ function ChatListRowWithPeek({
                   <div
                     ref={peekScrollRef}
                     className={
-                      "chat-scroll-pane relative z-10 min-h-0 flex-1 overflow-y-auto overscroll-none " +
+                      "chat-scroll-pane no-scrollbar relative z-10 min-h-0 flex-1 overflow-y-auto overscroll-none " +
                       (isQuranPeek ? "bg-zinc-950" : "bg-background")
                     }
                     style={{
@@ -1419,7 +1666,7 @@ function ChatListRowWithPeek({
                   >
                     <div
                       className={
-                        "flex w-full flex-col gap-2 px-3 pt-3 pb-28 " +
+                        "flex w-full flex-col gap-2 px-3 pt-3 pb-2 " +
                         (peekMessages.length === 0 ? "min-h-[calc(100%+min(12rem,36vh))] " : "min-h-full ") +
                         (isQuranPeek ? "bg-zinc-950" : "")
                       }
@@ -1438,13 +1685,14 @@ function ChatListRowWithPeek({
                     {peekMessages.map(m => {
                       const mine = isOwnChatMessage(m.senderId, state, { directMessagePeerId: otherId });
                       const sender = userById(state, m.senderId);
-                      const bareSticker = m.type === "sticker" && (isStickerImageContent(m.content) || isStickerVideoContent(m.content));
-                      const bareImage = m.type === "image" && m.content.startsWith("data:") && !m.viewOnce;
-                      const bareDrawing = m.type === "drawing" && !!parseDrawingPayload(m.content) && !m.viewOnce;
+                      const mcPeek = messageContent(m);
+                      const bareSticker = m.type === "sticker" && (isStickerImageContent(mcPeek) || isStickerVideoContent(mcPeek));
+                      const bareImage = m.type === "image" && mcPeek.startsWith("data:") && !m.viewOnce;
+                      const bareDrawing = m.type === "drawing" && !!parseDrawingPayload(mcPeek) && !m.viewOnce;
                       const bareVideo = m.type === "video" && !m.viewOnce;
                       const bareVoiceBubble = m.type === "voice";
                       const bareViewOnceMedia =
-                        ((m.type === "image" || m.type === "video") && !!m.viewOnce && m.content.startsWith("data:")) ||
+                        ((m.type === "image" || m.type === "video") && !!m.viewOnce && mcPeek.startsWith("data:")) ||
                         (m.type === "drawing" && !!m.viewOnce);
                       const colClass = bareVideo
                         ? CHAT_INLINE_MEDIA_COL
@@ -1458,7 +1706,7 @@ function ChatListRowWithPeek({
                       const bubbleClass =
                         bareSticker || bareImage || bareVideo || bareViewOnceMedia || bareVoiceBubble || bareDrawing
                           ? "text-sm p-0 m-0 bg-transparent shadow-none ring-0 border-0 overflow-visible outline-none"
-                          : chatBubbleFilledClass(mine, isQuranPeek);
+                          : chatBubbleFilledClass(mine, isQuranPeek, peekTheme);
                       return (
                         <ChatSwipeMessageRow
                           key={m.id}
@@ -1467,6 +1715,9 @@ function ChatListRowWithPeek({
                           isQuran={isQuranPeek}
                           avatarName={!mine ? sender?.username || "?" : undefined}
                           avatarSrc={!mine ? sender?.avatar : undefined}
+                          onAvatarClick={
+                            !mine ? () => startTransition(() => onOpenProfile(m.senderId)) : undefined
+                          }
                           onSwipeReply={() => {}}
                           onPointerDown={() => {}}
                           onPointerMove={() => {}}
@@ -1579,123 +1830,209 @@ function ChatListRowWithPeek({
         </>
       )}
 
-      <div className="relative overflow-visible border-b border-zinc-100 dark:border-zinc-800">
-        <div className="relative z-20 flex items-center gap-3 bg-white dark:bg-background px-4 py-3 active:bg-zinc-50">
+      {/* ══════════════════════════════════════════════════
+       * CONVERSATION ROW — Snapchat-inspired, RTL-aware
+       *
+       * The parent chatInbox has dir="rtl" for Arabic.
+       * Each row is a flex-row. In RTL, flex items render
+       * from the physical RIGHT side to the LEFT:
+       *
+       *  DOM order:   [Avatar]  [Content]  [Camera+Meta]
+       *  RTL display: RIGHT     CENTER     LEFT
+       *  LTR display: LEFT      CENTER     RIGHT
+       *
+       * ══════════════════════════════════════════════════ */}
+      {/* ── Instagram-scale conversation row ── */}
+      <div className="relative overflow-visible">
+        <div
+          ref={rowShellRef}
+          className="relative z-20 flex flex-row items-center bg-background transition-[background-color] duration-100"
+          style={{ minHeight: "84px" }}
+          title={t("chatRowLongPressHint")}
+          onPointerDown={onAvatarPointerDown}
+          onPointerMove={onAvatarPointerMove}
+          onPointerUp={onAvatarPointerEnd}
+          onPointerLeave={onAvatarPointerEnd}
+          onPointerCancel={onAvatarPointerEnd}
+        >
+          {/* [A] Avatar — FAR RIGHT in RTL / FAR LEFT in LTR */}
           <div
-            className="flex min-w-0 flex-1 items-center gap-3 touch-manipulation"
-            title={t("chatRowLongPressHint")}
-            onPointerDown={onAvatarPointerDown}
-            onPointerMove={onAvatarPointerMove}
-            onPointerUp={onAvatarPointerEnd}
-            onPointerLeave={onAvatarPointerEnd}
-            onPointerCancel={onAvatarPointerEnd}
+            className="relative shrink-0 flex items-center justify-center touch-manipulation"
+            style={{ paddingInlineStart: "14px", paddingInlineEnd: "12px", paddingTop: "10px", paddingBottom: "10px" }}
+            onClick={e => {
+              e.stopPropagation();
+              if (skipAvatarClickRef.current) return;
+              openChatFromRowTap();
+            }}
           >
-            <div
-              className="relative flex shrink-0 cursor-pointer items-center justify-center rounded-s-2xl p-2 ps-3 outline-none"
-              onClick={e => {
-                e.stopPropagation();
-                if (skipAvatarClickRef.current) return;
-                onOpenChat(openChatIdFor(c, me.id));
-              }}
-            >
-              <RSocialAvatar name={displayName} src={avatarSrc} size={52} />
-              {hasUnread && <span className="absolute -top-0.5 -end-0.5 w-2.5 h-2.5 rounded-full bg-sky-500 ring-2 ring-background" aria-hidden />}
-            </div>
-            <button
-              type="button"
-              onClick={() => {
-                if (skipAvatarClickRef.current) return;
-                onOpenChat(openChatIdFor(c, me.id));
-              }}
-              className="flex min-w-0 flex-1 flex-col justify-center gap-0.5 py-3 pe-3 text-start outline-none touch-manipulation"
-              style={{ touchAction: "pan-y" }}
-              onPointerDown={onRowOpenPointerDown}
-              onPointerMove={onRowOpenPointerMove}
-              onPointerUp={onRowOpenPointerEnd}
-              onPointerCancel={onRowOpenPointerEnd}
-            >
-              <div className="font-semibold text-sm flex min-w-0 items-center gap-1">
-                {c.isChannel && <Megaphone size={12} className="shrink-0" aria-hidden />}
-                <span className="min-w-0 truncate">
-                  {c.isGroup || c.isChannel ? c.name || "Group" : displayNameFromUsername(other?.username || displayName)}
-                </span>
-                {isListPinned && (
-                  <span className="inline-flex shrink-0" title={t("pinnedBar")}>
-                    <Pin size={12} className="fill-amber-400/35 text-amber-600 dark:text-amber-400" aria-hidden />
-                  </span>
-                )}
-              </div>
-              <div className={"text-sm truncate " + (hasUnread ? "text-zinc-700 font-medium" : "text-zinc-500")}>
-                {last ? lastMessagePreview(last) : "No messages yet"}
-              </div>
-            </button>
-          </div>
-          <div className="flex shrink-0 flex-col items-end gap-1.5 ps-1">
-            {last && <span className="text-xs text-zinc-400 tabular-nums">{formatChatListTime(last.createdAt)}</span>}
+            <RSocialAvatar name={displayName} src={avatarSrc} size={58} />
             {hasUnread && (
-              <span className="flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 text-[11px] font-bold text-white" style={{ backgroundColor: RS_BADGE }}>1</span>
+              <span
+                className="absolute rounded-full bg-[#0095F6] ring-2 ring-background"
+                style={{ width: 13, height: 13, bottom: 9, insetInlineStart: 9 }}
+                aria-hidden
+              />
             )}
           </div>
+
+          {/* [B] Name + preview — Center, swipe-to-open */}
           <button
             type="button"
-            ref={cameraBtnRef}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-zinc-500 hover:bg-zinc-100 active:bg-zinc-200 dark:text-zinc-300 dark:hover:bg-zinc-800 dark:active:bg-zinc-700"
-            aria-label="التقاط صورة: اضغط سريعاً. أو اسحب من الكاميرا نحو الشاشة / اضغط مطوّلاً ثم اسحب لمعاينة المحادثة"
-            style={{ touchAction: "none" }}
-            onPointerDown={onCameraPointerDown}
-            onPointerMove={onCameraPointerMove}
-            onPointerUp={finishCameraGesture}
-            onPointerCancel={finishCameraGesture}
+            className="flex min-w-0 flex-1 touch-none flex-col justify-center gap-[5px] text-start outline-none select-none"
+            style={{ paddingTop: "16px", paddingBottom: "16px", paddingInlineEnd: "8px", touchAction: "none" }}
+            onClick={() => { if (skipAvatarClickRef.current) return; openChatFromRowTap(); }}
+            onPointerDown={onRowOpenPointerDown}
+            onPointerMove={onRowOpenPointerMove}
+            onPointerUp={onRowOpenPointerEnd}
+            onPointerCancel={onRowOpenPointerCancel}
+            onPointerLeave={onRowOpenPointerCancel}
           >
-            <Camera size={20} />
+            <div className="flex min-w-0 items-center gap-1.5">
+              {c.isChannel && <Megaphone size={12} className="shrink-0 text-muted-foreground" aria-hidden />}
+              <span className={"min-w-0 truncate text-[16px] leading-tight " + (hasUnread ? "font-bold text-foreground" : "font-semibold text-foreground")}>
+                {c.isGroup || c.isChannel ? c.name || "Group" : displayNameFromUsername(other?.username || displayName)}
+              </span>
+              {isListPinned && <Pin size={11} className="shrink-0 text-amber-500" aria-hidden />}
+              {isMuted && <BellOff size={11} className="shrink-0 text-muted-foreground/60" aria-hidden />}
+              {!c.isGroup && !c.isChannel && (c.streak?.streakCount ?? 0) > 0 && (
+                <StreakBadge streak={c.streak!} />
+              )}
+            </div>
+            <div className="flex min-w-0 items-center gap-1.5">
+              {last?.senderId === me.id && (
+                <ChatListOutgoingStatusIcon status={last.status} />
+              )}
+              <span
+                className={"min-w-0 flex-1 truncate text-[14px] leading-snug select-text " + (hasUnread ? "font-medium text-foreground/80" : "text-muted-foreground")}
+                onPointerDown={e => e.stopPropagation()}
+              >
+                {last ? lastMessagePreview(last) : (state.language === "ar" ? "لا رسائل بعد" : "No messages yet")}
+              </span>
+            </div>
           </button>
+
+          {/* [C] Time + Camera — FAR LEFT in RTL / FAR RIGHT in LTR (horizontal, same row) */}
+          <div
+            className="flex shrink-0 flex-row items-center gap-1"
+            style={{ paddingInlineEnd: "10px", paddingInlineStart: "4px" }}
+          >
+            {last && (
+              <span className="shrink-0 text-[12px] tabular-nums leading-none text-muted-foreground/70 whitespace-nowrap">
+                {formatChatListTime(last.createdAt)}
+              </span>
+            )}
+            <button
+              type="button"
+              ref={cameraBtnRef}
+              aria-label={state.language === "ar" ? "كاميرا" : "Camera"}
+              className="flex h-10 w-10 shrink-0 touch-manipulation items-center justify-center rounded-full text-muted-foreground transition active:scale-90 hover:bg-secondary"
+              style={{ touchAction: "none" }}
+              onPointerDown={e => { e.stopPropagation(); onCameraPointerDown(e); }}
+              onPointerMove={onCameraPointerMove}
+              onPointerUp={finishCameraGesture}
+              onPointerCancel={finishCameraGesture}
+            >
+              <Camera size={21} strokeWidth={1.75} />
+            </button>
+          </div>
         </div>
+
+        {/* Separator starting after avatar */}
+        <div
+          className="absolute bottom-0 end-0 h-px bg-border/60"
+          style={{ insetInlineStart: "84px" }}
+          aria-hidden
+        />
       </div>
 
+      {/* ── LONG-PRESS CONTEXT MENU ─────────────────────── */}
       {rowMenu && (
         <>
-          <div className="fixed inset-0 z-[84] bg-black/25" aria-hidden onClick={() => setRowMenu(null)} />
+          {/* Backdrop */}
+          <div
+            className="fixed inset-0 z-[84] bg-black/15"
+            aria-hidden
+            onClick={() => setRowMenu(null)}
+          />
+
+          {/* Menu panel */}
           <div
             data-chat-row-menu
             role="menu"
-            className="fixed z-[85] w-[min(calc(100vw-24px),240px)] overflow-hidden rounded-2xl border border-border bg-card py-1 text-sm shadow-2xl"
-            style={{ left: rowMenu.x, top: rowMenu.y, transform: "translate(-50%, 4px)" }}
+            dir={state.language === "ar" ? "rtl" : "ltr"}
+            className="fixed z-[85] w-[min(calc(100vw-32px),252px)] overflow-hidden rounded-2xl bg-card shadow-2xl ring-1 ring-black/8 dark:ring-white/8"
+            style={{ left: rowMenu.x, top: rowMenu.y, transform: "translate(-50%, 8px)" }}
           >
+            {/* Identity header */}
+            <div className="flex items-center gap-2.5 border-b border-zinc-100 dark:border-zinc-800 px-3.5 py-2.5">
+              <RSocialAvatar name={displayName} src={avatarSrc} size={30} />
+              <span className="min-w-0 flex-1 truncate text-[13.5px] font-semibold text-foreground">{displayName}</span>
+            </div>
+
+            {/* Menu items */}
+            {[
+              {
+                icon: hasUnread ? <Check size={15} className="text-blue-500" /> : <Check size={15} className="text-blue-500" />,
+                label: state.language === "ar" ? (hasUnread ? "تعيين كمقروء" : "تعيين كغير مقروء") : (hasUnread ? "Mark as read" : "Mark as unread"),
+                onClick: () => { setRowMenu(null); },
+              },
+              {
+                icon: isListPinned
+                  ? <Pin size={15} className="text-amber-500" />
+                  : <Pin size={15} className="text-zinc-500" />,
+                label: isListPinned ? t("chatListUnpin") : t("chatListPin"),
+                onClick: () => { toggleChatListPin(c.id); setRowMenu(null); },
+              },
+              {
+                icon: isMuted
+                  ? <Bell size={15} className="text-zinc-500" />
+                  : <BellOff size={15} className="text-zinc-500" />,
+                label: isMuted ? t("chatMenuUnmute") : t("chatMenuMute"),
+                onClick: () => { toggleChatMute(c.id); setRowMenu(null); },
+              },
+              ...(!c.isGroup && !c.isChannel
+                ? [{
+                    icon: <PenLine size={15} className="text-orange-500" />,
+                    label: state.language === "ar" ? "فتح بالوضع المخفي" : "Open in vanish mode",
+                    onClick: () => {
+                      setRowMenu(null);
+                      openChatFromRowTap();
+                      window.setTimeout(() => {
+                        window.dispatchEvent(
+                          new CustomEvent("retweet-chat-vanish-arm", {
+                            detail: { chatId: chatRowOpenId },
+                          }),
+                        );
+                      }, 320);
+                    },
+                  }]
+                : []),
+            ].map((item, i) => (
+              <button
+                key={i}
+                type="button"
+                role="menuitem"
+                className="flex w-full items-center gap-3 px-3.5 py-3 text-start text-[14px] hover:bg-secondary active:bg-secondary/80"
+                onClick={item.onClick}
+              >
+                <span className="shrink-0">{item.icon}</span>
+                <span className="font-medium text-foreground">{item.label}</span>
+              </button>
+            ))}
+
+            {/* Delete — separated by a divider */}
+            <div className="h-px bg-zinc-100 dark:bg-zinc-800" />
             <button
               type="button"
               role="menuitem"
-              className="flex w-full items-center gap-3 px-4 py-2.5 text-start hover:bg-secondary"
-              onClick={() => {
-                toggleChatListPin(c.id);
-                setRowMenu(null);
-              }}
-            >
-              <Pin size={18} className={"shrink-0 " + (isListPinned ? "text-amber-500 fill-current" : "opacity-90")} />
-              {isListPinned ? t("chatListUnpin") : t("chatListPin")}
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              className="flex w-full items-center gap-3 px-4 py-2.5 text-start hover:bg-secondary"
-              onClick={() => {
-                toggleChatMute(c.id);
-                setRowMenu(null);
-              }}
-            >
-              {isMuted ? <Bell size={18} className="shrink-0 opacity-90" /> : <BellOff size={18} className="shrink-0 opacity-90" />}
-              {isMuted ? t("chatMenuUnmute") : t("chatMenuMute")}
-            </button>
-            <button
-              type="button"
-              role="menuitem"
-              className="flex w-full items-center gap-3 px-4 py-2.5 text-start font-medium text-destructive hover:bg-destructive/10"
+              className="flex w-full items-center gap-3 px-3.5 py-3 text-start text-[14px] text-destructive hover:bg-destructive/8 active:bg-destructive/15"
               onClick={() => {
                 if (typeof window !== "undefined" && window.confirm(t("chatMenuDeleteConfirm"))) deleteChat(c.id);
                 setRowMenu(null);
               }}
             >
-              <Trash2 size={18} className="shrink-0" />
-              {t("chatMenuDelete")}
+              <Trash2 size={15} className="shrink-0" />
+              <span className="font-medium">{state.language === "ar" ? "مسح المحادثة" : "Delete conversation"}</span>
             </button>
           </div>
         </>
@@ -1742,6 +2079,8 @@ interface Props {
   onThreadOpen?: (open: boolean) => void;
   /** إخفاء الشريط السفلي (قائمة إنشاء مجموعة/قناة، إلخ) */
   onHideBottomNav?: (hidden: boolean) => void;
+  /** 0…1 أثناء سحب الخروج — 1=مخفي مثل المحادثة مفتوحة، 0=ظاهر بالكامل */
+  onExitNavRevealProgress?: (progress: number | null) => void;
   onActiveChatChange?: (chatId: string | null) => void;
   /** إن وُجد: الرجوع من خيط المحادثة يعيد هذا البروفايل (مثلاً بعد «مراسلة» من الملف) */
   resumeThreadToProfileUserId?: string | null;
@@ -1754,6 +2093,7 @@ export function ChatScreen({
   onConsumedInitialChat,
   onThreadOpen,
   onHideBottomNav,
+  onExitNavRevealProgress,
   onActiveChatChange,
   resumeThreadToProfileUserId,
   onExitThreadToProfile,
@@ -1763,39 +2103,541 @@ export function ChatScreen({
   const [profileNoteReplyDraft, setProfileNoteReplyDraft] = useState("");
   const t = useT();
   const me = currentUser!;
-  const [openChat, setOpenChat] = useState<string | null>(null);
+  const [openChat, setOpenChat] = useState<string | null>(() => initialChatId ?? null);
   const [showRequests, setShowRequests] = useState(false);
   const [showCreate, setShowCreate] = useState<null | "menu" | "group" | "channel">(null);
   const [showCall, setShowCall] = useState<string | null>(null);
   const [callVideo, setCallVideo] = useState(false);
   const [incomingCall, setIncomingCall] = useState<IncomingCallRing | null>(null);
   const [showGroupSettings, setShowGroupSettings] = useState(false);
-  const [stackDrag, setStackDrag] = useState<{ chatId: string; px: number } | null>(null);
-  const [stackProgress, setStackProgress] = useState(1);
+  const [stackDragChatId, setStackDragChatId] = useState<string | null>(null);
+  const [stackProgress, setStackProgress] = useState(() => (initialChatId ? 1 : 0));
   const [stackSpring, setStackSpring] = useState(false);
-  const stackCapRef = useRef(
-    typeof window !== "undefined" ? Math.min(window.innerWidth, APP_COLUMN_MAX_PX) : APP_COLUMN_MAX_PX,
-  );
-  const stackProgressRef = useRef(0);
+  const stackCapRef = useRef(DEFAULT_LAYOUT_WIDTH_PX);
+  const stackProgressRef = useRef(initialChatId ? 1 : 0);
   const stackOpenDragRef = useRef(false);
+  const stackInboxRef = useRef<HTMLDivElement>(null);
+  const stackRoomRef = useRef<HTMLDivElement>(null);
+  const stackTapTransitionRef = useRef(false);
   const [stackClosingId, setStackClosingId] = useState<string | null>(null);
+  const stackChromeHiddenRef = useRef(false);
+  /** سحب فتح المحادثة — يُخفي الشريط السفلي فوراً (حالة React وليس ref فقط) */
+  const [stackChromeHidden, setStackChromeHidden] = useState(false);
+  /** سحب خروج من الغرفة المفتوحة — يمنع useLayoutEffect من إعادة ضبط المكدس أثناء الإصبع */
+  const stackRoomDismissRef = useRef(false);
+  const stackCloseTimerRef = useRef<number | null>(null);
+  /** فتح من القائمة (يمين) مقابل إغلاق الغرفة (يسار) — يحدد اتجاه transform */
+  const stackRoomDriveRef = useRef<"idle" | "open" | "close">("idle");
+  /** قفل أثناء انزلاق فتح/إغلاق المكدس — يمنع سحباً ثانياً أو ارتداداً */
+  const stackTransitionLockRef = useRef(false);
+  const stackSwipeOpeningRef = useRef(false);
+  const stackNavTargetRef = useRef<string | null>(null);
+  const stackNavGenerationRef = useRef(0);
+  /** يمنع commit مزدوج من pointerend / tap / سحب لأي صف */
+  const stackListGestureCommitRef = useRef(false);
+  const pendingStackDragRef = useRef<{ chatId: string; px: number } | null>(null);
+  const stackDragFrameRef = useRef(0);
+  const beginCloseChatThreadRef = useRef<(closingKey: string) => void>(() => {});
+  const [stackGestureLocked, setStackGestureLocked] = useState(false);
+  /** سحب خروج نشط — يبقي إيماءة الإغلاق مفعّلة حتى لو انخفض stackProgress أثناء السحب */
+  const [stackRoomDismissDragging, setStackRoomDismissDragging] = useState(false);
 
-  const syncStackProgress = useCallback((p: number) => {
-    const clamped = Math.max(0, Math.min(1, p));
-    stackProgressRef.current = clamped;
-    setStackProgress(clamped);
-    if (typeof document !== "undefined") {
-      document.documentElement.style.setProperty(CHAT_STACK_PROGRESS_VAR, String(clamped));
+  const applyStackLayerTransforms = useCallback((p: number, animate: boolean) => {
+    try {
+      let cap = stackCapRef.current;
+      if (!(cap > 0)) {
+        cap = readSafeStackCapPx(stackInboxRef.current, stackCapRef);
+        stackCapRef.current = cap;
+      }
+      const { inbox, room } = chatStackOpenFromLeftTransforms(p, cap);
+      const transition = animate
+        ? `transform ${stackTapTransitionRef.current ? CHAT_TAP_OPEN_MS : SLIDE_DISMISS_MS}ms ${stackTapTransitionRef.current ? CHAT_TAP_OPEN_EASE : SLIDE_DISMISS_EASE}`
+        : "none";
+      if (stackInboxRef.current) {
+        stackInboxRef.current.style.transform = inbox;
+        stackInboxRef.current.style.transition = transition;
+      }
+      if (stackRoomRef.current) {
+        stackRoomRef.current.style.transform = room;
+        stackRoomRef.current.style.transition = transition;
+      }
+    } catch (err) {
+      console.warn("[chat-stack-transform]", err);
     }
   }, []);
 
-  const syncStackProgressFromRoom = useCallback(
-    (p: number) => {
-      if (stackOpenDragRef.current) return;
-      syncStackProgress(p);
+  /** سحب خروج المحادثة: tx سالب = يمين→يسار — الغرفة تخرج يميناً */
+  const applyRoomCloseDrag = useCallback((tx: number, animate: boolean) => {
+    try {
+      let cap = stackCapRef.current;
+      if (!(cap > 0)) {
+        cap = readSafeStackCapPx(stackRoomRef.current ?? stackInboxRef.current, stackCapRef);
+        stackCapRef.current = cap;
+      }
+      const clampedTx = Math.max(-cap, Math.min(0, Number.isFinite(tx) ? tx : 0));
+      const { progress, inbox, room } = chatStackDismissTransforms(clampedTx, cap);
+      stackProgressRef.current = progress;
+      if (animate) setStackProgress(progress);
+      stackRoomDriveRef.current = "close";
+      stackRoomDismissRef.current = true;
+      if (typeof document !== "undefined") {
+        document.documentElement.style.setProperty(CHAT_STACK_PROGRESS_VAR, String(progress));
+      }
+      const transition = animate
+        ? `transform ${SLIDE_DISMISS_MS}ms ${SLIDE_DISMISS_EASE}`
+        : "none";
+      if (stackInboxRef.current) {
+        stackInboxRef.current.style.transform = inbox;
+        stackInboxRef.current.style.transition = transition;
+      }
+      if (stackRoomRef.current) {
+        stackRoomRef.current.style.transform = room;
+        stackRoomRef.current.style.transition = transition;
+      }
+      if (stackRoomDismissRef.current) {
+        onExitNavRevealProgress?.(progress);
+      }
+    } catch (err) {
+      console.warn("[chat-room-close-drag]", err);
+      stackRoomDismissRef.current = false;
+      stackRoomDriveRef.current = "idle";
+    }
+  }, [onExitNavRevealProgress]);
+
+  const resetStackToInboxRest = useCallback(
+    (opts?: { animate?: boolean }) => {
+      stackProgressRef.current = 0;
+      setStackProgress(0);
+      setStackSpring(!!opts?.animate);
+      stackRoomDriveRef.current = "idle";
+      stackRoomDismissRef.current = false;
+      if (typeof document !== "undefined") {
+        document.documentElement.style.removeProperty(CHAT_STACK_PROGRESS_VAR);
+      }
+      applyStackLayerTransforms(0, !!opts?.animate);
     },
-    [syncStackProgress],
+    [applyStackLayerTransforms],
   );
+
+  const publishStackProgressVisual = useCallback(
+    (p: number, commitState = false, animate = false) => {
+      const clamped = Math.max(0, Math.min(1, p));
+      stackProgressRef.current = clamped;
+      if (typeof document !== "undefined") {
+        document.documentElement.style.setProperty(CHAT_STACK_PROGRESS_VAR, String(clamped));
+      }
+      applyStackLayerTransforms(clamped, animate);
+      if (commitState) setStackProgress(clamped);
+    },
+    [applyStackLayerTransforms],
+  );
+
+  const requestStackRoomScrollBottom = useCallback(() => {
+    if (typeof window === "undefined") return;
+    requestAnimationFrame(() => {
+      window.dispatchEvent(new CustomEvent("retweet-chat-scroll-bottom"));
+    });
+  }, []);
+
+  const syncStackProgress = useCallback(
+    (p: number) => {
+      publishStackProgressVisual(p, true);
+    },
+    [publishStackProgressVisual],
+  );
+
+  const syncStackProgressFromRoom = useCallback(
+    (tx: number, phase: "move" | "end" | "start" = "move") => {
+      if (tx > 0 && phase !== "end") return;
+      /** محادثة مفتوحة: سحب الرجوع من الغرفة له الأولوية — لا يحجبه قفل المكدس */
+      if (openChat) {
+        const cap = Math.max(260, stackCapRef.current);
+        const threshold = Math.max(cap * CHAT_STACK_OPEN_FRACTION, 64);
+        if (phase === "start" || phase === "move") {
+          setStackRoomDismissDragging(true);
+          stackRoomDriveRef.current = "close";
+          stackRoomDismissRef.current = true;
+          onExitNavRevealProgress?.(stackProgressRef.current);
+          applyRoomCloseDrag(tx, false);
+          return;
+        }
+        setStackRoomDismissDragging(false);
+        const closing = tx <= -threshold;
+        if (closing) {
+          beginCloseChatThreadRef.current(resolveOpenChatId(openChat));
+          return;
+        }
+        stackRoomDriveRef.current = "idle";
+        stackRoomDismissRef.current = false;
+        setStackSpring(true);
+        applyRoomCloseDrag(0, true);
+        window.setTimeout(() => {
+          setStackSpring(false);
+          stackRoomDriveRef.current = "idle";
+          stackRoomDismissRef.current = false;
+          setStackRoomDismissDragging(false);
+          onExitNavRevealProgress?.(null);
+        }, SLIDE_DISMISS_MS);
+        return;
+      }
+      if (stackTransitionLockRef.current || stackSwipeOpeningRef.current || stackGestureLocked) return;
+      if (stackOpenDragRef.current) return;
+      if (stackDragChatId && !openChat) return;
+      if (phase === "start" || phase === "move") {
+        stackRoomDriveRef.current = "close";
+        stackRoomDismissRef.current = true;
+        applyRoomCloseDrag(tx, false);
+        return;
+      }
+      const cap = Math.max(260, stackCapRef.current);
+      const threshold = Math.max(cap * CHAT_STACK_OPEN_FRACTION, 64);
+      const closing = tx <= -threshold;
+      if (!closing) {
+        stackRoomDriveRef.current = "idle";
+        stackRoomDismissRef.current = false;
+      }
+      setStackSpring(true);
+      applyRoomCloseDrag(closing ? -cap : 0, true);
+      window.setTimeout(() => {
+        setStackSpring(false);
+        if (!closing) {
+          stackRoomDriveRef.current = "idle";
+          stackRoomDismissRef.current = false;
+        }
+      }, SLIDE_DISMISS_MS);
+    },
+    [stackDragChatId, openChat, stackGestureLocked, applyRoomCloseDrag, onExitNavRevealProgress],
+  );
+
+  const releaseChatChromeAfterGesture = useCallback(() => {
+    stackChromeHiddenRef.current = false;
+    setStackChromeHidden(false);
+    stackRoomDismissRef.current = false;
+    stackRoomDriveRef.current = "idle";
+    setStackRoomDismissDragging(false);
+    onExitNavRevealProgress?.(null);
+  }, [onExitNavRevealProgress]);
+
+  const hideStackChrome = useCallback(() => {
+    if (stackChromeHiddenRef.current) return;
+    stackChromeHiddenRef.current = true;
+    setStackChromeHidden(true);
+  }, []);
+
+  const showStackChrome = useCallback(() => {
+    if (openChat || stackDragChatId || stackClosingId) return;
+    releaseChatChromeAfterGesture();
+  }, [openChat, stackDragChatId, stackClosingId, releaseChatChromeAfterGesture]);
+
+  const resolveOpenChatId = useCallback(
+    (id: string) => {
+      const found = findChatByOpenId(state.chats, id, me.id);
+      return found ? openChatIdFor(found, me.id) : id;
+    },
+    [state.chats, me.id],
+  );
+
+  const isChatThreadFullyOpen = useCallback(
+    (id: string) =>
+      openChat === id && !stackDragChatId && !stackClosingId && stackProgressRef.current >= 0.98,
+    [openChat, stackDragChatId, stackClosingId],
+  );
+
+  const releaseStackTransitionLock = useCallback(() => {
+    stackTransitionLockRef.current = false;
+    stackSwipeOpeningRef.current = false;
+    stackOpenDragRef.current = false;
+    stackNavTargetRef.current = null;
+    stackListGestureCommitRef.current = false;
+    setStackGestureLocked(false);
+  }, []);
+
+  const commitStackOpen = useCallback(
+    (targetId: string) => {
+      const canonical = resolveOpenChatId(targetId);
+      if (isChatThreadFullyOpen(canonical)) {
+        releaseStackTransitionLock();
+        return;
+      }
+      if (stackTransitionLockRef.current && stackNavTargetRef.current !== canonical) return;
+
+      const progress = stackProgressRef.current;
+      const sameThread =
+        stackDragChatId === canonical ||
+        openChat === canonical ||
+        stackNavTargetRef.current === canonical;
+
+      stackTransitionLockRef.current = true;
+      stackListGestureCommitRef.current = true;
+      stackNavTargetRef.current = canonical;
+      stackOpenDragRef.current = false;
+      stackSwipeOpeningRef.current = false;
+      stackRoomDriveRef.current = "open";
+      stackRoomDismissRef.current = false;
+      setStackGestureLocked(true);
+      setStackClosingId(null);
+      if (sameThread && progress >= 0.98) {
+        ++stackNavGenerationRef.current;
+        flushSync(() => {
+          stackProgressRef.current = 1;
+          setStackProgress(1);
+          setStackDragChatId(null);
+          setStackSpring(false);
+          setOpenChat(canonical);
+        });
+        onActiveChatChange?.(canonical);
+        if (typeof document !== "undefined") {
+          document.documentElement.style.setProperty(CHAT_STACK_PROGRESS_VAR, "1");
+        }
+        applyStackLayerTransforms(1, false);
+        releaseStackTransitionLock();
+        requestStackRoomScrollBottom();
+        return;
+      }
+
+      const gen = ++stackNavGenerationRef.current;
+      const startProgress = Math.max(progress, 0);
+      flushSync(() => {
+        setOpenChat(canonical);
+        setStackDragChatId(null);
+        setStackSpring(true);
+        stackProgressRef.current = startProgress;
+        setStackProgress(startProgress);
+      });
+      onActiveChatChange?.(canonical);
+      applyStackLayerTransforms(startProgress, false);
+      publishStackProgressVisual(1, true, true);
+      window.setTimeout(() => {
+        if (gen !== stackNavGenerationRef.current) return;
+        flushSync(() => {
+          stackProgressRef.current = 1;
+          setStackProgress(1);
+          setStackSpring(false);
+        });
+        if (typeof document !== "undefined") {
+          document.documentElement.style.setProperty(CHAT_STACK_PROGRESS_VAR, "1");
+        }
+        applyStackLayerTransforms(1, false);
+        stackRoomDriveRef.current = "idle";
+        releaseStackTransitionLock();
+        requestStackRoomScrollBottom();
+      }, SLIDE_DISMISS_MS);
+    },
+    [
+      resolveOpenChatId,
+      isChatThreadFullyOpen,
+      openChat,
+      stackDragChatId,
+      publishStackProgressVisual,
+      applyStackLayerTransforms,
+      onActiveChatChange,
+      releaseStackTransitionLock,
+      requestStackRoomScrollBottom,
+    ],
+  );
+
+  const cancelStackDrag = useCallback(() => {
+    if (stackTransitionLockRef.current && stackSwipeOpeningRef.current) return;
+    const gen = ++stackNavGenerationRef.current;
+    stackTransitionLockRef.current = true;
+    stackNavTargetRef.current = null;
+    setStackGestureLocked(true);
+    stackListGestureCommitRef.current = true;
+    setStackSpring(true);
+    publishStackProgressVisual(0, true, true);
+    window.setTimeout(() => {
+      if (gen !== stackNavGenerationRef.current) return;
+      flushSync(() => {
+        setStackDragChatId(null);
+        setStackClosingId(null);
+        setOpenChat(null);
+      });
+      resetStackToInboxRest();
+      releaseChatChromeAfterGesture();
+      showStackChrome();
+      onActiveChatChange?.(null);
+      releaseStackTransitionLock();
+    }, SLIDE_DISMISS_MS);
+  }, [
+    publishStackProgressVisual,
+    resetStackToInboxRest,
+    showStackChrome,
+    releaseStackTransitionLock,
+    releaseChatChromeAfterGesture,
+    onActiveChatChange,
+  ]);
+
+  const openChatDirect = useCallback(
+    (id: string) => {
+      const canonical = resolveOpenChatId(id);
+      if (isChatThreadFullyOpen(canonical)) return;
+      if (stackDragChatId) {
+        commitStackOpen(canonical);
+        return;
+      }
+
+      ++stackNavGenerationRef.current;
+      stackTransitionLockRef.current = true;
+      stackListGestureCommitRef.current = true;
+      stackOpenDragRef.current = false;
+      stackSwipeOpeningRef.current = false;
+      stackRoomDriveRef.current = "open";
+      stackRoomDismissRef.current = false;
+      stackNavTargetRef.current = canonical;
+      setStackGestureLocked(true);
+      setStackClosingId(null);
+      setStackDragChatId(null);
+      hideStackChrome();
+      stackTapTransitionRef.current = true;
+
+      flushSync(() => {
+        setOpenChat(canonical);
+        stackProgressRef.current = 0;
+        setStackProgress(0);
+        setStackSpring(false);
+      });
+      onActiveChatChange?.(canonical);
+      // useLayoutEffect يكتشف stackTapTransitionRef=true ويُشغّل الانزلاق
+    },
+    [
+      resolveOpenChatId,
+      isChatThreadFullyOpen,
+      commitStackOpen,
+      stackDragChatId,
+      hideStackChrome,
+      onActiveChatChange,
+    ],
+  );
+
+  /** إغلاق المحادثة المفتوحة — مسار بسيط بدون portal */
+  const closeOpenChat = useCallback(() => {
+    ++stackNavGenerationRef.current;
+    setOpenChat(null);
+    setStackDragChatId(null);
+    setStackClosingId(null);
+    stackTapTransitionRef.current = false;
+    stackChromeHiddenRef.current = false;
+    setStackChromeHidden(false);
+    releaseStackTransitionLock();
+    resetStackToInboxRest();
+    onExitNavRevealProgress?.(null);
+    onActiveChatChange?.(null);
+  }, [releaseStackTransitionLock, resetStackToInboxRest, onExitNavRevealProgress, onActiveChatChange]);
+
+  const handleRowOpenCommit = useCallback(
+    (chatId: string, px: number, mode: "tap" | "swipe-end") => {
+      if (stackListGestureCommitRef.current || stackTransitionLockRef.current) return;
+      const canonical = resolveOpenChatId(chatId);
+      if (mode === "tap") {
+        stackOpenDragRef.current = false;
+        stackSwipeOpeningRef.current = false;
+        if (stackDragChatId) {
+          commitStackOpen(canonical);
+          return;
+        }
+        openChatDirect(canonical);
+        return;
+      }
+      const cap = stackCapRef.current;
+      const progress = cap > 0 ? px / cap : 0;
+      if (progress >= CHAT_STACK_OPEN_FRACTION) {
+        commitStackOpen(canonical);
+      } else {
+        cancelStackDrag();
+      }
+    },
+    [commitStackOpen, cancelStackDrag, openChatDirect, resolveOpenChatId, stackDragChatId],
+  );
+
+  useLayoutEffect(() => {
+    try {
+      stackCapRef.current = readSafeViewportWidth();
+    } catch {
+      stackCapRef.current = DEFAULT_LAYOUT_WIDTH_PX;
+    }
+  }, []);
+
+  useLayoutEffect(() => {
+    const el = stackInboxRef.current;
+    if (!el) return;
+    const upd = () => {
+      if (stackTapTransitionRef.current) return;
+      try {
+        stackCapRef.current = readSafeStackCapPx(el, stackCapRef);
+      } catch {
+        stackCapRef.current = readSafeViewportWidth();
+      }
+    };
+    upd();
+    const ro = new ResizeObserver(upd);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  useLayoutEffect(() => {
+    if (
+      stackOpenDragRef.current ||
+      stackDragChatId ||
+      stackClosingId ||
+      stackTapTransitionRef.current ||
+      stackRoomDismissRef.current ||
+      stackRoomDriveRef.current === "close" ||
+      stackGestureLocked ||
+      stackTransitionLockRef.current ||
+      stackSwipeOpeningRef.current
+    ) {
+      return;
+    }
+    applyStackLayerTransforms(stackProgress, stackSpring);
+  }, [
+    stackProgress,
+    stackSpring,
+    stackDragChatId,
+    stackClosingId,
+    stackGestureLocked,
+    applyStackLayerTransforms,
+  ]);
+
+  /** سحب/تحديد نص غير مكتمل: إعادة الشريط والنوتات إن علِق وضع الإخفاء */
+  useEffect(() => {
+    if (openChat || stackDragChatId || stackClosingId) return;
+    if (!stackChromeHidden && !stackRoomDismissDragging && stackProgress <= 0.04) return;
+    releaseChatChromeAfterGesture();
+    if (stackProgress > 0.04) {
+      resetStackToInboxRest();
+    }
+  }, [
+    openChat,
+    stackDragChatId,
+    stackClosingId,
+    stackProgress,
+    stackChromeHidden,
+    stackRoomDismissDragging,
+    releaseChatChromeAfterGesture,
+    resetStackToInboxRest,
+  ]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const onSelectionChange = () => {
+      if (openChat || stackDragChatId || stackClosingId) return;
+      const sel = document.getSelection();
+      if (!sel || sel.isCollapsed) return;
+      if (!stackChromeHidden && stackProgress <= 0.04) return;
+      releaseChatChromeAfterGesture();
+      if (stackProgress > 0.04) resetStackToInboxRest();
+    };
+    document.addEventListener("selectionchange", onSelectionChange);
+    return () => document.removeEventListener("selectionchange", onSelectionChange);
+  }, [
+    openChat,
+    stackDragChatId,
+    stackClosingId,
+    stackChromeHidden,
+    stackProgress,
+    releaseChatChromeAfterGesture,
+    resetStackToInboxRest,
+  ]);
 
   const [search, setSearch] = useState("");
   const [noteInput, setNoteInput] = useState(me.note || "");
@@ -1805,31 +2647,42 @@ export function ChatScreen({
   useEffect(() => {
     if (!initialChatId) return;
     const found = findChatByOpenId(state.chats, initialChatId, me.id);
-    setOpenChat(found ? openChatIdFor(found, me.id) : initialChatId);
-    onConsumedInitialChat?.();
-  }, [initialChatId, onConsumedInitialChat, state.chats, me.id]);
+    const id = found ? openChatIdFor(found, me.id) : initialChatId;
+    if (openChat === id) {
+      if (!stackTapTransitionRef.current) syncStackProgress(1);
+      onConsumedInitialChat?.();
+      return;
+    }
+    openChatDirect(id);
+  }, [initialChatId, onConsumedInitialChat, state.chats, me.id, openChatDirect, openChat, syncStackProgress]);
 
   /** بعد دمج DM قديم: openChat يبقى id عشوائي — نحدّثه لـ dm:… */
   useEffect(() => {
-    if (!openChat) return;
+    if (!openChat || stackTapTransitionRef.current || stackGestureLocked || stackTransitionLockRef.current) {
+      return;
+    }
     const found = findChatByOpenId(state.chats, openChat, me.id);
     if (!found) return;
     const canonical = openChatIdFor(found, me.id);
     if (canonical !== openChat) setOpenChat(canonical);
-  }, [state.chats, openChat, me.id]);
+  }, [state.chats, openChat, me.id, stackGestureLocked]);
 
   const prevAccountIdRef = useRef(me.id);
   /** عند تبديل الحساب: إغلاق الغرفة ومسح حالة المكدس (لا يُنفَّذ عند أول mount) */
   useEffect(() => {
     if (prevAccountIdRef.current === me.id) return;
     prevAccountIdRef.current = me.id;
+    ++stackNavGenerationRef.current;
+    stackListGestureCommitRef.current = false;
     setOpenChat(null);
-    setStackDrag(null);
+    setStackDragChatId(null);
     setStackClosingId(null);
     setStackSpring(false);
     setShowCall(null);
     setIncomingCall(null);
     setShowGroupSettings(false);
+    stackChromeHiddenRef.current = false;
+    setStackChromeHidden(false);
     syncStackProgress(0);
     onActiveChatChange?.(null);
   }, [me.id, syncStackProgress, onActiveChatChange]);
@@ -1839,86 +2692,271 @@ export function ChatScreen({
       const id = (e as CustomEvent<{ chatId?: string }>).detail?.chatId;
       if (id) {
         const found = findChatByOpenId(state.chats, id, me.id);
-        setOpenChat(found ? openChatIdFor(found, me.id) : id);
+        openChatDirect(found ? openChatIdFor(found, me.id) : id);
       }
     };
     window.addEventListener("retweet-open-chat", onOpen);
     return () => window.removeEventListener("retweet-open-chat", onOpen);
-  }, [state.chats, me.id]);
+  }, [state.chats, me.id, openChatDirect]);
 
   useEffect(() => {
-    onThreadOpen?.(!!openChat || !!stackDrag || !!stackClosingId);
-    onHideBottomNav?.(!!openChat || !!stackDrag || !!stackClosingId || showCreate != null);
-  }, [openChat, stackDrag, stackClosingId, showCreate, onThreadOpen, onHideBottomNav]);
+    const exitingChatBySwipe = stackRoomDismissDragging || !!stackClosingId;
+    const threadImmersive =
+      !!(openChat || stackDragChatId || stackChromeHidden) && !exitingChatBySwipe;
+    const hideBottomNav = threadImmersive || showCreate != null;
+    if (typeof document !== "undefined") {
+      if (openChat || stackDragChatId || stackClosingId || stackChromeHidden) {
+        document.documentElement.dataset.chatThreadOpen = "1";
+      } else {
+        delete document.documentElement.dataset.chatThreadOpen;
+      }
+    }
+    startTransition(() => {
+      onThreadOpen?.(threadImmersive);
+      onHideBottomNav?.(hideBottomNav);
+    });
+  }, [
+    openChat,
+    stackDragChatId,
+    stackClosingId,
+    stackChromeHidden,
+    stackRoomDismissDragging,
+    showCreate,
+    onThreadOpen,
+    onHideBottomNav,
+  ]);
+
+  const beginCloseChatThread = useCallback(function beginCloseChatThreadImpl(closingKey: string) {
+      if (stackClosingId) return;
+      if (stackCloseTimerRef.current != null) {
+        window.clearTimeout(stackCloseTimerRef.current);
+        stackCloseTimerRef.current = null;
+      }
+      ++stackNavGenerationRef.current;
+      stackTransitionLockRef.current = true;
+      setStackGestureLocked(true);
+      stackOpenDragRef.current = false;
+      stackRoomDriveRef.current = "close";
+      stackRoomDismissRef.current = true;
+      setStackClosingId(closingKey);
+      setStackDragChatId(null);
+      const cap = Math.max(260, stackCapRef.current);
+      setStackSpring(true);
+      applyRoomCloseDrag(-cap, true);
+      window.setTimeout(() => {
+        setOpenChat(null);
+        onActiveChatChange?.(null);
+        setStackClosingId(null);
+        setStackSpring(false);
+        stackProgressRef.current = 0;
+        setStackProgress(0);
+        stackRoomDriveRef.current = "idle";
+        stackRoomDismissRef.current = false;
+        setStackRoomDismissDragging(false);
+        onExitNavRevealProgress?.(null);
+        if (typeof document !== "undefined") {
+          document.documentElement.style.removeProperty(CHAT_STACK_PROGRESS_VAR);
+        }
+        applyStackLayerTransforms(0, false);
+        showStackChrome();
+        releaseStackTransitionLock();
+      }, SLIDE_DISMISS_MS);
+    },
+    [
+      stackClosingId,
+      applyStackLayerTransforms,
+      applyRoomCloseDrag,
+      onExitNavRevealProgress,
+      onActiveChatChange,
+      showStackChrome,
+      releaseStackTransitionLock,
+    ],
+  );
+  beginCloseChatThreadRef.current = beginCloseChatThread;
+
+  const applyStackDragVisual = useCallback(
+    (chatId: string, px: number) => {
+      if (stackListGestureCommitRef.current || stackTransitionLockRef.current || stackSwipeOpeningRef.current) {
+        return;
+      }
+      stackOpenDragRef.current = true;
+      stackRoomDriveRef.current = "open";
+      stackRoomDismissRef.current = false;
+      setStackClosingId(null);
+      setStackSpring(false);
+      hideStackChrome();
+      const canonical = resolveOpenChatId(chatId);
+      if (stackDragChatId !== canonical) setStackDragChatId(canonical);
+      let cap = stackCapRef.current;
+      if (!(cap > 0)) {
+        cap = readSafeStackCapPx(stackInboxRef.current, stackCapRef);
+        stackCapRef.current = cap;
+      }
+      const progress = cap > 0 ? px / cap : 0;
+      publishStackProgressVisual(progress, false);
+    },
+    [stackDragChatId, resolveOpenChatId, publishStackProgressVisual, hideStackChrome],
+  );
 
   const onStackDrag = useCallback(
     (chatId: string, px: number) => {
-      stackOpenDragRef.current = true;
-      setStackClosingId(null);
-      setStackSpring(false);
-      setStackDrag({ chatId, px });
-      const cap = stackCapRef.current;
-      syncStackProgress(cap > 0 ? px / cap : 0);
+      pendingStackDragRef.current = { chatId, px };
+      if (stackDragFrameRef.current) return;
+      stackDragFrameRef.current = requestAnimationFrame(() => {
+        stackDragFrameRef.current = 0;
+        const pending = pendingStackDragRef.current;
+        if (!pending) return;
+        pendingStackDragRef.current = null;
+        applyStackDragVisual(pending.chatId, pending.px);
+      });
     },
-    [syncStackProgress],
+    [applyStackDragVisual],
+  );
+
+  useEffect(
+    () => () => {
+      if (stackDragFrameRef.current) cancelAnimationFrame(stackDragFrameRef.current);
+    },
+    [],
   );
 
   const onStackDragEnd = useCallback(
     (chatId: string, px: number) => {
-      stackOpenDragRef.current = false;
-      const cap = stackCapRef.current;
-      if (cap > 0 && px >= cap * CHAT_STACK_OPEN_FRACTION) {
-        syncStackProgress(1);
-        setStackDrag(null);
-        setStackClosingId(null);
-        setStackSpring(false);
-        const found = findChatByOpenId(state.chats, chatId, me.id);
-        setOpenChat(found ? openChatIdFor(found, me.id) : chatId);
-        return;
-      }
-      setStackClosingId(chatId);
-      setStackDrag(null);
-      setStackSpring(true);
-      syncStackProgress(0);
-      window.setTimeout(() => {
-        setStackClosingId(null);
-        setStackSpring(false);
-      }, SLIDE_DISMISS_MS);
+      if (stackListGestureCommitRef.current || stackTransitionLockRef.current) return;
+      handleRowOpenCommit(chatId, px, "swipe-end");
     },
-    [syncStackProgress, state.chats, me.id],
+    [handleRowOpenCommit],
   );
 
   useLayoutEffect(() => {
     if (!openChat) {
-      if (!stackDrag) {
-        syncStackProgress(0);
-        if (typeof document !== "undefined") {
-          document.documentElement.style.removeProperty(CHAT_STACK_PROGRESS_VAR);
-        }
-      }
+      if (stackClosingId || stackDragChatId) return;
+      resetStackToInboxRest();
       return;
     }
-    if (stackClosingId) return;
-    setStackDrag(null);
+    if (stackClosingId || stackDragChatId) return;
+    if (stackGestureLocked && !stackTapTransitionRef.current) return;
+    if (stackTapTransitionRef.current) {
+      applyStackLayerTransforms(0, false);
+      let inner = 0;
+      const outer = requestAnimationFrame(() => {
+        inner = requestAnimationFrame(() => {
+          stackProgressRef.current = 1;
+          if (typeof document !== "undefined") {
+            document.documentElement.style.setProperty(CHAT_STACK_PROGRESS_VAR, "1");
+          }
+          setStackProgress(1);
+          setStackSpring(true);
+          applyStackLayerTransforms(1, true);
+          window.setTimeout(() => {
+            setStackSpring(false);
+            stackTapTransitionRef.current = false;
+            releaseStackTransitionLock();
+            requestStackRoomScrollBottom();
+          }, CHAT_TAP_OPEN_MS);
+        });
+      });
+      return () => {
+        cancelAnimationFrame(outer);
+        if (inner) cancelAnimationFrame(inner);
+      };
+    }
     if (stackProgressRef.current >= 0.98) {
       setStackSpring(false);
+      applyStackLayerTransforms(1, false);
       return;
     }
-    setStackSpring(true);
-    syncStackProgress(0);
-    const id = requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        syncStackProgress(1);
-        window.setTimeout(() => setStackSpring(false), 340);
-      });
-    });
-    return () => cancelAnimationFrame(id);
-  }, [openChat, stackClosingId, syncStackProgress]);
+  }, [
+    openChat,
+    stackClosingId,
+    stackDragChatId,
+    stackGestureLocked,
+    applyStackLayerTransforms,
+    resetStackToInboxRest,
+    releaseStackTransitionLock,
+    requestStackRoomScrollBottom,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      if (typeof document !== "undefined") {
+        document.documentElement.style.removeProperty(CHAT_STACK_PROGRESS_VAR);
+      }
+    };
+  }, []);
+
+  const activeStackChatId = openChat ?? stackDragChatId ?? stackClosingId ?? null;
+  const stackChatRaw = activeStackChatId ? findChatByOpenId(state.chats, activeStackChatId, me.id) : null;
+  const stackChat = useMemo(
+    () => (stackChatRaw ? normalizeChatRecord(stackChatRaw) : null),
+    [stackChatRaw],
+  );
+  /** معاينة الغرفة أثناء السحب — المحادثة لا تُعتبر «مفتوحة» حتى commit */
+  const stackRoomPreviewOnly = !!stackDragChatId && !openChat;
+  /** يُعطّل سحب/زر الرجوع فقط أثناء فتح المحادثة — لا أثناء سحب الخروج */
+  const chatRoomDismissBlocked =
+    stackRoomPreviewOnly ||
+    !!stackDragChatId ||
+    stackTapTransitionRef.current ||
+    (stackGestureLocked && !stackRoomDismissDragging);
+  /** الغرفة: scroll لأسفل فقط بعد اكتمال الفتح — لا أثناء السحب أو الانتقال */
+  const stackRoomForceScrollBottom =
+    !!openChat && !stackDragChatId && stackProgress >= 0.98 && !stackTapTransitionRef.current;
+
+  useEffect(() => {
+    if (!openChat || stackClosingId || stackDragChatId || stackTapTransitionRef.current) return;
+    if (stackProgressRef.current < 0.98 || !stackGestureLocked) return;
+    const t = window.setTimeout(() => {
+      if (
+        openChat &&
+        stackProgressRef.current >= 0.98 &&
+        !stackTapTransitionRef.current &&
+        !stackRoomDismissDragging
+      ) {
+        releaseStackTransitionLock();
+      }
+    }, SLIDE_DISMISS_MS + 80);
+    return () => window.clearTimeout(t);
+  }, [
+    openChat,
+    stackProgress,
+    stackClosingId,
+    stackDragChatId,
+    stackRoomDismissDragging,
+    releaseStackTransitionLock,
+  ]);
+
+  useLayoutEffect(() => {
+    if (!openChat || !stackChat || stackProgressRef.current < 0.5) return;
+    if (
+      stackOpenDragRef.current ||
+      stackRoomDismissRef.current ||
+      stackRoomDriveRef.current === "close"
+    ) {
+      return;
+    }
+    applyStackLayerTransforms(stackProgressRef.current, false);
+  }, [openChat, stackChat?.id, applyStackLayerTransforms]);
+
+  useEffect(() => {
+    if (!activeStackChatId || stackChat) return;
+    const orphanId = activeStackChatId;
+    const t = window.setTimeout(() => {
+      if (stackTapTransitionRef.current) return;
+      const found = findChatByOpenId(state.chats, orphanId, me.id);
+      if (found) return;
+      setOpenChat(prev => (prev === orphanId ? null : prev));
+      setStackDragChatId(null);
+      setStackClosingId(null);
+      syncStackProgress(0);
+    }, 0);
+    return () => window.clearTimeout(t);
+  }, [activeStackChatId, stackChat, state.chats, me.id, syncStackProgress]);
   useEffect(() => {
     onActiveChatChange?.(openChat);
   }, [openChat, onActiveChatChange]);
 
-  useLockPageScroll(!!openChat || !!stackDrag);
+  useLockPageScroll(!!openChat || !!stackDragChatId || !!stackClosingId);
 
   useEffect(() => {
     const onRing = (e: Event) => {
@@ -1938,7 +2976,7 @@ export function ChatScreen({
   const messageRequests = useMemo(
     () =>
       requests.filter(
-        c => !c.isGroup && !c.isChannel && !c.messages.some(m => m.senderId === me.id),
+        c => !c.isGroup && !c.isChannel && !(c.messages || []).some(m => m.senderId === me.id),
       ),
     [requests, me.id],
   );
@@ -1962,16 +3000,21 @@ export function ChatScreen({
     if (c.isGroup) return (c.name || "").toLowerCase().includes(q);
     const otherId = c.members.find(id => id !== me.id);
     const other = otherId ? userById(state, otherId) : null;
-    return other?.username.toLowerCase().includes(q);
+    return (other?.username ?? "").toLowerCase().includes(q);
   });
 
   /** المثبتة أولاً (حسب ترتيب التثبيت)، ثم الباقي بآخر نشاط رسالة (الأحدث فوق) */
   const sortedFilteredChats = useMemo(() => {
     const pins = me.pinnedChatIds || [];
     const lastActivityAt = (c: Chat) => {
-      const vis = visibleChatMessages(c, me.id);
-      const last = vis[vis.length - 1];
-      return last?.createdAt ?? 0;
+      const hidden = c.hiddenMessageIdsByUser?.[me.id];
+      const msgs = c.messages;
+      for (let i = msgs.length - 1; i >= 0; i--) {
+        const m = msgs[i];
+        if (hidden?.includes(m.id)) continue;
+        return m.createdAt;
+      }
+      return 0;
     };
     return [...filteredChats].sort((a, b) => {
       const ia = pins.indexOf(a.id);
@@ -1985,249 +3028,419 @@ export function ChatScreen({
     });
   }, [filteredChats, me.id, me.pinnedChatIds, state.chats]);
 
+  const stackChatOpenKey = stackChat ? openChatIdFor(stackChat, me.id) : null;
+
+  const stackRoomDismissEnabled = useCallback(
+    () =>
+      !!openChat &&
+      !chatRoomDismissBlocked &&
+      !stackTransitionLockRef.current &&
+      !stackSwipeOpeningRef.current &&
+      !stackClosingId,
+    [openChat, chatRoomDismissBlocked, stackClosingId],
+  );
+
+  const handleStackRoomAnimatedBack = useCallback(() => {
+    releaseStackTransitionLock();
+    if (stackClosingId) return true;
+    const key = stackChatOpenKey ?? (openChat ? resolveOpenChatId(openChat) : null);
+    if (key) {
+      beginCloseChatThreadRef.current(key);
+      return true;
+    }
+    closeOpenChat();
+    return true;
+  }, [stackChatOpenKey, openChat, resolveOpenChatId, closeOpenChat, stackClosingId, releaseStackTransitionLock]);
+
+  const scheduleStackCloseCommit = useCallback(
+    (closingKey: string) => {
+      if (stackCloseTimerRef.current != null) {
+        window.clearTimeout(stackCloseTimerRef.current);
+      }
+      stackCloseTimerRef.current = window.setTimeout(() => {
+        stackCloseTimerRef.current = null;
+        beginCloseChatThread(closingKey);
+      }, SLIDE_DISMISS_MS);
+    },
+    [beginCloseChatThread],
+  );
+
+  useEffect(
+    () => () => {
+      if (stackCloseTimerRef.current != null) {
+        window.clearTimeout(stackCloseTimerRef.current);
+        stackCloseTimerRef.current = null;
+      }
+    },
+    [],
+  );
+
+  const showInboxStackActive = !!(activeStackChatId && stackChat);
+  const exitingChatBySwipe =
+    stackRoomDismissDragging ||
+    stackClosingId ||
+    stackRoomDriveRef.current === "close";
+  const inboxAtRest =
+    !openChat && !stackDragChatId && !stackChromeHidden;
+  /** الهيدر العلوي يختفي فقط حين تكون المحادثة مفتوحة بالكامل (لا أثناء السحب) */
+  const hideInboxTopChrome =
+    !!openChat && !exitingChatBySwipe && stackProgress >= 0.97;
+  /** أيقونة إنشاء مجموعة/قناة (القلم): القائمة العادية + أثناء سحب الخروج فقط */
+  const showInboxComposeIcon = exitingChatBySwipe || inboxAtRest;
+  /** أيقونة الطلبات فوق العنوان: القائمة العادية + أثناء سحب الخروج فقط */
+  const showInboxRequestsIcon = exitingChatBySwipe || inboxAtRest;
+  /** عنوان «محادثات/الرسائل»: القائمة العادية + فوق النوتات أثناء سحب الخروج فقط */
+  const showInboxChatTitle = exitingChatBySwipe || inboxAtRest;
+  /** النوتات: القائمة العادية + أثناء سحب الخروج فقط */
+  const showInboxNotesStrip = exitingChatBySwipe || inboxAtRest;
+  /** للتوافق: شريط سفلي/مكالمة واردة */
+  const hideInboxChrome = hideInboxTopChrome && !showInboxNotesStrip;
+  const stackDragProgress =
+    stackChatOpenKey &&
+    (openChat === stackChatOpenKey ||
+      stackDragChatId === stackChatOpenKey ||
+      stackClosingId === stackChatOpenKey)
+      ? stackProgress
+      : 0;
+  const stackInboxPointerEvents =
+    (stackClosingId === stackChatOpenKey ||
+      stackDragChatId === stackChatOpenKey ||
+      stackDragProgress < 0.98) &&
+    showInboxStackActive
+      ? "auto"
+      : activeStackChatId && showInboxStackActive
+        ? "none"
+        : undefined;
+
+  const isRtl = state.language === "ar";
+
+  /* ─────────────────────────────────────────────────────────
+   * CHAT INBOX — rebuilt from scratch (Snapchat-inspired)
+   * All flex rows use dir-aware ordering:
+   *   dir="rtl" → flex-row renders RIGHT→LEFT automatically,
+   *   so the first DOM child appears on the FAR RIGHT.
+   * ───────────────────────────────────────────────────────── */
   const chatInbox = (
-    <div className="chat-inbox-pane flex min-h-0 flex-1 flex-col overflow-hidden overscroll-none bg-white pb-4 dark:bg-background">
-      {isGuest && (
-        <div className="mx-4 mt-3 rounded-2xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-center text-sm text-amber-950 dark:text-amber-100">
-          وضع الزائر: يمكنك تصفّح القوائم فقط. سجّل الدخول من تبويب «أنا» لإرسال رسائل أو فتح محادثات.
+    <div
+      ref={stackInboxRef}
+      dir={isRtl ? "rtl" : "ltr"}
+      className="chat-inbox-pane relative z-[1] flex min-h-0 flex-1 flex-col overflow-hidden overscroll-none bg-background [transform:translateZ(0)]"
+      style={stackInboxPointerEvents ? { pointerEvents: stackInboxPointerEvents } : undefined}
+    >
+
+      {/* Top area: Instagram Direct structure. No profile avatar here. */}
+      {!hideInboxTopChrome && (
+        <div className="shrink-0 px-4 pb-2 pt-[max(0.75rem,env(safe-area-inset-top,0.75rem))]">
+          <div className="mb-3 flex items-center justify-end">
+            {showInboxComposeIcon && (
+              <button
+                type="button"
+                disabled={isGuest}
+                aria-label={isRtl ? "إنشاء محادثة أو مجموعة" : "Create chat or group"}
+                onClick={() => !isGuest && setShowCreate("menu")}
+                className="flex h-10 w-10 touch-manipulation items-center justify-center rounded-full text-foreground transition active:scale-95 active:bg-secondary disabled:opacity-40"
+              >
+                <MessageCirclePlus size={25} strokeWidth={1.85} />
+              </button>
+            )}
+          </div>
+
+          <label className="relative block">
+            <Search
+              size={17}
+              strokeWidth={2.25}
+              className="pointer-events-none absolute top-1/2 -translate-y-1/2 text-muted-foreground"
+              style={{ insetInlineStart: "0.9rem" }}
+              aria-hidden
+            />
+            <input
+              type="search"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder={isRtl ? "بحث" : "Search"}
+              dir={isRtl ? "rtl" : "ltr"}
+              className="h-10 w-full rounded-xl border-0 bg-secondary px-4 text-[15px] font-medium text-foreground outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-ring"
+              style={{ paddingInlineStart: "2.55rem", paddingInlineEnd: "1rem" }}
+            />
+          </label>
         </div>
       )}
-      <div className="px-4 pt-3 pb-2 flex items-start justify-between gap-3">
-        <button
-          type="button"
-          onClick={() => setShowRequests(true)}
-          className="relative mt-1 p-1 rounded-lg hover:bg-zinc-100 touch-manipulation"
-          aria-label={t("requests")}
-        >
-          <Mail size={26} strokeWidth={1.75} className="text-zinc-900" />
-          {messageRequests.length > 0 && (
-            <span className="absolute -top-0.5 -end-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
-              {messageRequests.length > 9 ? "9+" : messageRequests.length}
-            </span>
-          )}
-        </button>
-        <button
-          type="button"
-          disabled={isGuest}
-          onClick={() => !isGuest && setShowCreate("menu")}
-          className="mt-1 p-1 rounded-lg border border-zinc-200 hover:bg-zinc-50 disabled:opacity-40 touch-manipulation"
-          aria-label="Compose"
-        >
-          <SquarePen size={22} strokeWidth={1.75} className="text-zinc-900" />
-        </button>
-      </div>
-      <h1 className="px-4 text-[2rem] font-bold leading-tight text-zinc-900 dark:text-zinc-50 tracking-tight">{t("chat")}</h1>
 
-      <div className="px-4 mt-1 flex w-full flex-col gap-2">
-        <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2 w-full">
-          {noteUsers.map((u: any) => {
-            const isMine = u.id === me.id;
-            return (
-              <div key={u.id} className="shrink-0 flex flex-col items-center gap-1">
-                {u.note ? (
-                  isMine ? (
-                    <button
-                      type="button"
-                      onClick={() => setEditingNote(true)}
-                      className="text-[10px] bg-secondary rounded-2xl px-2 py-1 max-w-28 truncate font-ios-emoji text-start hover:bg-secondary/80"
-                    >
-                      {u.note}
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (isGuest) {
-                          notifyGuestActionBlocked();
-                          return;
+      {/* Guest banner */}
+      {isGuest && !hideInboxChrome && (
+        <p className="mx-3 mb-1.5 rounded-xl border border-amber-300/50 bg-amber-50 dark:bg-amber-900/20 px-3 py-1.5 text-center text-[12.5px] text-amber-800 dark:text-amber-200">
+          {isRtl ? "وضع الزائر — سجّل الدخول لاستخدام الرسائل" : "Guest mode — log in to use messaging"}
+        </p>
+      )}
+
+      {/* ══════════════════════════════════════════════════
+          SECTION 2 — NOTES ROW (Snapchat-style)
+          Each note item is a vertical column:
+            [Speech bubble with text]  ← occupies a fixed height
+            [Circular avatar]
+            [Username label]
+          The speech bubble has a small downward triangle tail.
+          ══════════════════════════════════════════════════ */}
+      {showInboxNotesStrip && (
+        <div className="shrink-0">
+          {/* Scrollable notes strip */}
+          <div
+            className="no-scrollbar flex overflow-x-auto overscroll-x-contain gap-3 px-4 pb-2"
+            style={{ paddingTop: "0.5rem", scrollbarWidth: "none", msOverflowStyle: "none" }}
+          >
+            {noteUsers.map((u: any) => {
+              const isMine = u.id === me.id;
+              const hasNote = !!u.note?.trim();
+
+              const handleNotePress = () => {
+                if (isMine) { setEditingNote(true); return; }
+                if (isGuest) { notifyGuestActionBlocked(); return; }
+                if (hasNote) setProfileNoteReply({ userId: u.id, note: u.note });
+                else startTransition(() => onOpenProfile(u.id));
+              };
+
+              return (
+                <button
+                  key={u.id}
+                  type="button"
+                  onClick={handleNotePress}
+                  className="shrink-0 flex flex-col items-center gap-1 touch-manipulation active:scale-95 transition-transform outline-none"
+                  style={{ width: "72px" }}
+                  aria-label={isMine ? (isRtl ? "نوتك" : "My Note") : `@${u.username}`}
+                >
+                  {/* Speech bubble container — fixed height so avatars align */}
+                  <div className="flex flex-col items-center" style={{ minHeight: "46px", justifyContent: "flex-end" }}>
+                    {hasNote ? (
+                      <div
+                        className={
+                          "relative rounded-[14px] px-2.5 py-[7px] text-center text-[11.5px] leading-[1.3] font-medium shadow-sm " +
+                          (isMine
+                            ? "bg-secondary text-foreground"
+                            : "bg-secondary text-foreground " +
+                              (profileNoteReply?.userId === u.id ? "ring-2 ring-primary ring-offset-1" : ""))
                         }
-                        setProfileNoteReply({ userId: u.id, note: u.note });
-                      }}
-                      className={
-                        "min-h-[44px] max-w-[8.5rem] rounded-2xl border border-transparent bg-secondary px-2.5 py-2 text-start text-[11px] font-ios-emoji leading-snug transition hover:bg-secondary/85 active:scale-[0.98] " +
-                        (profileNoteReply?.userId === u.id ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : "")
-                      }
-                      title="اضغط للرد على النوت في الخاص"
-                      aria-label={`رد على نوت ${u.username}`}
-                    >
-                      <span className="line-clamp-3 [overflow-wrap:anywhere]">{u.note}</span>
-                    </button>
-                  )
-                ) : (
-                  isMine && (
-                    <button onClick={() => setEditingNote(true)} className="text-[10px] bg-primary/20 text-primary rounded-2xl px-2 py-1">
-                      {t("addNote")}
-                    </button>
-                  )
-                )}
+                        style={{ maxWidth: "84px", wordBreak: "break-word" }}
+                        dir="auto"
+                      >
+                        <span className="line-clamp-2">{u.note}</span>
+                        {/* Downward tail */}
+                        <span
+                          className="absolute left-1/2 -translate-x-1/2 h-[7px] w-[7px] rotate-45 bg-secondary"
+                          style={{ bottom: "-3.5px" }}
+                          aria-hidden
+                        />
+                      </div>
+                    ) : isMine ? (
+                      <div className="rounded-[14px] bg-secondary px-2.5 py-[7px] text-[11px] text-muted-foreground text-center font-medium">
+                        {isRtl ? "نوتك" : "My Note"}
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {/* Avatar — with + badge for self */}
+                  <div className="relative" style={{ marginTop: hasNote ? "8px" : "10px" }}>
+                    <RSocialAvatar name={u.username} src={u.avatar} size={62} />
+                    {isMine && (
+                      <span
+                        className="absolute flex items-center justify-center rounded-full bg-background text-foreground shadow-md"
+                        style={{ bottom: -3, right: -3, width: 22, height: 22, border: "2.5px solid var(--background, white)" }}
+                        aria-hidden
+                      >
+                        <Plus size={12} strokeWidth={3} />
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Username */}
+                  <span className="mt-1 w-full truncate text-center text-[12px] font-medium leading-tight text-muted-foreground" style={{ maxWidth: "74px" }}>
+                    {isMine ? (isRtl ? "أنت" : "You") : u.username}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Note reply panel */}
+          {profileNoteReply && (
+            <div
+              className="mx-3 mb-2 rounded-2xl border border-border bg-card p-3 shadow-sm"
+              dir={isRtl ? "rtl" : "ltr"}
+            >
+              <div className="flex items-start justify-between gap-2 mb-2">
+                <p className="text-[12.5px] text-muted-foreground flex-1 min-w-0">
+                  {isRtl ? "ردّ على نوت " : "Reply to note — "}
+                  <span className="font-semibold text-foreground">@{userById(state, profileNoteReply.userId)?.username ?? "…"}</span>
+                  {isRtl && <span className="text-muted-foreground"> — يُرسل في الخاص</span>}
+                </p>
+                <button type="button" onClick={() => setProfileNoteReply(null)} className="shrink-0 rounded-full p-1 text-muted-foreground hover:bg-secondary">
+                  <X size={16} />
+                </button>
+              </div>
+              <p className="rounded-xl bg-secondary/70 px-2.5 py-1.5 text-[12.5px] text-foreground/90 line-clamp-2 mb-2">{profileNoteReply.note}</p>
+              <textarea
+                value={profileNoteReplyDraft}
+                onChange={e => setProfileNoteReplyDraft(e.target.value)}
+                placeholder={isRtl ? "اكتب ردك…" : "Type your reply…"}
+                rows={2}
+                disabled={isGuest}
+                className="w-full resize-none rounded-xl border border-border bg-input px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+              />
+              <div className="mt-2 flex gap-2">
                 <button
                   type="button"
+                  disabled={isGuest || !profileNoteReplyDraft.trim()}
                   onClick={() => {
-                    if (isMine) setEditingNote(true);
-                    else if (u.note) {
-                      if (isGuest) {
-                        notifyGuestActionBlocked();
-                        return;
-                      }
-                      setProfileNoteReply({ userId: u.id, note: u.note });
-                    } else startTransition(() => onOpenProfile(u.id));
+                    if (isGuest) { notifyGuestActionBlocked(); return; }
+                    const res = replyToProfileNoteAsDm({ friendId: profileNoteReply.userId, noteText: profileNoteReply.note, replyText: profileNoteReplyDraft.trim() });
+                    if (res) { setProfileNoteReply(null); openChatDirect(res.chatId); }
                   }}
+                  className="flex-1 flex items-center justify-center gap-1.5 rounded-xl bg-primary px-3 py-2 text-[13px] font-semibold text-primary-foreground disabled:opacity-40"
                 >
-                  <Avatar name={u.username} src={u.avatar} size={56} />
+                  <Send size={14} strokeWidth={2.25} />
+                  {isRtl ? "إرسال" : "Send"}
                 </button>
-                <span className="text-xs">{isMine ? "أنت" : u.username}</span>
+                <button
+                  type="button"
+                  onClick={() => { const id = profileNoteReply.userId; setProfileNoteReply(null); startTransition(() => onOpenProfile(id)); }}
+                  className="rounded-xl border border-border bg-background px-3 py-2 text-[13px] font-medium text-foreground hover:bg-secondary"
+                >
+                  {isRtl ? "الملف" : "Profile"}
+                </button>
               </div>
-            );
-          })}
-        </div>
-
-        {profileNoteReply && (
-          <div
-            className="w-full rounded-2xl border border-border bg-card p-3 shadow-sm"
-            dir="rtl"
-          >
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs text-muted-foreground">
-                  ردّ على نوت{" "}
-                  <span className="font-semibold text-foreground">
-                    @{userById(state, profileNoteReply.userId)?.username ?? "…"}
-                  </span>
-                  <span className="text-muted-foreground"> — يُرسل في الخاص</span>
-                </p>
-                <p className="mt-2 max-h-20 overflow-y-auto rounded-xl bg-secondary/70 px-3 py-2 text-sm font-ios-emoji leading-snug text-foreground/90 [overflow-wrap:anywhere]">
-                  {profileNoteReply.note}
-                </p>
-              </div>
-              <button
-                type="button"
-                className="shrink-0 rounded-full p-2 text-muted-foreground hover:bg-secondary hover:text-foreground"
-                aria-label="إغلاق"
-                onClick={() => setProfileNoteReply(null)}
-              >
-                <X size={18} />
-              </button>
             </div>
-            <label className="mt-3 block text-xs font-medium text-muted-foreground" htmlFor="profile-note-reply-input">
-              ردك
-            </label>
-            <textarea
-              id="profile-note-reply-input"
-              value={profileNoteReplyDraft}
-              onChange={e => setProfileNoteReplyDraft(e.target.value)}
-              placeholder="اكتب ردك… سيصله في المحادثة الخاصة معك"
-              rows={3}
-              disabled={isGuest}
-              className="mt-1 w-full resize-none rounded-xl border border-border bg-input px-3 py-2.5 text-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 font-ios-emoji"
-            />
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                disabled={isGuest || !profileNoteReplyDraft.trim()}
-                onClick={() => {
-                  if (isGuest) {
-                    notifyGuestActionBlocked();
-                    return;
-                  }
-                  const res = replyToProfileNoteAsDm({
-                    friendId: profileNoteReply.userId,
-                    noteText: profileNoteReply.note,
-                    replyText: profileNoteReplyDraft.trim(),
-                  });
-                  if (res) {
-                    setProfileNoteReply(null);
-                    setOpenChat(res.chatId);
-                  }
-                }}
-                className="inline-flex min-h-[44px] flex-1 items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-45"
-              >
-                <Send size={16} className="shrink-0" strokeWidth={2.25} />
-                إرسال في الخاص
-              </button>
-              <button
-                type="button"
-                className="min-h-[44px] rounded-xl border border-border bg-background px-3 text-sm font-medium text-foreground hover:bg-secondary"
-                onClick={() => {
-                  const id = profileNoteReply.userId;
-                  setProfileNoteReply(null);
-                  startTransition(() => onOpenProfile(id));
-                }}
-              >
-                الملف الشخصي
-              </button>
-            </div>
-          </div>
-        )}
+          )}
 
-      </div>
-
-      {editingNote && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setEditingNote(false)}>
-          <div className="bg-background rounded-3xl p-4 w-full max-w-sm space-y-3" onClick={e => e.stopPropagation()}>
-            <h3 className="font-bold text-center">{t("addNote")}</h3>
-            <input value={noteInput} onChange={e => setNoteInput(e.target.value)} maxLength={60} placeholder="..." className="w-full bg-input rounded-2xl px-4 py-3 outline-none text-center font-ios-emoji" />
-            <button onClick={() => { setNote(noteInput); setEditingNote(false); }} className="w-full bg-primary text-primary-foreground py-2 rounded-2xl font-semibold">{t("save")}</button>
-          </div>
+          {/* Divider */}
+          <div className="h-px bg-zinc-100 dark:bg-zinc-800 mx-0" />
         </div>
       )}
 
-      <div className="mt-2 border-t border-zinc-100 dark:border-zinc-800">
+      {/* ══════════════════════════════════════════════════
+          SECTION 3 — MESSAGES SUB-HEADER
+          RTL: "المحادثات" on FAR RIGHT, "الطلبات" on FAR LEFT
+          (dir="rtl" reverses the flex-row order)
+          ══════════════════════════════════════════════════ */}
+      {showInboxChatTitle && (
+        <div className="flex items-center justify-between px-4 pt-3 pb-1.5">
+          <span className="text-[15px] font-bold text-zinc-900 dark:text-zinc-50">
+            {isRtl ? "المحادثات" : "Chats"}
+          </span>
+          <button
+            type="button"
+            onClick={() => setShowRequests(true)}
+            className="touch-manipulation text-[13px] font-semibold text-[#0095F6] active:opacity-70"
+          >
+            {isRtl
+              ? messageRequests.length > 0
+                ? `طلبات المراسلة (${messageRequests.length})`
+                : "طلبات المراسلة"
+              : messageRequests.length > 0
+                ? `Requests (${messageRequests.length})`
+                : "Requests"}
+          </button>
+        </div>
+      )}
+
+      {/* ══════════════════════════════════════════════════
+          SECTION 4 — CONVERSATION LIST
+          Each row is rendered by ChatListRowWithPeek
+          ══════════════════════════════════════════════════ */}
+      <div className="chat-inbox-scroll no-scrollbar flex-1 overflow-y-auto overscroll-none">
         {sortedFilteredChats.map(c => (
           <ChatListRowWithPeek
             key={c.id}
             chat={c}
             me={me}
-            onOpenChat={id => {
-              setStackSpring(true);
-              setOpenChat(id);
-            }}
+            onOpenChat={openChatDirect}
+            onOpenProfile={onOpenProfile}
             onStackDrag={onStackDrag}
             onStackDragEnd={onStackDragEnd}
+            onStackChromeHide={hideStackChrome}
+            onStackChromeShow={showStackChrome}
+            onRowOpenCommit={handleRowOpenCommit}
           />
         ))}
-        {sortedFilteredChats.length === 0 && <p className="text-center text-zinc-500 py-10 text-sm">{t("noChats")}</p>}
+
+        {/* Empty state */}
+        {sortedFilteredChats.length === 0 && !search.trim() && (
+          <div className="flex flex-col items-center justify-center py-16 gap-3 px-6 text-center">
+            <span className="flex h-16 w-16 items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-800">
+              <MessageCirclePlus size={28} className="text-zinc-400" />
+            </span>
+            <p className="text-[15px] font-semibold text-zinc-500 dark:text-zinc-400">{t("noChats")}</p>
+            <p className="text-[13px] text-zinc-400">{isRtl ? "ابدأ محادثة جديدة" : "Start a new conversation"}</p>
+          </div>
+        )}
+        {sortedFilteredChats.length === 0 && !!search.trim() && (
+          <p className="py-12 text-center text-[14px] text-zinc-400">{isRtl ? "لا نتائج لـ «" + search + "»" : `No results for "${search}"`}</p>
+        )}
+
+        <div className="h-3" aria-hidden />
       </div>
 
-      {showCreate === "menu" && (
-        <div className="fixed inset-0 z-[220] flex items-end justify-center bg-black/50" role="presentation" onClick={() => setShowCreate(null)}>
-          <div className="bg-background w-full rounded-t-3xl p-4 max-w-md mx-auto" onClick={e => e.stopPropagation()}>
-            <button onClick={() => setShowCreate("group")} className="w-full flex items-center gap-3 p-3 hover:bg-secondary rounded-2xl"><Users /> {t("newGroup")}</button>
-            <button onClick={() => setShowCreate("channel")} className="w-full flex items-center gap-3 p-3 hover:bg-secondary rounded-2xl"><Megaphone /> {t("newChannel")}</button>
+      {/* ══════════════════════════════════════════════════
+          MODALS & OVERLAYS
+          ══════════════════════════════════════════════════ */}
+
+      {/* Edit note modal */}
+      {editingNote && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 pb-6 px-3" onClick={() => setEditingNote(false)}>
+          <div
+            dir={isRtl ? "rtl" : "ltr"}
+            className="w-full max-w-sm rounded-3xl bg-background p-5 shadow-2xl space-y-4"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3">
+              <RSocialAvatar name={me.username} src={me.avatar} size={42} />
+              <div>
+                <p className="font-bold text-[15px]">@{me.username}</p>
+                <p className="text-[12px] text-muted-foreground">{isRtl ? "مرئي للمتابِعين" : "Visible to followers"}</p>
+              </div>
+            </div>
+            <input
+              value={noteInput}
+              onChange={e => setNoteInput(e.target.value)}
+              maxLength={60}
+              autoFocus
+              dir={isRtl ? "rtl" : "ltr"}
+              placeholder={isRtl ? "أضف نوت… (٦٠ حرفاً)" : "Add a note… (60 chars)"}
+              className="w-full rounded-2xl bg-zinc-100 dark:bg-zinc-800 px-4 py-3 text-[15px] font-medium placeholder:text-zinc-400 outline-none"
+            />
+            <div className="flex gap-2">
+              <button onClick={() => setEditingNote(false)} className="flex-1 rounded-2xl bg-zinc-100 dark:bg-zinc-800 py-2.5 text-[14px] font-semibold text-foreground">
+                {t("cancel")}
+              </button>
+              <button onClick={() => { setNote(noteInput); setEditingNote(false); }} className="flex-1 rounded-2xl bg-[#FFFC00] py-2.5 text-[14px] font-bold text-zinc-900 shadow-sm">
+                {t("save")}
+              </button>
+            </div>
           </div>
         </div>
       )}
+
+      {/* New chat / group / channel picker */}
+      {showCreate === "menu" && (
+        <div className="fixed inset-0 z-[220] flex items-end justify-center bg-black/50" onClick={() => setShowCreate(null)}>
+          <div dir={isRtl ? "rtl" : "ltr"} className="w-full max-w-md rounded-t-3xl bg-background p-4 pb-8" onClick={e => e.stopPropagation()}>
+            <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-zinc-200 dark:bg-zinc-700" aria-hidden />
+            <button onClick={() => setShowCreate("group")} className="flex w-full items-center gap-3 rounded-2xl p-4 hover:bg-secondary active:bg-secondary text-[15px] font-medium">
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/30"><Users size={20} className="text-blue-600" /></span>
+              {t("newGroup")}
+            </button>
+            <button onClick={() => setShowCreate("channel")} className="flex w-full items-center gap-3 rounded-2xl p-4 hover:bg-secondary active:bg-secondary text-[15px] font-medium">
+              <span className="flex h-10 w-10 items-center justify-center rounded-full bg-purple-100 dark:bg-purple-900/30"><Megaphone size={20} className="text-purple-600" /></span>
+              {t("newChannel")}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Games modal (legacy - kept for backward compat) */}
       {showGames && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-end" onClick={() => setShowGames(false)}>
-          <div className="bg-background w-full rounded-t-3xl p-4 max-w-md mx-auto max-h-[75vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <h3 className="font-bold text-center mb-3">دعوة لعبة</h3>
-            <div className="flex gap-2 mb-3">
-              <button className={"flex-1 py-2 rounded-2xl " + (gameType === "billiards" ? "bg-primary text-primary-foreground" : "bg-secondary")} onClick={() => setGameType("billiards")}>🎱 بلياردو</button>
-              <button className={"flex-1 py-2 rounded-2xl " + (gameType === "football" ? "bg-primary text-primary-foreground" : "bg-secondary")} onClick={() => setGameType("football")}>⚽ كرة</button>
-            </div>
-            <div className="space-y-1">
-              {state.users.filter(u => u.id !== me.id).map(u => (
-                <button
-                  key={u.id}
-                  className="w-full flex items-center justify-between p-3 rounded-2xl hover:bg-secondary text-start"
-                  onClick={() => {
-                    const ch = openOrCreateChat(u.id);
-                    if (!ch) {
-                      if (isGuest) notifyGuestActionBlocked();
-                      else window.alert("تعذّر فتح المحادثة.");
-                      return;
-                    }
-                    const label = gameType === "billiards" ? "🎱 بلياردو" : "⚽ كرة";
-                    sendMessage(ch.id, { type: "text", content: `دعوة لعبة ${label}\nاضغط للبدء: /game/${gameType}?host=${me.id}` });
-                    setShowGames(false);
-                    setOpenChat(openChatIdFor(ch, me.id));
-                  }}
-                >
-                  <span className="font-semibold">@{u.username}</span>
-                  <span className="text-xs text-muted-foreground">إرسال دعوة</span>
-                </button>
-              ))}
-            </div>
-            <p className="text-[11px] text-muted-foreground text-center mt-3">نسخة أولية: ترسل دعوة داخل الشات، وسيتم تطوير اللعب اللحظي كاملًا لاحقًا.</p>
+        <div className="fixed inset-0 z-50 flex items-end bg-black/50" onClick={() => setShowGames(false)}>
+          <div className="w-full max-w-md mx-auto rounded-t-3xl bg-background p-5" onClick={e => e.stopPropagation()}>
+            <h3 className="mb-4 text-center text-base font-bold">اختر لعبة 🎮</h3>
+            <p className="text-center text-sm text-muted-foreground">افتح محادثة خاصة أولاً ثم اضغط + لإنشاء لعبة.</p>
           </div>
         </div>
       )}
@@ -2248,114 +3461,53 @@ export function ChatScreen({
       />
     );
   }
-  const activeStackChatId = openChat ?? stackDrag?.chatId ?? stackClosingId ?? null;
-
-  if (activeStackChatId) {
-    const chat = findChatByOpenId(state.chats, activeStackChatId, me.id);
-    if (!chat) {
-      setOpenChat(null);
-      setStackDrag(null);
-      setStackClosingId(null);
-      return null;
-    }
-    if (showGroupSettings && openChat && (chat.isGroup || chat.isChannel))
-      return (
-        <GroupDetailsScreen
-          chat={chat}
-          messages={chat.messages}
-          onBack={() => setShowGroupSettings(false)}
-          onOpenProfile={onOpenProfile}
-          onCreateNewGroup={() => {
-            setShowGroupSettings(false);
-            setOpenChat(null);
-            setShowCreate("group");
-          }}
-        />
-      );
-    const showInboxStack = !chat.isGroup && !chat.isChannel;
-    const cap = stackCapRef.current;
-    const chatOpenKey = openChatIdFor(chat, me.id);
-    const dragProgress =
-      stackDrag && stackDrag.chatId === chatOpenKey && cap > 0
-        ? Math.min(1, stackDrag.px / cap)
-        : openChat === chatOpenKey || stackClosingId === chatOpenKey
-          ? stackProgress
-          : 0;
-    const stackTransition = stackSpring ? `transform ${SLIDE_DISMISS_MS}ms ${SLIDE_DISMISS_EASE}` : "none";
-    const { inbox: inboxTransform, room: roomTransform } = chatStackLayerTransforms(
-      dragProgress,
-      cap,
-      isDocumentRtl(),
-    );
-    const isInteractiveDrag = !!(stackDrag && stackDrag.chatId === chat.id);
-
-    const chatStackOverlay = (
-      <div className="fixed inset-0 z-[220] isolate overflow-hidden overscroll-none bg-black">
-        {showInboxStack && (
-          <div
-            className="absolute inset-0 z-[1] overflow-hidden bg-background pb-[env(safe-area-inset-bottom,0px)] [transform:translateZ(0)]"
-            style={{
-              transform: inboxTransform,
-              transition: stackTransition,
-              pointerEvents: isInteractiveDrag || dragProgress < 0.98 ? "auto" : "none",
-            }}
-          >
-            <div className="h-full w-full overflow-hidden overscroll-none pb-[calc(5.25rem+env(safe-area-inset-bottom,0px))]">
-              {chatInbox}
-            </div>
-          </div>
-        )}
-        <div
-          className="absolute inset-0 z-[2] flex w-full flex-col overflow-hidden bg-black [transform:translateZ(0)]"
-          style={{
-            transform: roomTransform,
-            transition: stackTransition,
-            pointerEvents: "auto",
-          }}
-        >
-          <ChatRoom
-            key={`${accountSessionKey}-${chat.id}`}
-            chat={chat}
-            embedInStack
-            onStackProgress={syncStackProgressFromRoom}
-            onBack={() => {
-              if (resumeThreadToProfileUserId && onExitThreadToProfile) {
-                onExitThreadToProfile(resumeThreadToProfileUserId);
-              }
-              stackOpenDragRef.current = false;
-              if (!openChat) return;
-              setStackClosingId(chatOpenKey);
-              setStackDrag(null);
-              setStackSpring(true);
-              syncStackProgress(0);
-              window.setTimeout(() => {
-                setOpenChat(null);
-                setStackClosingId(null);
-                setStackSpring(false);
-              }, SLIDE_DISMISS_MS);
-            }}
-            onCall={(video) => {
-              setCallVideo(video);
-              setShowCall(chat.id);
-            }}
-            onOpenSettings={() => setShowGroupSettings(true)}
-            onOpenProfile={onOpenProfile}
-          />
-        </div>
-      </div>
+  if (activeStackChatId && stackChat && showGroupSettings && openChat && (stackChat.isGroup || stackChat.isChannel))
+    return (
+      <GroupDetailsScreen
+        chat={stackChat}
+        messages={stackChat.messages}
+        onBack={() => setShowGroupSettings(false)}
+        onOpenProfile={onOpenProfile}
+      />
     );
 
-    return typeof document !== "undefined" ? createPortal(chatStackOverlay, document.body) : chatStackOverlay;
-  }
-    if (showRequests) return <RequestsList chats={messageRequests} onBack={() => setShowRequests(false)} onOpen={(id) => { setShowRequests(false); setOpenChat(id); }} onOpenProfile={onOpenProfile} />;
-  if (showCreate === "group" || showCreate === "channel") return <CreateGroup mode={showCreate} onBack={() => setShowCreate(null)} onCreated={(id) => { setShowCreate(null); setOpenChat(id); }} />;
+  if (showRequests)
+    return (
+      <RequestsList
+        chats={messageRequests}
+        onBack={() => setShowRequests(false)}
+        onOpen={(id) => {
+          setShowRequests(false);
+          openChatDirect(id);
+        }}
+        onOpenProfile={onOpenProfile}
+      />
+    );
+  if (showCreate === "group" || showCreate === "channel")
+    return (
+      <CreateGroup
+        mode={showCreate}
+        onBack={() => setShowCreate(null)}
+        onCreated={(id) => {
+          setShowCreate(null);
+          openChatDirect(id);
+        }}
+      />
+    );
 
   const caller = incomingCall ? userById(state, incomingCall.fromUserId) : null;
 
   return (
     <>
       {incomingCall && !showCall && (
-        <div className="fixed inset-x-0 bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))] z-[250] mx-auto max-w-md px-3">
+        <div
+          className={
+            "fixed inset-x-0 z-[250] mx-auto max-w-md px-3 " +
+            (hideInboxChrome
+              ? "bottom-[max(0.75rem,env(safe-area-inset-bottom,0px))]"
+              : "bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))]")
+          }
+        >
           <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-3 shadow-lg">
             <Avatar name={caller?.username || "?"} src={caller?.avatar} size={44} />
             <div className="min-w-0 flex-1 text-start">
@@ -2382,7 +3534,38 @@ export function ChatScreen({
           </div>
         </div>
       )}
-      {chatInbox}
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
+        {chatInbox}
+        {activeStackChatId && stackChat ? (
+          <ChatStackRoomGestureShell
+            roomRef={stackRoomRef}
+            widthCapRef={stackCapRef}
+            interactive={!!openChat}
+          >
+            <ChatRoom
+              key={`${accountSessionKey}-${stackChat.id}`}
+              chat={stackChat}
+              embedInStack
+              stackFullyOpen={!!openChat}
+              roomDismissBlocked={chatRoomDismissBlocked}
+              forceScrollToBottom={stackRoomForceScrollBottom}
+              onStackProgress={openChat ? syncStackProgressFromRoom : undefined}
+              onAnimatedBack={openChat ? handleStackRoomAnimatedBack : undefined}
+              onBack={openChat ? closeOpenChat : () => {}}
+              onCall={
+                openChat
+                  ? video => {
+                      setCallVideo(video);
+                      setShowCall(stackChat.id);
+                    }
+                  : () => {}
+              }
+              onOpenSettings={openChat ? () => setShowGroupSettings(true) : () => {}}
+              onOpenProfile={onOpenProfile}
+            />
+          </ChatStackRoomGestureShell>
+        ) : null}
+      </div>
     </>
   );
 }
@@ -2557,28 +3740,32 @@ function CreateGroup({ mode, onBack, onCreated }: { mode: "group" | "channel"; o
   const [avatar, setAvatar] = useState(mode === "channel" ? "📢" : "👥");
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
+  const [memberSearch, setMemberSearch] = useState("");
   const others = state.users.filter(u => u.id !== me.id && !me.blocked.includes(u.id));
 
   const onAvatarFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     if (!f || !f.type.startsWith("image/")) return;
     void (async () => {
-      const token = getApiToken();
-      if (apiBackendEnabled() && token) {
-        setAvatarBusy(true);
-        const up = await apiUploadMedia(token, f);
-        setAvatarBusy(false);
-        e.target.value = "";
-        if (up.ok) {
-          setAvatar(up.url);
+      setAvatarBusy(true);
+      try {
+        const token = getApiToken();
+        if (apiBackendEnabled() && token) {
+          const up = await apiUploadMedia(token, f, { timeoutMs: 60_000 });
+          if (up.ok) {
+            setAvatar(up.url);
+            return;
+          }
+          alert(up.error || "فشل رفع الصورة");
           return;
         }
-        alert(up.error || "فشل رفع الصورة");
-        return;
+        const r = new FileReader();
+        r.onload = () => setAvatar(String(r.result));
+        r.readAsDataURL(f);
+      } finally {
+        e.target.value = "";
+        setAvatarBusy(false);
       }
-      const r = new FileReader();
-      r.onload = () => setAvatar(String(r.result));
-      r.readAsDataURL(f);
     })();
   };
 
@@ -2612,14 +3799,31 @@ function CreateGroup({ mode, onBack, onCreated }: { mode: "group" | "channel"; o
       ) : (
         <div className="space-y-2">
           <p className="text-sm text-muted-foreground">{mode === "group" ? t("addMembers") : "اختر الأعضاء (اختياري)"}</p>
-          {others.map(u => (
-            <button key={u.id} onClick={() => setSelected(s => s.includes(u.id) ? s.filter(x => x !== u.id) : [...s, u.id])} className="w-full flex items-center gap-3 p-2 rounded-2xl hover:bg-secondary">
+          <input
+            value={memberSearch}
+            onChange={e => setMemberSearch(e.target.value)}
+            placeholder="ابحث بالاسم…"
+            className="w-full rounded-2xl bg-input px-4 py-2.5 text-sm outline-none"
+          />
+          {others
+            .filter(u => {
+              const q = memberSearch.trim().toLowerCase();
+              if (!q) return true;
+              return u.username.toLowerCase().includes(q);
+            })
+            .map(u => (
+            <button
+              key={u.id}
+              type="button"
+              onClick={() => setSelected(s => s.includes(u.id) ? s.filter(x => x !== u.id) : [...s, u.id])}
+              className="flex w-full touch-manipulation items-center gap-3 rounded-2xl p-2 hover:bg-secondary active:bg-secondary/80"
+            >
               <Avatar name={u.username} src={u.avatar} />
               <div className="flex-1 text-start">@{u.username}</div>
               {selected.includes(u.id) && <Check className="text-primary" />}
             </button>
           ))}
-          <button onClick={create} className="w-full bg-primary text-primary-foreground py-3 rounded-2xl font-semibold mt-3">{t("create_")} ({selected.length})</button>
+          <button type="button" onClick={create} className="w-full bg-primary text-primary-foreground py-3 rounded-2xl font-semibold mt-3">{t("create_")} ({selected.length})</button>
         </div>
       )}
     </div>
@@ -2627,14 +3831,92 @@ function CreateGroup({ mode, onBack, onCreated }: { mode: "group" | "channel"; o
   );
 }
 
+// ─── Pool Game Invite Bubble ─────────────────────────
+function PoolGameInviteBubble({
+  message, mine, meId, otherId, chatId, onJoin,
+}: {
+  message: import("@/lib/types").Message;
+  mine: boolean;
+  meId: string;
+  otherId: string;
+  chatId: string;
+  onJoin: (roomId: string) => void;
+}) {
+  const [status, setStatus] = useState<"pending" | "joining" | "active" | "finished">("pending");
+  const mc = messageContent(message);
+  // format: __game_invite__:pool:<inviterId>:<msgId>
+  const parts = mc.split(":");
+  const inviterId = parts[2] ?? "";
+  const isInviter = meId === inviterId;
+  const canJoin = !isInviter && status === "pending";
+
+  const join = async () => {
+    if (!canJoin) return;
+    setStatus("joining");
+    try {
+      const { getApiBaseUrl, getApiToken } = await import("@/lib/apiBackend");
+      const base = getApiBaseUrl().replace(/\/$/, "");
+      const token = getApiToken();
+      const r = await fetch(`${base}/v1/games/pool/create`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          chatId,
+          opponentId: inviterId,
+          inviteMessageId: message.id,
+        }),
+      });
+      if (!r.ok) { setStatus("pending"); alert("تعذّر إنشاء الغرفة"); return; }
+      const data = await r.json() as { room: { roomId: string } };
+      setStatus("active");
+      onJoin(data.room.roomId);
+    } catch {
+      setStatus("pending");
+    }
+  };
+
+  return (
+    <div className="flex flex-col items-center gap-3 rounded-2xl bg-gradient-to-br from-[#1a3a1a] to-[#0d1f0d] p-4 text-center shadow-lg" style={{ minWidth: 200 }}>
+      <div className="text-4xl">🎱</div>
+      <div>
+        <p className="font-bold text-white text-sm">دعوة لعبة بلياردو</p>
+        <p className="text-xs text-green-400 mt-0.5">
+          {isInviter ? "في انتظار الخصم…" : "دعاك للعب بلياردو 8 كرات"}
+        </p>
+      </div>
+      {!isInviter && status === "pending" && (
+        <button
+          className="rounded-xl bg-green-600 px-6 py-2 text-sm font-bold text-white shadow hover:bg-green-500 active:scale-95"
+          onClick={join}
+        >
+          انضم للعبة
+        </button>
+      )}
+      {status === "joining" && (
+        <span className="text-xs text-green-400 animate-pulse">جاري الانضمام…</span>
+      )}
+      {status === "active" && (
+        <span className="text-xs text-yellow-400">🎮 اللعبة جارية</span>
+      )}
+      {isInviter && (
+        <span className="text-xs text-gray-400">أرسلت الدعوة</span>
+      )}
+    </div>
+  );
+}
+
 function ChatRoom({
-  chat,
+  chat: chatInput,
   onBack,
   onCall,
   onOpenSettings,
   onOpenProfile,
   embedInStack = false,
+  stackFullyOpen = true,
+  roomDismissBlocked = false,
+  forceScrollToBottom = false,
   onStackProgress,
+  onAnimatedBack,
 }: {
   chat: Chat;
   onBack: () => void;
@@ -2642,7 +3924,11 @@ function ChatRoom({
   onOpenSettings: () => void;
   onOpenProfile: (id: string) => void;
   embedInStack?: boolean;
-  onStackProgress?: (progress: number) => void;
+  stackFullyOpen?: boolean;
+  roomDismissBlocked?: boolean;
+  forceScrollToBottom?: boolean;
+  onStackProgress?: (tx: number, phase?: "move" | "end" | "start") => void;
+  onAnimatedBack?: () => boolean;
 }) {
   const {
     state,
@@ -2652,6 +3938,7 @@ function ChatRoom({
     markViewOnceOpened,
     markChatOpened,
     markChatRead,
+    typingUserByChatId,
     joinChannel,
     hideMessageForMe,
     addMessageReaction,
@@ -2663,8 +3950,9 @@ function ChatRoom({
     isGuest,
   } = useApp();
   const t = useT();
+  const chat = useMemo(() => normalizeChatRecord(chatInput), [chatInput]);
   const viewerId = resolveActiveViewerId(state) ?? currentUser?.id ?? "";
-  const me = currentUser!;
+  const meId = currentUser?.id ?? "";
   const [text, setText] = useState("");
   const [mentionPick, setMentionPick] = useState<{ query: string; start: number } | null>(null);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
@@ -2675,20 +3963,24 @@ function ChatRoom({
   const [showPrivacyMenu, setShowPrivacyMenu] = useState(false);
   const [hideReadStatus, setHideReadStatus] = useState(false);
   const [hideTypingStatus, setHideTypingStatus] = useState(false);
-  const [isTyping] = useState(false);
   const [vanishMode, setVanishMode] = useState(false);
   const [vanishMessages, setVanishMessages] = useState<Message[]>([]);
+  const [showPoolInviteModal, setShowPoolInviteModal] = useState(false);
+  const [localPoolRoomId, setLocalPoolRoomId] = useState<string | null>(null);
   const recRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const recordStartRef = useRef<number>(0);
-  const sendChatId = useMemo(() => chatMergeKey(chat, me.id), [chat, me.id]);
+  const sendChatId = useMemo(() => chatMergeKey(chat, meId), [chat, meId]);
   const chatIdRef = useRef(sendChatId);
   chatIdRef.current = sendChatId;
   const dispatchSendRef = useRef<(msg: Omit<Message, "id" | "senderId" | "createdAt">) => boolean>(
     () => false,
   );
-  const composerInputRef = useRef<HTMLInputElement>(null);
+  const composerInputRef = useRef<HTMLTextAreaElement>(null);
   const composingRef = useRef(false);
+  /** يمنع onInput/onChange من استرجاع النص بعد تفريغ الحقل عند الإرسال */
+  const composerIgnoreInputUntilRef = useRef(0);
+  const roomBackAtRef = useRef(0);
   /** بعد الإرسال: منع ظهور زر الميك تحت الإصبع (ghost click يفتح التسجيل) */
   const blockMicUntilRef = useRef(0);
   const [composerMicCooldown, setComposerMicCooldown] = useState(false);
@@ -2720,22 +4012,55 @@ function ChatRoom({
     chat.isGroup || chat.isChannel ? null : chat.members.find(id => id !== viewerId) ?? null;
   const other = otherId ? userById(state, otherId) : null;
   const title = chat.isGroup || chat.isChannel ? chat.name : "@" + (other?.username || "");
-  const isMember = chat.members.includes(me.id);
-  const canPost = !chat.isChannel || (chat.hosts || []).includes(me.id);
+  const isMember = meId ? chat.members.includes(meId) : false;
+  const canPost = !chat.isChannel || (chat.hosts || []).includes(meId);
   const isGroupChat = chat.isGroup && !chat.isChannel;
   const isDmRoom = !chat.isGroup && !chat.isChannel;
+  const peerIsTyping = useMemo(() => {
+    if (!otherId || !isDmRoom) return false;
+    const storageId = dmChatId(meId, otherId);
+    return (
+      typingUserByChatId[storageId] === otherId ||
+      typingUserByChatId[chat.id] === otherId ||
+      typingUserByChatId[sendChatId] === otherId
+    );
+  }, [otherId, isDmRoom, meId, chat.id, sendChatId, typingUserByChatId]);
   const groupMentionOptions = useMemo(() => {
-    if (!isGroupChat || !mentionPick) return [];
+    if (chat.isChannel || !mentionPick) return [];
     const q = mentionPick.query;
     const members = chat.members
       .map(id => userById(state, id))
-      .filter((u): u is User => !!u && u.id !== me.id);
-    const filtered = q ? members.filter(u => u.username.toLowerCase().includes(q)) : members;
+      .filter((u): u is User => !!u && u.id !== meId);
+    const filtered = q
+      ? members.filter(u => (u.username ?? "").toLowerCase().includes(q))
+      : members;
     return filtered.slice(0, 10);
-  }, [isGroupChat, mentionPick, chat.members, state.users, me.id]);
+  }, [chat.isChannel, mentionPick, chat.members, state.users, meId]);
+  const syncComposerHeight = useCallback(() => {
+    const el = composerInputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const scrollH = el.scrollHeight;
+    const clamped = Math.min(scrollH, CHAT_COMPOSER_MAX_HEIGHT_PX);
+    el.style.height = `${Math.max(CHAT_COMPOSER_LINE_PX, clamped)}px`;
+    el.style.overflowY = scrollH > CHAT_COMPOSER_MAX_HEIGHT_PX ? "auto" : "hidden";
+  }, []);
+
+  useEffect(() => {
+    if (!isDmRoom || !otherId) return;
+    return () => {
+      flushTypingStop(sendChatId, otherId);
+    };
+  }, [isDmRoom, otherId, sendChatId]);
+
   const onComposerChange = (v: string) => {
+    if (Date.now() < composerIgnoreInputUntilRef.current) return;
     setText(v);
-    if (!isGroupChat) {
+    if (isDmRoom && otherId) {
+      if (v.trim()) scheduleTypingPulse(sendChatId, otherId);
+      else flushTypingStop(sendChatId, otherId);
+    }
+    if (chat.isChannel) {
       setMentionPick(null);
       return;
     }
@@ -2746,6 +4071,10 @@ function ChatRoom({
       setMentionPick(null);
     }
   };
+
+  useLayoutEffect(() => {
+    syncComposerHeight();
+  }, [text, syncComposerHeight]);
   const pickMention = (uname: string) => {
     if (!mentionPick) return;
     setText(`${text.slice(0, mentionPick.start)}@${uname} `);
@@ -2776,10 +4105,16 @@ function ChatRoom({
   const scrollMessagesToBottom = useCallback(() => {
     const el = messagesScrollRef.current;
     if (!el) return;
-    el.scrollTop = el.scrollHeight;
+    const top = Math.max(0, el.scrollHeight - el.clientHeight);
+    try {
+      el.scrollTo({ top, behavior: "instant" });
+    } catch {
+      el.scrollTop = top;
+    }
   }, []);
   /** false عندما يمرّر المستخدم لأعلى لقراءة قديم — لا نعيده للأسفل تلقائياً عند وصول رسالة جديدة */
   const stickToBottomRef = useRef(true);
+  const scrollAnchorRef = useRef({ chatId: "", msgCount: 0 });
   const cameraCaptureRef = useRef<HTMLInputElement>(null);
   const galleryMediaInputRef = useRef<HTMLInputElement>(null);
   const galleryVideoVoiceInputRef = useRef<HTMLInputElement>(null);
@@ -2799,12 +4134,12 @@ function ChatRoom({
     (msg: Omit<Message, "id" | "senderId" | "createdAt">) => {
       if (isDmRoom && vanishMode) {
         const id = `vx_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
-        setVanishMessages(v => [...v, { ...msg, id, senderId: me.id, createdAt: Date.now() }]);
+        setVanishMessages(v => [...v, { ...msg, id, senderId: meId, createdAt: Date.now() }]);
         return true;
       }
       return sendMessage(sendChatId, msg);
     },
-    [isDmRoom, vanishMode, sendChatId, me.id, sendMessage],
+    [isDmRoom, vanishMode, sendChatId, meId, sendMessage],
   );
 
   useLayoutEffect(() => {
@@ -2840,15 +4175,42 @@ function ChatRoom({
   }, [chat.id]);
 
   useEffect(() => {
+    const onVanishArm = (e: Event) => {
+      const id = (e as CustomEvent<{ chatId?: string }>).detail?.chatId;
+      if (!id || (id !== sendChatId && id !== chat.id)) return;
+      setVanishMode(true);
+      setVanishMessages([]);
+    };
+    window.addEventListener("retweet-chat-vanish-arm", onVanishArm);
+    return () => window.removeEventListener("retweet-chat-vanish-arm", onVanishArm);
+  }, [sendChatId, chat.id]);
+
+  useEffect(() => {
+    if (!stackFullyOpen) return;
     void loadChatMessages(sendChatId);
-  }, [sendChatId, loadChatMessages]);
+  }, [sendChatId, loadChatMessages, stackFullyOpen]);
 
   const scrollToMessageId = useCallback((id: string) => {
     setMoreReactionEmoji(false);
     setMessageContext(null);
     const el = messageElRefs.current.get(id);
     el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    if (el) {
+      el.classList.add("ring-2", "ring-sky-500/70", "rounded-2xl");
+      window.setTimeout(() => {
+        el.classList.remove("ring-2", "ring-sky-500/70", "rounded-2xl");
+      }, 1400);
+    }
   }, []);
+
+  useEffect(() => {
+    const onScrollMsg = (e: Event) => {
+      const mid = (e as CustomEvent<{ messageId?: string }>).detail?.messageId;
+      if (mid) scrollToMessageId(mid);
+    };
+    window.addEventListener("retweet-scroll-chat-message", onScrollMsg);
+    return () => window.removeEventListener("retweet-scroll-chat-message", onScrollMsg);
+  }, [scrollToMessageId]);
 
   const openShareFeedFromMessage = useCallback(
     (m: Message) => {
@@ -2907,9 +4269,16 @@ function ChatRoom({
     }
   }, []);
 
+  const swipeReplyLockRef = useRef(false);
+
   const onMsgPointerUp = useCallback(
     (e: React.PointerEvent, m: Message) => {
       clearLongPress();
+      if (swipeReplyLockRef.current) {
+        swipeReplyLockRef.current = false;
+        pressStartRef.current = null;
+        return;
+      }
       if (m.id.startsWith("vx_")) {
         pressStartRef.current = null;
         return;
@@ -2950,15 +4319,16 @@ function ChatRoom({
       }
       heartDblTapRef.current = { messageId: m.id, at: now };
     },
-    [clearLongPress, me.id, chat.id, addMessageReaction, isGuest],
+    [clearLongPress, meId, chat.id, addMessageReaction, isGuest],
   );
 
   useEffect(() => {
+    if (!stackFullyOpen) return;
     if (chat.isGroup || chat.isChannel) return;
     markChatOpened(chat.id);
-  }, [chat.id, chat.isGroup, chat.isChannel, markChatOpened]);
+  }, [chat.id, chat.isGroup, chat.isChannel, markChatOpened, stackFullyOpen]);
 
-  const lastMessageId = chat.messages[chat.messages.length - 1]?.id;
+  const lastMessageId = (chat.messages || [])[(chat.messages || []).length - 1]?.id;
   useEffect(() => {
     markChatRead(chat.id);
   }, [chat.id, lastMessageId, markChatRead]);
@@ -2970,18 +4340,66 @@ function ChatRoom({
   useLayoutEffect(() => {
     const el = messagesScrollRef.current;
     if (!el) return;
-    stickToBottomRef.current = true;
-    const run = () => {
-      el.scrollTop = el.scrollHeight;
-    };
-    run();
-    const id = requestAnimationFrame(run);
-    const t = window.setTimeout(run, 180);
+    let raf = 0;
+    const ro = new ResizeObserver(() => {
+      if (!forceScrollToBottom && !stickToBottomRef.current) return;
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => scrollMessagesToBottom());
+    });
+    ro.observe(el);
+    const inner = el.firstElementChild;
+    if (inner) ro.observe(inner);
     return () => {
-      cancelAnimationFrame(id);
-      window.clearTimeout(t);
+      ro.disconnect();
+      cancelAnimationFrame(raf);
     };
+  }, [chat.id, scrollMessagesToBottom, forceScrollToBottom]);
+
+  useLayoutEffect(() => {
+    stickToBottomRef.current = true;
+    const el = messagesScrollRef.current;
+    if (!el) return;
+    // تعطيل مؤقت للـ scroll-behavior لضمان القفز الفوري بدون أنيميشن
+    const prev = el.style.scrollBehavior;
+    el.style.scrollBehavior = "auto";
+    el.scrollTop = el.scrollHeight;
+    el.style.scrollBehavior = prev;
   }, [chat.id]);
+
+  useLayoutEffect(() => {
+    if (!embedInStack || !forceScrollToBottom) return;
+    const onViewportChange = () => {
+      if (stickToBottomRef.current) scrollMessagesToBottom();
+    };
+    const onScrollBottom = () => scrollMessagesToBottom();
+    onViewportChange();
+    window.addEventListener("resize", onViewportChange);
+    window.addEventListener("retweet-chat-scroll-bottom", onScrollBottom);
+    return () => {
+      window.removeEventListener("resize", onViewportChange);
+      window.removeEventListener("retweet-chat-scroll-bottom", onScrollBottom);
+    };
+  }, [embedInStack, forceScrollToBottom, vv.height, vv.offsetTop, scrollMessagesToBottom]);
+
+  useLayoutEffect(() => {
+    if (!forceScrollToBottom) return;
+    stickToBottomRef.current = true;
+    scrollMessagesToBottom();
+    const id = requestAnimationFrame(() => scrollMessagesToBottom());
+    return () => cancelAnimationFrame(id);
+  }, [forceScrollToBottom, scrollMessagesToBottom]);
+
+  useLayoutEffect(() => {
+    if (messageContext) return;
+    if (!forceScrollToBottom && !stickToBottomRef.current) return;
+    const count = displayMessages.length;
+    const prev = scrollAnchorRef.current;
+    const isNewChat = prev.chatId !== chat.id;
+    scrollAnchorRef.current = { chatId: chat.id, msgCount: count };
+    if (isNewChat) stickToBottomRef.current = true;
+    if (!isNewChat && !forceScrollToBottom && count === prev.msgCount) return;
+    scrollMessagesToBottom();
+  }, [chat.id, displayMessages.length, messageContext, scrollMessagesToBottom, forceScrollToBottom]);
 
   const onMessagesScroll = useCallback(() => {
     const el = messagesScrollRef.current;
@@ -2991,17 +4409,9 @@ function ChatRoom({
   }, []);
 
   useLayoutEffect(() => {
-    if (messageContext) return;
-    if (!stickToBottomRef.current) return;
-    scrollMessagesToBottom();
-  }, [chat.messages.length, vanishMessages.length, messageContext, scrollMessagesToBottom]);
-
-  useLayoutEffect(() => {
     if (!keyboardOpen) return;
     stickToBottomRef.current = true;
     scrollMessagesToBottom();
-    const t = window.setTimeout(scrollMessagesToBottom, 120);
-    return () => window.clearTimeout(t);
   }, [keyboardOpen, vv.keyboardInset, scrollMessagesToBottom]);
 
   const VANISH_PULL_NEED = 120;
@@ -3009,9 +4419,44 @@ function ChatRoom({
   const VANISH_PULL_HIT_PX = 140;
 
   const isQuranChannel = chat.id === QURAN_CHANNEL_ID;
+  const useIgDm = isIgDmChat(isDmRoom, isQuranChannel);
+  const dmPalette = useMemo(
+    () => (useIgDm ? getChatDmPalette(state.theme) : null),
+    [useIgDm, state.theme],
+  );
+  const dmDir = chatDmLayoutDir(state.language);
+  const dmRtl = chatDmIsRtl(state.language);
+  const igDmSurfaceStyle = useMemo(
+    () => (dmPalette ? { backgroundColor: dmPalette.surface } : undefined),
+    [dmPalette],
+  );
+  const peerOnline = useMemo(() => {
+    if (!useIgDm || !otherId) return false;
+    const last = chat.lastOpenAtByUser?.[otherId] ?? 0;
+    return Date.now() - last < 5 * 60_000;
+  }, [useIgDm, otherId, chat.lastOpenAtByUser, displayMessages.length]);
+  const chatTimelineRows = useMemo(
+    () => (useIgDm ? buildChatTimelineRows(displayMessages, meId, state.language) : null),
+    [useIgDm, displayMessages, meId, state.language],
+  );
+  const rowsToRender = useMemo(() => {
+    if (chatTimelineRows) return chatTimelineRows;
+    return displayMessages.map(m => ({
+      kind: "message" as const,
+      key: m.id,
+      message: m,
+      showPeerAvatar: true,
+    }));
+  }, [chatTimelineRows, displayMessages]);
   const themeBg = isQuranChannel
     ? "bg-black text-white"
-    : theme === "blue" ? "bg-blue-50 dark:bg-blue-950" : theme === "pink" ? "bg-pink-50 dark:bg-pink-950" : "bg-background";
+    : useIgDm && dmPalette
+      ? dmPalette.headerTitleClass
+      : theme === "blue"
+        ? "bg-blue-50 dark:bg-blue-950"
+        : theme === "pink"
+          ? "bg-pink-50 dark:bg-pink-950"
+          : "bg-background";
 
   const clearGalleryLongPress = useCallback(() => {
     if (galleryLpTimerRef.current) {
@@ -3049,10 +4494,21 @@ function ChatRoom({
       const f = e.target.files?.[0];
       e.target.value = "";
       if (!f) return;
-      const msgType = f.type.startsWith("video/") ? "video" : "image";
-      const reader = new FileReader();
-      reader.onload = () => dispatchSend({ type: msgType, content: String(reader.result) });
-      reader.readAsDataURL(f);
+      void (async () => {
+        const msgType = f.type.startsWith("video/") ? "video" : "image";
+        const compressed = await compressChatMediaFile(f);
+        const token = getApiToken();
+        if (apiBackendEnabled() && token) {
+          const up = await apiUploadMedia(token, compressed, { timeoutMs: 90_000 });
+          if (up.ok) {
+            dispatchSend({ type: msgType, content: up.url });
+            return;
+          }
+        }
+        const reader = new FileReader();
+        reader.onload = () => dispatchSend({ type: msgType, content: String(reader.result) });
+        reader.readAsDataURL(compressed);
+      })();
     },
     [dispatchSend],
   );
@@ -3233,44 +4689,11 @@ function ChatRoom({
     const capped = txt.length > 8000 ? txt.slice(0, 8000) + "…" : txt;
     const glassLinks = mineBubble && !isQuranChannel;
     return renderMentionHashtagNodes(capped, {
-      renderMention: (uname, key) => {
-        const u = state.users.find(x => x.username.toLowerCase() === uname.toLowerCase());
-        if (u) {
-          return (
-            <button
-              key={key}
-              type="button"
-              onClick={e => {
-                e.stopPropagation();
-                openMentionProfile(uname);
-              }}
-              className={
-                glassLinks ? "text-zinc-800 underline underline-offset-2 dark:text-zinc-200" : "text-primary underline"
-              }
-            >
-              <AtSign size={12} className="inline" />
-              {uname}
-            </button>
-          );
-        }
-        return (
-          <button
-            key={key}
-            type="button"
-            onClick={e => {
-              e.stopPropagation();
-              openMentionProfile(uname);
-            }}
-            className={
-              glassLinks
-                ? "text-zinc-800 underline underline-offset-2 dark:text-zinc-200"
-                : "text-primary underline"
-            }
-          >
-            @{uname}
-          </button>
-        );
-      },
+      renderMention: createMentionRenderer({
+        variant: glassLinks ? "mine" : "default",
+        users: state.users,
+        onUsernameClick: openMentionProfile,
+      }),
       renderHashtag: (h, key) => (
         <span key={key} className={glassLinks ? "text-zinc-700 dark:text-zinc-300" : "text-primary"}>
           {h}
@@ -3280,6 +4703,7 @@ function ChatRoom({
   };
 
   const renderBubbleContent = (m: Message, mine: boolean) => {
+    const mc = messageContent(m);
     const sender = userById(state, m.senderId);
     return (
       <>
@@ -3294,31 +4718,40 @@ function ChatRoom({
             <span className="opacity-95">{m.forwardedFrom.sourceChatLabel}</span>
           </div>
         )}
-        {(chat.isGroup || chat.isChannel) && !mine && <div className="text-[10px] opacity-70 mb-0.5">@{sender?.username}</div>}
         {m.replyTo && (
           <ChatInlineReplyQuote
             replyTo={m.replyTo}
             messages={displayMessages}
-            meId={me.id}
+            meId={meId}
             state={state}
             mine={mine}
             isQuran={isQuranChannel}
+            onJumpToOriginal={scrollToMessageId}
           />
         )}
-        {m.type === "text" &&
-          ((m.replyContext?.kind === "note" || /^↩️ رد على نوتك:/.test(m.content)) ? (
+        {m.type === "text" && messageContent(m).startsWith("__game_invite__:pool:") ? (
+          <PoolGameInviteBubble
+            message={m}
+            mine={mine}
+            meId={meId}
+            otherId={otherId ?? ""}
+            chatId={chat.id}
+            onJoin={roomId => setLocalPoolRoomId(roomId)}
+          />
+        ) : m.type === "text" &&
+          ((m.replyContext?.kind === "note" || /^↩️ رد على نوتك:/.test(messageContent(m))) ? (
             <ChatNoteReplyBubble message={m} mine={mine} />
           ) : (
             <span
               dir="auto"
-              className="block max-w-full whitespace-pre-wrap break-words text-start [overflow-wrap:anywhere] [word-break:break-word]"
+              className="block max-w-full select-none whitespace-pre-wrap break-words text-start [overflow-wrap:anywhere] [word-break:break-word]"
             >
-              {renderText(m.content, mine)}
+              {renderText(messageContent(m), mine)}
             </span>
           ))}
         {m.type === "shared_group" && (
           <SharedGroupInvitePreview
-            inviteCode={m.content}
+            inviteCode={mc}
             onJoined={id => {
               if (id) {
                 window.dispatchEvent(
@@ -3337,8 +4770,8 @@ function ChatRoom({
               openShareFeedFromMessage(m);
             }}
           >
-            {m.shareText && <span className="mb-1 block whitespace-pre-wrap text-xs opacity-90">{m.shareText}</span>}
-            <SharedPostPreview postId={m.content} variant="chat" />
+            {m.shareText && <span className="mb-1 block select-none whitespace-pre-wrap text-xs opacity-90">{m.shareText}</span>}
+            <SharedPostPreview postId={mc} variant="chat" />
           </button>
         )}
         {m.type === "shared_story" &&
@@ -3353,13 +4786,13 @@ function ChatRoom({
                 openShareFeedFromMessage(m);
               }}
             >
-              <SharedStoryChatPreview storyId={m.content} />
+              <SharedStoryChatPreview storyId={mc} />
             </button>
           ))}
         {m.type === "voice" &&
-          (m.content.startsWith("data:") || isRenderableMediaUrl(m.content) ? (
+          (mc.startsWith("data:") || isRenderableMediaUrl(mc) ? (
             <InlineVoicePlayer
-              src={m.content.startsWith("data:") ? m.content : resolveMediaUrl(m.content)}
+              src={mc.startsWith("data:") ? mc : resolveMediaUrl(mc)}
               durationSec={m.durationSec}
               isQuran={isQuranChannel}
               mine={mine}
@@ -3367,21 +4800,21 @@ function ChatRoom({
           ) : (
             <div className="flex items-center gap-2">
               <span className="text-2xl">🎙️</span>
-              <span className="break-all text-xs opacity-80">{m.content}</span>
+              <span className="break-all text-xs opacity-80">{mc}</span>
             </div>
           ))}
-        {m.type === "sticker" && isStickerImageContent(m.content) && (
+        {m.type === "sticker" && isStickerImageContent(mc) && (
           <img
-            src={m.content}
+            src={mc}
             alt=""
             className={CHAT_STICKER_MEDIA_CLASS}
             loading="lazy"
             decoding="async"
           />
         )}
-        {m.type === "sticker" && isStickerVideoContent(m.content) && (
+        {m.type === "sticker" && isStickerVideoContent(mc) && (
           <video
-            src={m.content}
+            src={mc.startsWith("data:") ? mc : resolveMediaUrl(mc)}
             className={CHAT_STICKER_MEDIA_CLASS}
             autoPlay
             loop
@@ -3391,13 +4824,13 @@ function ChatRoom({
             preload="metadata"
           />
         )}
-        {m.type === "sticker" && !isStickerImageContent(m.content) && !isStickerVideoContent(m.content) && (
+        {m.type === "sticker" && !isStickerImageContent(mc) && !isStickerVideoContent(mc) && (
           <span className="inline-flex items-center justify-center min-w-[44px] min-h-[44px] px-2 rounded-[22px] bg-secondary/40 text-2xl leading-none select-none" title="ملصق">
-            {m.content}
+            {mc}
           </span>
         )}
         {m.type === "drawing" && m.viewOnce && (
-          viewOnceOpenedForViewer(m, me.id) ? (
+          viewOnceOpenedForViewer(m, meId) ? (
             <div className={viewOncePillDoneClass(mine, isQuranChannel)}>رسم · تمت المشاهدة</div>
           ) : (
             <button
@@ -3414,7 +4847,7 @@ function ChatRoom({
           )
         )}
         {m.type === "drawing" && !m.viewOnce && (() => {
-          const d = parseDrawingPayload(m.content);
+          const d = parseDrawingPayload(mc);
           return d ? (
             <div className={CHAT_IMAGE_WRAP + " overflow-hidden"}>
               <ChatDrawingCanvas payload={d} className="w-full" maxHeightPx={280} forChatDisplay />
@@ -3424,7 +4857,7 @@ function ChatRoom({
           );
         })()}
         {m.type === "image" && m.viewOnce && (
-          viewOnceOpenedForViewer(m, me.id) ? (
+          viewOnceOpenedForViewer(m, meId) ? (
             <div className={viewOncePillDoneClass(mine, isQuranChannel)}>صورة · تمت المشاهدة</div>
           ) : (
             <button
@@ -3452,7 +4885,7 @@ function ChatRoom({
           >
             <div className={CHAT_IMAGE_WRAP}>
               <img
-                src={m.content}
+                src={mc}
                 alt=""
                 draggable={false}
                 className={`${CHAT_IMAGE_EL} pointer-events-none align-middle`}
@@ -3461,7 +4894,7 @@ function ChatRoom({
           </button>
         )}
         {m.type === "video" && m.viewOnce && (
-          viewOnceOpenedForViewer(m, me.id) ? (
+          viewOnceOpenedForViewer(m, meId) ? (
             <div className={viewOncePillDoneClass(mine, isQuranChannel)}>فيديو · تمت المشاهدة</div>
           ) : (
             <button
@@ -3490,7 +4923,7 @@ function ChatRoom({
               setInlineMediaViewer(m);
             }}
           >
-            <video src={m.content} muted playsInline preload="metadata" className={CHAT_VIDEO_EL + " pointer-events-none"} />
+            <video src={mc.startsWith("data:") ? mc : resolveMediaUrl(mc)} muted playsInline preload="metadata" className={CHAT_VIDEO_EL + " pointer-events-none"} />
             <span className="pointer-events-none absolute inset-0 flex items-center justify-center">
               <span className="rounded-full bg-black/50 p-3 text-white shadow-md" aria-hidden>
                 <Play size={28} fill="currentColor" className="text-white opacity-95" />
@@ -3588,6 +5021,8 @@ function ChatRoom({
       const r = el.getBoundingClientRect();
       const fromBottom = r.bottom - e.clientY;
       if (fromBottom < 0 || fromBottom > VANISH_PULL_HIT_PX) return;
+      const fromRight = e.clientX - r.left >= r.width - 30;
+      if (fromRight) return;
       const tgt = e.target as HTMLElement | null;
       if (!tgt || !el.contains(tgt)) return;
       if (tgt.closest("button, a, input, textarea, select, canvas")) return;
@@ -3598,10 +5033,10 @@ function ChatRoom({
     [drawComposeOpen, isDmRoom, canPost, handleVanishPullDown],
   );
 
+  const myOutgoing = visibleMessages.filter(m => m.senderId === meId);
   let seenFooter: string | null = null;
   if (!chat.isGroup && !chat.isChannel && otherId) {
     const otherLastOpen = chat.lastOpenAtByUser?.[otherId] ?? 0;
-    const myOutgoing = visibleMessages.filter(m => m.senderId === me.id);
     const lastMine = myOutgoing[myOutgoing.length - 1];
     if (lastMine && otherLastOpen >= lastMine.createdAt) {
       const otherRepliedAfter = visibleMessages.some(m => m.senderId === otherId && m.createdAt >= lastMine.createdAt);
@@ -3626,8 +5061,8 @@ function ChatRoom({
   const inlineMediaLightboxLabel =
     inlineMediaLightboxUser != null
       ? `@${inlineMediaLightboxUser.username}`
-      : inlineMediaViewer?.senderId === me.id
-        ? `@${me.username}`
+      : inlineMediaViewer?.senderId === meId
+        ? `@${currentUser?.username ?? "?"}`
         : "?";
 
   const composerHasText = text.trim().length > 0;
@@ -3637,22 +5072,44 @@ function ChatRoom({
     return raw.trim();
   }, [text]);
 
-  const submitTextMessage = useCallback(() => {
-    const body = readComposerBody();
-    if (!body) return;
-    const rt = replyingTo
-      ? { id: replyingTo.id, content: chatReplyPreview(replyingTo), type: replyingTo.type }
-      : undefined;
-    const sent = dispatchSend({ type: "text", content: body, replyTo: rt });
-    if (!sent) return;
-    blockMicUntilRef.current = Date.now() + 520;
-    setComposerMicCooldown(true);
+  const clearComposer = useCallback(() => {
+    composerIgnoreInputUntilRef.current = Date.now() + 320;
     setText("");
-    if (composerInputRef.current) composerInputRef.current.value = "";
+    if (composerInputRef.current) {
+      composerInputRef.current.value = "";
+      composerInputRef.current.style.height = `${CHAT_COMPOSER_LINE_PX}px`;
+      composerInputRef.current.style.overflowY = "hidden";
+    }
     setReplyingTo(null);
     setMentionPick(null);
+  }, []);
+
+  const submitTextMessage = useCallback(() => {
+    if (composingRef.current) return;
+    const body = readComposerBody();
+    if (!body) return;
+    const replyTarget = replyingTo;
+    const rt = replyTarget
+      ? { id: replyTarget.id, content: chatReplyPreview(replyTarget), type: replyTarget.type }
+      : undefined;
+    clearComposer();
+    blockMicUntilRef.current = Date.now() + 520;
+    setComposerMicCooldown(true);
+    const sent = dispatchSend({
+      type: "text",
+      content: body,
+      replyTo: rt,
+      parentMessageId: replyTarget?.id,
+    });
+    if (!sent) {
+      composerIgnoreInputUntilRef.current = 0;
+      setText(body);
+      if (composerInputRef.current) composerInputRef.current.value = body;
+      window.setTimeout(() => setComposerMicCooldown(false), 80);
+      return;
+    }
     window.setTimeout(() => setComposerMicCooldown(false), 480);
-  }, [readComposerBody, replyingTo, dispatchSend]);
+  }, [readComposerBody, replyingTo, dispatchSend, clearComposer]);
 
   const edgeSwipeBackBlocked = useMemo(
     () =>
@@ -3680,17 +5137,60 @@ function ChatRoom({
     ],
   );
 
-  const { containerRef: chatSwipeColumnRef, panelStyle: chatPanelStyle, requestDismiss: requestChatDismiss, edgeStripProps } =
-    useSlideDismissBack({
-      onDismiss: onBack,
-      blocked: edgeSwipeBackBlocked,
-      dismissPullCssVar: CHAT_DISMISS_PULL_CSS_VAR,
-      stackProgressCssVar: embedInStack ? CHAT_STACK_PROGRESS_VAR : undefined,
-      embedInStack,
-      onStackProgress,
-      resetKey: chat.id,
-      edgeBottomInsetPx: keyboardOpen ? 56 : 80,
-    });
+  const {
+    containerRef: chatSwipeColumnRef,
+    panelStyle: chatPanelStyle,
+    requestDismiss: requestChatDismiss,
+    edgeStripProps,
+    panelSwipeProps,
+  } = useSlideDismissBack({
+    onDismiss: () => {
+      if (embedInStack && onAnimatedBack?.()) return;
+      onBack();
+    },
+    blocked: edgeSwipeBackBlocked || (embedInStack && roomDismissBlocked),
+    enabled: true,
+    dismissPullCssVar: CHAT_DISMISS_PULL_CSS_VAR,
+    stackProgressCssVar: embedInStack ? CHAT_STACK_PROGRESS_VAR : undefined,
+    embedInStack,
+    panelSwipeDismiss: true,
+    dismissGesture: "chat",
+    onStackProgress,
+    resetKey: `${chat.id}-${embedInStack ? "stack" : "solo"}`,
+    edgeTopInsetPx: CHAT_ROOM_HEADER_EDGE_INSET_PX,
+    edgeBottomInsetPx: keyboardOpen ? 48 : 0,
+  });
+
+  const chatDismissCtx = useMemo(
+    () => ({
+      requestDismiss: (opts?: { immediate?: boolean }) => {
+        if (embedInStack && onAnimatedBack?.()) return true;
+        return requestChatDismiss(opts);
+      },
+    }),
+    [embedInStack, onAnimatedBack, requestChatDismiss],
+  );
+
+  const fireRoomBack = useCallback(() => {
+    const now = Date.now();
+    if (now - roomBackAtRef.current < 200) return;
+    roomBackAtRef.current = now;
+    if (embedInStack && onAnimatedBack) {
+      onAnimatedBack();
+      return;
+    }
+    onBack();
+  }, [embedInStack, onAnimatedBack, onBack]);
+
+  const chatEdgeSwipeOnly = false;
+  const {
+    onPointerDown: panelDismissDown,
+    onPointerMove: panelDismissMove,
+    onPointerUp: panelDismissUp,
+    onPointerCancel: panelDismissCancel,
+    onLostPointerCapture: panelDismissLostCapture,
+    style: panelDismissTouchStyle,
+  } = panelSwipeProps;
 
   const [roomEntered, setRoomEntered] = useState(embedInStack);
   useLayoutEffect(() => {
@@ -3713,95 +5213,267 @@ function ChatRoom({
         boxShadow: chatPanelStyle.boxShadow,
       };
 
+  if (!currentUser || !meId) {
+    return (
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-background px-6 text-center">
+        <p className="text-sm text-muted-foreground">تعذّر فتح المحادثة — الجلسة غير متاحة.</p>
+        <button
+          type="button"
+          className="rounded-2xl bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground"
+          onClick={onBack}
+        >
+          رجوع
+        </button>
+      </div>
+    );
+  }
+  const me = currentUser;
+
   return (
     <div
+      ref={chatSwipeColumnRef}
+      data-chat-swipe-column
+      data-chat-dismiss-rtl="1"
       className={
         (embedInStack
-          ? "relative h-full w-full "
-          : "fixed inset-x-0 z-[200] box-border flex justify-center ") +
-        "overflow-hidden overscroll-none bg-black pointer-events-none"
+          ? "relative flex h-full min-h-0 w-full flex-col overflow-hidden overscroll-none pointer-events-auto touch-manipulation "
+          : "fixed inset-x-0 z-[200] box-border flex justify-center overflow-hidden overscroll-none pointer-events-none touch-manipulation ") +
+        (useIgDm ? "" : "bg-background")
       }
-      style={embedInStack ? undefined : { top: vv.offsetTop, height: vv.height, bottom: "auto" }}
+      style={
+        embedInStack
+          ? useIgDm && dmPalette
+            ? igDmSurfaceStyle
+            : undefined
+          : {
+              top: vv.offsetTop,
+              height: vv.height,
+              bottom: "auto",
+              ...panelDismissTouchStyle,
+              ...(useIgDm && dmPalette ? igDmSurfaceStyle : {}),
+            }
+      }
+      {...(chatEdgeSwipeOnly
+        ? {}
+        : {
+            onPointerDownCapture: panelDismissDown,
+            onPointerMoveCapture: panelDismissMove,
+            onPointerUpCapture: panelDismissUp,
+            onPointerCancelCapture: panelDismissCancel,
+            onLostPointerCapture: panelDismissLostCapture,
+          })}
     >
+      {!embedInStack && <div {...edgeStripProps} data-chat-back-edge aria-label="سحب للرجوع من اليمين" />}
+      <SlideDismissContext.Provider value={chatDismissCtx}>
       <div
-        ref={chatSwipeColumnRef}
         className={
           embedInStack
-            ? "relative h-full w-full min-w-0 overflow-hidden overscroll-none"
-            : "relative mx-auto h-full w-full min-w-0 max-w-md overflow-hidden overscroll-none"
+            ? "relative mx-auto h-full w-full min-w-0 max-w-md overflow-hidden overscroll-none pointer-events-auto"
+            : "relative mx-auto h-full w-full min-w-0 max-w-md overflow-hidden overscroll-none pointer-events-auto"
         }
       >
       <div
+        data-chat-room
         className={
-          "pointer-events-auto relative flex h-full max-h-full min-h-0 w-full flex-col overflow-hidden " +
+          "chat-no-select pointer-events-auto relative flex h-full min-h-0 max-h-full w-full flex-col overflow-hidden " +
           (embedInStack ? "" : "will-change-transform ") +
           themeBg
         }
-        style={roomEnterStyle}
+        style={{ ...roomEnterStyle, ...igDmSurfaceStyle }}
+        {...chatNoSelectCaptureHandlers}
       >
-      <div {...edgeStripProps} />
       <div
-        dir="rtl"
+        dir={useIgDm ? dmDir : "rtl"}
+        data-chat-dismiss-handle
         className={
-          "relative z-40 flex shrink-0 items-center gap-2 border-b border-border px-3 py-3 pt-[max(0.75rem,env(safe-area-inset-top,0px))] " +
-          (isQuranChannel ? "bg-zinc-900 text-zinc-100 border-zinc-700" : "bg-background")
+          "relative z-40 flex shrink-0 items-center gap-2 px-3 py-3 pt-[max(0.75rem,env(safe-area-inset-top,0px))] " +
+          (isQuranChannel
+            ? "bg-zinc-900 text-zinc-100 border-b border-zinc-700"
+            : useIgDm && dmPalette
+              ? "border-b border-transparent " + dmPalette.headerTitleClass
+              : "border-b border-border bg-background")
+        }
+        style={
+          useIgDm && !isQuranChannel
+            ? {
+                ...igDmSurfaceStyle,
+                backdropFilter: "blur(24px) saturate(1.6)",
+                WebkitBackdropFilter: "blur(24px) saturate(1.6)",
+                background:
+                  igDmSurfaceStyle?.backgroundColor === "#000000" || igDmSurfaceStyle?.backgroundColor === "#000"
+                    ? "rgba(0,0,0,0.72)"
+                    : "rgba(242,242,247,0.80)",
+                borderBottom: igDmSurfaceStyle?.backgroundColor === "#000000" || igDmSurfaceStyle?.backgroundColor === "#000"
+                  ? "0.5px solid rgba(255,255,255,0.10)"
+                  : "0.5px solid rgba(0,0,0,0.08)",
+              }
+            : undefined
         }
       >
-        <div className="flex min-w-0 flex-1 items-center gap-1">
-        {/* Back + profile (يمين في RTL) */}
+        <div className="relative z-[50] flex min-w-0 flex-1 items-center gap-1">
         <button
           type="button"
-          onClick={() => {
-            if (embedInStack) {
-              onBack();
-              return;
-            }
-            if (!requestChatDismiss()) onBack();
-          }}
-          className="touch-manipulation rounded-full p-2 transition-transform duration-150 ease-out hover:bg-secondary active:scale-[0.88]"
+          data-no-dismiss-drag
+          data-chat-back-btn
           aria-label="رجوع"
+          className={
+            "relative z-[60] flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-full transition-[transform,background-color] duration-150 ease-out active:scale-[0.88] " +
+            (useIgDm && dmPalette ? dmPalette.iconBtnClass : "text-foreground hover:bg-secondary active:bg-secondary/90")
+          }
+          onClick={e => {
+            e.stopPropagation();
+            fireRoomBack();
+          }}
+          onPointerDown={e => {
+            e.stopPropagation();
+          }}
+          onPointerDownCapture={e => {
+            e.stopPropagation();
+          }}
+          onPointerUpCapture={e => {
+            e.stopPropagation();
+          }}
+          onKeyDown={e => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              fireRoomBack();
+            }
+          }}
         >
-          <ChevronRight size={22} />
+          {useIgDm ? (
+            dmRtl ? <ChevronRight size={22} strokeWidth={2} /> : <ChevronLeft size={22} strokeWidth={2} />
+          ) : (
+            <ChevronRight size={22} strokeWidth={2} />
+          )}
         </button>
-        
-        {/* Center - User info */}
-        <button type="button" onClick={() => (chat.isGroup || chat.isChannel) ? onOpenSettings() : (otherId && startTransition(() => onOpenProfile(otherId)))} className="flex items-center gap-2 flex-1 min-w-0 text-start justify-start">
-          <Avatar name={chat.isGroup ? chat.name! : other?.username || "?"} src={chat.isGroup ? chat.avatar : other?.avatar} size={36} />
+
+        <button
+          type="button"
+          onClick={() =>
+            chat.isGroup || chat.isChannel
+              ? onOpenSettings()
+              : otherId && startTransition(() => onOpenProfile(otherId))
+          }
+          className="relative z-[10] flex min-w-0 flex-1 items-center gap-2 text-start justify-start"
+        >
+          <Avatar
+            name={chat.isGroup ? chat.name! : other?.username || "?"}
+            src={chat.isGroup ? chat.avatar : other?.avatar}
+            size={36}
+          />
           <div className="min-w-0">
-            <div className="font-semibold text-sm flex items-center gap-1 truncate">{chat.isChannel && <Megaphone size={14} />}{title}</div>
-            {isTyping && !hideTypingStatus && !chat.isGroup && !chat.isChannel && (
-              <div className="text-xs text-blue-500 font-medium">يكتب...</div>
+            <div className="flex items-center gap-1.5 truncate text-sm font-semibold">
+              {chat.isChannel && <Megaphone size={14} />}
+              <span className="truncate">{useIgDm && isDmRoom ? `@${other?.username || "?"}` : title}</span>
+              {isDmRoom && (chat.streak?.streakCount ?? 0) > 0 && (
+                <StreakBadge streak={chat.streak!} compact />
+              )}
+            </div>
+            {useIgDm && isDmRoom && dmPalette && (
+              <div className={"flex items-center gap-1.5 text-xs " + dmPalette.headerSubClass}>
+                {peerIsTyping && !hideTypingStatus ? (
+                  <span
+                    className="font-medium animate-pulse"
+                    style={{ color: CHAT_DM_ACCENT }}
+                  >
+                    {state.language === "en" ? "Typing…" : "جاري الكتابة…"}
+                  </span>
+                ) : peerOnline ? (
+                  <>
+                    <span className="h-2 w-2 shrink-0 rounded-full bg-[#3dd961]" aria-hidden />
+                    <span className="text-[#3dd961]">
+                      {state.language === "en" ? "Active now" : "متصل الآن"}
+                    </span>
+                  </>
+                ) : null}
+              </div>
             )}
-            {(chat.isGroup || chat.isChannel) && <div className={"text-xs " + (isQuranChannel ? "text-zinc-400" : "text-muted-foreground")}>{chat.members.length} {t("members")}</div>}
+            {!useIgDm && peerIsTyping && !hideTypingStatus && !chat.isGroup && !chat.isChannel && (
+              <div className="text-xs font-medium text-blue-500 animate-pulse">
+                {state.language === "en" ? "Typing…" : "جاري الكتابة…"}
+              </div>
+            )}
+            {(chat.isGroup || chat.isChannel) && (
+              <div className={"text-xs " + (isQuranChannel ? "text-zinc-400" : "text-muted-foreground")}>
+                {chat.members.length} {t("members")}
+              </div>
+            )}
           </div>
         </button>
         </div>
-        
-        {/* Actions (يسار في RTL) */}
-        <div className="flex shrink-0 items-center gap-2">
+
+        <div className="flex shrink-0 items-center gap-3">
           {!isQuranChannel && !chat.isChannel && (
             <>
-              <button type="button" onClick={() => onCall(false)} aria-label="مكالمة صوتية"><Phone size={20} /></button>
-              <button type="button" onClick={() => onCall(true)} aria-label="مكالمة فيديو"><Video size={20} /></button>
+              <button
+                type="button"
+                onClick={() => onCall(true)}
+                aria-label="مكالمة فيديو"
+                className={useIgDm && dmPalette ? dmPalette.iconBtnClass + " touch-manipulation p-1" : undefined}
+              >
+                <Video size={20} />
+              </button>
+              <button
+                type="button"
+                onClick={() => onCall(false)}
+                aria-label="مكالمة صوتية"
+                className={useIgDm && dmPalette ? dmPalette.iconBtnClass + " touch-manipulation p-1" : undefined}
+              >
+                <Phone size={20} />
+              </button>
             </>
           )}
           {!chat.isGroup && !chat.isChannel && (
-            <div className="relative">
-              <button type="button" onClick={() => setShowPrivacyMenu(!showPrivacyMenu)} className="p-1 rounded-full hover:bg-secondary">
-                <MoreVertical size={20} />
+            <div className="relative z-50">
+              <button
+                type="button"
+                data-no-dismiss-drag
+                data-chat-privacy-menu-btn
+                aria-label={state.language === "ar" ? "خيارات المحادثة" : "Chat options"}
+                aria-expanded={showPrivacyMenu}
+                className={
+                  "touch-manipulation rounded-full p-2 " +
+                  (useIgDm && dmPalette ? dmPalette.iconBtnClass : "hover:bg-secondary active:bg-secondary/90")
+                }
+                onPointerDownCapture={e => e.stopPropagation()}
+                onClick={e => {
+                  e.stopPropagation();
+                  setShowPrivacyMenu(o => !o);
+                }}
+              >
+                {useIgDm ? <MoreHorizontal size={20} /> : <MoreVertical size={20} />}
               </button>
               {showPrivacyMenu && (
-                <div className="absolute end-0 top-8 z-50 w-48 rounded-lg border border-border bg-background shadow-lg">
-                  <button 
-                    onClick={() => { setHideReadStatus(!hideReadStatus); setShowPrivacyMenu(false); }}
-                    className="w-full text-right px-4 py-3 hover:bg-secondary flex items-center justify-between"
+                <div
+                  data-chat-privacy-menu
+                  className={
+                    "absolute end-0 top-10 z-[60] w-48 rounded-lg border shadow-lg " +
+                    (useIgDm && dmPalette ? dmPalette.menuPanelClass : "border-border bg-background")
+                  }
+                  onPointerDownCapture={e => e.stopPropagation()}
+                >
+                  <button
+                    onClick={() => {
+                      setHideReadStatus(!hideReadStatus);
+                      setShowPrivacyMenu(false);
+                    }}
+                    className={
+                      "flex w-full items-center justify-between px-4 py-3 text-start " +
+                      (useIgDm && dmPalette ? dmPalette.menuItemHoverClass : "hover:bg-secondary")
+                    }
                   >
                     <span>إخفاء حالة القراءة</span>
                     {hideReadStatus && <Check size={16} />}
                   </button>
-                  <button 
-                    onClick={() => { setHideTypingStatus(!hideTypingStatus); setShowPrivacyMenu(false); }}
-                    className="w-full text-right px-4 py-3 hover:bg-secondary flex items-center justify-between"
+                  <button
+                    onClick={() => {
+                      setHideTypingStatus(!hideTypingStatus);
+                      setShowPrivacyMenu(false);
+                    }}
+                    className={
+                      "flex w-full items-center justify-between px-4 py-3 text-start " +
+                      (useIgDm && dmPalette ? dmPalette.menuItemHoverClass : "hover:bg-secondary")
+                    }
                   >
                     <span>إخفاء حالة الكتابة</span>
                     {hideTypingStatus && <Check size={16} />}
@@ -3810,10 +5482,20 @@ function ChatRoom({
               )}
             </div>
           )}
-          {(chat.isGroup || chat.isChannel) && <button type="button" onClick={onOpenSettings}><SettingsIcon size={20} /></button>}
-          {!isQuranChannel && !chat.isGroup && !chat.isChannel && (
-            <select value={theme} onChange={e => setTheme(e.target.value as any)} className="text-xs bg-secondary rounded-full px-2 py-1">
-              <option value="default">ثيم</option><option value="blue">أزرق</option><option value="pink">وردي</option>
+          {(chat.isGroup || chat.isChannel) && (
+            <button type="button" onClick={onOpenSettings}>
+              <SettingsIcon size={20} />
+            </button>
+          )}
+          {!useIgDm && !isQuranChannel && !chat.isGroup && !chat.isChannel && (
+            <select
+              value={theme}
+              onChange={e => setTheme(e.target.value as ChatVisualTheme)}
+              className="rounded-full bg-secondary px-2 py-1 text-xs"
+            >
+              <option value="default">ثيم</option>
+              <option value="blue">أزرق</option>
+              <option value="pink">وردي</option>
             </select>
           )}
         </div>
@@ -3825,7 +5507,7 @@ function ChatRoom({
         </p>
       )}
 
-      {(chat.pinnedMessageIds || []).some(mid => chat.messages.some(x => x.id === mid)) && (
+      {(chat.pinnedMessageIds || []).some(mid => (chat.messages || []).some(x => x.id === mid)) && (
         <div
           className={
             "no-scrollbar flex shrink-0 flex-nowrap gap-2 overflow-x-scroll overflow-y-hidden overscroll-x-none border-b px-2 py-1.5 touch-pan-x snap-x snap-mandatory " +
@@ -3833,9 +5515,9 @@ function ChatRoom({
           }
         >
           {(chat.pinnedMessageIds || [])
-            .filter(mid => chat.messages.some(x => x.id === mid))
+            .filter(mid => (chat.messages || []).some(x => x.id === mid))
             .map(mid => {
-              const pm = chat.messages.find(x => x.id === mid)!;
+              const pm = (chat.messages || []).find(x => x.id === mid)!;
               return (
                 <button
                   key={mid}
@@ -3870,7 +5552,7 @@ function ChatRoom({
       {showDmIntro && (
         <ChatDmIntroCard
           other={other!}
-          meId={me.id}
+          meId={meId}
           state={state}
           isQuran={isQuranChannel}
           hasMessages={false}
@@ -3887,32 +5569,55 @@ function ChatRoom({
         onPointerCancel={handleVanishPullUp}
         dir="ltr"
         className={
-          "chat-scroll-pane relative z-10 min-h-0 flex-1 touch-pan-y overscroll-none " +
+          "chat-scroll-pane chat-no-select no-scrollbar relative z-10 min-h-0 flex-1 touch-pan-y overscroll-none " +
           (drawComposeOpen ? "overflow-hidden " : "overflow-y-auto ") +
-          (isQuranChannel ? "bg-zinc-950" : "bg-background")
+          (isQuranChannel ? "bg-zinc-950" : useIgDm ? "" : "bg-background")
         }
         style={{
           scrollbarWidth: "none",
           msOverflowStyle: "none",
+          overflowAnchor: "none",
+          ...(useIgDm && dmPalette ? igDmSurfaceStyle : {}),
         }}
       >
         <div
           className={
-            "flex min-h-full w-full flex-col justify-end gap-2 px-3 pt-2 pb-2 " +
+            "flex min-h-full w-full flex-col justify-end gap-2 px-3 pt-2 pb-0 " +
             (isQuranChannel ? "bg-zinc-950" : "")
           }
         >
-        {displayMessages.map(m => {
+        {rowsToRender.map(row => {
+          if (row.kind === "day") {
+            return (
+              <div key={row.key} className="flex w-full justify-center py-2">
+                <span
+                  className="rounded-full px-3 py-1 text-[11px] font-medium"
+                  style={
+                    dmPalette
+                      ? { backgroundColor: dmPalette.dayPillBg, color: dmPalette.dayPillText }
+                      : undefined
+                  }
+                >
+                  {row.label}
+                </span>
+              </div>
+            );
+          }
+          const m = row.message;
+          const showPeerAvatar = row.showPeerAvatar;
           const mine = isOwnChatMessage(m.senderId, state, { directMessagePeerId: otherId });
           const senderProfile = userById(state, m.senderId);
-          const bareSticker = m.type === "sticker" && (isStickerImageContent(m.content) || isStickerVideoContent(m.content));
-          const bareImage = m.type === "image" && m.content.startsWith("data:") && !m.viewOnce;
-          const bareDrawing = m.type === "drawing" && !!parseDrawingPayload(m.content) && !m.viewOnce;
+          const mc = messageContent(m);
+          const bareSticker = m.type === "sticker" && (isStickerImageContent(mc) || isStickerVideoContent(mc));
+          const bareImage = m.type === "image" && mc.startsWith("data:") && !m.viewOnce;
+          const bareDrawing = m.type === "drawing" && !!parseDrawingPayload(mc) && !m.viewOnce;
           const bareVideo = m.type === "video" && !m.viewOnce;
           const bareVoiceBubble = m.type === "voice";
           const bareViewOnceMedia =
-            ((m.type === "image" || m.type === "video") && !!m.viewOnce && m.content.startsWith("data:")) ||
+            ((m.type === "image" || m.type === "video") && !!m.viewOnce && mc.startsWith("data:")) ||
             (m.type === "drawing" && !!m.viewOnce);
+          const bareMedia =
+            bareSticker || bareImage || bareVideo || bareViewOnceMedia || bareVoiceBubble || bareDrawing;
           const colClass = bareVideo
             ? CHAT_INLINE_MEDIA_COL
             : bareVoiceBubble
@@ -3922,24 +5627,33 @@ function ChatRoom({
                 : bareSticker || bareViewOnceMedia
                   ? "w-fit max-w-[min(90vw,280px)] shrink"
                   : CHAT_TEXT_BUBBLE_COL;
-          const bubbleBase =
-            bareSticker || bareImage || bareVideo || bareViewOnceMedia || bareVoiceBubble || bareDrawing
-              ? "text-sm p-0 m-0 bg-transparent shadow-none ring-0 border-0 overflow-visible outline-none"
-              : chatBubbleFilledClass(mine, isQuranChannel);
+          const bubbleBase = bareMedia
+            ? "text-sm p-0 m-0 bg-transparent shadow-none ring-0 border-0 overflow-visible outline-none"
+            : chatBubbleFilledClass(mine, isQuranChannel, theme, useIgDm, dmPalette ?? undefined);
           const bubbleClass =
             bubbleBase +
-            (!(bareSticker || bareImage || bareVideo || bareViewOnceMedia || bareVoiceBubble || bareDrawing) && vanishMode && m.id.startsWith("vx_")
+            (!bareMedia && vanishMode && m.id.startsWith("vx_")
               ? " ring-2 ring-orange-500/50 border border-orange-400/40"
               : "");
+          const bubbleInlineStyle =
+            useIgDm && dmPalette && !mine && !bareMedia ? chatDmPeerBubbleStyle(dmPalette) : undefined;
+          const showBubbleTime = useIgDm && !bareMedia;
           return (
             <ChatSwipeMessageRow
               key={m.id}
               message={m}
               mine={mine}
               isQuran={isQuranChannel}
-              avatarName={!mine ? senderProfile?.username || "?" : undefined}
-              avatarSrc={!mine ? senderProfile?.avatar : undefined}
-              onSwipeReply={() => startTransition(() => setReplyingTo(m))}
+              avatarName={!mine && showPeerAvatar ? senderProfile?.username || "?" : undefined}
+              avatarSrc={!mine && showPeerAvatar ? senderProfile?.avatar : undefined}
+              reservePeerAvatarSlot={!mine && !showPeerAvatar}
+              onAvatarClick={
+                !mine ? () => startTransition(() => onOpenProfile(m.senderId)) : undefined
+              }
+              onSwipeReply={() => {
+                swipeReplyLockRef.current = true;
+                startTransition(() => setReplyingTo(m));
+              }}
               onPointerDown={onMsgPointerDown}
               onPointerMove={onMsgPointerMove}
               onPointerUp={onMsgPointerUp}
@@ -3953,15 +5667,48 @@ function ChatRoom({
                   "relative flex w-max flex-col gap-0.5 " +
                   colClass +
                   " " +
-                  (mine ? "items-end self-end" : "items-start self-start")
+                  (useIgDm ? chatBubbleAlignClasses(mine) : mine ? "items-end self-end" : "items-start self-start")
                 }
               >
-                <div className={bubbleClass}>{renderBubbleContent(m, mine)}</div>
+                {(chat.isGroup || chat.isChannel) && !mine && (
+                  <div className="mb-0.5 px-0.5 text-[11px] font-semibold text-muted-foreground">
+                    {chat.groupNicknames?.[m.senderId]?.trim() || senderProfile?.username || "?"}
+                  </div>
+                )}
+                <div className={bubbleClass} style={bubbleInlineStyle}>
+                  {renderBubbleContent(m, mine)}
+                  {showBubbleTime && (
+                    <div
+                      className="mt-0.5 flex items-center justify-end gap-0.5"
+                      style={
+                        useIgDm && dmPalette
+                          ? { color: mine ? dmPalette.mineTime : dmPalette.peerTime }
+                          : undefined
+                      }
+                    >
+                      <span className="text-[11px] tabular-nums leading-none">
+                        {formatChatBubbleTime(m.createdAt, state.language)}
+                      </span>
+                      {mine && !vanishMode && (
+                        <ChatMessageStatus status={m.status} mine compact />
+                      )}
+                    </div>
+                  )}
+                  {mine && !vanishMode && !useIgDm && (
+                    <span className="mt-1 flex justify-end">
+                      <ChatMessageStatus status={m.status} mine compact />
+                    </span>
+                  )}
+                </div>
                 {m.reactions && m.reactions.length > 0 && (
                   <div
                     className={
                       "-mt-2 z-[1] flex flex-wrap items-center gap-0.5 " +
-                      (mine ? "self-end pe-1" : "self-start ps-1")
+                      (useIgDm
+                        ? chatReactionAlignClasses(mine)
+                        : mine
+                          ? "self-end pe-1"
+                          : "self-start ps-1")
                     }
                   >
                     {aggregateReactions(m.reactions).map(([emoji, count]) => (
@@ -3987,7 +5734,12 @@ function ChatRoom({
         {seenFooter && (
           <div className={"text-end text-[11px] px-1 pt-1 " + (isQuranChannel ? "text-zinc-500" : "text-muted-foreground")}>{seenFooter}</div>
         )}
+        {isDmRoom && myOutgoing.length > 0 && !seenFooter && !useIgDm && (
+          <div className="flex justify-end px-1 pt-0.5">
+            <ChatMessageStatus status={myOutgoing[myOutgoing.length - 1]?.status} mine compact />
           </div>
+        )}
+        </div>
         {isDmRoom && canPost && (
           <div
             role="presentation"
@@ -4029,18 +5781,22 @@ function ChatRoom({
         (() => {
           const m = messageContext;
           const mine = isOwnChatMessage(m.senderId, state, { directMessagePeerId: otherId });
-          const bareSticker = m.type === "sticker" && (isStickerImageContent(m.content) || isStickerVideoContent(m.content));
-          const bareImage = m.type === "image" && m.content.startsWith("data:") && !m.viewOnce;
-          const bareDrawing = m.type === "drawing" && !!parseDrawingPayload(m.content) && !m.viewOnce;
+          const mc = messageContent(m);
+          const bareSticker = m.type === "sticker" && (isStickerImageContent(mc) || isStickerVideoContent(mc));
+          const bareImage = m.type === "image" && mc.startsWith("data:") && !m.viewOnce;
+          const bareDrawing = m.type === "drawing" && !!parseDrawingPayload(mc) && !m.viewOnce;
           const bareVideo = m.type === "video" && !m.viewOnce;
           const bareVoiceBubble = m.type === "voice";
           const bareViewOnceMedia =
-            ((m.type === "image" || m.type === "video") && !!m.viewOnce && m.content.startsWith("data:")) ||
+            ((m.type === "image" || m.type === "video") && !!m.viewOnce && mc.startsWith("data:")) ||
             (m.type === "drawing" && !!m.viewOnce);
           const bubbleClass =
             bareSticker || bareImage || bareVideo || bareViewOnceMedia || bareVoiceBubble || bareDrawing
               ? "text-sm p-0 m-0 bg-transparent shadow-none ring-0 border-0 overflow-visible outline-none"
-              : chatBubbleFilledClass(mine, isQuranChannel) + " shadow-lg";
+              : chatBubbleFilledClass(mine, isQuranChannel, theme, useIgDm, dmPalette ?? undefined) +
+                " shadow-lg";
+          const ctxBubbleStyle =
+            useIgDm && dmPalette && !mine ? chatDmPeerBubbleStyle(dmPalette) : undefined;
 
           const closeCtx = () => {
             setMoreReactionEmoji(false);
@@ -4139,7 +5895,14 @@ function ChatRoom({
                   )}
 
                   <div className={"self-center max-w-[85%] " + (mine ? "ms-2" : "me-2")}>
-                    <div className={bubbleClass}>{renderBubbleContent(m, mine)}</div>
+                    <div className={bubbleClass} style={ctxBubbleStyle}>
+                  {renderBubbleContent(m, mine)}
+                  {mine && !vanishMode && (
+                    <span className="mt-1 flex justify-end">
+                      <ChatMessageStatus status={m.status} mine compact />
+                    </span>
+                  )}
+                </div>
                   </div>
 
                   <div className="overflow-hidden rounded-2xl border border-white/10 bg-zinc-900/95 text-zinc-50 shadow-2xl backdrop-blur-md">
@@ -4242,6 +6005,53 @@ function ChatRoom({
           );
         })()}
 
+      {/* Pool game invite modal — داخل ChatRoom مباشرة */}
+      {showPoolInviteModal && (
+        <div
+          className="absolute inset-0 z-[80] flex items-end bg-black/60"
+          onClick={() => setShowPoolInviteModal(false)}
+        >
+          <div
+            className="w-full rounded-t-3xl bg-background p-5 shadow-2xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <h3 className="mb-4 text-center text-base font-bold">اختر لعبة 🎮</h3>
+            <button
+              type="button"
+              className="flex w-full items-center gap-4 rounded-2xl bg-secondary p-4 text-start hover:bg-secondary/80 active:scale-[0.98] transition-transform"
+              onClick={() => {
+                setShowPoolInviteModal(false);
+                const content = `__game_invite__:pool:${meId}:${Date.now()}`;
+                dispatchSend({ type: "text", content });
+              }}
+            >
+              <span className="text-4xl">🎱</span>
+              <div>
+                <div className="font-bold text-foreground">بلياردو 8 كرات</div>
+                <div className="text-sm text-muted-foreground">
+                  تحدَّ صديقك في لعبة بلياردو ملحمية
+                </div>
+              </div>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Pool game screen — داخل ChatRoom */}
+      {localPoolRoomId && (
+        <PoolGame
+          key={localPoolRoomId}
+          roomId={localPoolRoomId}
+          chatId={sendChatId}
+          onClose={() => setLocalPoolRoomId(null)}
+          onGameEnd={(winnerId, winnerName) => {
+            setLocalPoolRoomId(null);
+            const resultText = `🎱 انتهت المباراة\nالفائز: @${winnerName ?? "؟"}`;
+            dispatchSend({ type: "text", content: resultText });
+          }}
+        />
+      )}
+
       {showStickers && (
         <>
           <button
@@ -4263,7 +6073,15 @@ function ChatRoom({
         </>
       )}
 
-      <div ref={composerRef} className="relative z-[56] shrink-0 isolate">
+      <div
+        ref={composerRef}
+        className="relative z-[56] shrink-0 isolate"
+        style={
+          keyboardOpen && embedInStack && vv.keyboardInset > 0
+            ? { paddingBottom: vv.keyboardInset }
+            : undefined
+        }
+      >
       {!canPost ? (
         <div
           className={
@@ -4278,8 +6096,27 @@ function ChatRoom({
       ) : (
         <div
           className={
-            "border-t border-border " +
-            (isQuranChannel ? "bg-zinc-900 border-zinc-700" : "bg-background")
+            isQuranChannel
+              ? "border-t border-zinc-700 bg-zinc-900"
+              : useIgDm && dmPalette
+                ? "border-t border-transparent"
+                : "border-t border-border bg-background"
+          }
+          style={
+            useIgDm && !isQuranChannel
+              ? {
+                  backdropFilter: "blur(24px) saturate(1.6)",
+                  WebkitBackdropFilter: "blur(24px) saturate(1.6)",
+                  background:
+                    igDmSurfaceStyle?.backgroundColor === "#000000" || igDmSurfaceStyle?.backgroundColor === "#000"
+                      ? "rgba(0,0,0,0.75)"
+                      : "rgba(242,242,247,0.82)",
+                  borderTop:
+                    igDmSurfaceStyle?.backgroundColor === "#000000" || igDmSurfaceStyle?.backgroundColor === "#000"
+                      ? "0.5px solid rgba(255,255,255,0.10)"
+                      : "0.5px solid rgba(0,0,0,0.08)",
+                }
+              : undefined
           }
         >
           {replyingTo && (
@@ -4294,7 +6131,7 @@ function ChatRoom({
               onClose={() => setReplyingTo(null)}
             />
           )}
-          {isGroupChat && mentionPick && (
+          {!chat.isChannel && mentionPick && (
             <div className="max-h-40 overflow-y-auto border-b border-border/60 bg-card px-2 py-1">
               <button
                 type="button"
@@ -4322,38 +6159,176 @@ function ChatRoom({
               e.preventDefault();
               submitTextMessage();
             }}
-            className={"px-2 pt-1 " + (keyboardOpen ? "pb-1.5" : "pb-[max(0.5rem,env(safe-area-inset-bottom,0px))]")}
+            className={"px-3 pt-2 " + (keyboardOpen ? "pb-2" : "pb-[max(0.75rem,env(safe-area-inset-bottom,0.75rem))]")}
           >
-            <div
-              dir="ltr"
-              className={
-                "relative flex min-h-[44px] h-12 flex-nowrap items-center gap-1 rounded-full border px-1.5 shadow-sm " +
-                (isQuranChannel
-                  ? "border-zinc-800/95 bg-[#1a1a1a]"
-                  : "border-border bg-muted dark:border-zinc-800 dark:bg-[#1c1c1c]")
-              }
-            >
-              {!composerHasText && (
-              <button
-                type="button"
-                className={
-                  "flex h-10 w-10 shrink-0 touch-manipulation items-center justify-center rounded-full transition hover:bg-black/[0.06] active:scale-[0.97] dark:hover:bg-white/10 " +
-                  (isQuranChannel ? "text-zinc-200" : "text-zinc-950 dark:text-white")
+            {useIgDm ? (
+            <div dir={dmDir} className="relative flex min-h-[44px] items-center gap-2">
+              <div ref={plusAttachMenuRef} className="relative shrink-0">
+                <button
+                  type="button"
+                  className={
+                    "flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full shadow-sm transition-all duration-150 active:scale-[0.88] hover:opacity-90 " +
+                    (dmPalette?.iconBtnClass ?? "text-white")
+                  }
+                  style={{
+                    background:
+                      igDmSurfaceStyle?.backgroundColor === "#000000" || igDmSurfaceStyle?.backgroundColor === "#000"
+                        ? "rgba(255,255,255,0.14)"
+                        : "rgba(0,0,0,0.08)",
+                    backdropFilter: "blur(10px)",
+                    WebkitBackdropFilter: "blur(10px)",
+                    border:
+                      igDmSurfaceStyle?.backgroundColor === "#000000" || igDmSurfaceStyle?.backgroundColor === "#000"
+                        ? "0.5px solid rgba(255,255,255,0.18)"
+                        : "0.5px solid rgba(0,0,0,0.10)",
+                  }}
+                  aria-label="إرفاق"
+                  onPointerDown={e => e.stopPropagation()}
+                  onClick={e => {
+                    e.stopPropagation();
+                    setPlusAttachOpen(o => !o);
+                  }}
+                >
+                  <Plus size={20} strokeWidth={2.25} />
+                </button>
+                {plusAttachOpen && (
+                  <div
+                    className="absolute bottom-[calc(100%+12px)] start-0 z-[60] min-w-[13rem] overflow-hidden rounded-[22px] py-1.5"
+                    style={{
+                      backdropFilter: "blur(28px) saturate(1.8)",
+                      WebkitBackdropFilter: "blur(28px) saturate(1.8)",
+                      background:
+                        igDmSurfaceStyle?.backgroundColor === "#000000" || igDmSurfaceStyle?.backgroundColor === "#000"
+                          ? "rgba(30,30,30,0.88)"
+                          : "rgba(255,255,255,0.82)",
+                      border:
+                        igDmSurfaceStyle?.backgroundColor === "#000000" || igDmSurfaceStyle?.backgroundColor === "#000"
+                          ? "0.5px solid rgba(255,255,255,0.12)"
+                          : "0.5px solid rgba(0,0,0,0.08)",
+                      boxShadow: "0 8px 40px rgba(0,0,0,0.30), 0 2px 8px rgba(0,0,0,0.15)",
+                    }}
+                  >
+                    <button
+                      type="button"
+                      className={
+                        "flex w-full items-center gap-3 px-4 py-3 text-start text-[14px] font-medium transition-colors duration-100 " +
+                        (dmPalette?.attachMenuItemClass ?? "text-white hover:bg-white/10")
+                      }
+                      onClick={() => {
+                        setPlusAttachOpen(false);
+                        cameraCaptureRef.current?.click();
+                      }}
+                    >
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/15">
+                        <Camera size={15} strokeWidth={2} />
+                      </span>
+                      <span>{state.language === "ar" ? "كاميرا" : "Camera"}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={
+                        "flex w-full items-center gap-3 px-4 py-3 text-start text-[14px] font-medium transition-colors duration-100 " +
+                        (dmPalette?.attachMenuItemClass ?? "text-white hover:bg-white/10")
+                      }
+                      onClick={() => {
+                        setPlusAttachOpen(false);
+                        galleryMediaInputRef.current?.click();
+                      }}
+                    >
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/15">
+                        <ImageIcon size={15} strokeWidth={2} />
+                      </span>
+                      <span>{state.language === "ar" ? "الصور" : "Photos"}</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isGuest}
+                      className={
+                        "flex w-full items-center gap-3 px-4 py-3 text-start text-[14px] font-medium transition-colors duration-100 " +
+                        (dmPalette?.attachMenuItemClass ?? "text-white hover:bg-white/10") +
+                        (isGuest ? " cursor-not-allowed opacity-40" : "")
+                      }
+                      onClick={() => {
+                        setPlusAttachOpen(false);
+                        if (isGuest) { notifyGuestActionBlocked(); return; }
+                        setShowStickers(true);
+                      }}
+                    >
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/15">
+                        <Sticker size={15} strokeWidth={2} />
+                      </span>
+                      <span>{state.language === "ar" ? "ملصقات" : "Stickers"}</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isGuest}
+                      className={
+                        "flex w-full items-center gap-3 px-4 py-3 text-start text-[14px] font-medium transition-colors duration-100 " +
+                        (dmPalette?.attachMenuItemClass ?? "text-white hover:bg-white/10") +
+                        (isGuest ? " cursor-not-allowed opacity-40" : "")
+                      }
+                      onClick={() => {
+                        setPlusAttachOpen(false);
+                        if (isGuest) { notifyGuestActionBlocked(); return; }
+                        setDrawComposeOpen(true);
+                      }}
+                    >
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/15">
+                        <PenLine size={15} strokeWidth={2} />
+                      </span>
+                      <span>{state.language === "ar" ? "رسم وكتابة" : "Draw"}</span>
+                    </button>
+                    {isDmRoom && (
+                      <button
+                        type="button"
+                        disabled={isGuest}
+                        className={
+                          "flex w-full items-center gap-3 px-4 py-3 text-start text-[14px] font-medium transition-colors duration-100 " +
+                          (dmPalette?.attachMenuItemClass ?? "text-white hover:bg-white/10") +
+                          (isGuest ? " cursor-not-allowed opacity-40" : "")
+                        }
+                        onClick={() => {
+                          setPlusAttachOpen(false);
+                          if (isGuest) { notifyGuestActionBlocked(); return; }
+                          setShowPoolInviteModal(true);
+                        }}
+                      >
+                        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/15 text-[13px]">🎱</span>
+                        <span>{state.language === "ar" ? "إنشاء لعبة" : "Game"}</span>
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+              <div
+                dir={dmDir}
+                className="flex min-h-[40px] min-w-0 flex-1 flex-nowrap items-center gap-0.5 rounded-[22px] px-3 py-1.5"
+                style={
+                  dmPalette
+                    ? {
+                        backdropFilter: "blur(12px)",
+                        WebkitBackdropFilter: "blur(12px)",
+                        backgroundColor: dmPalette.composerField,
+                        border:
+                          igDmSurfaceStyle?.backgroundColor === "#000000" || igDmSurfaceStyle?.backgroundColor === "#000"
+                            ? "0.5px solid rgba(255,255,255,0.10)"
+                            : "0.5px solid rgba(0,0,0,0.07)",
+                      }
+                    : undefined
                 }
-                aria-label="كاميرا"
-                onClick={() => {
-                  setPlusAttachOpen(false);
-                  cameraCaptureRef.current?.click();
-                }}
               >
-                <Camera size={21} strokeWidth={2} className="pointer-events-none text-current" />
-              </button>
-              )}
-              <input
-                ref={composerInputRef}
+              <MentionComposerField
+                textareaRef={composerInputRef}
+                rows={1}
+                dir="auto"
                 value={text}
-                onChange={e => onComposerChange(e.target.value)}
-                onInput={e => onComposerChange(e.currentTarget.value)}
+                onChange={onComposerChange}
+                mentionVariant="composer"
+                wrapperClassName="chat-allow-select min-w-0 flex-1"
+                overlayClassName={
+                  "py-1.5 text-[15px] leading-5 " +
+                  (dmPalette ? dmPalette.composerTextClass : "text-white")
+                }
                 onCompositionStart={() => {
                   composingRef.current = true;
                 }}
@@ -4370,15 +6345,166 @@ function ChatRoom({
                 onFocus={() => {
                   stickToBottomRef.current = true;
                   scrollMessagesToBottom();
-                  window.setTimeout(scrollMessagesToBottom, 120);
                 }}
                 placeholder={t("typeMessage")}
+                aria-label={t("typeMessage")}
                 className={
-                  "min-h-0 min-w-0 flex-1 bg-transparent py-0 text-[15px] leading-5 outline-none " +
-                  (isQuranChannel
-                    ? "text-emerald-50 caret-emerald-200 placeholder:text-emerald-200/55"
-                    : "text-zinc-900 caret-zinc-800 placeholder:text-zinc-500/65 dark:text-zinc-50 dark:caret-zinc-200 dark:placeholder:text-zinc-400/60")
+                  "chat-allow-select no-scrollbar min-h-[20px] min-w-0 max-h-[100px] flex-1 resize-none overflow-y-hidden py-1.5 text-[15px] leading-5 whitespace-pre-wrap break-words bg-transparent outline-none " +
+                  (dmPalette
+                    ? dmPalette.composerTextClass + " " + dmPalette.composerPlaceholderClass
+                    : "text-white caret-white placeholder:text-zinc-500")
                 }
+                style={{ height: CHAT_COMPOSER_LINE_PX }}
+              />
+              {composerHasText ? (
+                <button
+                  type="button"
+                  className="relative z-[57] flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full shadow-[0_2px_12px_rgba(0,0,0,0.18)] transition-all duration-150 hover:opacity-90 active:scale-[0.88]"
+                  style={{
+                    background: "rgba(255,255,255,1)",
+                    color: "#000",
+                  }}
+                  aria-label={t("send")}
+                  onPointerUp={e => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    blockMicUntilRef.current = Date.now() + 520;
+                    submitTextMessage();
+                  }}
+                >
+                  <Send size={17} strokeWidth={2.5} className="pointer-events-none ltr:-rotate-12" style={{ color: "#000" }} />
+                </button>
+              ) : recording ? (
+                <button
+                  type="button"
+                  className={
+                    "flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full text-red-500 " +
+                    (dmPalette?.composerIconClass ?? "hover:bg-white/10")
+                  }
+                  aria-label={t("stop")}
+                  onClick={stopRecording}
+                >
+                  <Square size={15} fill="currentColor" />
+                </button>
+              ) : composerMicCooldown ? (
+                <div className="h-9 w-9 shrink-0 touch-none pointer-events-none" aria-hidden />
+              ) : (
+                <>
+                <button
+                  type="button"
+                  className={
+                    "flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full transition " +
+                    (dmPalette?.composerIconClass ?? "text-zinc-300 hover:bg-white/10")
+                  }
+                  aria-label="تسجيل صوتي"
+                  onClick={() => {
+                    if (Date.now() < blockMicUntilRef.current) return;
+                    void startRecording();
+                  }}
+                >
+                  <Mic size={20} strokeWidth={2} />
+                </button>
+                <button
+                  type="button"
+                  className={
+                    "flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full transition " +
+                    (dmPalette?.composerIconClass ?? "text-zinc-300 hover:bg-white/10")
+                  }
+                  aria-label="معرض الصور"
+                  onClick={() => {
+                    setPlusAttachOpen(false);
+                    onGalleryButtonClick();
+                  }}
+                  onPointerDown={e => {
+                    setPlusAttachOpen(false);
+                    onGalleryPointerDown(e);
+                  }}
+                  onPointerMove={onGalleryPointerMove}
+                  onPointerUp={clearGalleryLongPress}
+                  onPointerCancel={clearGalleryLongPress}
+                  onPointerLeave={clearGalleryLongPress}
+                >
+                  <ImageIcon size={20} strokeWidth={2} />
+                </button>
+                <button
+                  type="button"
+                  className={
+                    "flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full transition " +
+                    (dmPalette?.composerIconClass ?? "text-zinc-300 hover:bg-white/10")
+                  }
+                  aria-label="إيموجي وملصقات"
+                  onClick={() => {
+                    setPlusAttachOpen(false);
+                    toggleStickerPanel();
+                  }}
+                >
+                  <Smile size={20} strokeWidth={2} />
+                </button>
+                </>
+              )}
+              </div>
+            </div>
+            ) : (
+            <div
+              dir="ltr"
+              className={
+                "relative flex min-h-[46px] flex-nowrap items-center gap-1 rounded-[26px] border px-1.5 py-[5px] " +
+                (isQuranChannel
+                  ? "border-zinc-700 bg-zinc-900"
+                  : "border-border bg-background dark:border-zinc-800")
+              }
+            >
+              {!composerHasText && (
+              <button
+                type="button"
+                className={chatCameraButtonClass(theme, isQuranChannel)}
+                aria-label="كاميرا"
+                onClick={() => {
+                  setPlusAttachOpen(false);
+                  cameraCaptureRef.current?.click();
+                }}
+              >
+                <Camera size={18} strokeWidth={2} className="pointer-events-none" />
+              </button>
+              )}
+              <MentionComposerField
+                textareaRef={composerInputRef}
+                rows={1}
+                dir="auto"
+                value={text}
+                onChange={onComposerChange}
+                mentionVariant={isQuranChannel ? "composerQuran" : "composer"}
+                wrapperClassName="chat-allow-select min-w-0 flex-1"
+                overlayClassName={
+                  "py-1.5 text-[15px] leading-5 " +
+                  (isQuranChannel ? "text-emerald-50" : "text-zinc-900 dark:text-zinc-50")
+                }
+                onCompositionStart={() => {
+                  composingRef.current = true;
+                }}
+                onCompositionEnd={e => {
+                  composingRef.current = false;
+                  onComposerChange(e.currentTarget.value);
+                }}
+                onKeyDown={e => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    submitTextMessage();
+                  }
+                }}
+                onFocus={() => {
+                  stickToBottomRef.current = true;
+                  scrollMessagesToBottom();
+                }}
+                placeholder={t("typeMessage")}
+                aria-label={t("typeMessage")}
+                className={
+                  "chat-allow-select no-scrollbar min-h-[20px] min-w-0 max-h-[100px] flex-1 resize-none overflow-y-hidden py-1.5 text-[15px] leading-5 whitespace-pre-wrap break-words outline-none " +
+                  (isQuranChannel
+                    ? "caret-emerald-200 placeholder:text-emerald-200/55"
+                    : "caret-zinc-800 placeholder:text-zinc-500/65 dark:caret-zinc-200 dark:placeholder:text-zinc-400/60")
+                }
+                style={{ height: CHAT_COMPOSER_LINE_PX }}
               />
 
               {composerHasText ? (
@@ -4499,20 +6625,37 @@ function ChatRoom({
                       }
                       onClick={() => {
                         setPlusAttachOpen(false);
-                        if (isGuest) {
-                          notifyGuestActionBlocked();
-                          return;
-                        }
+                        if (isGuest) { notifyGuestActionBlocked(); return; }
                         setDrawComposeOpen(true);
                       }}
                     >
                       <PenLine size={18} /> <span>رسم وكتابة</span>
                     </button>
+                    {isDmRoom && (
+                      <button
+                        type="button"
+                        disabled={isGuest}
+                        className={
+                          "flex w-full items-center gap-3 px-4 py-3 text-start text-sm transition hover:bg-secondary " +
+                          (isQuranChannel ? "text-zinc-100" : "") +
+                          (isGuest ? " cursor-not-allowed opacity-40" : "")
+                        }
+                        onClick={() => {
+                          setPlusAttachOpen(false);
+                          if (isGuest) { notifyGuestActionBlocked(); return; }
+                          setShowPoolInviteModal(true);
+                        }}
+                      >
+                        <span>🎱</span> <span>إنشاء لعبة</span>
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
               </>
               )}
+            </div>
+            )}
 
               <input
                 ref={galleryMediaInputRef}
@@ -4544,7 +6687,6 @@ function ChatRoom({
                   r.readAsDataURL(f);
                 }}
               />
-            </div>
           </form>
         </div>
       )}
@@ -4600,6 +6742,7 @@ function ChatRoom({
       )}
       </div>
       </div>
+      </SlideDismissContext.Provider>
     </div>
   );
 }

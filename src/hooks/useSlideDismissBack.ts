@@ -1,26 +1,76 @@
 import { startTransition, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { blurActiveElement, runNavigationDismiss } from "@/lib/navigationDismiss";
+import { registerPointerBackLayer } from "@/lib/globalPointerBackRouter";
+import {
+  CHAT_EDGE_SWIPE_HIT_PX,
+  chatDismissClampTx,
+  chatDismissOffscreenTx,
+  chatDismissPanelTranslate,
+  chatDismissProgress,
+  chatDismissReleaseTarget,
+  clampDismissTranslate,
+  dismissReleaseTargetTx,
+  dismissTranslateToProgress,
+  isChatDismissSwipeDelta,
+  isDismissSwipeDelta,
+  isDocumentRtl,
+  isPointerOnDismissEdge,
+  type DismissGestureProfile,
+} from "@/lib/edgeSwipeDismiss";
+
+export {
+  isDocumentRtl,
+  EDGE_SWIPE_HIT_PX,
+  CHAT_EDGE_SWIPE_HIT_PX,
+  CHAT_SWIPE_COMMIT_PX,
+  CHAT_DISMISS_FLING_VX,
+  type DismissGestureProfile,
+} from "@/lib/edgeSwipeDismiss";
 
 export const APP_COLUMN_MAX_PX = 448;
 export const SLIDE_DISMISS_MS = 260;
 export const SLIDE_DISMISS_EASE = "cubic-bezier(0.25, 1, 0.35, 1)";
 
-export function isDocumentRtl(): boolean {
-  return typeof document !== "undefined" && document.documentElement.getAttribute("dir") === "rtl";
-}
+/** مرحلة انتقال مكدس المحادثة — فتح (من اليمين) أو إغلاق (نحو اليسار) */
+export type ChatStackTransitionPhase = "open" | "close";
 
-/** تحويلات مكدس المحادثة (قائمة + غرفة) — اتجاه الإغلاق يطابق RTL (رجوع يمين) */
-export function chatStackLayerTransforms(progress: number, widthPx: number, rtl = isDocumentRtl()) {
+/**
+ * تحويلات مكدس المحادثة (قائمة + غرفة).
+ * RTL: الغرفة من اليمين (+w) → 0 عند الفتح، القائمة 0 → +w؛ عند الإغلاق العكس.
+ */
+export function chatStackLayerTransforms(
+  progress: number,
+  widthPx: number,
+  rtl = isDocumentRtl(),
+  opts?: { phase?: ChatStackTransitionPhase; /** @deprecated */ roomExitsToStart?: boolean },
+) {
   const p = Math.max(0, Math.min(1, progress));
   const w = Math.max(260, Math.round(widthPx));
   if (rtl) {
+    const inboxTx = Math.round(p * w);
     return {
-      inbox: `translate3d(${Math.round(-p * w)}px, 0, 0)`,
-      room: `translate3d(${Math.round((1 - p) * w)}px, 0, 0)`,
+      inbox: `translate3d(${inboxTx}px, 0, 0)`,
+      room: `translate3d(${w - inboxTx}px, 0, 0)`,
     };
   }
+  const inboxTx = Math.round(-p * w);
+  const roomTx = Math.round((p - 1) * w);
   return {
-    inbox: `translate3d(${Math.round(p * w)}px, 0, 0)`,
-    room: `translate3d(${Math.round((p - 1) * w)}px, 0, 0)`,
+    inbox: `translate3d(${inboxTx}px, 0, 0)`,
+    room: `translate3d(${roomTx}px, 0, 0)`,
+  };
+}
+
+/**
+ * فتح المحادثة من القائمة بسحب يسار→يمين: الغرفة من اليسار، القائمة لليمين.
+ */
+export function chatStackOpenFromLeftTransforms(progress: number, widthPx: number) {
+  const p = Math.max(0, Math.min(1, progress));
+  const w = Math.max(260, Math.round(widthPx));
+  const inboxTx = Math.round(p * w);
+  return {
+    inbox: `translate3d(${inboxTx}px, 0, 0)`,
+    room: `translate3d(${inboxTx - w}px, 0, 0)`,
   };
 }
 
@@ -28,17 +78,19 @@ export type UseSlideDismissBackOptions = {
   onDismiss: () => void;
   enabled?: boolean;
   blocked?: boolean;
-  /** 0…1 على documentElement أثناء السحب (مثل محادثة دايركت) */
   dismissPullCssVar?: string;
-  /** 0…1 تقدّم فتح المحادثة (1 = مفتوحة بالكامل) — يحرّك القائمة والخيط معاً */
   stackProgressCssVar?: string;
-  /** عند تضمين المحادثة داخل مكدس سناب: لا نحرّك اللوحة داخلياً، فقط التقدّم */
   embedInStack?: boolean;
-  onStackProgress?: (progress: number) => void;
-  /** إعادة ضبط الموضع عند تغيّر المفتاح (مثلاً chat.id) */
+  /** embedInStack + chat: يُمرَّر tx (بكسل). غير ذلك: progress 0…1 */
+  onStackProgress?: (value: number, phase?: "move" | "end" | "start") => void;
   resetKey?: string | number;
-  /** لا تغطّي شريط السحب منطقة كتابة الرسائل (زر الإرسال يمين الشاشة) */
   edgeBottomInsetPx?: number;
+  /** لا تغطّي شريط الحافة رأس الشاشة (أزرار الرجوع والقائمة في RTL) */
+  edgeTopInsetPx?: number;
+  /** سحب أفقي على اللوحة (بعد تجاوز عتبة الحافة أو سحب أفقي واضح) */
+  panelSwipeDismiss?: boolean;
+  /** محادثة: حافة يمين + سحب لليسار؛ باقي التطبيق: حافة يسار + سحب لليمين في RTL */
+  dismissGesture?: DismissGestureProfile;
 };
 
 export function useSlideDismissBack({
@@ -51,67 +103,163 @@ export function useSlideDismissBack({
   onStackProgress,
   resetKey,
   edgeBottomInsetPx = 80,
+  edgeTopInsetPx = 0,
+  panelSwipeDismiss = false,
+  dismissGesture = "app",
 }: UseSlideDismissBackOptions) {
+  const dismissProfile = dismissGesture;
+  const dismissRtl = dismissProfile === "chat" ? true : isDocumentRtl();
   const containerRef = useRef<HTMLDivElement>(null);
   const widthRef = useRef(
     typeof window !== "undefined" ? Math.min(window.innerWidth, APP_COLUMN_MAX_PX) : APP_COLUMN_MAX_PX,
   );
   const liveTxRef = useRef(0);
-  const dragRef = useRef<{ pointerId: number | null; startX: number; startTx: number }>({
+  const dragRef = useRef<{
+    pointerId: number | null;
+    startX: number;
+    startY: number;
+    startTx: number;
+    fromPanel: boolean;
+    fromEdge: boolean;
+  }>({
     pointerId: null,
     startX: 0,
+    startY: 0,
     startTx: 0,
+    fromPanel: false,
+    fromEdge: false,
   });
+  const panelPendingRef = useRef<{ pointerId: number; startX: number; startY: number } | null>(null);
+  const edgePendingRef = useRef<{ pointerId: number; startX: number; startY: number } | null>(null);
+  const velocityRef = useRef(0);
+  const moveSampleRef = useRef({ x: 0, t: 0 });
   const dismissingRef = useRef(false);
+  const rafRef = useRef<number | null>(null);
+  const pendingTxRef = useRef<number | null>(null);
+  const enabledRef = useRef(enabled);
+  const blockedRef = useRef(blocked);
+  enabledRef.current = enabled;
+  blockedRef.current = blocked;
+
+  const onDismissRef = useRef(onDismiss);
+  onDismissRef.current = onDismiss;
+  const onStackProgressRef = useRef(onStackProgress);
+  onStackProgressRef.current = onStackProgress;
 
   const [slideTx, setSlideTx] = useState(0);
   const [slideSpring, setSlideSpring] = useState(false);
 
-  const onDismissRef = useRef(onDismiss);
-  onDismissRef.current = onDismiss;
-
-  const dismissRtl = isDocumentRtl();
-
   const clampTx = useCallback(
     (tx: number) => {
       const w = widthRef.current;
-      if (dismissRtl) return Math.max(0, Math.min(w, tx));
-      return Math.max(-w, Math.min(0, tx));
+      return dismissProfile === "chat" ? chatDismissClampTx(tx, w) : clampDismissTranslate(tx, w, dismissRtl, dismissProfile);
     },
-    [dismissRtl],
+    [dismissProfile, dismissRtl],
   );
 
   const stackOpenProgress = useCallback(
     (tx: number) => {
-      const w = Math.max(260, widthRef.current);
-      if (dismissRtl) return Math.max(0, Math.min(1, 1 - tx / w));
-      return Math.max(0, Math.min(1, 1 + tx / w));
+      const w = widthRef.current;
+      return dismissProfile === "chat" ? chatDismissProgress(tx, w) : dismissTranslateToProgress(tx, w, dismissRtl, dismissProfile);
     },
-    [dismissRtl],
+    [dismissProfile, dismissRtl],
   );
+
+  const notifyStackDismissStart = useCallback(() => {
+    if (!embedInStack || dismissProfile !== "chat") return;
+    onStackProgressRef.current?.(liveTxRef.current, "start");
+  }, [embedInStack, dismissProfile]);
+
+  const notifyStackProgress = useCallback(
+    (tx: number, phase: "move" | "end" = "move") => {
+      if (embedInStack && dismissProfile === "chat") {
+        onStackProgressRef.current?.(tx, phase);
+        if (stackProgressCssVar && typeof document !== "undefined") {
+          const w = widthRef.current;
+          document.documentElement.style.setProperty(
+            stackProgressCssVar,
+            String(chatDismissProgress(tx, w)),
+          );
+        }
+        return;
+      }
+      const p = stackOpenProgress(tx);
+      onStackProgressRef.current?.(p, phase);
+      if (stackProgressCssVar && typeof document !== "undefined") {
+        document.documentElement.style.setProperty(stackProgressCssVar, String(p));
+      }
+    },
+    [embedInStack, dismissProfile, stackOpenProgress, stackProgressCssVar],
+  );
+
+  const flushTx = useCallback(
+    (tx: number, phase: "move" | "end" = "move") => {
+      liveTxRef.current = tx;
+      if (embedInStack) {
+        notifyStackProgress(tx, phase);
+        return;
+      }
+      setSlideTx(tx);
+    },
+    [embedInStack, notifyStackProgress],
+  );
+
+  const scheduleTx = useCallback(
+    (tx: number) => {
+      pendingTxRef.current = tx;
+      if (rafRef.current !== null) return;
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = null;
+        const next = pendingTxRef.current ?? 0;
+        pendingTxRef.current = null;
+        flushTx(next);
+      });
+    },
+    [flushTx],
+  );
+
+  const cancelScheduledTx = useCallback(() => {
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    pendingTxRef.current = null;
+  }, []);
+
+  const dismissOffscreenTx = useCallback(() => {
+    const w = widthRef.current;
+    if (dismissProfile === "chat") return chatDismissOffscreenTx(w);
+    return dismissRtl ? w : -w;
+  }, [dismissProfile, dismissRtl]);
 
   const finishDismiss = useCallback(() => {
     if (dismissingRef.current) return;
     dismissingRef.current = true;
-    setSlideSpring(true);
-    const w = widthRef.current;
-    const target = dismissRtl ? w : -w;
-    setSlideTx(target);
-    liveTxRef.current = target;
+    blurActiveElement();
+    cancelScheduledTx();
+    const target = dismissOffscreenTx();
     if (embedInStack) {
-      onStackProgress?.(0);
-      if (stackProgressCssVar) {
-        document.documentElement.style.setProperty(stackProgressCssVar, "0");
-      }
+      setSlideSpring(true);
+      flushTx(target, "end");
+      window.setTimeout(() => {
+        try {
+          runNavigationDismiss(() => onDismissRef.current());
+        } finally {
+          dismissingRef.current = false;
+        }
+      }, SLIDE_DISMISS_MS);
+      return;
     }
+    setSlideSpring(true);
+    setSlideTx(target);
     window.setTimeout(() => {
       try {
-        startTransition(() => onDismissRef.current());
+        runNavigationDismiss(() => onDismissRef.current());
       } finally {
         dismissingRef.current = false;
       }
     }, SLIDE_DISMISS_MS);
-  }, [dismissRtl, embedInStack, onStackProgress, stackProgressCssVar]);
+  }, [embedInStack, flushTx, cancelScheduledTx, dismissOffscreenTx]);
 
   const requestDismiss = useCallback(
     (opts?: { immediate?: boolean }): boolean => {
@@ -119,36 +267,54 @@ export function useSlideDismissBack({
       if (opts?.immediate) {
         if (dismissingRef.current) return false;
         dismissingRef.current = true;
-        startTransition(() => {
+        cancelScheduledTx();
+        blurActiveElement();
+        runNavigationDismiss(() => {
           try {
             onDismissRef.current();
           } finally {
             dismissingRef.current = false;
           }
-        });
+        }, { immediate: true });
         return true;
       }
       if (dismissingRef.current) return false;
       finishDismiss();
       return true;
     },
-    [enabled, blocked, finishDismiss],
+    [enabled, blocked, finishDismiss, cancelScheduledTx],
   );
 
   const snapBack = useCallback(() => {
+    cancelScheduledTx();
     setSlideSpring(true);
-    setSlideTx(0);
+    if (embedInStack) {
+      flushTx(0, "end");
+    } else {
+      setSlideTx(0);
+    }
     liveTxRef.current = 0;
     window.setTimeout(() => setSlideSpring(false), SLIDE_DISMISS_MS);
-  }, []);
+  }, [embedInStack, flushTx, cancelScheduledTx]);
 
   useEffect(() => {
     dismissingRef.current = false;
-    setSlideTx(0);
+    cancelScheduledTx();
     liveTxRef.current = 0;
+    if (!embedInStack) {
+      setSlideTx(0);
+    }
     setSlideSpring(false);
-    dragRef.current = { pointerId: null, startX: 0, startTx: 0 };
-  }, [resetKey]);
+    dragRef.current = {
+      pointerId: null,
+      startX: 0,
+      startY: 0,
+      startTx: 0,
+      fromPanel: false,
+      fromEdge: false,
+    };
+    panelPendingRef.current = null;
+  }, [resetKey, embedInStack, cancelScheduledTx]);
 
   useLayoutEffect(() => {
     const el = containerRef.current;
@@ -164,137 +330,345 @@ export function useSlideDismissBack({
   }, []);
 
   useLayoutEffect(() => {
+    if (embedInStack) return;
     const w = Math.max(260, widthRef.current);
-    const dragging = dragRef.current.pointerId != null;
-    const hasSlideOffset = Math.abs(slideTx) > 1;
-    /**
-     * داخل مكدس المحادثة slideTx يبقى 0 — تقدّم الفتح/الإغلاق يُدار من ChatScreen فقط.
-     * مزامنة openProgress(1) هنا كانت تعيد فتح الشاشة لحظةً بعد الرجوع (ومضة انعكاس).
-     */
-    const shouldSyncStackProgress = !embedInStack || dragging || hasSlideOffset;
-    if (shouldSyncStackProgress) {
-      const openProgress = stackOpenProgress(slideTx);
-      onStackProgress?.(openProgress);
-      if (stackProgressCssVar) {
-        document.documentElement.style.setProperty(stackProgressCssVar, String(openProgress));
-      }
+    const openProgress = stackOpenProgress(slideTx);
+    onStackProgressRef.current?.(openProgress, "move");
+    if (stackProgressCssVar) {
+      document.documentElement.style.setProperty(stackProgressCssVar, String(openProgress));
     }
-
     if (!dismissPullCssVar) return;
     const p = Math.min(1, Math.abs(slideTx) / w);
     document.documentElement.style.setProperty(dismissPullCssVar, String(p));
-  }, [slideTx, dismissPullCssVar, stackProgressCssVar, onStackProgress, embedInStack, stackOpenProgress]);
+  }, [slideTx, dismissPullCssVar, stackProgressCssVar, embedInStack, stackOpenProgress]);
 
   useEffect(() => {
     return () => {
+      cancelScheduledTx();
       if (dismissPullCssVar) document.documentElement.style.removeProperty(dismissPullCssVar);
       if (stackProgressCssVar) document.documentElement.style.removeProperty(stackProgressCssVar);
     };
-  }, [dismissPullCssVar, stackProgressCssVar]);
+  }, [dismissPullCssVar, stackProgressCssVar, cancelScheduledTx]);
 
-  const onEdgePointerDown = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      if (!enabled || blocked || dismissingRef.current) return;
-      if (e.pointerType === "mouse" && e.button !== 0) return;
-      e.preventDefault();
+  const clearPanelPending = useCallback(() => {
+    panelPendingRef.current = null;
+    edgePendingRef.current = null;
+  }, []);
+
+  const isInteractiveDismissTarget = (target: EventTarget | null) => {
+    if (!(target instanceof HTMLElement)) return false;
+    return !!target.closest(
+      "button, a, input, select, textarea, label, [role='switch'], [role='button'], [data-no-dismiss-drag], [data-profile-scroll], [data-chat-dismiss-handle], [data-chat-back-btn], [data-profile-back-btn], [data-profile-menu-btn], [data-chat-privacy-menu-btn], [data-profile-menu], [data-chat-privacy-menu]",
+    );
+  };
+
+  const beginDrag = useCallback(
+    (pointerId: number, startX: number, startY: number, fromPanel: boolean, fromEdge: boolean) => {
       setSlideSpring(false);
+      velocityRef.current = 0;
+      moveSampleRef.current = { x: startX, t: performance.now() };
       dragRef.current = {
-        pointerId: e.pointerId,
-        startX: e.clientX,
+        pointerId,
+        startX,
+        startY,
         startTx: liveTxRef.current,
+        fromPanel,
+        fromEdge,
       };
-      try {
-        e.currentTarget.setPointerCapture(e.pointerId);
-      } catch {
-        /* ignore */
-      }
+      notifyStackDismissStart();
     },
-    [enabled, blocked],
+    [notifyStackDismissStart],
   );
 
-  const onEdgePointerMove = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      const d = dragRef.current;
-      if (d.pointerId == null || d.pointerId !== e.pointerId) return;
-      e.preventDefault();
-      const delta = e.clientX - d.startX;
-      /** RTL: السحب من اليمين لليسار يزيد الإزاحة (إغلاق باتجاه اليمين) */
-      const raw = dismissRtl ? d.startTx - delta : d.startTx + delta;
-      const next = clampTx(raw);
-      liveTxRef.current = next;
-      setSlideTx(next);
-    },
-    [clampTx, dismissRtl],
-  );
-
-  const onEdgePointerUp = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      const d = dragRef.current;
-      if (d.pointerId === null || d.pointerId !== e.pointerId) return;
-      try {
-        e.currentTarget.releasePointerCapture(e.pointerId);
-      } catch {
-        /* ignore */
+  /** يعادل onHorizontalDragEnd — إطلاق السحب وتحديد الإغلاق أو الارتداد */
+  const finishDragGesture = useCallback(
+    (pointerId: number) => {
+      if (edgePendingRef.current?.pointerId === pointerId) {
+        clearPanelPending();
+        return;
       }
-      dragRef.current = { pointerId: null, startX: 0, startTx: 0 };
-      if (!enabled || blocked) {
+      const d = dragRef.current;
+      if (d.pointerId === null || d.pointerId !== pointerId) return;
+      dragRef.current = {
+        pointerId: null,
+        startX: 0,
+        startY: 0,
+        startTx: 0,
+        fromPanel: false,
+        fromEdge: false,
+      };
+      clearPanelPending();
+      cancelScheduledTx();
+      if (pendingTxRef.current !== null) {
+        flushTx(pendingTxRef.current);
+        pendingTxRef.current = null;
+      }
+      if (!enabledRef.current || blockedRef.current) {
         snapBack();
         return;
       }
       const tx = liveTxRef.current;
       const w = widthRef.current;
-      const threshold = Math.max(w * 0.3, 72);
-      if (dismissRtl ? tx >= threshold : tx <= -threshold) {
+      const target =
+        dismissProfile === "chat"
+          ? chatDismissReleaseTarget(tx, w, velocityRef.current)
+          : dismissReleaseTargetTx(tx, w, dismissRtl, dismissProfile);
+      velocityRef.current = 0;
+      if (target !== 0) {
         finishDismiss();
       } else {
         snapBack();
       }
     },
-    [enabled, blocked, finishDismiss, snapBack, dismissRtl],
+    [finishDismiss, snapBack, cancelScheduledTx, flushTx, clearPanelPending, dismissProfile, dismissRtl],
   );
 
-  const onEdgeLostCapture = useCallback(() => {
-    if (dragRef.current.pointerId == null) return;
-    dragRef.current = { pointerId: null, startX: 0, startTx: 0 };
-    snapBack();
-  }, [snapBack]);
+  /** يعادل onHorizontalDragUpdate — تحديث إزاحة السحب الأفقي */
+  const onDragPointerMove = useCallback(
+    (clientX: number, clientY: number, pointerId: number) => {
+      if (!enabledRef.current || blockedRef.current) {
+        if (dragRef.current.pointerId === pointerId) {
+          dragRef.current = {
+            pointerId: null,
+            startX: 0,
+            startY: 0,
+            startTx: 0,
+            fromPanel: false,
+            fromEdge: false,
+          };
+          clearPanelPending();
+          cancelScheduledTx();
+        }
+        return;
+      }
+      const edgePending = edgePendingRef.current;
+      if (edgePending && edgePending.pointerId === pointerId && dragRef.current.pointerId == null) {
+        const dx = clientX - edgePending.startX;
+        const dy = clientY - edgePending.startY;
+        if (dismissProfile === "chat" && dx > 0) return;
+        const edgeOk =
+          dismissProfile === "chat"
+            ? isChatDismissSwipeDelta(dx, dy)
+            : isDismissSwipeDelta(dx, dy, dismissRtl, dismissProfile);
+        if (!edgeOk) return;
+        edgePendingRef.current = null;
+        beginDrag(pointerId, edgePending.startX, edgePending.startY, false, true);
+      }
+      const pending = panelPendingRef.current;
+      if (pending && pending.pointerId === pointerId && dragRef.current.pointerId == null) {
+        const dx = clientX - pending.startX;
+        const dy = clientY - pending.startY;
+        const panelOk =
+          dismissProfile === "chat"
+            ? isChatDismissSwipeDelta(dx, dy)
+            : isDismissSwipeDelta(dx, dy, dismissRtl, dismissProfile);
+        if (!panelOk) return;
+        clearPanelPending();
+        beginDrag(pointerId, pending.startX, pending.startY, true, false);
+      }
+      const d = dragRef.current;
+      if (d.pointerId == null || d.pointerId !== pointerId) return;
+      const delta = clientX - d.startX;
+      const next = clampTx(d.startTx + delta);
+      if (dismissProfile === "chat" && next > 0) {
+        scheduleTx(0);
+        return;
+      }
+      const now = performance.now();
+      const sampleDt = now - moveSampleRef.current.t;
+      if (sampleDt > 0 && sampleDt < 100) {
+        velocityRef.current = (clientX - moveSampleRef.current.x) / sampleDt;
+      }
+      moveSampleRef.current = { x: clientX, t: now };
+      scheduleTx(next);
+    },
+    [clampTx, scheduleTx, beginDrag, clearPanelPending, cancelScheduledTx, dismissProfile, dismissRtl],
+  );
 
+  /** موجه مؤشر عالمي (document capture) — أولوية على أي عنصر مخصص */
+  useEffect(() => {
+    if (!enabled) return;
+    return registerPointerBackLayer({
+      getContainer: () => containerRef.current,
+      dismissProfile,
+      isActive: () => enabledRef.current && !blockedRef.current && !dismissingRef.current,
+      onEdgePointerDown: (e: PointerEvent) => {
+        const root = containerRef.current;
+        if (!root) return;
+        if (dismissProfile === "chat") {
+          edgePendingRef.current = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY };
+        } else {
+          beginDrag(e.pointerId, e.clientX, e.clientY, false, true);
+        }
+        try {
+          root.setPointerCapture(e.pointerId);
+        } catch {
+          /* ignore */
+        }
+      },
+      onPointerMove: (e: PointerEvent) => {
+        onDragPointerMove(e.clientX, e.clientY, e.pointerId);
+      },
+      onPointerUp: (e: PointerEvent) => {
+        const root = containerRef.current;
+        try {
+          if (root?.hasPointerCapture(e.pointerId)) root.releasePointerCapture(e.pointerId);
+        } catch {
+          /* ignore */
+        }
+        finishDragGesture(e.pointerId);
+      },
+    });
+  }, [resetKey, enabled, blocked, dismissProfile, beginDrag, onDragPointerMove, finishDragGesture]);
+
+  const finishDragGestureReact = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const edgePending = edgePendingRef.current;
+      if (edgePending?.pointerId === e.pointerId) {
+        clearPanelPending();
+        return;
+      }
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+      finishDragGesture(e.pointerId);
+    },
+    [finishDragGesture, clearPanelPending],
+  );
+
+  const onPanelPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (!panelSwipeDismiss || !enabled || blocked || dismissingRef.current) {
+        clearPanelPending();
+        return;
+      }
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      if (isInteractiveDismissTarget(e.target)) return;
+      const root = containerRef.current;
+      if (root) {
+        const rect = root.getBoundingClientRect();
+        if (dismissProfile === "chat") {
+          if (!isPointerOnDismissEdge(e.clientX, rect, "chat")) return;
+        } else if (isPointerOnDismissEdge(e.clientX, rect, dismissProfile)) {
+          return;
+        }
+      }
+      panelPendingRef.current = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY };
+      if (dismissProfile === "chat") {
+        try {
+          containerRef.current?.setPointerCapture(e.pointerId);
+        } catch {
+          /* ignore */
+        }
+      }
+    },
+    [panelSwipeDismiss, enabled, blocked, clearPanelPending, dismissProfile],
+  );
+
+  const onPanelPointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      onDragPointerMove(e.clientX, e.clientY, e.pointerId);
+    },
+    [onDragPointerMove],
+  );
+
+  const onPanelPointerUp = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const pending = panelPendingRef.current;
+      if (pending?.pointerId === e.pointerId) {
+        clearPanelPending();
+        return;
+      }
+      finishDragGestureReact(e);
+    },
+    [finishDragGestureReact, clearPanelPending],
+  );
+
+  const onPanelPointerCancel = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      clearPanelPending();
+      if (dragRef.current.pointerId === e.pointerId) {
+        finishDragGesture(e.pointerId);
+      }
+    },
+    [finishDragGesture, clearPanelPending],
+  );
+
+  const isDragging = dragRef.current.pointerId != null;
+
+  const rtl = isDocumentRtl();
+  const wPanel = widthRef.current;
+  const chatPanelTx =
+    dismissProfile === "chat" ? chatDismissPanelTranslate(slideTx, wPanel) : slideTx;
   const panelStyle: React.CSSProperties = embedInStack
     ? {
         transform: "none",
-        transition: slideSpring ? `opacity ${SLIDE_DISMISS_MS}ms ${SLIDE_DISMISS_EASE}` : "none",
+        transition: "none",
       }
     : {
-        transform: `translate3d(${slideTx}px, 0, 0)`,
+        transform: `translate3d(${chatPanelTx}px, 0, 0)`,
         transition: slideSpring ? `transform ${SLIDE_DISMISS_MS}ms ${SLIDE_DISMISS_EASE}` : "none",
-        boxShadow: Math.abs(slideTx) > 4 ? (dismissRtl ? "8px 0 20px rgba(0,0,0,0.1)" : "-8px 0 20px rgba(0,0,0,0.1)") : undefined,
+        boxShadow:
+          Math.abs(chatPanelTx) > 4
+            ? dismissProfile === "chat" || slideTx < 0
+              ? "-8px 0 24px rgba(0,0,0,0.12)"
+              : rtl
+                ? "8px 0 24px rgba(0,0,0,0.12)"
+                : "-8px 0 20px rgba(0,0,0,0.1)"
+            : undefined,
+        willChange: isDragging ? "transform" : "auto",
       };
 
-  /** يمين الشاشة — لا يغطّي شريط الإرسال (composer dir=ltr والزر أزرق يمين) */
   const edgeStripClassName =
-    "absolute top-14 right-0 z-[45] min-w-[48px] w-[max(3rem,8vw)] max-w-[3.5rem] touch-none select-none bg-transparent " +
-    (!enabled || blocked ? "pointer-events-none" : "");
-  const edgeStripStyle: React.CSSProperties = {
-    bottom: Math.max(56, edgeBottomInsetPx),
-  };
+    (dismissProfile === "chat"
+      ? "absolute right-0 top-0 z-[30] touch-none select-none pointer-events-auto bg-transparent "
+      : "absolute left-0 top-0 z-[10000] w-[max(30px,8vw)] max-w-[48px] touch-none select-none pointer-events-auto bg-transparent ") +
+    (!enabled || blocked ? "!pointer-events-none opacity-0" : "");
+  const edgeStripStyle: React.CSSProperties =
+    dismissProfile === "chat"
+      ? {
+          left: "auto",
+          right: 0,
+          width: CHAT_EDGE_SWIPE_HIT_PX,
+          minWidth: CHAT_EDGE_SWIPE_HIT_PX,
+          maxWidth: CHAT_EDGE_SWIPE_HIT_PX,
+          top: Math.max(0, edgeTopInsetPx),
+          bottom: Math.max(0, edgeBottomInsetPx),
+        }
+      : {
+          top: Math.max(0, edgeTopInsetPx),
+          bottom: Math.max(0, edgeBottomInsetPx),
+        };
 
   const edgeStripProps = {
     role: "presentation" as const,
     "aria-hidden": true as const,
     className: edgeStripClassName,
     style: edgeStripStyle,
-    onPointerDown: onEdgePointerDown,
-    onPointerMove: onEdgePointerMove,
-    onPointerUp: onEdgePointerUp,
-    onPointerCancel: onEdgePointerUp,
-    onLostPointerCapture: onEdgeLostCapture,
+    "data-edge-swipe-back": true as const,
   };
+
+  const panelSwipeProps = panelSwipeDismiss
+    ? {
+        onPointerDownCapture: onPanelPointerDown,
+        onPointerMoveCapture: onPanelPointerMove,
+        onPointerUpCapture: onPanelPointerUp,
+        onPointerCancelCapture: onPanelPointerCancel,
+        onLostPointerCapture: onPanelPointerCancel,
+        style: {
+          touchAction: (dismissProfile === "chat" ? "manipulation" : "pan-y") as const,
+        },
+      }
+    : {};
 
   return {
     containerRef,
     panelStyle,
     requestDismiss,
     edgeStripProps,
+    panelSwipeProps,
     slideTx,
   };
 }

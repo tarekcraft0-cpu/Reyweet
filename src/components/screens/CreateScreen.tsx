@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { SlideDismissBackButton } from "../SlideDismissShell";
 import { useApp, isMutual } from "@/lib/store";
 import { useT } from "@/lib/i18n";
+import { getUserEntitlements } from "@/lib/verificationEntitlements";
 import type { StorySticker } from "@/lib/types";
 import { StoryCreationStickers } from "../story/StoryCreationStickers";
 import { isRenderableMediaUrl, resolveMediaUrl } from "@/lib/mediaUrl";
@@ -13,6 +14,7 @@ import {
   uploadStoryFile,
 } from "@/lib/storyMedia";
 import { hasCreateAttachmentMedia, isVideoMediaRef } from "@/lib/postMedia";
+import { MentionComposerField } from "../MentionComposerField";
 import { ArrowRight } from "lucide-react";
 
 export type CreateScreenInitial = {
@@ -38,7 +40,10 @@ export function CreateScreen({
   const [audience, setAudience] = useState<"all" | "close">("all");
   const [closeOnly, setCloseOnly] = useState<string[]>([]);
   const [storyStickers, setStoryStickers] = useState<StorySticker[]>([]);
+  const [storyExpiryHours, setStoryExpiryHours] = useState<24 | 48 | 72>(24);
   const [publishing, setPublishing] = useState(false);
+  const ent = getUserEntitlements(me);
+  const postCharLimit = ent.postCharacterLimit;
   const storyFileRef = useRef<File | null>(null);
   const previewObjectUrlRef = useRef<string | null>(null);
 
@@ -110,6 +115,7 @@ export function CreateScreen({
         audience,
         storyStickers.length > 0 ? storyStickers : undefined,
         payload.video,
+        storyExpiryHours,
       );
       if (!published.ok) {
         alert(published.error);
@@ -119,9 +125,18 @@ export function CreateScreen({
       return;
     }
 
+    if (text.length > postCharLimit) {
+      alert(`النص طويل — الحد ${postCharLimit} حرفاً`);
+      return;
+    }
+
     if (type === "reel") {
       if (!hasCreateAttachmentMedia(media, !!pickedFile)) {
-        alert("يجب إرفاق مقطع فيديو أو صورة للريلز — لا يمكن النشر بالنص فقط");
+        alert("يجب إرفاق مقطع فيديو للريلز — لا يمكن النشر بالنص فقط");
+        return;
+      }
+      if (!isVideo && !media.startsWith("data:video") && !isVideoMediaRef(media)) {
+        alert("الريلز يتطلب مقطع فيديو فقط");
         return;
       }
     }
@@ -148,21 +163,18 @@ export function CreateScreen({
 
     if (type === "reel") {
       const resolvedVideo = videoUrl ? resolveMediaUrl(videoUrl) : "";
-      const resolvedImage = imageUrl ? resolveMediaUrl(imageUrl) : "";
-      const hasVideo = !!resolvedVideo && (isVideoMediaRef(resolvedVideo) || resolvedVideo.startsWith("data:video"));
-      const hasImage =
-        !!resolvedImage &&
-        isRenderableMediaUrl(resolvedImage) &&
-        !isVideoMediaRef(resolvedImage);
-      if (!hasVideo && !hasImage) {
-        alert("يجب إرفاق مقطع فيديو أو صورة صالحة للريلز");
+      const hasVideo =
+        !!resolvedVideo &&
+        (isVideoMediaRef(resolvedVideo) || resolvedVideo.startsWith("data:video"));
+      if (!hasVideo) {
+        alert("يجب إرفاق مقطع فيديو صالح للريلز");
         return;
       }
       createPost({
         type: "reel",
         text,
-        video: hasVideo ? resolvedVideo : undefined,
-        image: hasImage ? resolvedImage : hasVideo ? "🎬" : undefined,
+        video: resolvedVideo,
+        image: imageUrl && !isVideoMediaRef(imageUrl) ? resolveMediaUrl(imageUrl) : "🎬",
       });
     } else if (type === "tweet") {
       createPost(
@@ -210,13 +222,20 @@ export function CreateScreen({
       </div>
 
       {type !== "story" && (
-        <textarea
-          value={text}
-          onChange={e => setText(e.target.value)}
-          rows={5}
-          placeholder={type === "tweet" ? "بم تفكر؟" : "اكتب وصفاً للريلز (اختياري)..."}
-          className="w-full bg-input rounded-2xl px-4 py-3 outline-none resize-none"
-        />
+        <>
+          <MentionComposerField
+            value={text}
+            onChange={v => setText(v.slice(0, postCharLimit))}
+            rows={5}
+            placeholder={type === "tweet" ? "بم تفكر؟" : "اكتب وصفاً للريلز (اختياري)..."}
+            wrapperClassName="rounded-2xl bg-input"
+            className="w-full rounded-2xl px-4 py-3 text-[15px] leading-relaxed outline-none resize-none"
+            overlayClassName="px-4 py-3 text-[15px] leading-relaxed"
+          />
+          <p className="mt-1 text-end text-xs text-muted-foreground">
+            {text.length}/{postCharLimit}
+          </p>
+        </>
       )}
 
       <div>
@@ -270,6 +289,29 @@ export function CreateScreen({
               >
                 ⭐ {t("audienceClose")}
               </button>
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">مدة ظهور الستوري</p>
+              <div className="flex gap-2">
+                {ent.storyExpiryHoursOptions.map(h => (
+                  <button
+                    key={h}
+                    type="button"
+                    onClick={() => setStoryExpiryHours(h as 24 | 48 | 72)}
+                    className={
+                      "flex-1 rounded-xl py-2 text-xs font-semibold " +
+                      (storyExpiryHours === h
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-secondary text-foreground")
+                    }
+                  >
+                    {h} ساعة
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                فيديو حتى {ent.storyMaxDurationSec} ثانية
+              </p>
             </div>
             {audience === "close" && (
               <div className="bg-card rounded-2xl p-3">

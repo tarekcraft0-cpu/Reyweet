@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
 import { resolveMediaUrl } from "@/lib/mediaUrl";
+import { isVideoMediaRef } from "@/lib/postMedia";
 import { useEffect, useMemo, useState } from "react";
 
 interface Props {
@@ -25,14 +26,23 @@ function isRenderableAvatarImageUrl(src: string): boolean {
 export function Avatar({ name = "?", src, size = 40, className, ring }: Props) {
   const initials = name.slice(0, 2).toUpperCase();
   const [imgFailed, setImgFailed] = useState(false);
+  const [videoFailed, setVideoFailed] = useState(false);
   const resolvedSrc = useMemo(() => resolveMediaUrl(src), [src]);
+  const isVideoAvatar = !!(resolvedSrc && isVideoMediaRef(resolvedSrc));
 
   useEffect(() => {
     setImgFailed(false);
+    setVideoFailed(false);
   }, [resolvedSrc]);
 
-  const showImg = !!(resolvedSrc && isRenderableAvatarImageUrl(resolvedSrc) && !imgFailed);
-  const showEmoji = !!(resolvedSrc && !showImg && resolvedSrc.length <= 4);
+  const showVideo = !!(resolvedSrc && isVideoAvatar && !videoFailed);
+  const showImg = !!(
+    resolvedSrc &&
+    !isVideoAvatar &&
+    isRenderableAvatarImageUrl(resolvedSrc) &&
+    !imgFailed
+  );
+  const showEmoji = !!(resolvedSrc && !showImg && !showVideo && resolvedSrc.length <= 4);
 
   const inner = (
     <div
@@ -42,7 +52,28 @@ export function Avatar({ name = "?", src, size = 40, className, ring }: Props) {
       )}
       style={{ width: size, height: size, fontSize: size * 0.38 }}
     >
-      {showImg ? (
+      {showVideo ? (
+        <span className="relative block h-full w-full min-h-0 min-w-0 overflow-hidden rounded-full">
+          <video
+            key={resolvedSrc}
+            src={resolvedSrc}
+            className="absolute inset-0 h-full w-full object-cover scale-[1.01]"
+            muted
+            playsInline
+            loop
+            autoPlay
+            draggable={false}
+            preload="auto"
+            aria-hidden
+            onError={() => setVideoFailed(true)}
+            onLoadedData={e => {
+              const v = e.currentTarget;
+              void v.play().catch(() => undefined);
+            }}
+          />
+          <span className="sr-only">{name}</span>
+        </span>
+      ) : showImg ? (
         <span className="relative block h-full w-full min-h-0 min-w-0 overflow-hidden rounded-full">
           <img
             key={resolvedSrc}

@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 
 export const PAGER_TAB_CHAIN = ["home", "search", "reels", "chat", "profile"] as const;
 export type PagerTab = (typeof PAGER_TAB_CHAIN)[number];
@@ -29,12 +23,15 @@ export function MainTabPager({
   onTabChange,
   enabled,
   onProgress,
+  /** سحب الشريط السفلي — يحرّك الصفحات فوراً */
+  externalProgressIndex = null,
   panels,
 }: {
   activeTab: PagerTab;
   onTabChange: (tab: PagerTab) => void;
   enabled: boolean;
   onProgress?: (index: number) => void;
+  externalProgressIndex?: number | null;
   panels: Record<PagerTab, ReactNode>;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -64,7 +61,11 @@ export function MainTabPager({
   const index = tabIndex(activeTab);
   const w = widthRef.current || viewportW || 0;
   const settledX = w > 0 ? -index * w : 0;
-  const translateX = dragTranslate ?? settledX;
+  const externalX =
+    externalProgressIndex != null && w > 0
+      ? -clamp(externalProgressIndex, 0, TAB_COUNT - 1) * w
+      : null;
+  const translateX = dragTranslate ?? externalX ?? settledX;
 
   const measure = useCallback(() => {
     const el = containerRef.current;
@@ -99,11 +100,18 @@ export function MainTabPager({
   }, [measure]);
 
   useLayoutEffect(() => {
+    if (externalProgressIndex != null) return;
     measure();
     setDragTranslate(null);
     setSpring(true);
     onProgressRef.current?.(index);
-  }, [activeTab, index, measure]);
+  }, [activeTab, index, measure, externalProgressIndex]);
+
+  useLayoutEffect(() => {
+    if (externalProgressIndex == null || w <= 0) return;
+    setSpring(false);
+    onProgressRef.current?.(clamp(externalProgressIndex, 0, TAB_COUNT - 1));
+  }, [externalProgressIndex, w]);
 
   const reportProgress = useCallback((tx: number) => {
     const width = widthRef.current || 1;
@@ -224,7 +232,7 @@ export function MainTabPager({
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
       >
-        {PAGER_TAB_CHAIN.map(id => (
+        {PAGER_TAB_CHAIN.map((id) => (
           <div
             key={id}
             className="h-full shrink-0 overflow-x-hidden overflow-y-auto overscroll-y-contain"

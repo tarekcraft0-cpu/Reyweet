@@ -1,5 +1,5 @@
 import type { Chat } from "../../../src/lib/types.js";
-import { getSnapshot, listMessagesByChatId } from "../db/engine.js";
+import { getSnapshot, getUserById, listMessagesByChatId, listMessagesForUser } from "../db/engine.js";
 import { dmChatId } from "./dmChatId.js";
 import { resolveReceiverId } from "./chatMessages.js";
 
@@ -20,12 +20,33 @@ export async function resolveChatForUser(userId: string, chatId: string): Promis
   const fromSnap = snap?.chats?.find(c => c.id === chatId);
   if (fromSnap && isMember(fromSnap, userId)) return fromSnap;
 
-  const rows = await listMessagesByChatId(chatId);
-  if (rows.length === 0) return null;
+  // بحث احتياطي في الـ snapshot بمعيار الأعضاء عند فشل البحث بالمعرّف (معرّفات قديمة)
+  if (chatId.startsWith("dm:")) {
+    const parts = chatId.slice(3).split(":");
+    if (parts.length === 2) {
+      const [a, b] = parts;
+      const peer = a === userId ? b : b === userId ? a : null;
+      if (peer) {
+        const fromSnapByPeer = snap?.chats?.find(
+          c =>
+            !c.isGroup &&
+            !c.isChannel &&
+            c.members.length === 2 &&
+            c.members.includes(userId) &&
+            c.members.includes(peer),
+        );
+        if (fromSnapByPeer && isMember(fromSnapByPeer, userId)) {
+          return { ...fromSnapByPeer, id: chatId };
+        }
+      }
+    }
+  }
 
+  const rows = await listMessagesByChatId(chatId);
   const members = new Set<string>();
   let userInvolved = false;
   let hasGroupRow = false;
+
   for (const row of rows) {
     if (row.senderId === userId || row.receiverId === userId) {
       userInvolved = true;
@@ -34,6 +55,36 @@ export async function resolveChatForUser(userId: string, chatId: string): Promis
       else hasGroupRow = true;
     }
   }
+
+  // احتياط: ابحث في كل رسائل المستخدم عند فشل البحث بالمعرّف (معرّفات قديمة/UUID)
+  if (!userInvolved && chatId.startsWith("dm:")) {
+    const parts = chatId.slice(3).split(":");
+    if (parts.length === 2) {
+      const [a, b] = parts;
+      const peer = a === userId ? b : b === userId ? a : null;
+      if (peer) {
+        const allRows = await listMessagesForUser(userId);
+        const dmRows = allRows.filter(
+          r =>
+            (r.senderId === userId && r.receiverId === peer) ||
+            (r.senderId === peer && r.receiverId === userId),
+        );
+        if (dmRows.length > 0) {
+          return {
+            id: chatId,
+            isGroup: false,
+            isChannel: false,
+            members: [userId, peer],
+            admins: [],
+            messages: [],
+            lastOpenAtByUser: {},
+            lastReadMessageIdByUser: {},
+          };
+        }
+      }
+    }
+  }
+
   if (!userInvolved) return null;
 
   const memberList = [...members];
@@ -69,9 +120,31 @@ export async function assertMessageSendAccess(
   userId: string,
   input: { chatId: string; receiverId?: string | null },
 ): Promise<{ chat: Chat; receiverId: string | null }> {
+  const canonicalDmId = input.receiverId ? dmChatId(userId, input.receiverId) : null;
   let chat =
     (await resolveChatForUser(userId, input.chatId)) ??
-    (input.receiverId ? await resolveChatForUser(userId, dmChatId(userId, input.receiverId)) : null);
+    (canonicalDmId && canonicalDmId !== input.chatId
+      ? await resolveChatForUser(userId, canonicalDmId)
+      : null);
+
+  // السماح بإنشاء محادثة DM جديدة مع أي مستخدم موجود في النظام
+  if (!chat && input.receiverId && input.receiverId !== userId) {
+    const receiverRow = await getUserById(input.receiverId);
+    if (receiverRow) {
+      const newChatId = canonicalDmId ?? dmChatId(userId, input.receiverId);
+      chat = {
+        id: newChatId,
+        isGroup: false,
+        isChannel: false,
+        members: [userId, input.receiverId],
+        admins: [],
+        messages: [],
+        lastOpenAtByUser: {},
+        lastReadMessageIdByUser: {},
+      };
+    }
+  }
+
   if (!chat) throw new ChatAccessError("غير مصرح بهذه المحادثة");
 
   if (chat.isChannel && !(chat.hosts || []).includes(userId)) {

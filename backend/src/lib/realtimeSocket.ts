@@ -4,6 +4,8 @@ import { z } from "zod";
 import { clientMessageFromRow, ingestDirectMessage, postMessageSchema } from "./ingestDirectMessage.js";
 import { ChatAccessError } from "./chatAccess.js";
 import { verifyAccessToken } from "./jwt.js";
+import { clearAllTypingForUser, clearUserTyping, setUserTyping } from "./chatPresence.js";
+import { markMessagesDelivered, markMessagesRead } from "./messageStatus.js";
 
 let io: Server | null = null;
 
@@ -95,6 +97,52 @@ export function attachRealtimeSocket(httpServer: HttpServer): Server {
       }
       emitToUser(toUserId, "call:signal", { fromUserId: userId, chatId, signal });
       ack?.({ ok: true });
+    });
+
+    socket.on("typing", (raw) => {
+      const parsed = z
+        .object({
+          chatId: z.string().min(1),
+          peerId: z.string().min(1).optional(),
+          active: z.boolean(),
+        })
+        .safeParse(raw);
+      if (!parsed.success || !userId) return;
+      if (parsed.data.active) {
+        setUserTyping(userId, { chatId: parsed.data.chatId, peerId: parsed.data.peerId ?? null });
+      } else {
+        clearUserTyping(userId, { chatId: parsed.data.chatId, peerId: parsed.data.peerId ?? null });
+      }
+    });
+
+    socket.on("message:ack_delivered", (raw) => {
+      void (async () => {
+        const parsed = z
+          .object({
+            chatId: z.string().min(1),
+            messageIds: z.array(z.string().min(1)).min(1),
+          })
+          .safeParse(raw);
+        if (!parsed.success || !userId) return;
+        await markMessagesDelivered(userId, parsed.data.chatId, parsed.data.messageIds);
+      })();
+    });
+
+    socket.on("message:ack_read", (raw) => {
+      void (async () => {
+        const parsed = z
+          .object({
+            chatId: z.string().min(1),
+            messageIds: z.array(z.string().min(1)).min(1),
+          })
+          .safeParse(raw);
+        if (!parsed.success || !userId) return;
+        await markMessagesRead(userId, parsed.data.chatId, parsed.data.messageIds);
+      })();
+    });
+
+    socket.on("disconnect", () => {
+      if (userId) clearAllTypingForUser(userId);
     });
 
     socket.on("call:ring", (raw, ack) => {

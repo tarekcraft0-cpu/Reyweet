@@ -40,17 +40,19 @@ export function hasCreateAttachmentMedia(media: string, hasFile?: boolean): bool
   return isRenderableMediaUrl(m);
 }
 
-/** منشور يظهر في تبويب الريلز (ريلز صريح أو فيديو) */
+/** منشور يظهر في تبويب الريلز — مقاطع فيديو فقط (لا تغريدات نصية ولا صور بدون فيديو) */
 export function isReelFeedPost(post: Pick<Post, "type" | "image" | "video" | "text">): boolean {
   if (post.type === "tweet") return false;
-  const m = normalizePostMedia(post);
-  if (post.type === "reel") return m.hasVideo || m.hasImage;
-  return m.hasVideo;
+  return normalizePostMedia(post).hasVideo;
 }
 
-/** تغريدة: نص + تفاعلات فقط — بدون بطاقة وسائط */
+/** تغريدة بدون صورة/فيديو حقيقي: نص + تفاعلات فقط.
+ *  إذا رفق المستخدم صورة أو فيديو تُعرض حتى لو النوع "tweet". */
 export function postShowsFeedMedia(post: Pick<Post, "type" | "image" | "video" | "text">): boolean {
-  return !isDisplayTweet(post);
+  if (!isDisplayTweet(post)) return true;
+  // تغريدة لكن فيها مرفق حقيقي → أظهره
+  const media = normalizePostMedia(post);
+  return media.hasImage || media.hasVideo;
 }
 
 export function isVideoMediaRef(s?: string | null): boolean {
@@ -81,8 +83,8 @@ export function normalizePostMedia(post: Pick<Post, "image" | "video" | "type">)
     imageUrl,
     videoUrl,
     posterUrl,
-    hasImage: !!imageUrl && isRenderableMediaUrl(imageUrl),
-    hasVideo: !!videoUrl && isRenderableMediaUrl(videoUrl),
+    hasImage: !!imageUrl && isRenderableMediaUrl(imageUrl) && !isVideoMediaRef(imageRaw),
+    hasVideo: !!videoRaw && isVideoMediaRef(videoRaw) && !!videoUrl,
     emojiFallback:
       (!imageUrl && !videoUrl && imageRaw && !isRenderableMediaUrl(imageRaw)
         ? imageRaw

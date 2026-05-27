@@ -2,6 +2,7 @@ import type { AppState, Post, User } from "../../../src/lib/types.js";
 import {
   createUser,
   getUserById,
+  listPosts,
   listStories,
   replaceLikesForPost,
   replaceStories,
@@ -36,33 +37,17 @@ export async function syncNormalizedFromAppState(state: AppState, ownerUserId?: 
         appLanguage: state.language === "en" ? "en" : "ar",
       });
     } else {
-      const patch: Parameters<typeof updateUser>[1] = {
-        email: u.email || existing.email,
-        bio: u.bio ?? existing.bio,
-        profileLink: u.profileLink?.trim() || "",
-        phone: u.phone?.trim() || "",
-        note: u.note?.trim() || "",
-        officialSiteUrl: "",
-        isPrivate: u.isPrivate === true,
-        appTheme: state.theme === "dark" ? "dark" : "light",
-        appLanguage: state.language === "en" ? "en" : "ar",
-      };
-      /**
-       * توثيق/أفتار/يوزر — صاحب الحساب فقط.
-       * لا نكتب verified:false لبقية users[] في اللقطة (دليل بحث) وإلا يُلغى توثيق الجميع.
-       */
       if (ownerUserId && u.id === ownerUserId) {
-        patch.verified = u.verified === true;
-        patch.founderVerified = u.founderVerified === true;
-        patch.founderOfficialLabel = u.founderOfficialLabel?.trim() || "";
-        if (u.avatar != null && String(u.avatar).trim()) patch.avatar = String(u.avatar).trim();
-        if (u.displayName !== undefined) {
-          patch.displayName = u.displayName?.trim() || undefined;
-        }
-        const norm = normalizeUsername(u.username);
-        if (!validateUsernameFormat(norm, u.id)) patch.username = norm;
+        /** الملف الشخصي (اسم/صورة/بايو) يُحدَّث فقط عبر PATCH /v1/me/profile — لا نكتب من لقطة قديمة */
+        await updateUser(u.id, {
+          appTheme: state.theme === "dark" ? "dark" : "light",
+          appLanguage: state.language === "en" ? "en" : "ar",
+          isPrivate: u.isPrivate === true,
+        });
+        continue;
       }
-      await updateUser(u.id, patch);
+      /** لا نُحدّث حسابات أخرى من لقطة العميل — users.json مصدر الحقيقة */
+      continue;
     }
   }
 
@@ -83,6 +68,11 @@ export async function syncNormalizedFromAppState(state: AppState, ownerUserId?: 
     await upsertPost(row);
     await replaceLikesForPost(p.id, p.likes || []);
   }
+
+  /**
+   * لا نحذف منشورات من posts.json بناءً على لقطة العميل — لقطة قديمة في localStorage
+   * كانت تمحو تغريدات حقيقية من القرص. الحذف فقط عبر واجهة حذف المنشور صراحةً.
+   */
 
   const existingStories = await listStories();
   const storyById = new Map<string, StoryRow>();
@@ -142,6 +132,8 @@ export async function buildMinimalAppState(currentUserId: string): Promise<AppSt
       verified: u.verified === true,
       founderVerified: u.founderVerified === true,
       founderOfficialLabel: u.founderOfficialLabel,
+      appOfficialVerified: u.appOfficialVerified === true,
+      appOfficialLabel: u.appOfficialLabel,
       note: u.note,
       phone: u.phone || undefined,
       profileLink: u.profileLink || u.officialSiteUrl || undefined,
@@ -165,14 +157,15 @@ export async function buildMinimalAppState(currentUserId: string): Promise<AppSt
   const me = dbUsers.find(u => u.id === currentUserId);
   const dbStories = await listStories();
   const now = Date.now();
-  const STORY_TTL_MS = 24 * 60 * 60 * 1000;
   const stories = dbStories
     .filter(s => {
       const createdAt =
         typeof s.createdAt === "number"
           ? s.createdAt
           : Date.parse(String(s.createdAt ?? "")) || 0;
-      return createdAt > now - STORY_TTL_MS;
+      const hours = typeof s.expiryHours === "number" && [24, 48, 72].includes(s.expiryHours)
+        ? s.expiryHours : 24;
+      return createdAt > now - hours * 60 * 60 * 1000;
     })
     .map(s => ({
       ...s,

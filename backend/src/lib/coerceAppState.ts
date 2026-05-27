@@ -32,6 +32,7 @@ export function coerceAppStateForClient(state: AppState): AppState {
       createdAt: typeof p.createdAt === "number" ? p.createdAt : Date.now(),
     })),
     stories: state.stories ?? [],
+    storyArchive: state.storyArchive ?? [],
     chats: (state.chats ?? []).map(c => ({
       ...c,
       members: c.members ?? [],

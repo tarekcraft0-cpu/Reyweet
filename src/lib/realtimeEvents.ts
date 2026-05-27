@@ -29,7 +29,7 @@ export type MessageNewEvent = {
 };
 
 const RECONNECT_MS = 5000;
-const SSE_FALLBACK_MS = 8000;
+const SSE_FALLBACK_MS = 800;
 
 function sleep(ms: number): Promise<void> {
   return new Promise(r => setTimeout(r, ms));

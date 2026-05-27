@@ -1,6 +1,7 @@
 import type { ID, User } from "./types";
 import type { ApiSearchUser } from "./apiBackend";
 import { userFromSearchResult } from "./apiBackend";
+import { isRenderableMediaUrl } from "./mediaUrl";
 
 /** أحرف أولية من السيرفر (مثل "AB") — ليست صورة مرفوعة */
 function isPlaceholderAvatar(avatar: string | undefined, username: string): boolean {
@@ -12,9 +13,11 @@ function isPlaceholderAvatar(avatar: string | undefined, username: string): bool
 }
 
 function pickAvatar(incoming: string | undefined, prev: string | undefined, username: string): string {
+  if (incoming && isRenderableMediaUrl(incoming)) return incoming;
   if (isPlaceholderAvatar(incoming, username) && prev && !isPlaceholderAvatar(prev, username)) {
     return prev;
   }
+  if (prev && isRenderableMediaUrl(prev) && isPlaceholderAvatar(incoming, username)) return prev;
   return mergeProfileScalar(incoming, prev) ?? prev ?? incoming ?? "";
 }
 
@@ -37,7 +40,10 @@ export function applyAuthoritativeProfile(base: User, server: Partial<User> & { 
     id: base.id,
     username: server.username ?? base.username,
     displayName: server.displayName !== undefined ? server.displayName : base.displayName,
-    avatar: pickAvatar(server.avatar, base.avatar, server.username ?? base.username),
+    avatar:
+      server.avatar && isRenderableMediaUrl(server.avatar)
+        ? server.avatar
+        : pickAvatar(server.avatar, base.avatar, server.username ?? base.username),
     bio: server.bio !== undefined ? server.bio : base.bio,
     note: server.note !== undefined ? server.note : base.note,
     profileLink: server.profileLink !== undefined ? server.profileLink : base.profileLink,
@@ -48,6 +54,12 @@ export function applyAuthoritativeProfile(base: User, server: Partial<User> & { 
       server.founderOfficialLabel !== undefined
         ? server.founderOfficialLabel
         : base.founderOfficialLabel,
+    appOfficialVerified:
+      server.appOfficialVerified !== undefined
+        ? server.appOfficialVerified
+        : base.appOfficialVerified,
+    appOfficialLabel:
+      server.appOfficialLabel !== undefined ? server.appOfficialLabel : base.appOfficialLabel,
   });
 }
 
@@ -60,7 +72,10 @@ export function mergeUserFromServer(prev: User | undefined, incoming: User): Use
     password: "",
     username: mergeProfileScalar(incoming.username, prev.username) ?? prev.username,
     displayName: mergeProfileScalar(incoming.displayName, prev.displayName, { allowClear: true }),
-    avatar: pickAvatar(incoming.avatar, prev.avatar, incoming.username ?? prev.username),
+    avatar:
+      incoming.avatar && isRenderableMediaUrl(incoming.avatar)
+        ? incoming.avatar
+        : pickAvatar(incoming.avatar, prev.avatar, incoming.username ?? prev.username),
     bio: incoming.bio !== undefined ? incoming.bio : prev.bio,
     note: incoming.note !== undefined ? incoming.note : prev.note,
     profileLink: incoming.profileLink !== undefined ? incoming.profileLink : prev.profileLink,
@@ -70,6 +85,10 @@ export function mergeUserFromServer(prev: User | undefined, incoming: User): Use
       incoming.founderOfficialLabel !== undefined
         ? incoming.founderOfficialLabel
         : prev.founderOfficialLabel,
+    appOfficialVerified:
+      incoming.appOfficialVerified === true || prev.appOfficialVerified === true,
+    appOfficialLabel:
+      incoming.appOfficialLabel !== undefined ? incoming.appOfficialLabel : prev.appOfficialLabel,
     following: Array.isArray(incoming.following) ? incoming.following : prev.following,
     followers: Array.isArray(incoming.followers) ? incoming.followers : prev.followers,
     followRequestIn: Array.isArray(incoming.followRequestIn)
@@ -92,21 +111,51 @@ export function mergeDirectoryUser(prev: User | undefined, row: ApiSearchUser): 
       row.displayName !== undefined
         ? row.displayName?.trim() || undefined
         : prev.displayName,
-    avatar: pickAvatar(stub.avatar, prev.avatar, stub.username || prev.username),
+    avatar:
+      stub.avatar && isRenderableMediaUrl(stub.avatar) ? stub.avatar : prev.avatar,
     bio: row.bio !== undefined ? (row.bio ?? "") : prev.bio,
     verified: stub.verified === true || prev.verified === true,
     founderVerified: stub.founderVerified === true || prev.founderVerified === true,
     founderOfficialLabel:
       row.founderOfficialLabel !== undefined ? stub.founderOfficialLabel : prev.founderOfficialLabel,
+    appOfficialVerified: stub.appOfficialVerified === true || prev.appOfficialVerified === true,
+    appOfficialLabel:
+      row.appOfficialLabel !== undefined ? stub.appOfficialLabel : prev.appOfficialLabel,
+    isPrivate: row.isPrivate === true ? true : row.isPrivate === false ? false : prev.isPrivate,
+    followers:
+      Array.isArray(row.followers) && row.followers.length
+        ? row.followers
+        : prev.followers,
+    following:
+      Array.isArray(row.following) && row.following.length
+        ? row.following
+        : prev.following,
+    displayFollowerCount:
+      typeof row.followerCount === "number" ? row.followerCount : prev.displayFollowerCount,
     password: "",
   };
 }
 
 /** دمج صف كامل (مثلاً بعد PATCH /v1/me/profile) */
 export function mergeUserProfilePatch(prev: User, patch: Partial<User> & { id: ID }): User {
+  const {
+    following: _f,
+    followers: _fo,
+    blocked: _b,
+    closeFriends: _c,
+    favorites: _fa,
+    highlights: _h,
+    followRequestIn: _in,
+    followRequestOut: _out,
+    publicChannelIds: _pc,
+    profileViews: _pv,
+    pinnedChatIds: _pin,
+    mutedChatIds: _mut,
+    ...profilePatch
+  } = patch;
   return {
     ...prev,
-    ...patch,
+    ...profilePatch,
     username: patch.username != null ? patch.username : prev.username,
     displayName:
       patch.displayName !== undefined ? patch.displayName?.trim() || undefined : prev.displayName,
@@ -126,6 +175,37 @@ export function mergeUserProfilePatch(prev: User, patch: Partial<User> & { id: I
           : prev.founderVerified,
     founderOfficialLabel:
       patch.founderOfficialLabel !== undefined ? patch.founderOfficialLabel : prev.founderOfficialLabel,
+    appOfficialVerified:
+      patch.appOfficialVerified === true
+        ? true
+        : patch.appOfficialVerified === false
+          ? false
+          : prev.appOfficialVerified,
+    appOfficialLabel:
+      patch.appOfficialLabel !== undefined ? patch.appOfficialLabel : prev.appOfficialLabel,
+    isSubscribed: patch.isSubscribed !== undefined ? patch.isSubscribed === true : prev.isSubscribed,
+    subscriptionPlan:
+      patch.subscriptionPlan !== undefined ? patch.subscriptionPlan : prev.subscriptionPlan,
+    subscriptionExpiresAt:
+      patch.subscriptionExpiresAt !== undefined
+        ? patch.subscriptionExpiresAt
+        : prev.subscriptionExpiresAt,
+    verificationStatus:
+      patch.verificationStatus !== undefined ? patch.verificationStatus : prev.verificationStatus,
+    verificationBadgeColor:
+      patch.verificationBadgeColor !== undefined
+        ? patch.verificationBadgeColor
+        : prev.verificationBadgeColor,
+    canUseAnimatedAvatar:
+      patch.canUseAnimatedAvatar !== undefined
+        ? patch.canUseAnimatedAvatar === true
+        : prev.canUseAnimatedAvatar,
+    storyMaxDuration:
+      patch.storyMaxDuration !== undefined ? patch.storyMaxDuration : prev.storyMaxDuration,
+    storyExpiryOptions:
+      patch.storyExpiryOptions !== undefined ? patch.storyExpiryOptions : prev.storyExpiryOptions,
+    postCharacterLimit:
+      patch.postCharacterLimit !== undefined ? patch.postCharacterLimit : prev.postCharacterLimit,
     password: "",
   };
 }

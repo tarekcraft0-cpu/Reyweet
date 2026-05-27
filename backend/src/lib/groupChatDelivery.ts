@@ -46,6 +46,8 @@ function rowToChatUser(row: UserRow) {
     verified: row.verified === true,
     founderVerified: row.founderVerified === true,
     founderOfficialLabel: row.founderOfficialLabel,
+    appOfficialVerified: row.appOfficialVerified === true,
+    appOfficialLabel: row.appOfficialLabel,
     note: row.note || undefined,
     phone: row.phone || undefined,
     profileLink: row.profileLink || row.officialSiteUrl || undefined,

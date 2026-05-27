@@ -24,6 +24,14 @@ export default defineConfig({
       port: 3077,
       strictPort: true,
       hmr: devLanHmr(),
+      /** نفس بروكسي SPA — ربط الواجهة :3077 بـ API :3000 وقاعدة D: */
+      proxy: {
+        "/auth": { target: "http://127.0.0.1:3000", changeOrigin: true },
+        "/v1": { target: "http://127.0.0.1:3000", changeOrigin: true },
+        "/health": { target: "http://127.0.0.1:3000", changeOrigin: true },
+        "/media": { target: "http://127.0.0.1:3000", changeOrigin: true },
+        "/socket.io": { target: "http://127.0.0.1:3000", changeOrigin: true, ws: true },
+      },
     },
   },
 });

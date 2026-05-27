@@ -3,8 +3,10 @@ import { applyDeviceThemeToDom, readDeviceTheme } from "@/lib/deviceTheme";
 import { WebAppRoot } from "@/spa/WebAppRoot";
 import { AppErrorBoundary } from "@/components/AppErrorBoundary";
 import { registerPwa } from "@/lib/registerPwa";
+import { warmGlobalPointerBackRouter } from "@/lib/globalPointerBackRouter";
 import "@/styles.css";
 
+warmGlobalPointerBackRouter();
 registerPwa();
 applyDeviceThemeToDom(readDeviceTheme());
 

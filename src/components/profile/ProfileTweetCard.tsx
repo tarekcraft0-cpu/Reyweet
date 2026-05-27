@@ -1,14 +1,14 @@
 import { useMemo, useState, startTransition } from "react";
-import { MoreHorizontal, Play, AtSign } from "lucide-react";
+import { Play, AtSign, Trash2 } from "lucide-react";
 import { Avatar } from "../Avatar";
-import { VerifiedMarkForUser } from "../VerifiedBadge";
 import { ShareSheet } from "../ShareSheet";
+import { FeedPostColumnShell, ProfilePostMetaRow } from "../PostFeedLayout";
 import type { Post, User } from "@/lib/types";
-import { userDisplayName } from "@/lib/userDisplay";
 import { formatRelativeTime } from "@/lib/formatRelativeTime";
 import { normalizePostMedia, type NormalizedPostMedia } from "@/lib/postMedia";
-import { renderMentionHashtagNodes } from "@/lib/renderMentionHashtagText";
+import { renderMentionHashtagNodes, createMentionRenderer } from "@/lib/renderMentionHashtagText";
 import { useT } from "@/lib/i18n";
+import { useApp } from "@/lib/store";
 
 function TweetHeartIcon({ liked }: { liked: boolean }) {
   return (
@@ -143,95 +143,63 @@ export function ProfileTweetCard({
   commentsAnchorId?: string;
 }) {
   const t = useT();
+  const { state, currentUser, deleteComment } = useApp();
+  const livePost = useMemo(
+    () => state.posts.find(p => p.id === post.id) ?? post,
+    [state.posts, post],
+  );
+  const me = currentUser!;
   const [shareOpen, setShareOpen] = useState(false);
   const [commentsOpen, setCommentsOpen] = useState(showCommentsDefault);
   const [comment, setComment] = useState("");
-  const postMedia = useMemo(() => normalizePostMedia(post), [post.image, post.video, post.type]);
-  const name = userDisplayName(author);
-  const timeLabel = formatRelativeTime(post.createdAt, lang);
+  const postMedia = useMemo(() => normalizePostMedia(livePost), [livePost.image, livePost.video, livePost.type]);
+  const timeLabel = formatRelativeTime(livePost.createdAt, lang);
 
   const renderedPostText = useMemo(() => {
-    if (!post.text) return null;
-    return renderMentionHashtagNodes(post.text, {
-      renderMention: (uname, key) => {
-        const u = users.find(x => x.username === uname);
-        if (u) {
-          return (
-            <button
-              key={key}
-              type="button"
-              onClick={() => startTransition(() => onOpenProfile(u.id))}
-              className="text-primary"
-            >
-              <AtSign size={12} className="inline" />
-              {uname}
-            </button>
-          );
-        }
-        return (
-          <span key={key} className="text-primary">
-            @{uname}
-          </span>
-        );
-      },
+    if (!livePost.text) return null;
+    return renderMentionHashtagNodes(livePost.text, {
+      renderMention: createMentionRenderer({
+        users,
+        onUserClick: userId => startTransition(() => onOpenProfile(userId)),
+      }),
       renderHashtag: (h, key) => (
         <span key={key} className="text-primary">
           {h}
         </span>
       ),
     });
-  }, [post.text, users, onOpenProfile]);
+  }, [livePost.text, users, onOpenProfile]);
 
   const actionBtn = "inline-flex items-center gap-1 rounded-md py-1 text-foreground/85 transition active:scale-95";
   const countCls = (active?: boolean, activeColor?: string) =>
     "text-[13px] tabular-nums " + (active && activeColor ? activeColor : "text-muted-foreground");
 
   return (
-    <article dir="rtl" className="border-b border-border/80 px-3 py-3 text-right">
-      <div className="flex flex-row gap-3">
-        <button type="button" onClick={onOpenAuthor} className="h-10 w-10 shrink-0 self-start">
-          <Avatar name={author.username} src={author.avatar} size={40} />
-        </button>
-
-        <div className="min-w-0 flex-1">
-          <div className="flex items-start justify-between gap-1">
-            <button type="button" onClick={onOpenAuthor} className="min-w-0 flex-1 text-right">
-              <div className="flex flex-wrap items-center justify-end gap-x-1 gap-y-0 leading-snug">
-                <span className="font-bold text-[15px] text-foreground">{name}</span>
-                <VerifiedMarkForUser user={author} size={15} />
-                <span className="truncate text-[15px] text-muted-foreground">
-                  @{author.username}
-                  <span aria-hidden className="mx-0.5">
-                    ·
-                  </span>
-                  <span className="tabular-nums">{timeLabel}</span>
-                </span>
-              </div>
-            </button>
-            {onMenu ? (
-              <button
-                type="button"
-                onClick={onMenu}
-                className="shrink-0 rounded-full p-1.5 text-muted-foreground hover:bg-secondary/80"
-                aria-label="خيارات"
-              >
-                <MoreHorizontal size={18} strokeWidth={1.75} />
-              </button>
-            ) : null}
-          </div>
+    <article className="border-b border-border/80">
+      <FeedPostColumnShell author={author} onOpenAuthor={onOpenAuthor}>
+          <ProfilePostMetaRow
+            author={author}
+            timeLabel={timeLabel}
+            onOpenAuthor={onOpenAuthor}
+            onMenu={onMenu}
+          />
 
           {renderedPostText && (
-            <p className="mt-1 whitespace-pre-wrap text-right text-[15px] leading-relaxed text-foreground break-words">
+            <p
+              dir="rtl"
+              className="mt-1 whitespace-pre-wrap text-right text-[15px] leading-relaxed text-foreground break-words"
+            >
               {renderedPostText}
             </p>
           )}
 
-          <ProfileTweetMedia post={post} postMedia={postMedia} />
+          <ProfileTweetMedia post={livePost} postMedia={postMedia} />
 
-          <div dir="rtl" className="mt-2.5 flex w-full flex-row items-center justify-start gap-4 sm:gap-5">
+          <div dir="ltr" className="mt-2.5 flex w-full items-center justify-between gap-2">
+            <div className="flex items-center gap-4 sm:gap-5">
               <button type="button" onClick={onLike} className={actionBtn} aria-pressed={liked}>
                 <TweetHeartIcon liked={liked} />
-                <span className={countCls(liked, "text-[var(--color-like,#ef4444)]")}>{post.likes.length}</span>
+                <span className={countCls(liked, "text-[var(--color-like,#ef4444)]")}>{livePost.likes.length}</span>
               </button>
               <button
                 type="button"
@@ -240,12 +208,13 @@ export function ProfileTweetCard({
                 aria-expanded={commentsOpen}
               >
                 <TweetCommentIcon />
-                <span className={countCls()}>{post.comments.length}</span>
+                <span className={countCls()}>{livePost.comments.length}</span>
               </button>
               <button type="button" onClick={onRepost} className={actionBtn} aria-pressed={reposted}>
                 <TweetRepostIcon reposted={reposted} />
-                <span className={countCls(reposted, "text-primary")}>{post.reposts.length}</span>
+                <span className={countCls(reposted, "text-primary")}>{livePost.reposts.length}</span>
               </button>
+            </div>
             <button type="button" onClick={() => setShareOpen(true)} className={actionBtn} aria-label="مشاركة">
               <TweetShareIcon />
             </button>
@@ -257,23 +226,36 @@ export function ProfileTweetCard({
               className="mt-3 space-y-2 border-t border-border/60 pt-3 scroll-mt-24"
             >
               <h3 className="text-xs font-semibold text-muted-foreground">{t("comments")}</h3>
-              {post.comments.map(c => {
+              {livePost.comments.map(c => {
                 const u = users.find(x => x.id === c.userId);
                 return (
-                  <div key={c.id} className="flex gap-2 text-sm">
+                  <div key={c.id} className="flex gap-2 text-sm" dir="ltr">
                     <button type="button" className="shrink-0" onClick={() => u && onOpenProfile(u.id)}>
                       <Avatar name={u?.username || "?"} src={u?.avatar} size={26} />
                     </button>
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1" dir="rtl">
                       <button type="button" className="font-semibold" onClick={() => u && onOpenProfile(u.id)}>
                         @{u?.username}
                       </button>{" "}
                       <span className="break-words">{c.text}</span>
                     </div>
+                    {c.userId === me.id && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!window.confirm("حذف هذا التعليق؟")) return;
+                          deleteComment(livePost.id, c.id);
+                        }}
+                        className="shrink-0 rounded-full p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                        aria-label="حذف التعليق"
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    )}
                   </div>
                 );
               })}
-              {post.comments.length === 0 && <p className="text-xs text-muted-foreground">—</p>}
+              {livePost.comments.length === 0 && <p className="text-xs text-muted-foreground">—</p>}
               <form
                 onSubmit={e => {
                   e.preventDefault();
@@ -298,10 +280,9 @@ export function ProfileTweetCard({
               </form>
             </div>
           )}
-        </div>
-      </div>
+      </FeedPostColumnShell>
 
-      {shareOpen && <ShareSheet target={{ kind: "post", post }} onClose={() => setShareOpen(false)} />}
+      {shareOpen && <ShareSheet target={{ kind: "post", post: livePost }} onClose={() => setShareOpen(false)} />}
     </article>
   );
 }

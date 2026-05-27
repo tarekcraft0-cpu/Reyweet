@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { HomeFeedPostItem } from "../home/HomeFeedPostItem";
+import { HomeFeedActionsProvider } from "@/lib/homeFeedActionsContext";
+import { useTabPanelScrollRef } from "@/lib/tabPanelScrollContext";
 import { useApp, userById, userHasVisibleStories, visibleStoryFriendsUserIds } from "@/lib/store";
+import { isReelFeedPost } from "@/lib/postMedia";
 import { notifyGuestActionBlocked } from "@/lib/guestBlocked";
 import { stashPendingStoryFile } from "@/lib/storyMedia";
 import { useT } from "@/lib/i18n";
 import { Avatar } from "../Avatar";
-import { PostCard } from "../PostCard";
 import { PostDetail } from "../PostDetail";
 import { StoryViewer } from "../StoryViewer";
 import { ShareSheet } from "../ShareSheet";
 import type { Post, ProfileReturnContext } from "@/lib/types";
-import { X, MoreHorizontal } from "lucide-react";
-import { CommentOptionsMenu } from "../PostOptionsMenu";
+import { X, Trash2 } from "lucide-react";
 
 interface Props {
   onOpenProfile: (id: string, ctx?: ProfileReturnContext) => void;
@@ -26,12 +28,11 @@ export function HomeScreen({
   restoreFromProfileContext = null,
   onConsumedRestoreFromProfile,
 }: Props) {
-  const { state, currentUser, addComment, isGuest } = useApp();
-  const [sheetCommentMenuId, setSheetCommentMenuId] = useState<string | null>(null);
+  const { state, currentUser, addComment, deleteComment, isGuest } = useApp();
   const t = useT();
   const [shareTarget, setShareTarget] = useState<Post | null>(null);
   const [storyUserId, setStoryUserId] = useState<string | null>(null);
-  const [openPost, setOpenPost] = useState<Post | null>(null);
+  const [openPostId, setOpenPostId] = useState<string | null>(null);
   const [focusCommentsOnOpen, setFocusCommentsOnOpen] = useState(false);
   const [commentsSheetPostId, setCommentsSheetPostId] = useState<string | null>(null);
   const [sheetCommentDraft, setSheetCommentDraft] = useState("");
@@ -64,14 +65,19 @@ export function HomeScreen({
     const surface = d.homeSurface;
     if (surface === "feed_comments_sheet") {
       setCommentsSheetPostId(d.postId);
-      setOpenPost(null);
+      setOpenPostId(null);
       setFocusCommentsOnOpen(false);
     } else {
       setCommentsSheetPostId(null);
       setFocusCommentsOnOpen(!!d.commentsOpen);
-      setOpenPost(p);
+      setOpenPostId(d.postId);
     }
   }, [restoreFromProfileContext, state.posts, onConsumedRestoreFromProfile]);
+
+  const openPost = useMemo(
+    () => (openPostId ? state.posts.find(p => p.id === openPostId) ?? null : null),
+    [openPostId, state.posts],
+  );
 
   useEffect(() => {
     if (!commentsSheetPostId) setSheetCommentDraft("");
@@ -103,16 +109,19 @@ export function HomeScreen({
     input.click();
   };
 
+  const tabScrollRef = useTabPanelScrollRef();
+
   useEffect(() => {
+    const scrollTop = () => tabScrollRef?.current?.scrollTop ?? 0;
     const onStart = (e: TouchEvent) => {
-      touchRef.current = { y0: e.touches[0].clientY, active: window.scrollY <= 2 };
+      touchRef.current = { y0: e.touches[0].clientY, active: scrollTop() <= 2 };
     };
     const onEnd = (e: TouchEvent) => {
       if (!touchRef.current.active) return;
       touchRef.current.active = false;
       const y = e.changedTouches[0]?.clientY ?? touchRef.current.y0;
       const dy = y - touchRef.current.y0;
-      if (window.scrollY <= 2 && dy > 72) {
+      if (scrollTop() <= 2 && dy > 72) {
         setFeedTick(t => t + 1);
         setPullHint(true);
         window.setTimeout(() => setPullHint(false), 1400);
@@ -124,7 +133,7 @@ export function HomeScreen({
       window.removeEventListener("touchstart", onStart);
       window.removeEventListener("touchend", onEnd);
     };
-  }, []);
+  }, [tabScrollRef]);
 
   const hasMyStories = useMemo(
     () => userHasVisibleStories(state, me.id, me.id),
@@ -145,11 +154,32 @@ export function HomeScreen({
     else handleStoryCreate();
   };
 
+  const openPostById = useCallback((postId: string) => {
+    setFocusCommentsOnOpen(false);
+    setCommentsSheetPostId(null);
+    setOpenPostId(postId);
+  }, []);
+
+  const openCommentsById = useCallback((postId: string) => {
+    setCommentsSheetPostId(postId);
+  }, []);
+
+  const feedActions = useMemo(
+    () => ({
+      onShare: setShareTarget,
+      onOpenProfile,
+      onOpenChat,
+      openPost: openPostById,
+      openCommentsSheet: openCommentsById,
+    }),
+    [onOpenProfile, onOpenChat, openPostById, openCommentsById],
+  );
+
   const feed = useMemo(() => {
     const seen = new Set<string>();
     return (state.posts ?? [])
       .filter(p => {
-        if (!p?.id || seen.has(p.id)) return false;
+        if (!p?.id || seen.has(p.id) || isReelFeedPost(p)) return false;
         seen.add(p.id);
         const author = userById(state, p.userId);
         if (!author) return true;
@@ -164,29 +194,25 @@ export function HomeScreen({
       .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
   }, [state.posts, state.users, me.id, me.blocked, feedTick]);
 
-  if (openPost)
-    return (
-      <PostDetail
-        post={openPost}
-        onBack={() => {
-          setOpenPost(null);
-          setFocusCommentsOnOpen(false);
-        }}
-        onOpenProfile={onOpenProfile}
-        onOpenChat={onOpenChat}
-        profileReturnTab="home"
-        initialFocusComments={focusCommentsOnOpen}
-      />
-    );
-
   return (
-    <div className="flex min-h-0 flex-1 flex-col pb-2">
+    <div className="relative flex min-h-0 flex-1 flex-col bg-background">
+    <div
+      className={
+        "flex min-h-full flex-col bg-background pb-2 " +
+        (openPost ? "pointer-events-none select-none" : "")
+      }
+      aria-hidden={openPost ? true : undefined}
+    >
       {pullHint && (
-        <div className="sticky top-0 z-20 mx-3 mt-1 rounded-full bg-primary/90 text-primary-foreground text-center text-xs py-2 px-3 shadow-md">
+        <div className="mx-3 mt-1 shrink-0 rounded-full bg-primary/90 text-primary-foreground text-center text-xs py-2 px-3 shadow-md">
           تم التحديث — أحدث المنشورات والستوريات
         </div>
       )}
-      <div className="flex gap-3 overflow-x-auto no-scrollbar px-4 py-3 border-b border-border">
+      <section
+        aria-label="الستوريات"
+        className="relative z-10 shrink-0 border-b border-border bg-background"
+      >
+      <div className="flex gap-3 overflow-x-auto no-scrollbar px-4 py-3">
         <button
           type="button"
           onClick={openMyStoryOrCreate}
@@ -230,25 +256,18 @@ export function HomeScreen({
           );
         })}
       </div>
+      </section>
 
-      {feed.map(p => (
-        <PostCard
-          key={p.id}
-          post={p}
-          onShare={setShareTarget}
-          onOpenProfile={onOpenProfile}
-          profileReturnTab="home"
-          onOpenChat={onOpenChat}
-          onOpen={() => {
-            setFocusCommentsOnOpen(false);
-            setCommentsSheetPostId(null);
-            setOpenPost(p);
-          }}
-          onOpenCommentsSheet={() => setCommentsSheetPostId(p.id)}
-          hideQuickComment
-        />
-      ))}
-      {feed.length === 0 && <p className="text-center text-muted-foreground py-12">{t("noPosts")}</p>}
+      <section aria-label="الخلاصة" className="relative z-0 flex flex-col bg-background">
+        <HomeFeedActionsProvider value={feedActions}>
+          {feed.map(p => (
+            <HomeFeedPostItem key={p.id} post={p} />
+          ))}
+        </HomeFeedActionsProvider>
+        {feed.length === 0 && (
+          <p className="text-center text-muted-foreground py-12">{t("noPosts")}</p>
+        )}
+      </section>
 
       {shareTarget && <ShareSheet target={{ kind: "post", post: shareTarget }} onClose={() => setShareTarget(null)} />}
       {commentsSheetPost && (
@@ -303,24 +322,17 @@ export function HomeScreen({
                       <span>{c.text}</span>
                     </div>
                     {currentUser && c.userId === currentUser.id && (
-                      <div className="relative shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => setSheetCommentMenuId(sheetCommentMenuId === c.id ? null : c.id)}
-                          className="rounded-full p-1 text-muted-foreground hover:bg-secondary"
-                          aria-label="خيارات التعليق"
-                        >
-                          <MoreHorizontal size={18} />
-                        </button>
-                        {sheetCommentMenuId === c.id && (
-                          <CommentOptionsMenu
-                            postId={commentsSheetPost.id}
-                            commentId={c.id}
-                            authorId={c.userId}
-                            onClose={() => setSheetCommentMenuId(null)}
-                          />
-                        )}
-                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!window.confirm("حذف هذا التعليق؟")) return;
+                          deleteComment(commentsSheetPost.id, c.id);
+                        }}
+                        className="shrink-0 rounded-full p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                        aria-label="حذف التعليق"
+                      >
+                        <Trash2 size={16} />
+                      </button>
                     )}
                   </div>
                 );
@@ -360,6 +372,21 @@ export function HomeScreen({
           onOpenChat={onOpenChat}
         />
       )}
+    </div>
+
+    {openPost && (
+      <PostDetail
+        post={openPost}
+        onBack={() => {
+          setOpenPostId(null);
+          setFocusCommentsOnOpen(false);
+        }}
+        onOpenProfile={onOpenProfile}
+        onOpenChat={onOpenChat}
+        profileReturnTab="home"
+        initialFocusComments={focusCommentsOnOpen}
+      />
+    )}
     </div>
   );
 }

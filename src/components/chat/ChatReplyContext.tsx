@@ -28,7 +28,7 @@ export function ChatNoteReplyBubble({ message, mine }: { message: Message; mine:
         <p className="mb-1 font-semibold opacity-80">نوتك</p>
         <p className="whitespace-pre-wrap leading-relaxed">{noteText}</p>
       </div>
-      <p dir="auto" className="whitespace-pre-wrap break-words text-[15px] leading-relaxed">
+      <p dir="auto" className="select-none whitespace-pre-wrap break-words text-[15px] leading-relaxed">
         {replyText}
       </p>
     </div>
@@ -48,7 +48,7 @@ export function ChatStoryReplyStack({
   const author = story ? userById(state, story.userId) : null;
 
   if (!story || !author) {
-    return shareText ? <span className="text-sm">{shareText}</span> : null;
+    return shareText ? <span className="select-none text-sm">{shareText}</span> : null;
   }
 
   return (

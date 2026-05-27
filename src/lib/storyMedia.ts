@@ -98,8 +98,9 @@ async function prepareStoryFile(file: File): Promise<File> {
   return file;
 }
 
-/** حد مدة ستوري فيديو (ثانية) */
+/** حد مدة ستوري فيديو الافتراضي (ثانية) — غير الموثق */
 export const MAX_STORY_VIDEO_DURATION_SEC = 60;
+export const MAX_STORY_VIDEO_DURATION_UNVERIFIED_SEC = 30;
 
 function uploadTimeoutMs(file: File): number {
   if (file.type.startsWith("video/")) {
@@ -115,8 +116,10 @@ function uploadTimeoutMs(file: File): number {
 /** يتحقق من مدة الفيديو قبل الرفع (حتى دقيقة) */
 export async function validateStoryVideoFile(
   file: File,
+  maxDurationSec = MAX_STORY_VIDEO_DURATION_SEC,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!file.type.startsWith("video/")) return { ok: true };
+  const cap = Math.max(1, Math.min(60, maxDurationSec));
   return new Promise(resolve => {
     const url = URL.createObjectURL(file);
     const v = document.createElement("video");
@@ -127,10 +130,10 @@ export async function validateStoryVideoFile(
     };
     v.onloadedmetadata = () => {
       const d = v.duration;
-      if (Number.isFinite(d) && d > MAX_STORY_VIDEO_DURATION_SEC + 1) {
+      if (Number.isFinite(d) && d > cap + 1) {
         done({
           ok: false,
-          error: `مدة الفيديو ${Math.ceil(d)} ثانية — الحد الأقصى ${MAX_STORY_VIDEO_DURATION_SEC} ثانية (دقيقة).`,
+          error: `مدة الفيديو ${Math.ceil(d)} ثانية — الحد الأقصى ${cap} ثانية.`,
         });
         return;
       }
@@ -144,6 +147,7 @@ export async function validateStoryVideoFile(
 /** رفع ملف ستوري مباشرة (بدون data URL — أسرع وأصغر في الذاكرة) */
 export async function uploadStoryFile(
   file: File,
+  opts?: { maxVideoDurationSec?: number },
 ): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
   const token = getApiToken();
   if (!apiBackendEnabled() || !token) {
@@ -152,7 +156,10 @@ export async function uploadStoryFile(
 
   await ensureApiRuntimeConfig();
   try {
-    const durationCheck = await validateStoryVideoFile(file);
+    const durationCheck = await validateStoryVideoFile(
+      file,
+      opts?.maxVideoDurationSec ?? MAX_STORY_VIDEO_DURATION_SEC,
+    );
     if (!durationCheck.ok) return durationCheck;
 
     let prepared = await prepareStoryFile(file);
@@ -227,6 +234,14 @@ export type NormalizedStoryMedia = {
 };
 
 /** يحوّل مسارات /media/... إلى رابط API كامل للعرض على Vercel */
+/** صورة مصغّرة لشبكة أرشيف القصص */
+export function storyArchiveThumbnailUrl(story: { image?: string; video?: string }): string | null {
+  const media = normalizeStoryMedia(story);
+  if (media.hasImage) return media.imageUrl;
+  if (media.hasVideo && media.imageUrl) return media.imageUrl;
+  return null;
+}
+
 export function normalizeStoryMedia(story: { image?: string; video?: string }): NormalizedStoryMedia {
   const imageRaw = story.image?.trim() || "";
   const videoRaw = story.video?.trim() || "";

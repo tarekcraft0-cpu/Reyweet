@@ -5,6 +5,7 @@ import { messageRowToClient, messageToRow } from "./chatMessages.js";
 import { deliverIncomingDirectMessage } from "./messageDelivery.js";
 import { deliverGroupMessageToMembers, notifyGroupMentions } from "./groupChatDelivery.js";
 import { broadcastDirectMessageInstant, broadcastGroupMessageInstant } from "./messageRealtime.js";
+import { defaultSentExtras } from "./messageStatus.js";
 import type { AppState } from "../../../src/lib/types.js";
 import { getSnapshot } from "../db/engine.js";
 import { assertMessageSendAccess, ChatAccessError } from "./chatAccess.js";
@@ -28,6 +29,8 @@ export const postMessageSchema = z.object({
       type: z.string(),
     })
     .optional(),
+  parentMessageId: z.string().optional(),
+  status: z.enum(["sent", "delivered", "read"]).optional(),
   reactions: z.array(z.object({ emoji: z.string(), userId: z.string() })).optional(),
   forwardedFrom: z.object({ sourceChatLabel: z.string() }).optional(),
 });
@@ -52,17 +55,23 @@ export async function ingestDirectMessage(senderId: string, d: PostMessageInput)
     viewOnce: d.viewOnce,
     viewOnceOpenedByUserIds: d.viewOnceOpenedByUserIds,
     replyTo: d.replyTo,
+    parentMessageId: d.parentMessageId ?? d.replyTo?.id,
     reactions: d.reactions,
     forwardedFrom: d.forwardedFrom,
+    status: "sent" as const,
   };
   const receiverId = enforcedReceiver ?? d.receiverId ?? null;
   const storageChatId =
     receiverId != null ? dmChatId(senderId, receiverId) : d.chatId;
-  const row = messageToRow(
+  const rowBase = messageToRow(
     storageChatId,
     clientMsg as import("../../../src/lib/types.js").Message,
     receiverId,
   );
+  const row: typeof rowBase = {
+    ...rowBase,
+    extrasJson: defaultSentExtras(rowBase.extrasJson),
+  };
 
   if (row.receiverId) {
     broadcastDirectMessageInstant(row, {
@@ -94,6 +103,27 @@ export async function ingestDirectMessage(senderId: string, d: PostMessageInput)
       // eslint-disable-next-line no-console
       console.warn("[messages] snapshot persist failed", e);
     });
+
+    // تضمين المحادثة في snapshot المُرسِل ليضمن نجاح الرسائل التالية
+    void (async () => {
+      try {
+        const { ensureDmChatInSenderSnapshot } = await import("./messageDelivery.js");
+        await ensureDmChatInSenderSnapshot(senderId, row.receiverId!);
+      } catch {
+        // اختياري — لا يؤثر على تسليم الرسالة الحالية
+      }
+    })();
+
+    // سترك 🔥 — يُحدَّث بعد تسليم الرسالة بشكل لا متزامن
+    void (async () => {
+      try {
+        const { updateStreakOnMessage } = await import("./chatStreak.js");
+        await updateStreakOnMessage(senderId, row.receiverId!);
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn("[streak] update failed", e);
+      }
+    })();
   }
 
   return row;

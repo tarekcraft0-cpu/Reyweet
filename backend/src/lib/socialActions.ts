@@ -23,6 +23,20 @@ import {
 
 export type { SocialRelation };
 
+/** إشعار منشن في البايو */
+export async function deliverBioMentionNotification(
+  recipientId: string,
+  fromId: string,
+  bioText: string,
+): Promise<void> {
+  await deliverNotification(recipientId, {
+    userId: recipientId,
+    fromId,
+    type: "mention",
+    text: bioText,
+  });
+}
+
 function stripPasswords(state: AppState): AppState {
   return {
     ...state,

@@ -386,7 +386,7 @@ export function AuthScreen(props?: { onAuthSuccess?: () => void; /** false دا�
   };
 
   return (
-    <div className="relative z-10 flex min-h-[100dvh] flex-col items-center justify-center bg-background px-6 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] pt-[max(1rem,env(safe-area-inset-top,0px))]">
+    <div className="relative z-10 flex min-h-[100dvh] flex-col items-center justify-center overflow-y-auto no-scrollbar bg-background px-6 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] pt-[max(1rem,env(safe-area-inset-top,0px))]">
       <div className="w-full max-w-sm">
         <img src={logo} alt="Retweet" className="w-20 h-20 mx-auto mb-3 dark:invert" />
         <h1 className="text-2xl font-bold text-center mb-2 sm:text-3xl">Retweet</h1>

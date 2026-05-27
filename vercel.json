@@ -1,10 +1,19 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "installCommand": "npm ci && npm ci --prefix landing",
-  "buildCommand": "npm run landing:build",
+  "installCommand": "",
+  "buildCommand": "",
   "outputDirectory": "_vercel_site",
   "rewrites": [
+    { "source": "/health", "destination": "http://109.199.111.29/health" },
+    { "source": "/auth/:path*", "destination": "http://109.199.111.29/auth/:path*" },
+    { "source": "/v1/:path*", "destination": "http://109.199.111.29/v1/:path*" },
+    {
+      "source": "/media/:path*",
+      "destination": "/api/media-stream?path=:path*"
+    },
+    { "source": "/socket.io", "destination": "http://109.199.111.29/socket.io" },
+    { "source": "/socket.io/:path*", "destination": "http://109.199.111.29/socket.io/:path*" },
     { "source": "/app", "destination": "/app/index.html" },
     { "source": "/app/", "destination": "/app/index.html" },
     { "source": "/app/:path((?!.*\\.).*)", "destination": "/app/index.html" },
@@ -35,6 +44,18 @@
         { "key": "Content-Type", "value": "application/json; charset=utf-8" },
         { "key": "Cache-Control", "value": "no-store, max-age=0" }
       ]
+    },
+    {
+      "source": "/downloads/ios-version.json",
+      "headers": [
+        { "key": "Content-Type", "value": "application/json; charset=utf-8" },
+        { "key": "Cache-Control", "value": "no-store, max-age=0" }
+      ]
     }
-  ]
+  ],
+  "functions": {
+    "api/media-stream.js": {
+      "maxDuration": 60
+    }
+  }
 }

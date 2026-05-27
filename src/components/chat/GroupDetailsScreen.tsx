@@ -76,18 +76,17 @@ export function GroupDetailsScreen({
   messages,
   onBack,
   onOpenProfile,
-  onCreateNewGroup,
   onOpenStickers,
 }: {
   chat: Chat;
   messages: Message[];
   onBack: () => void;
   onOpenProfile: (id: string) => void;
-  onCreateNewGroup?: () => void;
   onOpenStickers?: () => void;
 }) {
   const {
     state,
+    setState,
     currentUser,
     renameGroup,
     updateGroupAvatar,
@@ -96,6 +95,7 @@ export function GroupDetailsScreen({
     toggleHost,
     leaveChat,
     addGroupMembers,
+    setGroupNickname,
     sendMessage,
     setGroupPublic,
     respondGroupJoinRequest,
@@ -106,6 +106,10 @@ export function GroupDetailsScreen({
   const [name, setName] = useState(chat.name || "");
   const [showAddMembers, setShowAddMembers] = useState(false);
   const [showPeople, setShowPeople] = useState(false);
+  const [showMessageSearch, setShowMessageSearch] = useState(false);
+  const [addMemberSearch, setAddMemberSearch] = useState("");
+  const [myNickname, setMyNickname] = useState(chat.groupNicknames?.[me.id] || "");
+  const [showNicknames, setShowNicknames] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
   const [showOptions, setShowOptions] = useState(false);
@@ -134,6 +138,34 @@ export function GroupDetailsScreen({
   const filteredMembers = memberUsers.filter(
     u => !memberSearch.trim() || u.username.toLowerCase().includes(memberSearch.trim().toLowerCase()),
   );
+
+  const filteredAddCandidates = addCandidates.filter(
+    u =>
+      !addMemberSearch.trim() ||
+      u.username.toLowerCase().includes(addMemberSearch.trim().toLowerCase()) ||
+      (u.displayName || "").toLowerCase().includes(addMemberSearch.trim().toLowerCase()),
+  );
+
+  const messageSearchHits = useMemo(() => {
+    const q = memberSearch.trim().toLowerCase();
+    if (!q) return [];
+    return messages
+      .filter(m => {
+        const sender = userById(state, m.senderId);
+        const body =
+          m.type === "text"
+            ? m.content
+            : m.shareText || m.content || "";
+        const nick = chat.groupNicknames?.[m.senderId] || sender?.username || "";
+        return (
+          body.toLowerCase().includes(q) ||
+          nick.toLowerCase().includes(q) ||
+          (sender?.username || "").toLowerCase().includes(q)
+        );
+      })
+      .slice(-40)
+      .reverse();
+  }, [messages, memberSearch, state, chat.groupNicknames]);
 
   const uploadAvatar = (f: File) => {
     void (async () => {
@@ -179,8 +211,25 @@ export function GroupDetailsScreen({
     </button>
   );
 
+  const openAddMembers = () => {
+    if (!isAdmin || chat.isChannel) {
+      alert("فقط مشرف المجموعة يمكنه إضافة أعضاء");
+      return;
+    }
+    setPickIds([]);
+    setAddMemberSearch("");
+    setShowAddMembers(true);
+    setShowPeople(false);
+    setShowMessageSearch(false);
+  };
+
   return (
-    <SlideDismissShell onDismiss={onBack} variant="inline" className="flex-1 bg-background" blocked={!!kickTarget}>
+    <SlideDismissShell
+      onDismiss={onBack}
+      variant="inline"
+      className="flex-1 bg-background"
+      blocked={!!kickTarget || showAddMembers}
+    >
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="flex items-center gap-2 border-b border-border px-3 py-3">
           <SlideDismissBackButton onDismiss={onBack}>
@@ -249,12 +298,10 @@ export function GroupDetailsScreen({
           </div>
 
           <div className="flex justify-center gap-1 border-b border-border/60 px-2 pb-4">
-            {actionBtn(<UserPlus size={22} />, t("groupAdd"), () => {
-              setShowAddMembers(true);
-              setShowPeople(false);
-            })}
+            {!chat.isChannel && actionBtn(<UserPlus size={22} />, t("groupAdd"), openAddMembers)}
             {actionBtn(<Search size={22} />, t("groupSearch"), () => {
-              setShowPeople(true);
+              setShowMessageSearch(true);
+              setShowPeople(false);
               setMemberSearch("");
             })}
             {actionBtn(
@@ -279,17 +326,10 @@ export function GroupDetailsScreen({
               `${chat.members.length} ${t("members")}`,
               () => setShowPeople(true),
             )}
-            {menuRow(<AtSign size={18} />, t("groupNicknames"), t("msgMoreSoon"), () => alert(t("msgMoreSoon")))}
-            {menuRow(<Shield size={18} />, t("groupPrivacySafety"), undefined, () => setShowPrivacy(true))}
-            {menuRow(
-              <MessageCirclePlus size={18} />,
-              t("groupCreateNew"),
-              undefined,
-              () => {
-                onBack();
-                onCreateNewGroup?.();
-              },
+            {menuRow(<AtSign size={18} />, t("groupNicknames"), chat.groupNicknames?.[me.id] || undefined, () =>
+              setShowNicknames(true),
             )}
+            {menuRow(<Shield size={18} />, t("groupPrivacySafety"), undefined, () => setShowPrivacy(true))}
           </div>
 
           {mediaItems.length > 0 && (
@@ -326,43 +366,81 @@ export function GroupDetailsScreen({
             </div>
           )}
 
-          {showAddMembers && isAdmin && !chat.isChannel && (
-            <div className="mx-4 mt-4 rounded-2xl border border-border bg-card p-3 space-y-2">
-              <p className="text-sm font-semibold">{t("addMembers")}</p>
-              <div className="max-h-48 overflow-y-auto space-y-1">
-                {addCandidates.length === 0 && (
-                  <p className="text-xs text-muted-foreground">لا يوجد حسابات إضافية</p>
-                )}
-                {addCandidates.map(u => (
-                  <button
-                    key={u.id}
-                    type="button"
-                    onClick={() =>
-                      setPickIds(ids => (ids.includes(u.id) ? ids.filter(x => x !== u.id) : [...ids, u.id]))
-                    }
-                    className="flex w-full items-center gap-3 rounded-2xl p-2 hover:bg-secondary"
-                  >
-                    <Avatar name={u.username} src={u.avatar} size={36} />
-                    <span className="flex-1 text-start text-sm">@{u.username}</span>
-                    {pickIds.includes(u.id) && <Check className="shrink-0 text-primary" />}
-                  </button>
-                ))}
+          {showMessageSearch && (
+            <div className="mx-4 mt-4 rounded-2xl border border-border bg-card p-3">
+              <div className="mb-2 flex items-center gap-2 rounded-xl bg-input px-3 py-2">
+                <Search size={16} className="shrink-0 opacity-60" />
+                <input
+                  value={memberSearch}
+                  onChange={e => setMemberSearch(e.target.value)}
+                  placeholder="ابحث في رسائل المجموعة…"
+                  className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+                />
               </div>
+              <div className="max-h-64 space-y-1 overflow-y-auto">
+                {memberSearch.trim() && messageSearchHits.length === 0 && (
+                  <p className="px-2 py-4 text-center text-xs text-muted-foreground">لا نتائج</p>
+                )}
+                {messageSearchHits.map(m => {
+                  const sender = userById(state, m.senderId);
+                  const label = chat.groupNicknames?.[m.senderId] || sender?.username || "?";
+                  const preview =
+                    m.type === "text" ? m.content : m.shareText || `[${m.type}]`;
+                  return (
+                    <button
+                      key={m.id}
+                      type="button"
+                      className="flex w-full flex-col gap-0.5 rounded-2xl bg-secondary/60 p-2.5 text-start hover:bg-secondary"
+                      onClick={() => {
+                        onBack();
+                        try {
+                          window.dispatchEvent(
+                            new CustomEvent("retweet-scroll-chat-message", {
+                              detail: { messageId: m.id },
+                            }),
+                          );
+                        } catch {
+                          /* ignore */
+                        }
+                      }}
+                    >
+                      <span className="text-xs font-semibold text-primary">{label}</span>
+                      <span className="line-clamp-2 text-sm text-foreground">{preview}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {showNicknames && (
+            <div className="mx-4 mt-4 rounded-2xl border border-border bg-card p-3 space-y-2">
+              <p className="text-sm font-semibold">{t("groupNicknames")}</p>
+              <p className="text-xs text-muted-foreground">اسمك في هذه المحادثة فقط (حتى 30 حرفاً)</p>
+              <input
+                value={myNickname}
+                maxLength={30}
+                onChange={e => setMyNickname(e.target.value)}
+                className="w-full rounded-2xl bg-input px-4 py-2.5 text-sm outline-none"
+                placeholder="اللقب"
+              />
               <div className="flex gap-2">
-                <button type="button" className="flex-1 rounded-2xl bg-secondary py-2 text-sm font-semibold" onClick={() => setShowAddMembers(false)}>
+                <button
+                  type="button"
+                  className="flex-1 rounded-2xl bg-secondary py-2 text-sm font-semibold"
+                  onClick={() => setShowNicknames(false)}
+                >
                   {t("cancel")}
                 </button>
                 <button
                   type="button"
-                  disabled={pickIds.length === 0}
-                  className="flex-1 rounded-2xl bg-primary py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+                  className="flex-1 rounded-2xl bg-primary py-2 text-sm font-semibold text-primary-foreground"
                   onClick={() => {
-                    addGroupMembers(chat.id, pickIds);
-                    setShowAddMembers(false);
-                    setPickIds([]);
+                    setGroupNickname(chat.id, myNickname);
+                    setShowNicknames(false);
                   }}
                 >
-                  {t("groupAdd")} ({pickIds.length})
+                  {t("save")}
                 </button>
               </div>
             </div>
@@ -370,15 +448,6 @@ export function GroupDetailsScreen({
 
           {showPeople && (
             <div className="mx-4 mt-4 rounded-2xl border border-border bg-card p-3">
-              <div className="mb-2 flex items-center gap-2 rounded-xl bg-input px-3 py-2">
-                <Search size={16} className="shrink-0 opacity-60" />
-                <input
-                  value={memberSearch}
-                  onChange={e => setMemberSearch(e.target.value)}
-                  placeholder={t("searchPlaceholder")}
-                  className="min-w-0 flex-1 bg-transparent text-sm outline-none"
-                />
-              </div>
               <div className="max-h-64 space-y-1 overflow-y-auto">
                 {filteredMembers.map(u => {
                   const admin = chat.admins.includes(u.id);
@@ -462,25 +531,41 @@ export function GroupDetailsScreen({
                 >
                   مشاركة
                 </button>
-                <button
-                  type="button"
-                  disabled={inviteBusy}
-                  className="w-full rounded-xl border border-border py-2 text-sm font-semibold"
-                  onClick={() => {
-                    const token = getApiToken();
-                    if (!token || !apiBackendEnabled()) return;
-                    setInviteBusy(true);
-                    void (async () => {
-                      const { apiPatchGroup } = await import("@/lib/apiBackend");
-                      const res = await apiPatchGroup(token, chat.id, { regenerateInvite: true });
-                      setInviteBusy(false);
-                      if (res.ok) alert("تم إنشاء رابط جديد");
-                      else alert(res.error || "فشل");
-                    })();
-                  }}
-                >
-                  {inviteBusy ? "…" : inviteUrl ? "رابط جديد" : "إنشاء رابط"}
-                </button>
+                {!inviteUrl && isAdmin && (
+                  <button
+                    type="button"
+                    disabled={inviteBusy}
+                    className="w-full rounded-xl border border-border py-2 text-sm font-semibold"
+                    onClick={() => {
+                      const token = getApiToken();
+                      if (!token || !apiBackendEnabled()) return;
+                      setInviteBusy(true);
+                      void (async () => {
+                        const { apiPatchGroup } = await import("@/lib/apiBackend");
+                        const res = await apiPatchGroup(token, chat.id, {});
+                        setInviteBusy(false);
+                        if (res.ok && res.chat?.inviteCode) {
+                          setState(s => ({
+                            ...s,
+                            chats: s.chats.map(c =>
+                              c.id === chat.id ? { ...c, inviteCode: res.chat!.inviteCode } : c,
+                            ),
+                          }));
+                          alert("تم إنشاء رابط الدعوة");
+                        } else {
+                          alert(res.error || "فشل إنشاء الرابط");
+                        }
+                      })();
+                    }}
+                  >
+                    {inviteBusy ? "…" : "إنشاء رابط دعوة"}
+                  </button>
+                )}
+                {inviteUrl && (
+                  <p className="text-center text-xs text-muted-foreground">
+                    الرابط ثابت — شاركه لدعوة أعضاء جدد
+                  </p>
+                )}
               </div>
             </div>
           )}
@@ -579,6 +664,72 @@ export function GroupDetailsScreen({
           </div>
         </div>
       </div>
+
+      {showAddMembers && isAdmin && !chat.isChannel && (
+        <div
+          className="fixed inset-0 z-[75] flex items-end justify-center bg-black/40 p-0"
+          onClick={() => setShowAddMembers(false)}
+        >
+          <div
+            className="flex max-h-[min(85vh,640px)] w-full max-w-md flex-col rounded-t-3xl bg-background p-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] animate-in slide-in-from-bottom duration-200"
+            data-no-dismiss-drag
+            onClick={e => e.stopPropagation()}
+          >
+            <p className="mb-3 text-center text-sm font-semibold">{t("addMembers")}</p>
+            <div className="mb-3 flex items-center gap-2 rounded-xl bg-input px-3 py-2">
+              <Search size={16} className="shrink-0 opacity-60" />
+              <input
+                value={addMemberSearch}
+                onChange={e => setAddMemberSearch(e.target.value)}
+                placeholder={t("searchPlaceholder")}
+                className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+                autoFocus
+              />
+            </div>
+            <div className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-y-contain">
+              {filteredAddCandidates.length === 0 && (
+                <p className="py-6 text-center text-xs text-muted-foreground">لا يوجد حسابات إضافية</p>
+              )}
+              {filteredAddCandidates.map(u => (
+                <button
+                  key={u.id}
+                  type="button"
+                  data-no-dismiss-drag
+                  onClick={() =>
+                    setPickIds(ids => (ids.includes(u.id) ? ids.filter(x => x !== u.id) : [...ids, u.id]))
+                  }
+                  className="flex w-full touch-manipulation items-center gap-3 rounded-2xl p-2.5 hover:bg-secondary active:bg-secondary/80"
+                >
+                  <Avatar name={u.username} src={u.avatar} size={36} />
+                  <span className="flex-1 text-start text-sm">@{u.username}</span>
+                  {pickIds.includes(u.id) && <Check className="shrink-0 text-primary" />}
+                </button>
+              ))}
+            </div>
+            <div className="mt-3 flex shrink-0 gap-2">
+              <button
+                type="button"
+                className="flex-1 rounded-2xl bg-secondary py-2.5 text-sm font-semibold"
+                onClick={() => setShowAddMembers(false)}
+              >
+                {t("cancel")}
+              </button>
+              <button
+                type="button"
+                disabled={pickIds.length === 0}
+                className="flex-1 rounded-2xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+                onClick={() => {
+                  addGroupMembers(chat.id, pickIds);
+                  setShowAddMembers(false);
+                  setPickIds([]);
+                }}
+              >
+                {t("groupAdd")} ({pickIds.length})
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {kickTarget && (
         <div

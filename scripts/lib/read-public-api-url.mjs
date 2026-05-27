@@ -4,6 +4,21 @@ import { fileURLToPath } from "node:url";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
+/** نطاق إنتاج الواجهة (بروكسي API + WebSocket) */
+export const VERCEL_SITE_URL = "https://reyweet.vercel.app";
+/** VPS الإنتاج — API مباشر */
+export const PRODUCTION_VPS_HOST = "109.199.111.29";
+export const PRODUCTION_VPS_API = `http://${PRODUCTION_VPS_HOST}`;
+
+/** الواجهة على Vercel HTTPS — API عبر بروكسي نفس النطاق (ليس IP مباشر) */
+export function shouldUseVercelApiProxy(backendUrl) {
+  if (process.env.RETWEET_USE_VERCEL_PROXY === "0") return false;
+  return (
+    backendUrl.startsWith("http://") &&
+    !/localhost|127\.0\.0\.1|192\.168\./i.test(backendUrl)
+  );
+}
+
 export function readPublicApiUrl() {
   const apiFile = path.join(root, "PUBLIC_API_URL.txt");
   if (fs.existsSync(apiFile)) {
@@ -39,7 +54,7 @@ export function readPublicApiUrl() {
     if (line) return line.replace(/\/$/, "");
   }
 
+  /** أنشئ PUBLIC_API_URL.txt عبر npm run contabo:deploy ثم npm run vercel:deploy */
   return "";
 }
 
-export const VERCEL_SITE_URL = "https://reyweet.vercel.app";

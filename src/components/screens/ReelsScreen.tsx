@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useIsTabActive } from "@/lib/tabActiveContext";
 import { useApp, userById, visibleMediaNotes, isMutual } from "@/lib/store";
 import { notifyGuestActionBlocked } from "@/lib/guestBlocked";
 import type { MediaNote, Post, ProfileReturnContext } from "@/lib/types";
@@ -10,9 +11,6 @@ import { Heart, MessageCircle, Send, Repeat2, Volume2, VolumeX, X, MoreVertical 
 import { PostOptionsMenu, CommentOptionsMenu } from "../PostOptionsMenu";
 import { VerifiedMarkForUser } from "../VerifiedBadge";
 import { isReelFeedPost, normalizePostMedia, type NormalizedPostMedia } from "@/lib/postMedia";
-
-const REEL_VIEWPORT =
-  "calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 5.25rem)";
 
 function ReelMediaPlayer({
   media,
@@ -43,43 +41,61 @@ function ReelMediaPlayer({
     }
   }, [active, soundOn, media.hasVideo, media.videoUrl]);
 
+  const frameClass =
+    "absolute inset-0 flex items-center justify-center bg-black";
+
   if (media.hasVideo && media.videoUrl) {
     return (
-      <video
-        ref={videoRef}
-        src={media.videoUrl}
-        loop
-        playsInline
-        poster={media.posterUrl || undefined}
-        className="absolute inset-0 h-full w-full object-cover"
-      />
+      <div className={frameClass}>
+        <video
+          ref={videoRef}
+          src={media.videoUrl}
+          loop
+          playsInline
+          poster={media.posterUrl || undefined}
+          className="max-h-full max-w-full object-contain"
+        />
+      </div>
     );
   }
   if (media.hasImage && media.imageUrl) {
-    return <img src={media.imageUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />;
+    return (
+      <div className={frameClass}>
+        <img src={media.imageUrl} alt="" className="max-h-full max-w-full object-contain" />
+      </div>
+    );
   }
   return (
-    <div className="absolute inset-0 flex items-center justify-center text-5xl text-white/90">
+    <div className={frameClass + " text-5xl text-white/90"}>
       {media.emojiFallback || "🎬"}
     </div>
   );
 }
 
+/** احتياطي قبل قياس DOM — الشاشة − شريط ريلز/فريند − شريط التنقل السفلي */
+const REEL_SLIDE_HEIGHT_FALLBACK =
+  "calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 3.25rem)";
+
 function ReelSlide({
   reelId,
-  reelViewportStyle,
+  slideHeightPx,
   children,
 }: {
   reelId: string;
-  reelViewportStyle: { height: string; minHeight: string };
+  slideHeightPx: number;
   children: ReactNode;
 }) {
+  const slideStyle =
+    slideHeightPx > 0
+      ? { height: slideHeightPx, minHeight: slideHeightPx }
+      : { height: REEL_SLIDE_HEIGHT_FALLBACK, minHeight: REEL_SLIDE_HEIGHT_FALLBACK };
+
   return (
     <section
       data-reel-slide
       data-reel-id={reelId}
-      className="relative w-full shrink-0 snap-start snap-always snap-stop-always overflow-hidden bg-black"
-      style={reelViewportStyle}
+      className="relative w-full shrink-0 overflow-hidden bg-black"
+      style={slideStyle}
     >
       {children}
     </section>
@@ -98,6 +114,7 @@ export function ReelsScreen({
   onConsumedRestoreFromProfile?: () => void;
 }) {
   const { state, toggleLike, toggleRepost, currentUser, addComment, isGuest, refreshFromServer } = useApp();
+  const isTabActive = useIsTabActive("reels");
   const t = useT();
   const me = currentUser!;
   const guestBlock = () => {
@@ -119,18 +136,16 @@ export function ReelsScreen({
   const scrollRef = useRef<HTMLDivElement>(null);
   const pullRef = useRef({ y0: 0, active: false });
   const activeReelIdRef = useRef<string | null>(null);
-  const snapTimerRef = useRef<number | null>(null);
-
-  const reelViewportStyle = useMemo(
-    () => ({ height: REEL_VIEWPORT, minHeight: REEL_VIEWPORT }),
-    [],
-  );
+  const scrollRafRef = useRef<number | null>(null);
+  const snapLockRef = useRef(false);
+  const [slideHeightPx, setSlideHeightPx] = useState(0);
 
   const unlockSound = useCallback(() => setSoundUnlocked(true), []);
 
   useEffect(() => {
+    if (!isTabActive) return;
     refreshFromServer();
-  }, [refreshFromServer]);
+  }, [refreshFromServer, isTabActive]);
 
   useEffect(() => {
     document.documentElement.classList.add("retweet-overscroll-lock");
@@ -180,6 +195,25 @@ export function ReelsScreen({
 
   const reelIdSetKey = useMemo(() => reels.map(r => r.id).sort().join("|"), [reels]);
 
+  useLayoutEffect(() => {
+    if (!isTabActive) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    const measure = () => {
+      const h = el.clientHeight;
+      if (h > 0) setSlideHeightPx(h);
+    };
+    measure();
+    requestAnimationFrame(measure);
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    window.addEventListener("resize", measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [isTabActive, tab, reelPullHint, reelIdSetKey]);
+
   useEffect(() => {
     const first = reels[0]?.id ?? null;
     if (!first) {
@@ -191,68 +225,85 @@ export function ReelsScreen({
       setActiveReelId(first);
       activeReelIdRef.current = first;
       const el = scrollRef.current;
-      if (el) el.scrollTop = 0;
+      if (el && slideHeightPx > 0) el.scrollTo({ top: 0, behavior: "auto" });
+      else if (el) el.scrollTop = 0;
     }
-  }, [reelIdSetKey, tab, reels]);
+  }, [reelIdSetKey, tab, slideHeightPx]);
 
   useEffect(() => {
     activeReelIdRef.current = activeReelId;
   }, [activeReelId]);
 
+  const snapToNearestReel = useCallback(
+    (behavior: ScrollBehavior = "auto") => {
+      const root = scrollRef.current;
+      const h = slideHeightPx;
+      if (!root || h <= 0 || reels.length === 0 || snapLockRef.current) return;
+      const idx = Math.min(reels.length - 1, Math.max(0, Math.round(root.scrollTop / h)));
+      const targetTop = idx * h;
+      const id = reels[idx]!.id;
+      if (Math.abs(root.scrollTop - targetTop) > 2) {
+        snapLockRef.current = true;
+        root.scrollTo({ top: targetTop, behavior });
+        window.setTimeout(() => {
+          snapLockRef.current = false;
+        }, behavior === "smooth" ? 320 : 48);
+      }
+      if (id !== activeReelIdRef.current) {
+        activeReelIdRef.current = id;
+        setActiveReelId(id);
+      }
+    },
+    [reels, slideHeightPx],
+  );
+
+  const syncActiveReelFromScroll = useCallback(() => {
+    const root = scrollRef.current;
+    const h = slideHeightPx;
+    if (!root || h <= 0 || reels.length === 0) return;
+    const idx = Math.min(reels.length - 1, Math.max(0, Math.round(root.scrollTop / h)));
+    const id = reels[idx]!.id;
+    if (id !== activeReelIdRef.current) {
+      activeReelIdRef.current = id;
+      setActiveReelId(id);
+    }
+  }, [reels, slideHeightPx]);
+
   useEffect(() => {
     const root = scrollRef.current;
-    if (!root || reels.length === 0) return;
+    if (!root || reels.length === 0 || slideHeightPx <= 0) return;
 
-    const slides = () => Array.from(root.querySelectorAll<HTMLElement>("[data-reel-slide]"));
-
-    const pickActive = () => {
-      const items = slides();
-      if (items.length === 0) return;
-      const rootRect = root.getBoundingClientRect();
-      const mid = rootRect.top + rootRect.height / 2;
-      let best: { id: string; dist: number } | null = null;
-      for (const el of items) {
-        const id = el.dataset.reelId;
-        if (!id) continue;
-        const rect = el.getBoundingClientRect();
-        const center = rect.top + rect.height / 2;
-        const dist = Math.abs(center - mid);
-        if (!best || dist < best.dist) best = { id, dist };
-      }
-      if (best && best.id !== activeReelIdRef.current) {
-        activeReelIdRef.current = best.id;
-        setActiveReelId(best.id);
-      }
+    const onScroll = () => {
+      if (snapLockRef.current) return;
+      if (scrollRafRef.current != null) cancelAnimationFrame(scrollRafRef.current);
+      scrollRafRef.current = requestAnimationFrame(() => {
+        scrollRafRef.current = null;
+        syncActiveReelFromScroll();
+      });
     };
 
-    const obs = new IntersectionObserver(() => pickActive(), {
-      root,
-      threshold: [0.5, 0.72, 0.9],
-    });
-    slides().forEach(el => obs.observe(el));
-    pickActive();
+    const onScrollEnd = () => snapToNearestReel("auto");
+    const onTouchEnd = () => {
+      window.setTimeout(() => {
+        const h = slideHeightPx;
+        if (!root || h <= 0) return;
+        const off = root.scrollTop % h;
+        if (off > 6 && off < h - 6) snapToNearestReel("auto");
+      }, 80);
+    };
 
-    return () => obs.disconnect();
-  }, [reelIdSetKey]);
+    root.addEventListener("scroll", onScroll, { passive: true });
+    root.addEventListener("scrollend", onScrollEnd, { passive: true });
+    root.addEventListener("touchend", onTouchEnd, { passive: true });
+    syncActiveReelFromScroll();
 
-  const snapToNearestReel = useCallback(() => {
-    const el = scrollRef.current;
-    if (!el || reels.length === 0) return;
-    const h = el.clientHeight;
-    if (h <= 0) return;
-    const idx = Math.min(reels.length - 1, Math.max(0, Math.round(el.scrollTop / h)));
-    const target = el.querySelector<HTMLElement>(`[data-reel-id="${reels[idx]!.id}"]`);
-    if (target) {
-      target.scrollIntoView({ block: "start", behavior: "auto" });
-      activeReelIdRef.current = reels[idx]!.id;
-      setActiveReelId(reels[idx]!.id);
-    }
-  }, [reels]);
-
-  const onReelsScroll = useCallback(() => {
-    if (snapTimerRef.current) window.clearTimeout(snapTimerRef.current);
-    snapTimerRef.current = window.setTimeout(snapToNearestReel, 90);
-  }, [snapToNearestReel]);
+    return () => {
+      root.removeEventListener("scroll", onScroll);
+      root.removeEventListener("scrollend", onScrollEnd);
+      root.removeEventListener("touchend", onTouchEnd);
+      if (scrollRafRef.current != null) cancelAnimationFrame(scrollRafRef.current);
+    };
+  }, [reelIdSetKey, slideHeightPx, syncActiveReelFromScroll, snapToNearestReel]);
 
   useLayoutEffect(() => {
     if (!restoreFromProfileContext || restoreFromProfileContext.tab !== "reels") return;
@@ -266,9 +317,14 @@ export function ReelsScreen({
     setActiveReelId(p.id);
     activeReelIdRef.current = p.id;
     queueMicrotask(() => {
-      document.querySelector(`[data-reel-id="${d.postId}"]`)?.scrollIntoView({ block: "start", behavior: "auto" });
+      const root = scrollRef.current;
+      const h = slideHeightPx;
+      if (!root || h <= 0) return;
+      const idx = reels.findIndex(r => r.id === d.postId);
+      if (idx < 0) return;
+      root.scrollTo({ top: idx * h, behavior: "auto" });
     });
-  }, [restoreFromProfileContext, state.posts, onConsumedRestoreFromProfile]);
+  }, [restoreFromProfileContext, state.posts, onConsumedRestoreFromProfile, reels, slideHeightPx]);
 
   const effectiveSoundOn = soundOn && soundUnlocked;
 
@@ -312,26 +368,30 @@ export function ReelsScreen({
 
       <div
         ref={scrollRef}
-        className="reels-snap-viewport mx-auto w-full max-w-md flex-none overflow-y-scroll overscroll-none"
-        style={{
-          height: REEL_VIEWPORT,
-          maxHeight: REEL_VIEWPORT,
-        }}
-        onScroll={onReelsScroll}
+        data-no-tab-swipe
+        className="reels-snap-viewport no-scrollbar mx-auto h-0 min-h-0 w-full max-w-md flex-1 basis-0 overflow-y-scroll overscroll-none"
         onPointerDown={unlockSound}
         onTouchStart={unlockSound}
       >
-        {reels.length === 0 && <p className="text-center text-white/70 py-12">{t("noReels")}</p>}
+        {reels.length === 0 && (
+          <p
+            className="flex items-center justify-center text-center text-white/70 px-4"
+            style={{ minHeight: REEL_SLIDE_HEIGHT_FALLBACK }}
+          >
+            {t("noReels")}
+          </p>
+        )}
         {reels.map(r => {
+          const slideH = slideHeightPx > 0 ? slideHeightPx : undefined;
           const u = userById(state, r.userId);
           const media = normalizePostMedia(r);
           const liked = r.likes.includes(me.id);
           const reposted = r.reposts.includes(me.id);
           const notes = visibleMediaNotes(state, "post", r.id, me.id).slice(0, 8);
-          const isActive = activeReelId === r.id;
+          const isActive = isTabActive && activeReelId === r.id;
           return (
-            <ReelSlide key={r.id} reelId={r.id} reelViewportStyle={reelViewportStyle}>
-              <div className="relative h-full w-full" style={reelViewportStyle}>
+            <ReelSlide key={r.id} reelId={r.id} slideHeightPx={slideH ?? 0}>
+              <div className="relative h-full w-full min-h-0">
                 <ReelMediaPlayer media={media} active={isActive} soundOn={effectiveSoundOn} />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent pointer-events-none" />
                 {r.userId === me.id && (
@@ -357,7 +417,10 @@ export function ReelsScreen({
                   </div>
                 )}
 
-                <div className="absolute bottom-6 inset-x-4 flex justify-between items-end z-10 pointer-events-none">
+                <div
+                  className="absolute inset-x-4 z-10 flex items-end justify-between pointer-events-none"
+                  style={{ bottom: "max(1.25rem, calc(var(--retweet-nav-float-inset, 3.5rem) + 12px))" }}
+                >
                   <div className="bg-black/35 backdrop-blur-md rounded-2xl p-3 max-w-[72%] border border-white/10 pointer-events-auto">
                     {notes.length > 0 && (
                       <div className="flex flex-wrap gap-1.5 mb-2 max-h-16 overflow-y-auto no-scrollbar">
@@ -452,6 +515,14 @@ export function ReelsScreen({
             </ReelSlide>
           );
         })}
+        {reels.length > 0 && slideHeightPx <= 0 && isTabActive && (
+          <div
+            className="pointer-events-none absolute inset-0 flex items-center justify-center bg-black text-white/50 text-sm"
+            aria-hidden
+          >
+            …
+          </div>
+        )}
       </div>
 
       {sharePost && <ShareSheet target={{ kind: "post", post: sharePost }} onClose={() => setSharePost(null)} />}

@@ -3,7 +3,7 @@ import { useApp, userById } from "@/lib/store";
 import { Avatar } from "../Avatar";
 import { VerifiedMarkForUser } from "../VerifiedBadge";
 import { Heart, MessageCircle, Repeat2, Film, X } from "lucide-react";
-import { isRenderableMediaUrl } from "@/lib/mediaUrl";
+import { isRenderableMediaUrl, resolveMediaUrl } from "@/lib/mediaUrl";
 import { normalizeStoryMedia } from "@/lib/storyMedia";
 
 export type ChatShareFeedItem = {
@@ -50,7 +50,7 @@ function ShareFeedPostSection({ postId }: { postId: string }) {
       )}
       {hasImg && (
         <div className="mt-3 flex w-full justify-center bg-muted/20 px-2">
-          <img src={img} alt="" className="max-h-[min(58vh,520px)] w-full max-w-lg object-contain" />
+          <img src={resolveMediaUrl(img!)} alt="" className="max-h-[min(58vh,520px)] w-full max-w-lg object-contain" />
         </div>
       )}
       {emojiOnly && !post.video && (
@@ -58,7 +58,7 @@ function ShareFeedPostSection({ postId }: { postId: string }) {
       )}
       {post.video && isRenderableMediaUrl(post.video) && (
         <div className="mt-3 flex w-full justify-center bg-muted/30 px-2">
-          <video src={post.video} controls className="max-h-[min(58vh,520px)] w-full max-w-lg object-contain" playsInline preload="metadata" />
+          <video src={resolveMediaUrl(post.video)} controls className="max-h-[min(58vh,520px)] w-full max-w-lg object-contain" playsInline preload="metadata" />
         </div>
       )}
       <div className="mt-4 flex items-center gap-6 px-4 text-sm text-muted-foreground">
