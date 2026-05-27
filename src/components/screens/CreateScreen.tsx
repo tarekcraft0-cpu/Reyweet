@@ -14,6 +14,13 @@ import {
   uploadStoryFile,
 } from "@/lib/storyMedia";
 import { hasCreateAttachmentMedia, isVideoMediaRef } from "@/lib/postMedia";
+import {
+  captureReelCoverFromVideo,
+  uploadReelCoverImage,
+  uploadReelVideo,
+  validateReelVideoFile,
+} from "@/lib/reelMedia";
+import { REEL_ACCEPT_VIDEO, REEL_MAX_UPLOAD_MB } from "@/lib/reelsSpec";
 import { MentionComposerField } from "../MentionComposerField";
 import { ArrowRight } from "lucide-react";
 
@@ -46,6 +53,8 @@ export function CreateScreen({
   const postCharLimit = ent.postCharacterLimit;
   const storyFileRef = useRef<File | null>(null);
   const previewObjectUrlRef = useRef<string | null>(null);
+  const reelPreviewVideoRef = useRef<HTMLVideoElement | null>(null);
+  const [reelCover, setReelCover] = useState("");
 
   const revokePreviewUrl = () => {
     if (previewObjectUrlRef.current) {
@@ -77,6 +86,23 @@ export function CreateScreen({
   const onFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
     if (!f) return;
+
+    if (type === "reel") {
+      void (async () => {
+        const check = await validateReelVideoFile(f);
+        if (!check.ok) {
+          alert(check.error);
+          return;
+        }
+        storyFileRef.current = f;
+        revokePreviewUrl();
+        setReelCover("");
+        const previewUrl = URL.createObjectURL(f);
+        previewObjectUrlRef.current = previewUrl;
+        setMedia(previewUrl);
+      })();
+      return;
+    }
 
     if (type === "story") {
       revokePreviewUrl();
@@ -142,13 +168,83 @@ export function CreateScreen({
     }
 
     const needsUpload = media.startsWith("data:") || media.startsWith("blob:");
-    let videoUrl = isVideo || type === "reel" ? media : "";
+    let videoUrl = isVideo && type !== "reel" ? media : "";
     let imageUrl = !isVideo && type !== "reel" ? media || "" : "";
-    if (type === "reel" && !isVideo && hasCreateAttachmentMedia(media, !!pickedFile)) {
-      imageUrl = media;
-      videoUrl = "";
-    }
-    if (needsUpload && media?.startsWith("data:")) {
+
+    if (type === "reel") {
+      setPublishing(true);
+      let coverUrl = reelCover ? resolveMediaUrl(reelCover) : "";
+      let resolvedVideo = "";
+
+      if (pickedFile) {
+        const uploaded = await uploadReelVideo(pickedFile);
+        if (!uploaded.ok) {
+          setPublishing(false);
+          alert(uploaded.error);
+          return;
+        }
+        resolvedVideo = resolveMediaUrl(uploaded.videoUrl);
+        if (!coverUrl && uploaded.posterUrl) {
+          coverUrl = resolveMediaUrl(uploaded.posterUrl);
+        }
+      } else if (needsUpload && media.startsWith("blob:")) {
+        try {
+          const res = await fetch(media);
+          const blob = await res.blob();
+          const file = new File([blob], "reel.mp4", { type: blob.type || "video/mp4" });
+          const uploaded = await uploadReelVideo(file);
+          if (!uploaded.ok) {
+            setPublishing(false);
+            alert(uploaded.error);
+            return;
+          }
+          resolvedVideo = resolveMediaUrl(uploaded.videoUrl);
+          if (!coverUrl && uploaded.posterUrl) coverUrl = resolveMediaUrl(uploaded.posterUrl);
+        } catch {
+          setPublishing(false);
+          alert("أعد اختيار الفيديو من زر الإرفاق");
+          return;
+        }
+      } else if (media.startsWith("data:video")) {
+        try {
+          const res = await fetch(media);
+          const blob = await res.blob();
+          const file = new File([blob], "reel.mp4", { type: blob.type || "video/mp4" });
+          const uploaded = await uploadReelVideo(file);
+          if (!uploaded.ok) {
+            setPublishing(false);
+            alert(uploaded.error);
+            return;
+          }
+          resolvedVideo = resolveMediaUrl(uploaded.videoUrl);
+          if (!coverUrl && uploaded.posterUrl) coverUrl = resolveMediaUrl(uploaded.posterUrl);
+        } catch {
+          setPublishing(false);
+          alert("تعذر رفع الفيديو");
+          return;
+        }
+      } else if (isVideoMediaRef(media)) {
+        resolvedVideo = resolveMediaUrl(media);
+      }
+
+      if (reelCover.startsWith("data:")) {
+        const coverUp = await uploadReelCoverImage(reelCover);
+        if (coverUp.ok) coverUrl = resolveMediaUrl(coverUp.url);
+      }
+
+      setPublishing(false);
+
+      if (!resolvedVideo || !isVideoMediaRef(resolvedVideo)) {
+        alert("يجب إرفاق مقطع فيديو صالح للريلز");
+        return;
+      }
+      createPost({
+        type: "reel",
+        text,
+        video: resolvedVideo,
+        image: coverUrl && !isVideoMediaRef(coverUrl) ? coverUrl : "🎬",
+      });
+    } else if (needsUpload && media?.startsWith("data:")) {
       setPublishing(true);
       const uploaded = await resolvePostMediaForSave(media);
       setPublishing(false);
@@ -162,20 +258,8 @@ export function CreateScreen({
     }
 
     if (type === "reel") {
-      const resolvedVideo = videoUrl ? resolveMediaUrl(videoUrl) : "";
-      const hasVideo =
-        !!resolvedVideo &&
-        (isVideoMediaRef(resolvedVideo) || resolvedVideo.startsWith("data:video"));
-      if (!hasVideo) {
-        alert("يجب إرفاق مقطع فيديو صالح للريلز");
-        return;
-      }
-      createPost({
-        type: "reel",
-        text,
-        video: resolvedVideo,
-        image: imageUrl && !isVideoMediaRef(imageUrl) ? resolveMediaUrl(imageUrl) : "🎬",
-      });
+      onBack();
+      return;
     } else if (type === "tweet") {
       createPost(
         videoUrl
@@ -244,14 +328,36 @@ export function CreateScreen({
         </label>
         <input
           type="file"
-          accept={type === "reel" ? "image/*,video/*" : "image/*,video/*"}
+          accept={type === "reel" ? REEL_ACCEPT_VIDEO : "image/*,video/*"}
           onChange={onFile}
           className="mt-1 block w-full text-sm"
         />
-        {type === "reel" && !media && (
-          <p className="mt-1 text-xs text-muted-foreground">لا يمكن نشر ريلز بدون فيديو أو صورة</p>
+        {type === "reel" && (
+          <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
+            عمودي 9:16 (1080×1920) · MP4 H.264 · حتى {REEL_MAX_UPLOAD_MB} ميجا — يُعاد ترميز الفيديو على الخادم
+          </p>
         )}
-        {media && (
+        {type === "reel" && !media && (
+          <p className="mt-1 text-xs text-muted-foreground">لا يمكن نشر ريلز بدون فيديو</p>
+        )}
+        {media && type === "reel" && (
+          <div className="mt-2 relative aspect-[9/16] max-h-[min(52vh,420px)] mx-auto bg-black rounded-2xl overflow-hidden">
+            <video
+              ref={reelPreviewVideoRef}
+              src={media}
+              controls
+              playsInline
+              className="h-full w-full object-contain"
+            />
+            <div
+              className="pointer-events-none absolute inset-x-0 bottom-0 border-t border-dashed border-white/35"
+              style={{ height: `${((1920 - 1350) / 1920) * 100}%` }}
+              aria-hidden
+            />
+            <div className="pointer-events-none absolute inset-y-0 end-0 w-[18%] border-s border-dashed border-white/25" aria-hidden />
+          </div>
+        )}
+        {media && type !== "reel" && (
           <div className="mt-2 aspect-[9/16] max-h-[min(52vh,420px)] mx-auto bg-muted rounded-2xl overflow-hidden flex items-center justify-center">
             {storyFileRef.current?.type.startsWith("video/") || isVideoMediaRef(media) ? (
               <video src={media} controls className="w-full h-full object-cover" playsInline />
@@ -259,6 +365,50 @@ export function CreateScreen({
               <img src={media} className="w-full h-full object-cover" alt="" />
             ) : (
               <span className="text-7xl">{media}</span>
+            )}
+          </div>
+        )}
+        {type === "reel" && media && (storyFileRef.current?.type.startsWith("video/") || media.startsWith("blob:")) && (
+          <div className="space-y-2 rounded-2xl bg-secondary/60 p-3">
+            <p className="text-xs font-medium text-muted-foreground">صورة الغلاف (1:1 في الملف الشخصي)</p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="rounded-xl bg-background px-3 py-2 text-xs font-semibold"
+                onClick={() => {
+                  const v = reelPreviewVideoRef.current;
+                  if (!v) return;
+                  void captureReelCoverFromVideo(v, v.currentTime || 1)
+                    .then(setReelCover)
+                    .catch(() => alert("تعذر التقاط لقطة — شغّل الفيديو ثم أعد المحاولة"));
+                }}
+              >
+                لقطة من الفيديو
+              </button>
+              <label className="rounded-xl bg-background px-3 py-2 text-xs font-semibold cursor-pointer">
+                صورة مخصصة
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="sr-only"
+                  onChange={e => {
+                    const f = e.target.files?.[0];
+                    if (!f) return;
+                    const r = new FileReader();
+                    r.onload = () => setReelCover(String(r.result));
+                    r.readAsDataURL(f);
+                  }}
+                />
+              </label>
+            </div>
+            {(reelCover || media) && (
+              <div className="mx-auto aspect-square w-24 overflow-hidden rounded-xl bg-muted">
+                <img
+                  src={reelCover || media}
+                  alt=""
+                  className="h-full w-full object-cover object-center"
+                />
+              </div>
             )}
           </div>
         )}

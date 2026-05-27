@@ -1,6 +1,12 @@
 import { peekApiBaseUrl } from "./apiConfig";
 import { getApiBaseUrl } from "./apiBackend";
-import { isLanOrLocalHostname, isPrivateApiUrl, isPublicAppHost } from "./apiUrlPolicy";
+import {
+  isLanOrLocalHostname,
+  isPrivateApiUrl,
+  isPublicAppHost,
+  isTunnelPublicHost,
+  PRODUCTION_VPS_HOST,
+} from "./apiUrlPolicy";
 
 /** وسائط يمكن عرضها في <img> أو <video> (وليس نصاً خاماً) */
 export function isRenderableMediaUrl(s: string | undefined | null): boolean {
@@ -11,7 +17,9 @@ export function isRenderableMediaUrl(s: string | undefined | null): boolean {
     t.startsWith("http://") ||
     t.startsWith("https://") ||
     t.startsWith("blob:") ||
-    t.startsWith("/media/")
+    t.startsWith("/media/") ||
+    t.startsWith("/stickers/") ||
+    t.startsWith("/app/")
   );
 }
 
@@ -57,7 +65,7 @@ export function normalizeMediaRef(src: string | undefined | null): string {
     try {
       const u = new URL(v);
       if (u.pathname.startsWith("/media/")) {
-        path = u.pathname;
+        path = `${u.pathname}${u.search || ""}`;
       } else if (v.includes("/media/")) {
         const m = v.match(/(\/media\/(?:images|videos)\/[^\s?#"']+)/i);
         if (m) path = m[1];
@@ -69,14 +77,53 @@ export function normalizeMediaRef(src: string | undefined | null): string {
   }
 
   if (path.startsWith("/media/")) {
-    const base = getMediaResolveBase();
-    if (base) return `${base}${path.split("?")[0]}`;
-    return path.split("?")[0] ?? path;
+    const base = getMediaResolveBase().replace(/\/$/, "");
+    const search = path.includes("?") ? path.slice(path.indexOf("?")) : "";
+    const pathnameOnly = path.split("?")[0] ?? path;
+    if (base) return `${base}${pathnameOnly}${search}`;
+    return `${pathnameOnly}${search}`;
   }
 
-  // روابط http(s) قديمة بدون /media/ — لا تُعرض (نفق منتهٍ، عينات demo)
+  /** روابط مطلقة: لا نُسقط كل https — ملصقات وملفات /app/ وباقي المواقع */
   if (/^https?:\/\//i.test(v)) {
-    return "";
+    try {
+      const u = new URL(v);
+      if (isPrivateApiUrl(v)) return "";
+      if (isTunnelPublicHost(u.hostname) || /\.trycloudflare\.com$/i.test(u.hostname)) return "";
+
+      /** ميديا من السيرفر — عرض عبر المنشأ الحالي أو بروكسي Vercel */
+      if (u.pathname.startsWith("/media/")) {
+        const b = getMediaResolveBase().replace(/\/$/, "");
+        const origin =
+          typeof window !== "undefined" ? window.location.origin.replace(/\/$/, "") : "";
+        const merged = (b || origin).replace(/\/$/, "");
+        return merged ? `${merged}${u.pathname}${u.search || ""}` : `${u.pathname}${u.search || ""}`;
+      }
+
+      /** روابط مخزَّنة تشير إلى الـ VPS مباشرة — نمرِّرها على بروكسي الصفحة */
+      if (
+        u.hostname === PRODUCTION_VPS_HOST &&
+        (u.pathname.startsWith("/stickers/") ||
+          u.pathname.startsWith("/app/") ||
+          u.pathname.startsWith("/public/"))
+      ) {
+        const origin =
+          typeof window !== "undefined" ? window.location.origin.replace(/\/$/, "") : "";
+        if (origin) return `${origin}${u.pathname}${u.search || ""}`;
+      }
+
+      const h = u.hostname;
+      if (typeof window !== "undefined" && h === window.location.hostname)
+        return `${u.origin}${u.pathname}${u.search || ""}`;
+      if (h === "reyweet.vercel.app" || h.endsWith(".vercel.app"))
+        return `${u.origin}${u.pathname}${u.search || ""}`;
+      /** https خارجي (صور روابط خارجية إن وُجدت) */
+      if (u.protocol === "https:") return `${u.origin}${u.pathname}${u.search || ""}`;
+      /** http خارجي — يُحظر على صفحات HTTPS */
+      return "";
+    } catch {
+      return "";
+    }
   }
 
   return v;

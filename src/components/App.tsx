@@ -65,6 +65,7 @@ import { NotificationBanner } from "./NotificationBanner";
 import { Avatar } from "./Avatar";
 import { AccountSwitcherSheet } from "./rsocial/AccountSwitcherSheet";
 import { cn } from "@/lib/utils";
+import { nativeNoSelectCaptureHandlers } from "@/lib/nativeTextSelectionGuard";
 import {
   ACCOUNT_SWITCHED_EVENT,
   ACCOUNT_SWITCH_FAILED_EVENT,
@@ -213,7 +214,8 @@ export function App() {
 
   useEffect(() => {
     const onStoryFullscreen = (e: Event) => {
-      const open = Boolean((e as CustomEvent<{ open?: boolean }>).detail?.open);
+      const detail = (e as CustomEvent<{ open?: boolean; locks?: number }>).detail;
+      const open = typeof detail?.locks === "number" ? detail.locks > 0 : Boolean(detail?.open);
       setStoryFullscreen(open);
     };
     window.addEventListener(STORY_FULLSCREEN_EVENT, onStoryFullscreen);
@@ -222,6 +224,15 @@ export function App() {
       setStoryFullscreen(false);
     };
   }, []);
+
+  useEffect(() => {
+    if (!storyFullscreen) return;
+    const t = window.setTimeout(() => {
+      const stillOpen = document.documentElement.classList.contains("retweet-story-open");
+      if (!stillOpen) setStoryFullscreen(false);
+    }, 380);
+    return () => window.clearTimeout(t);
+  }, [storyFullscreen]);
 
   const navActiveIndex = tabToNavIndex(tab);
 
@@ -824,7 +835,7 @@ export function App() {
     <div
       key={accountSessionKey}
       className={
-        "relative mx-auto flex w-full max-w-md flex-col overflow-x-hidden overscroll-none bg-background supports-[height:100dvh] " +
+        "retweet-no-select-pane select-none relative mx-auto flex w-full max-w-md flex-col overflow-x-hidden overscroll-none bg-background supports-[height:100dvh] " +
         (immersiveOverlay || settingsImmersive
           ? "h-dvh max-h-dvh overflow-hidden pt-0"
           : "h-dvh max-h-dvh overflow-hidden pt-[env(safe-area-inset-top,0px)]")
@@ -835,6 +846,7 @@ export function App() {
           [NAV_SCROLL_PADDING_CSS_VAR]: NAV_SCROLL_PADDING_DEFAULT,
         } as CSSProperties
       }
+      {...nativeNoSelectCaptureHandlers}
     >
       {guestToast && (
         <div className="fixed left-3 right-3 top-[max(0.75rem,env(safe-area-inset-top,0px))] z-[500] mx-auto max-w-md rounded-2xl border border-border bg-card px-4 py-3 text-start text-sm shadow-lg">

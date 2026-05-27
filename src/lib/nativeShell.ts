@@ -1,4 +1,4 @@
-/** تكامل مع غلاف Expo (WebView) — تسجيل صوت أصلي لأن HTTP لا يدعم getUserMedia على iOS. */
+/** تكامل مع غلاف Capacitor / ReactNativeWebView — تسجيل صوت أصلي لأن HTTP لا يدعم getUserMedia على iOS. */
 
 export function isReactNativeWebView(): boolean {
   if (typeof window === "undefined") return false;

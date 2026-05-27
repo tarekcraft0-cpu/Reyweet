@@ -23,7 +23,7 @@ export function TabPanelShell({
       <div
         ref={scrollRef}
         className={
-          "tab-panel-scroll tab-panel-immersive flex h-full min-h-0 w-full flex-1 flex-col overflow-x-hidden " +
+          "retweet-no-select-pane select-none tab-panel-scroll tab-panel-immersive flex h-full min-h-0 w-full flex-1 flex-col overflow-x-hidden " +
           chromeClass +
           " " +
           (lockScroll

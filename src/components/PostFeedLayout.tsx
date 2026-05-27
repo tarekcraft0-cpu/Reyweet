@@ -229,8 +229,9 @@ export function PostFeedMediaBlock({
   }
 
   if (postMedia.hasVideo) {
+    const reelGrid = post.type === "reel";
     return (
-      <PostFeedMedia aspect="video" onClick={onOpen} profileInset={profileInset}>
+      <PostFeedMedia aspect={reelGrid ? "square" : "video"} onClick={onOpen} profileInset={profileInset}>
         {notesOverlay}
         <video
           src={postMedia.videoUrl}
@@ -238,7 +239,10 @@ export function PostFeedMediaBlock({
           controls
           playsInline
           preload="none"
-          className="h-full w-full object-cover"
+          className={
+            "h-full w-full " +
+            (reelGrid ? "object-cover object-center" : "object-cover")
+          }
           onClick={e => e.stopPropagation()}
         />
       </PostFeedMedia>

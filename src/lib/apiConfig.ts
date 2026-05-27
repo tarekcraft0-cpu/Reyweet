@@ -334,10 +334,20 @@ export async function ensureApiRuntimeConfig(): Promise<string> {
 
   /** iOS/Android — HTTPS Vercel (API مطلق — لا يعتمد على server.url) */
   if (isNativeCapacitorShell()) {
+    const injected = trimUrl(
+      (window as Window & { __RETWEET_API_URL__?: string }).__RETWEET_API_URL__,
+    );
+    const target =
+      injected && !isStaleMobileApiUrl(injected) && !isPrivateApiUrl(injected)
+        ? injected
+        : VERCEL_SITE_URL;
     resolvedMode = "absolute";
-    resolvedAbsoluteUrl = VERCEL_SITE_URL;
-    persistAbsolute(VERCEL_SITE_URL);
-    return VERCEL_SITE_URL;
+    resolvedAbsoluteUrl = target;
+    persistAbsolute(target);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("retweet-api-config-ready"));
+    }
+    return target;
   }
 
   /** VPS — نفس الأصل: API + WebSocket + SSE مباشرة عبر nginx بدون بروكسي */

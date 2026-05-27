@@ -2,14 +2,15 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { HomeFeedPostItem } from "../home/HomeFeedPostItem";
 import { HomeFeedActionsProvider } from "@/lib/homeFeedActionsContext";
 import { useTabPanelScrollRef } from "@/lib/tabPanelScrollContext";
-import { useApp, userById, userHasVisibleStories, visibleStoryFriendsUserIds } from "@/lib/store";
+import { useApp, userById, visibleStoryFriendsUserIds } from "@/lib/store";
+import { storyViewerTrayRing } from "@/lib/storyTray";
 import { isReelFeedPost } from "@/lib/postMedia";
 import { notifyGuestActionBlocked } from "@/lib/guestBlocked";
 import { stashPendingStoryFile } from "@/lib/storyMedia";
 import { useT } from "@/lib/i18n";
-import { Avatar } from "../Avatar";
 import { PostDetail } from "../PostDetail";
 import { StoryViewer } from "../StoryViewer";
+import { StoriesRow, type StoryOpenRequest } from "../stories/StoriesRow";
 import { ShareSheet } from "../ShareSheet";
 import type { Post, ProfileReturnContext } from "@/lib/types";
 import { X, Trash2 } from "lucide-react";
@@ -31,7 +32,7 @@ export function HomeScreen({
   const { state, currentUser, addComment, deleteComment, isGuest } = useApp();
   const t = useT();
   const [shareTarget, setShareTarget] = useState<Post | null>(null);
-  const [storyUserId, setStoryUserId] = useState<string | null>(null);
+  const [storyOpen, setStoryOpen] = useState<StoryOpenRequest | null>(null);
   const [openPostId, setOpenPostId] = useState<string | null>(null);
   const [focusCommentsOnOpen, setFocusCommentsOnOpen] = useState(false);
   const [commentsSheetPostId, setCommentsSheetPostId] = useState<string | null>(null);
@@ -41,15 +42,16 @@ export function HomeScreen({
   const [pullHint, setPullHint] = useState(false);
   const touchRef = useRef({ y0: 0, active: false });
   const me = currentUser!;
-  const closeStory = useCallback(() => setStoryUserId(null), []);
+  const closeStory = useCallback(() => setStoryOpen(null), []);
   const openProfileFromStory = useCallback((id: string) => {
-    try { sessionStorage.setItem("retweet_return_story_user_id", storyUserId || ""); } catch { /* ignore */ }
+    try { sessionStorage.setItem("retweet_return_story_user_id", storyOpen?.userId || ""); } catch { /* ignore */ }
     onOpenProfile(id);
-  }, [onOpenProfile, storyUserId]);
+  }, [onOpenProfile, storyOpen?.userId]);
   useEffect(() => {
-    const handler = (e: any) => {
-      const id = e?.detail?.userId;
-      if (id) setStoryUserId(id);
+    const handler = (e: Event) => {
+      const d = (e as CustomEvent<{ userId?: string; storyId?: string }>).detail;
+      const id = d?.userId;
+      if (id) setStoryOpen({ userId: id, storyId: d?.storyId });
     };
     window.addEventListener("retweet-open-story", handler);
     return () => window.removeEventListener("retweet-open-story", handler);
@@ -135,24 +137,15 @@ export function HomeScreen({
     };
   }, [tabScrollRef]);
 
-  const hasMyStories = useMemo(
-    () => userHasVisibleStories(state, me.id, me.id),
-    [state.stories, state.users, me.id, feedTick],
-  );
-
-  const storyUsers = useMemo(
+  const storyFriends = useMemo(
     () => visibleStoryFriendsUserIds(state, me.id),
     [state.stories, state.users, me.id, me.following, feedTick],
   );
 
-  const openMyStoryOrCreate = () => {
-    if (isGuest) {
-      notifyGuestActionBlocked();
-      return;
-    }
-    if (hasMyStories) setStoryUserId(me.id);
-    else handleStoryCreate();
-  };
+  const storyTrayRing = useMemo(
+    () => storyViewerTrayRing(state, me.id),
+    [state.stories, me.id, feedTick],
+  );
 
   const openPostById = useCallback((postId: string) => {
     setFocusCommentsOnOpen(false);
@@ -208,55 +201,11 @@ export function HomeScreen({
           تم التحديث — أحدث المنشورات والستوريات
         </div>
       )}
-      <section
-        aria-label="الستوريات"
-        className="relative z-10 shrink-0 border-b border-border bg-background"
-      >
-      <div className="flex gap-3 overflow-x-auto no-scrollbar px-4 py-3">
-        <button
-          type="button"
-          onClick={openMyStoryOrCreate}
-          aria-disabled={isGuest}
-          className={
-            "flex flex-col items-center gap-1 shrink-0 touch-manipulation " +
-            (isGuest ? "cursor-not-allowed opacity-50" : "")
-          }
-        >
-          <div className="relative">
-            <Avatar name={me.username} src={me.avatar} size={62} ring={hasMyStories} />
-            <span
-              role="button"
-              tabIndex={0}
-              aria-label="إنشاء ستوري"
-              onClick={e => {
-                e.stopPropagation();
-                handleStoryCreate();
-              }}
-              onKeyDown={e => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  handleStoryCreate();
-                }
-              }}
-              className="absolute -bottom-1 -end-1 z-10 flex h-5 w-5 cursor-pointer items-center justify-center rounded-full bg-primary text-xs text-primary-foreground"
-            >
-              +
-            </span>
-          </div>
-          <span className="text-xs">{t("yourStory")}</span>
-        </button>
-        {storyUsers.map(id => {
-          const u = userById(state, id); if (!u) return null;
-          return (
-            <button key={id} onClick={() => setStoryUserId(id)} className="flex flex-col items-center gap-1 shrink-0">
-              <Avatar name={u.username} src={u.avatar} size={62} ring />
-              <span className="text-xs max-w-16 truncate">{u.username}</span>
-            </button>
-          );
-        })}
-      </div>
-      </section>
+      <StoriesRow
+        userIds={storyFriends}
+        onOpenStory={setStoryOpen}
+        onCreateStory={handleStoryCreate}
+      />
 
       <section aria-label="الخلاصة" className="relative z-0 flex flex-col bg-background">
         <HomeFeedActionsProvider value={feedActions}>
@@ -363,10 +312,13 @@ export function HomeScreen({
           </div>
         </div>
       )}
-      {storyUserId && (
+      {storyOpen && (
         <StoryViewer
-          userId={storyUserId}
-          onRequestAuthor={id => setStoryUserId(id)}
+          userId={storyOpen.userId}
+          trayRing={storyTrayRing}
+          initialStoryId={storyOpen.storyId}
+          openOrigin={storyOpen.origin}
+          onRequestAuthor={id => (id ? setStoryOpen({ userId: id }) : closeStory())}
           onClose={closeStory}
           onOpenProfile={openProfileFromStory}
           onOpenChat={onOpenChat}

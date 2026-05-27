@@ -8,8 +8,15 @@ import {
 } from "@/lib/passwordAuth";
 import { validateOptionalPhone } from "@/lib/phoneUtils";
 import logo from "@/assets/logo.png";
-import { apiBackendEnabled, apiRequestSignupVerification } from "@/lib/apiBackend";
-import { clearStaleApiConfig, ensureApiRuntimeConfig, probeHealth } from "@/lib/apiConfig";
+import {
+  apiBackendEnabled,
+  apiRequestSignupVerification,
+  ensureApiRuntimeConfig,
+  getApiBaseUrl,
+} from "@/lib/apiBackend";
+import { logApi } from "@/lib/apiDebug";
+import { clearStaleApiConfig, probeHealth } from "@/lib/apiConfig";
+import { isNativeCapacitorShell } from "@/lib/apiUrlPolicy";
 
 type Mode = "login" | "signup" | "forgot" | "reset";
 type FormState = {
@@ -118,7 +125,10 @@ export function AuthScreen(props?: { onAuthSuccess?: () => void; /** false دا�
     clearStaleApiConfig();
     void (async () => {
       await ensureApiRuntimeConfig();
-      setApiReady(await probeHealth());
+      const base = getApiBaseUrl();
+      const healthy = await probeHealth();
+      logApi("auth-screen-health", { base, healthy, native: isNativeCapacitorShell() });
+      setApiReady(healthy);
     })();
   }, []);
 
@@ -526,8 +536,17 @@ export function AuthScreen(props?: { onAuthSuccess?: () => void; /** false دا�
 
           {!apiReady && (
             <p className="text-destructive text-sm text-center leading-relaxed">
-              الخادم غير متصل. شغّل على جهازك:{" "}
-              <span className="font-mono text-xs">npm run backend:dev</span> ثم حدّث الصفحة (F5).
+              {isNativeCapacitorShell() ? (
+                <>
+                  لا يمكن الوصول إلى الخادم ({getApiBaseUrl() || "reyweet.vercel.app"}). تحقق من
+                  الإنترنت أو أعد تثبيت التطبيق من Codemagic.
+                </>
+              ) : (
+                <>
+                  الخادم غير متصل. شغّل على جهازك:{" "}
+                  <span className="font-mono text-xs">npm run backend:dev</span> ثم حدّث الصفحة (F5).
+                </>
+              )}
             </p>
           )}
           {error && <p className="text-destructive text-sm text-center">{error}</p>}

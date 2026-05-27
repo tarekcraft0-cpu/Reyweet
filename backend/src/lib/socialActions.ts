@@ -57,7 +57,7 @@ async function saveUserState(userId: string, state: AppState): Promise<void> {
   await setSnapshot(userId, stripPasswords({ ...state, currentUserId: userId }));
 }
 
-async function deliverNotification(
+export async function deliverNotification(
   recipientId: string,
   notif: Omit<Notification, "id" | "createdAt" | "read">,
 ): Promise<Notification | null> {

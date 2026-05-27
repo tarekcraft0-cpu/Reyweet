@@ -73,6 +73,9 @@ backend/data/
 .user-ipa-inspect/
 .ipa-verify/
 .ipa-verify.zip
+.ipa-fixed-check/
+.ipa-fixed-check2/
+.ipa-user-fix/
 ios/build/
 .vercel-deploy-dir.txt
 dist/*.ipa

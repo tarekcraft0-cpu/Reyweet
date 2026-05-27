@@ -11,7 +11,10 @@ function rowToPost(row: PostRow, prev?: Post): Post {
     video: row.video,
     likes: row.likes ?? [],
     reposts: row.reposts ?? [],
-    comments: prev?.comments ?? [],
+    comments:
+      (row as { comments?: Post["comments"] }).comments ??
+      prev?.comments ??
+      [],
     createdAt: new Date(row.createdAt).getTime() || prev?.createdAt || Date.now(),
   };
 }
@@ -25,7 +28,19 @@ export async function mergeDbPostsIntoAppState(state: AppState): Promise<AppStat
     if (!row.id || !row.userId) continue;
     const prev = byId.get(row.id);
     const fromDb = rowToPost(row, prev);
-    byId.set(row.id, prev ? { ...prev, ...fromDb, comments: prev.comments ?? [] } : fromDb);
+    byId.set(
+      row.id,
+      prev
+        ? {
+            ...prev,
+            ...fromDb,
+            likes: fromDb.likes,
+            reposts: fromDb.reposts,
+            comments:
+              fromDb.comments.length > 0 ? fromDb.comments : prev.comments ?? [],
+          }
+        : fromDb,
+    );
   }
 
   const posts = [...byId.values()].sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));

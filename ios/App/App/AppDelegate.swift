@@ -7,7 +7,19 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        if #available(iOS 13.0, *) {
+            UITextView.appearance().isSelectable = false
+        }
+        if #available(iOS 16.0, *) {
+            UITextField.appearance().isSelectable = false
+        }
+        NotificationCenter.default.addObserver(
+            forName: UIMenuController.willShowMenuNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            UIMenuController.shared.hideMenu()
+        }
         return true
     }
 

@@ -62,6 +62,12 @@ export async function syncNormalizedFromAppState(state: AppState, ownerUserId?: 
       video: p.video,
       likes: p.likes || [],
       reposts: p.reposts || [],
+      comments: (p.comments || []).map(c => ({
+        id: c.id,
+        userId: c.userId,
+        text: c.text,
+        createdAt: c.createdAt,
+      })),
       createdAt: new Date(p.createdAt || Date.now()).toISOString(),
       updatedAt: now,
     };

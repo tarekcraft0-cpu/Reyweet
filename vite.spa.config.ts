@@ -89,6 +89,21 @@ export default defineConfig(({ mode }) => {
       ).trim();
 
   const capacitorNative = process.env.CAPACITOR_NATIVE === "1";
+  const vercelSite = "https://reyweet.vercel.app";
+
+  /** iOS/Android — لا نُضمّن localhost من .env أبداً */
+  if (capacitorNative) {
+    const mobileApi = (
+      process.env.VITE_API_URL_MOBILE ||
+      process.env.VITE_API_URL ||
+      publicApi ||
+      vercelSite
+    )
+      .trim()
+      .replace(/\/$/, "");
+    apiUrl =
+      mobileApi && !isPrivateApiUrl(mobileApi) ? mobileApi : vercelSite;
+  }
 
   return {
     root: path.resolve(rootDir, "spa"),

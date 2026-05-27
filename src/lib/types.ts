@@ -186,6 +186,8 @@ export interface StoryItem {
   likes?: ID[];
   /** من شاهد الستوري (يُحدَّث عند فتح غير صاحب الستوري) */
   viewedByUserIds?: ID[];
+  /** وقت المشاهدة لكل مستخدم (لقائمة المشاهدين) */
+  viewedAtByUserIds?: Record<ID, number>;
 }
 
 export interface Comment { id: ID; userId: ID; text: string; createdAt: number; }

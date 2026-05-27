@@ -25,11 +25,15 @@ import {
   readSafeViewportWidth,
 } from "@/lib/safeLayoutDimensions";
 import { ChatStackRoomGestureShell } from "../chat/ChatStackRoomGestureShell";
-import { useVisualViewportLayout } from "@/hooks/useVisualViewportLayout";
+import {
+  chatComposerBottomPadding,
+  useVisualViewportLayout,
+} from "@/hooks/useVisualViewportLayout";
 import { SlideDismissBackButton, SlideDismissContext, SlideDismissShell } from "../SlideDismissShell";
 import { QURAN_CHANNEL_ID, isProfileNoteActive, useApp, userById, visibleChatMessages } from "@/lib/store";
 import { notifyGuestActionBlocked } from "@/lib/guestBlocked";
 import { chatNoSelectCaptureHandlers } from "@/lib/chatNoTextSelection";
+import { NATIVE_LONG_PRESS_ATTR } from "@/lib/nativeTextSelectionGuard";
 import { useT } from "@/lib/i18n";
 import { Avatar } from "../Avatar";
 import { ChatDmIntroCard } from "../chat/ChatDmIntroCard";
@@ -106,6 +110,13 @@ const CHAT_STACK_OPEN_FRACTION = 0.5;
 const CHAT_TAP_OPEN_MS = 280;
 const CHAT_TAP_OPEN_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
 /** ارتفاع سطر شريط الكتابة (text-[15px] + leading-5) */
+/** منع تحديد iOS على زر المعرض — الضغط المطوّل يفتح فيديو كرسالة صوتية */
+const galleryLongPressBtnProps = {
+  [NATIVE_LONG_PRESS_ATTR]: "gallery",
+  onContextMenu: (e: React.SyntheticEvent) => e.preventDefault(),
+  onSelectStart: (e: React.SyntheticEvent) => e.preventDefault(),
+} as const;
+
 const CHAT_COMPOSER_LINE_PX = 20;
 const CHAT_COMPOSER_MAX_LINES = 5;
 const CHAT_COMPOSER_MAX_HEIGHT_PX = CHAT_COMPOSER_LINE_PX * CHAT_COMPOSER_MAX_LINES;
@@ -2711,10 +2722,8 @@ export function ChatScreen({
         delete document.documentElement.dataset.chatThreadOpen;
       }
     }
-    startTransition(() => {
-      onThreadOpen?.(threadImmersive);
-      onHideBottomNav?.(hideBottomNav);
-    });
+    onThreadOpen?.(threadImmersive);
+    onHideBottomNav?.(hideBottomNav);
   }, [
     openChat,
     stackDragChatId,
@@ -2725,6 +2734,18 @@ export function ChatScreen({
     onThreadOpen,
     onHideBottomNav,
   ]);
+
+  useEffect(() => {
+    return () => {
+      // حماية من بقاء الشريط السفلي مخفي عند unmount أثناء gesture/transition
+      onThreadOpen?.(false);
+      onHideBottomNav?.(false);
+      onExitNavRevealProgress?.(null);
+      if (typeof document !== "undefined") {
+        delete document.documentElement.dataset.chatThreadOpen;
+      }
+    };
+  }, [onThreadOpen, onHideBottomNav, onExitNavRevealProgress]);
 
   const beginCloseChatThread = useCallback(function beginCloseChatThreadImpl(closingKey: string) {
       if (stackClosingId) return;
@@ -3382,35 +3403,119 @@ export function ChatScreen({
           MODALS & OVERLAYS
           ══════════════════════════════════════════════════ */}
 
-      {/* Edit note modal */}
+      {/* Edit note modal — full-screen, Instagram Notes style */}
       {editingNote && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 pb-6 px-3" onClick={() => setEditingNote(false)}>
+        <div
+          className="fixed inset-0 z-[260] flex items-center justify-center bg-black/70 backdrop-blur-xl"
+          onClick={() => setEditingNote(false)}
+        >
           <div
             dir={isRtl ? "rtl" : "ltr"}
-            className="w-full max-w-sm rounded-3xl bg-background p-5 shadow-2xl space-y-4"
+            className="relative w-full max-w-xs mx-auto flex flex-col items-center gap-5 px-4"
             onClick={e => e.stopPropagation()}
           >
-            <div className="flex items-center gap-3">
-              <RSocialAvatar name={me.username} src={me.avatar} size={42} />
-              <div>
-                <p className="font-bold text-[15px]">@{me.username}</p>
-                <p className="text-[12px] text-muted-foreground">{isRtl ? "مرئي للمتابِعين" : "Visible to followers"}</p>
+            {/* Close button */}
+            <button
+              type="button"
+              onClick={() => setEditingNote(false)}
+              className="absolute top-[max(0.75rem,env(safe-area-inset-top,0px))] end-4 rounded-full bg-black/40 p-1.5 text-white/90 backdrop-blur"
+              aria-label={t("cancel")}
+            >
+              <X size={18} />
+            </button>
+
+            {/* Center avatar */}
+            <div className="mt-[3.5rem] flex flex-col items-center gap-2">
+              <RSocialAvatar
+                name={me.username}
+                src={me.avatar}
+                size={82}
+                className="ring-2 ring-white/80 shadow-[0_0_24px_rgba(0,0,0,0.65)]"
+              />
+
+              {/* Note bubble over avatar */}
+              <div className="relative mt-3 max-w-[220px]">
+                <div className="rounded-2xl bg-white/95 px-4 py-2.5 text-center text-[13px] font-medium text-zinc-900 shadow-lg">
+                  <input
+                    value={noteInput}
+                    onChange={e => setNoteInput(e.target.value)}
+                    maxLength={60}
+                    autoFocus
+                    dir={isRtl ? "rtl" : "ltr"}
+                    placeholder={isRtl ? "أكتب نوت قصيرة…" : "Share a short note…"}
+                    className="w-full bg-transparent text-center text-[13px] font-medium text-zinc-900 placeholder:text-zinc-400 outline-none border-none"
+                  />
+                </div>
+                <div
+                  className="absolute left-1/2 h-3 w-3 -translate-x-1/2 rotate-45 bg-white/95"
+                  style={{ bottom: "-6px", boxShadow: "0 6px 16px rgba(0,0,0,0.25)" }}
+                  aria-hidden
+                />
               </div>
+
+              {/* Subtitle */}
+              <p className="mt-3 text-[11px] text-white/75">
+                {isRtl ? "مرئية للمتابعين لمدة ٢٤ ساعة" : "Visible to followers for 24 hours"}
+              </p>
             </div>
-            <input
-              value={noteInput}
-              onChange={e => setNoteInput(e.target.value)}
-              maxLength={60}
-              autoFocus
-              dir={isRtl ? "rtl" : "ltr"}
-              placeholder={isRtl ? "أضف نوت… (٦٠ حرفاً)" : "Add a note… (60 chars)"}
-              className="w-full rounded-2xl bg-zinc-100 dark:bg-zinc-800 px-4 py-3 text-[15px] font-medium placeholder:text-zinc-400 outline-none"
-            />
-            <div className="flex gap-2">
-              <button onClick={() => setEditingNote(false)} className="flex-1 rounded-2xl bg-zinc-100 dark:bg-zinc-800 py-2.5 text-[14px] font-semibold text-foreground">
+
+            {/* Note actions: music / location / stickers (UI فقط حالياً) */}
+            <div className="mt-4 flex items-center justify-center gap-4 text-white/90">
+              <button
+                type="button"
+                className="flex flex-col items-center gap-1 rounded-2xl bg-white/10 px-3 py-2 text-[11px] backdrop-blur hover:bg-white/16 active:scale-95 transition"
+                onClick={() => {
+                  // TODO: فتح Music Picker حقيقي وربط مع backend
+                  const base = noteInput.replace(/^🎵[^|]*\|\s*/u, "");
+                  const demo = isRtl ? "🎵 أغنية تجريبية | " : "🎵 Demo song | ";
+                  setNoteInput(demo + base.trim());
+                }}
+              >
+                <span className="text-lg leading-none">🎵</span>
+                <span>{isRtl ? "موسيقى" : "Music"}</span>
+              </button>
+              <button
+                type="button"
+                className="flex flex-col items-center gap-1 rounded-2xl bg-white/10 px-3 py-2 text-[11px] backdrop-blur hover:bg-white/16 active:scale-95 transition"
+                onClick={() => {
+                  const base = noteInput.replace(/^📍[^|]*\|\s*/u, "");
+                  const demo = isRtl ? "📍 الرياض | " : "📍 Riyadh | ";
+                  setNoteInput(demo + base.trim());
+                }}
+              >
+                <span className="text-lg leading-none">📍</span>
+                <span>{isRtl ? "الموقع" : "Location"}</span>
+              </button>
+              <button
+                type="button"
+                className="flex flex-col items-center gap-1 rounded-2xl bg-white/10 px-3 py-2 text-[11px] backdrop-blur hover:bg-white/16 active:scale-95 transition"
+                onClick={() => {
+                  const extra = isRtl ? " 😄" : " 😄";
+                  if (!noteInput.includes("😄")) setNoteInput((v) => (v || "مزاج جميل") + extra);
+                }}
+              >
+                <span className="text-lg leading-none">😊</span>
+                <span>{isRtl ? "المزاج" : "Mood"}</span>
+              </button>
+            </div>
+
+            {/* Save / Cancel buttons */}
+            <div className="mt-6 flex w-full max-w-xs gap-2">
+              <button
+                type="button"
+                onClick={() => setEditingNote(false)}
+                className="flex-1 rounded-2xl bg-white/10 py-2.5 text-[13px] font-semibold text-white hover:bg-white/16 active:scale-[0.97] transition"
+              >
                 {t("cancel")}
               </button>
-              <button onClick={() => { setNote(noteInput); setEditingNote(false); }} className="flex-1 rounded-2xl bg-[#FFFC00] py-2.5 text-[14px] font-bold text-zinc-900 shadow-sm">
+              <button
+                type="button"
+                onClick={() => {
+                  setNote(noteInput.trim());
+                  setEditingNote(false);
+                }}
+                className="flex-1 rounded-2xl bg-white text-[13px] font-bold text-zinc-900 py-2.5 shadow-[0_4px_18px_rgba(0,0,0,0.35)] active:scale-[0.97] transition"
+              >
                 {t("save")}
               </button>
             </div>
@@ -4053,9 +4158,11 @@ function ChatRoom({
     };
   }, [isDmRoom, otherId, sendChatId]);
 
-  const onComposerChange = (v: string) => {
+  const onComposerChange = useCallback((v: string) => {
     if (Date.now() < composerIgnoreInputUntilRef.current) return;
+    // setText مباشرة (urgent) — ليبقى الحقل متجاوباً
     setText(v);
+    // تحليل mention وتحديث القائمة: urgent أيضاً (قصير جداً)
     if (isDmRoom && otherId) {
       if (v.trim()) scheduleTypingPulse(sendChatId, otherId);
       else flushTypingStop(sendChatId, otherId);
@@ -4070,7 +4177,8 @@ function ChatRoom({
     } else {
       setMentionPick(null);
     }
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDmRoom, otherId, sendChatId, chat.isChannel]);
 
   useLayoutEffect(() => {
     syncComposerHeight();
@@ -4088,6 +4196,24 @@ function ChatRoom({
     if (!isDmRoom || vanishMessages.length === 0) return visibleMessages;
     return [...visibleMessages, ...vanishMessages].slice().sort((a, b) => a.createdAt - b.createdAt);
   }, [isDmRoom, visibleMessages, vanishMessages]);
+
+  /** عدد الرسائل المعروضة في النافذة — يبدأ بـ 60 ويزيد عند التمرير للأعلى */
+  const [visibleWindowCount, setVisibleWindowCount] = useState(60);
+  const isLoadingOlderRef = useRef(false);
+
+  /** إعادة ضبط النافذة عند تبديل المحادثة */
+  useEffect(() => {
+    setVisibleWindowCount(60);
+    isLoadingOlderRef.current = false;
+  }, [chat.id]);
+
+  /** الرسائل المعروضة فعلياً — آخر N رسالة فقط */
+  const windowedMessages = useMemo(() => {
+    if (displayMessages.length <= visibleWindowCount) return displayMessages;
+    return displayMessages.slice(displayMessages.length - visibleWindowCount);
+  }, [displayMessages, visibleWindowCount]);
+
+  const hasOlderMessages = displayMessages.length > visibleWindowCount;
   const noMessagesYet = displayMessages.length === 0;
   const showDmIntro = isDmRoom && !!other && !!otherId && !vanishMode && noMessagesYet;
   const [messageContext, setMessageContext] = useState<Message | null>(null);
@@ -4102,6 +4228,9 @@ function ChatRoom({
   const composerRef = useRef<HTMLDivElement>(null);
   const vv = useVisualViewportLayout();
   const keyboardOpen = vv.keyboardInset > 8;
+  /** عند فتح الكيبورد: ضبط الغرفة على visualViewport (بدون padding إضافي على المُلحق) */
+  const pinChatToVisualViewport = !embedInStack || keyboardOpen;
+  const composerBottomPad = chatComposerBottomPadding(keyboardOpen);
   const scrollMessagesToBottom = useCallback(() => {
     const el = messagesScrollRef.current;
     if (!el) return;
@@ -4214,7 +4343,7 @@ function ChatRoom({
 
   const openShareFeedFromMessage = useCallback(
     (m: Message) => {
-      const chain = visibleMessages.filter(x => x.type === "shared_post" || x.type === "shared_story");
+      const chain = displayMessages.filter(x => x.type === "shared_post" || x.type === "shared_story");
       const idx = chain.findIndex(x => x.id === m.id);
       if (idx < 0) return;
       const items: ChatShareFeedItem[] = chain.map(x => ({
@@ -4225,7 +4354,7 @@ function ChatRoom({
       }));
       setShareFeedOpen({ items, initialIndex: idx });
     },
-    [visibleMessages],
+    [displayMessages],
   );
 
   const clearLongPress = useCallback(() => {
@@ -4406,6 +4535,20 @@ function ChatRoom({
     if (!el) return;
     const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
     stickToBottomRef.current = dist < 72;
+
+    // عند التمرير للأعلى وبلوغ الـ 20% العلوية — نوسّع النافذة
+    if (el.scrollTop < el.scrollHeight * 0.20 && !isLoadingOlderRef.current) {
+      isLoadingOlderRef.current = true;
+      const prevScrollHeight = el.scrollHeight;
+      setVisibleWindowCount(prev => prev + 40);
+      // حافظ على موضع التمرير بعد إضافة رسائل قديمة
+      requestAnimationFrame(() => {
+        if (!messagesScrollRef.current) return;
+        const added = messagesScrollRef.current.scrollHeight - prevScrollHeight;
+        if (added > 0) messagesScrollRef.current.scrollTop += added;
+        isLoadingOlderRef.current = false;
+      });
+    }
   }, []);
 
   useLayoutEffect(() => {
@@ -4434,20 +4577,20 @@ function ChatRoom({
     if (!useIgDm || !otherId) return false;
     const last = chat.lastOpenAtByUser?.[otherId] ?? 0;
     return Date.now() - last < 5 * 60_000;
-  }, [useIgDm, otherId, chat.lastOpenAtByUser, displayMessages.length]);
+  }, [useIgDm, otherId, chat.lastOpenAtByUser]);
   const chatTimelineRows = useMemo(
-    () => (useIgDm ? buildChatTimelineRows(displayMessages, meId, state.language) : null),
-    [useIgDm, displayMessages, meId, state.language],
+    () => (useIgDm ? buildChatTimelineRows(windowedMessages, meId, state.language) : null),
+    [useIgDm, windowedMessages, meId, state.language],
   );
   const rowsToRender = useMemo(() => {
     if (chatTimelineRows) return chatTimelineRows;
-    return displayMessages.map(m => ({
+    return windowedMessages.map(m => ({
       kind: "message" as const,
       key: m.id,
       message: m,
       showPeerAvatar: true,
     }));
-  }, [chatTimelineRows, displayMessages]);
+  }, [chatTimelineRows, windowedMessages]);
   const themeBg = isQuranChannel
     ? "bg-black text-white"
     : useIgDm && dmPalette
@@ -4476,14 +4619,35 @@ function ChatRoom({
           return;
         }
         const durationSec = isVid ? await readVideoDurationSec(file) : await readAudioDurationSec(file);
-        const reader = new FileReader();
-        reader.onload = () =>
-          dispatchSend({
-            type: "voice",
-            content: String(reader.result),
-            durationSec,
-          });
-        reader.readAsDataURL(file);
+
+        // نحاول أولاً رفع الملف (أو نسخة مضغوطة) إلى السيرفر مثل الصور/الفيديو
+        try {
+          const compressed = await compressChatMediaFile(file);
+          const token = getApiToken();
+          if (apiBackendEnabled() && token) {
+            const up = await apiUploadMedia(token, compressed, { timeoutMs: 120_000 });
+            if (up.ok) {
+              dispatchSend({
+                type: "voice",
+                content: up.url,
+                durationSec,
+              });
+              return;
+            }
+          }
+          // في حال فشل الرفع لأي سبب، نرجع لمسار base64 (احتياطي، لكن قد يكون ثقيلاً)
+          const reader = new FileReader();
+          reader.onload = () =>
+            dispatchSend({
+              type: "voice",
+              content: String(reader.result),
+              durationSec,
+            });
+          reader.readAsDataURL(compressed);
+        } catch (err) {
+          console.error("[gallery-voice] failed:", err);
+          window.alert("تعذّر إرسال المقطع كرسالة صوتية. جرّب من جديد أو قصّر طول الفيديو.");
+        }
       })();
     },
     [dispatchSend],
@@ -4522,6 +4686,16 @@ function ChatRoom({
     },
     [sendGalleryVideoAsVoice],
   );
+
+  /** قائمة + : فتح مكتبة الفيديو/الصوت وإرسال المقطع كرسالة صوتية */
+  const openGalleryVideoVoiceStudio = useCallback(() => {
+    setPlusAttachOpen(false);
+    if (isGuest) {
+      notifyGuestActionBlocked();
+      return;
+    }
+    galleryVideoVoiceInputRef.current?.click();
+  }, [isGuest]);
 
   const onGalleryButtonClick = useCallback(() => {
     if (galleryLpFiredRef.current) {
@@ -4562,6 +4736,45 @@ function ChatRoom({
     },
     [clearGalleryLongPress],
   );
+
+  const onGalleryTouchStart = useCallback(
+    (e: React.TouchEvent) => {
+      if (e.touches.length !== 1) return;
+      galleryLpFiredRef.current = false;
+      clearGalleryLongPress();
+      const t = e.touches[0];
+      galleryLpStartRef.current = { x: t.clientX, y: t.clientY };
+      galleryLpTimerRef.current = window.setTimeout(() => {
+        galleryLpTimerRef.current = null;
+        galleryLpStartRef.current = null;
+        galleryLpFiredRef.current = true;
+        galleryVideoVoiceInputRef.current?.click();
+        try {
+          navigator.vibrate?.(12);
+        } catch {
+          /* ignore */
+        }
+      }, 420);
+    },
+    [clearGalleryLongPress],
+  );
+
+  const onGalleryTouchMove = useCallback(
+    (e: React.TouchEvent) => {
+      const start = galleryLpStartRef.current;
+      if (!start || !galleryLpTimerRef.current) return;
+      const t = e.touches[0];
+      if (!t) return;
+      if (Math.hypot(t.clientX - start.x, t.clientY - start.y) > 12) {
+        clearGalleryLongPress();
+      }
+    },
+    [clearGalleryLongPress],
+  );
+
+  const onGalleryTouchEnd = useCallback(() => {
+    clearGalleryLongPress();
+  }, [clearGalleryLongPress]);
 
   const startRecording = async () => {
     if (Date.now() < blockMicUntilRef.current) return;
@@ -5033,24 +5246,25 @@ function ChatRoom({
     [drawComposeOpen, isDmRoom, canPost, handleVanishPullDown],
   );
 
-  const myOutgoing = visibleMessages.filter(m => m.senderId === meId);
-  let seenFooter: string | null = null;
-  if (!chat.isGroup && !chat.isChannel && otherId) {
+  const myOutgoing = useMemo(
+    () => visibleMessages.filter(m => m.senderId === meId),
+    [visibleMessages, meId],
+  );
+  const seenFooter = useMemo<string | null>(() => {
+    if (chat.isGroup || chat.isChannel || !otherId) return null;
     const otherLastOpen = chat.lastOpenAtByUser?.[otherId] ?? 0;
     const lastMine = myOutgoing[myOutgoing.length - 1];
-    if (lastMine && otherLastOpen >= lastMine.createdAt) {
-      const otherRepliedAfter = visibleMessages.some(m => m.senderId === otherId && m.createdAt >= lastMine.createdAt);
-      const lang = state.language;
-      if (!otherRepliedAfter) {
-        const mins = Math.max(0, Math.floor((Date.now() - otherLastOpen) / 60000));
-        seenFooter = mins === 0
-          ? (lang === "en" ? "Seen" : "تمت القراءة")
-          : (lang === "en" ? `Seen · ${mins}m` : `تمت القراءة · منذ ${mins} د`);
-      } else {
-        seenFooter = lang === "en" ? "Seen" : "تمت القراءة";
-      }
+    if (!lastMine || otherLastOpen < lastMine.createdAt) return null;
+    const otherRepliedAfter = visibleMessages.some(m => m.senderId === otherId && m.createdAt >= lastMine.createdAt);
+    const lang = state.language;
+    if (!otherRepliedAfter) {
+      const mins = Math.max(0, Math.floor((Date.now() - otherLastOpen) / 60000));
+      return mins === 0
+        ? (lang === "en" ? "Seen" : "تمت القراءة")
+        : (lang === "en" ? `Seen · ${mins}m` : `تمت القراءة · منذ ${mins} د`);
     }
-  }
+    return lang === "en" ? "Seen" : "تمت القراءة";
+  }, [chat.isGroup, chat.isChannel, otherId, chat.lastOpenAtByUser, myOutgoing, visibleMessages, state.language]);
 
   const inlineMediaLightboxUser: User | null =
     inlineMediaViewer &&
@@ -5241,17 +5455,29 @@ function ChatRoom({
         (useIgDm ? "" : "bg-background")
       }
       style={
-        embedInStack
-          ? useIgDm && dmPalette
-            ? igDmSurfaceStyle
-            : undefined
-          : {
+        pinChatToVisualViewport
+          ? {
+              ...(embedInStack
+                ? {
+                    position: "fixed",
+                    left: 0,
+                    right: 0,
+                    zIndex: 210,
+                    marginInline: "auto",
+                    maxWidth: "28rem",
+                    width: "100%",
+                  }
+                : {}),
               top: vv.offsetTop,
               height: vv.height,
+              maxHeight: vv.height,
               bottom: "auto",
-              ...panelDismissTouchStyle,
+              ...(!embedInStack ? panelDismissTouchStyle : {}),
               ...(useIgDm && dmPalette ? igDmSurfaceStyle : {}),
             }
+          : embedInStack && useIgDm && dmPalette
+            ? igDmSurfaceStyle
+            : undefined
       }
       {...(chatEdgeSwipeOnly
         ? {}
@@ -5586,6 +5812,11 @@ function ChatRoom({
             (isQuranChannel ? "bg-zinc-950" : "")
           }
         >
+        {hasOlderMessages && (
+          <div className="flex w-full justify-center py-2">
+            <span className="text-[11px] text-muted-foreground opacity-60">↑ مرّر للأعلى لتحميل رسائل أقدم</span>
+          </div>
+        )}
         {rowsToRender.map(row => {
           if (row.kind === "day") {
             return (
@@ -5660,6 +5891,7 @@ function ChatRoom({
             >
               <div
                 ref={el => {
+                  // ref callback لا تُعيد render — يعمل مباشرة على Map بدون state
                   if (el) messageElRefs.current.set(m.id, el);
                   else messageElRefs.current.delete(m.id);
                 }}
@@ -6076,17 +6308,13 @@ function ChatRoom({
       <div
         ref={composerRef}
         className="relative z-[56] shrink-0 isolate"
-        style={
-          keyboardOpen && embedInStack && vv.keyboardInset > 0
-            ? { paddingBottom: vv.keyboardInset }
-            : undefined
-        }
+        style={{ ["--chat-composer-bottom-pad" as string]: composerBottomPad }}
       >
       {!canPost ? (
         <div
           className={
             "p-4 text-center text-sm border-t border-border " +
-            (keyboardOpen ? "pb-1.5" : "pb-[max(0.5rem,env(safe-area-inset-bottom,0px))]") +
+            "pb-[var(--chat-composer-bottom-pad)] " +
             " " +
             (isQuranChannel ? "text-zinc-400 bg-zinc-900 border-zinc-700" : "text-muted-foreground bg-background")
           }
@@ -6159,7 +6387,7 @@ function ChatRoom({
               e.preventDefault();
               submitTextMessage();
             }}
-            className={"px-3 pt-2 " + (keyboardOpen ? "pb-2" : "pb-[max(0.75rem,env(safe-area-inset-bottom,0.75rem))]")}
+            className="chat-composer-bar px-3 pt-2 pb-[var(--chat-composer-bottom-pad)]"
           >
             {useIgDm ? (
             <div dir={dmDir} className="relative flex min-h-[44px] items-center gap-2">
@@ -6239,6 +6467,23 @@ function ChatRoom({
                         <ImageIcon size={15} strokeWidth={2} />
                       </span>
                       <span>{state.language === "ar" ? "الصور" : "Photos"}</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isGuest}
+                      className={
+                        "flex w-full items-center gap-3 px-4 py-3 text-start text-[14px] font-medium transition-colors duration-100 " +
+                        (dmPalette?.attachMenuItemClass ?? "text-white hover:bg-white/10") +
+                        (isGuest ? " cursor-not-allowed opacity-40" : "")
+                      }
+                      onClick={openGalleryVideoVoiceStudio}
+                    >
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/15">
+                        <Video size={15} strokeWidth={2} />
+                      </span>
+                      <span>
+                        {state.language === "ar" ? "استديو — مقطع كصوت" : "Studio — voice clip"}
+                      </span>
                     </button>
                     <button
                       type="button"
@@ -6396,6 +6641,7 @@ function ChatRoom({
                     "flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full transition " +
                     (dmPalette?.composerIconClass ?? "text-zinc-300 hover:bg-white/10")
                   }
+                  style={{ touchAction: "none" }}
                   aria-label="تسجيل صوتي"
                   onClick={() => {
                     if (Date.now() < blockMicUntilRef.current) return;
@@ -6406,11 +6652,12 @@ function ChatRoom({
                 </button>
                 <button
                   type="button"
+                  {...galleryLongPressBtnProps}
                   className={
                     "flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full transition " +
                     (dmPalette?.composerIconClass ?? "text-zinc-300 hover:bg-white/10")
                   }
-                  aria-label="معرض الصور"
+                  aria-label="معرض الصور — ضغط مطوّل لاختيار فيديو كرسالة صوتية"
                   onClick={() => {
                     setPlusAttachOpen(false);
                     onGalleryButtonClick();
@@ -6423,6 +6670,10 @@ function ChatRoom({
                   onPointerUp={clearGalleryLongPress}
                   onPointerCancel={clearGalleryLongPress}
                   onPointerLeave={clearGalleryLongPress}
+                  onTouchStart={onGalleryTouchStart}
+                  onTouchMove={onGalleryTouchMove}
+                  onTouchEnd={onGalleryTouchEnd}
+                  onTouchCancel={onGalleryTouchEnd}
                 >
                   <ImageIcon size={20} strokeWidth={2} />
                 </button>
@@ -6556,10 +6807,12 @@ function ChatRoom({
               <>
               <button
                 type="button"
+                {...galleryLongPressBtnProps}
                 className={
                   "flex h-10 w-10 shrink-0 touch-manipulation items-center justify-center rounded-full text-foreground/85 transition hover:bg-black/[0.06] dark:hover:bg-white/10 " +
                   (isQuranChannel ? "text-zinc-200" : "")
                 }
+                style={{ touchAction: "none" }}
                 aria-label="الاستديو: ضغطة للصور والفيديو، ضغط مطوّل لمقاطع كرسالة صوتية"
                 onClick={() => {
                   setPlusAttachOpen(false);
@@ -6573,6 +6826,10 @@ function ChatRoom({
                 onPointerUp={clearGalleryLongPress}
                 onPointerCancel={clearGalleryLongPress}
                 onPointerLeave={clearGalleryLongPress}
+                onTouchStart={onGalleryTouchStart}
+                onTouchMove={onGalleryTouchMove}
+                onTouchEnd={onGalleryTouchEnd}
+                onTouchCancel={onGalleryTouchEnd}
               >
                 <ImageIcon size={21} strokeWidth={2} />
               </button>
@@ -6630,6 +6887,18 @@ function ChatRoom({
                       }}
                     >
                       <PenLine size={18} /> <span>رسم وكتابة</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isGuest}
+                      className={
+                        "flex w-full items-center gap-3 px-4 py-3 text-start text-sm transition hover:bg-secondary " +
+                        (isQuranChannel ? "text-zinc-100" : "") +
+                        (isGuest ? " cursor-not-allowed opacity-40" : "")
+                      }
+                      onClick={openGalleryVideoVoiceStudio}
+                    >
+                      <Video size={18} /> <span>استديو — مقطع كصوت</span>
                     </button>
                     {isDmRoom && (
                       <button

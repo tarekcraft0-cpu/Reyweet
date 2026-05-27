@@ -8,6 +8,11 @@ import { logAuthRoute } from "@/lib/authRouteDebug";
 import { clearStaleApiConfig, probeHealth } from "@/lib/apiConfig";
 import { isNativeCapacitorShell, isPublicAppHost, isVpsProductionHost } from "@/lib/apiUrlPolicy";
 import { warmGlobalPointerBackRouter } from "@/lib/globalPointerBackRouter";
+import {
+  installNativeTextSelectionGuard,
+  isNoSelectShellActive,
+  nativeNoSelectCaptureHandlers,
+} from "@/lib/nativeTextSelectionGuard";
 
 /** غلاف /app — نسخة الويب الكاملة مرتبطة بـ Retweet API وقاعدة البيانات على القرص D */
 export function WebAppRoot() {
@@ -16,6 +21,7 @@ export function WebAppRoot() {
   const [apiMissing, setApiMissing] = useState(false);
 
   useEffect(() => {
+    installNativeTextSelectionGuard();
     warmGlobalPointerBackRouter();
     clearStaleApiConfig();
     logAuthRoute("webapp-root-mount", {
@@ -153,7 +159,10 @@ export function WebAppRoot() {
   }
 
   return (
-    <div className="relative mx-auto min-h-dvh w-full max-w-md overflow-x-hidden bg-background text-start supports-[height:100dvh]:min-h-dvh">
+    <div
+      className="relative mx-auto min-h-dvh w-full max-w-md overflow-x-hidden bg-background text-start supports-[height:100dvh]:min-h-dvh"
+      {...nativeNoSelectCaptureHandlers}
+    >
       <AppProvider initialState={bootState ?? undefined}>
         <App />
       </AppProvider>

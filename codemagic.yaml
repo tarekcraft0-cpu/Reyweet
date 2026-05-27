@@ -39,7 +39,11 @@ workflows:
             echo "$RETWEET_PUBLIC_API_URL" > PUBLIC_API_URL.txt
           fi
           export CAPACITOR_WEB_APP_URL="${CAPACITOR_WEB_APP_URL:-https://reyweet.vercel.app/app}"
+          export CAPACITOR_API_URL="${CAPACITOR_API_URL:-https://reyweet.vercel.app}"
+          export RETWEET_PUBLIC_API_URL="${RETWEET_PUBLIC_API_URL:-https://reyweet.vercel.app}"
+          export CAPACITOR_NATIVE=1
           node scripts/prepare-capacitor-ios.mjs
+          node scripts/verify-ios-api-bundle.mjs
 
       - name: CocoaPods
         script: |
@@ -116,7 +120,11 @@ workflows:
             echo "$RETWEET_PUBLIC_API_URL" > PUBLIC_API_URL.txt
           fi
           export CAPACITOR_WEB_APP_URL="${CAPACITOR_WEB_APP_URL:-https://reyweet.vercel.app/app}"
+          export CAPACITOR_API_URL="${CAPACITOR_API_URL:-https://reyweet.vercel.app}"
+          export RETWEET_PUBLIC_API_URL="${RETWEET_PUBLIC_API_URL:-https://reyweet.vercel.app}"
+          export CAPACITOR_NATIVE=1
           node scripts/prepare-capacitor-ios.mjs
+          node scripts/verify-ios-api-bundle.mjs
 
       - name: CocoaPods
         script: |
@@ -208,7 +216,12 @@ workflows:
           if [ -n "$RETWEET_PUBLIC_API_URL" ]; then
             echo "$RETWEET_PUBLIC_API_URL" > PUBLIC_API_URL.txt
           fi
+          export CAPACITOR_WEB_APP_URL="${CAPACITOR_WEB_APP_URL:-https://reyweet.vercel.app/app}"
+          export CAPACITOR_API_URL="${CAPACITOR_API_URL:-https://reyweet.vercel.app}"
+          export RETWEET_PUBLIC_API_URL="${RETWEET_PUBLIC_API_URL:-https://reyweet.vercel.app}"
+          export CAPACITOR_NATIVE=1
           node scripts/prepare-capacitor-ios.mjs
+          node scripts/verify-ios-api-bundle.mjs
       - name: CocoaPods
         script: |
           set -e

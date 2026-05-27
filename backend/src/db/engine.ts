@@ -42,6 +42,13 @@ export type UserRow = {
   postCharacterLimit?: number;
 };
 
+export type PostCommentRow = {
+  id: string;
+  userId: string;
+  text: string;
+  createdAt: number;
+};
+
 export type PostRow = {
   id: string;
   userId: string;
@@ -51,6 +58,7 @@ export type PostRow = {
   video?: string;
   likes: string[];
   reposts: string[];
+  comments?: PostCommentRow[];
   createdAt: string;
   updatedAt: string;
 };

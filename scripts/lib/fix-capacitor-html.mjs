@@ -7,6 +7,8 @@ export function fixCapacitorBundledHtml(indexPath) {
   let html = fs.readFileSync(indexPath, "utf8");
   html = html
     .replace(/\/app\/assets\//g, "./assets/")
+    .replace(/src="\/app\/assets\//g, 'src="./assets/')
+    .replace(/href="\/app\/assets\//g, 'href="./assets/')
     .replace(/href="\/app\/favicon/g, 'href="./favicon')
     .replace(/href="\/app\/icons\//g, 'href="./icons/')
     .replace(/href="\/app\/manifest/g, 'href="./manifest');

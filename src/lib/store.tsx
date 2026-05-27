@@ -91,7 +91,12 @@ function mergePostsPreservingLocalDeletes(localPosts: Post[], remotePosts: Post[
       ...p.comments,
       ...filteredRemoteComments.filter(c => !localCommentIds.has(c.id)),
     ].filter(c => !locallyRemovedCommentKeys.has(`${p.id}:${c.id}`));
-    merged.push({ ...base, comments });
+    merged.push({
+      ...base,
+      likes: remote?.likes ?? p.likes,
+      reposts: remote?.reposts ?? p.reposts,
+      comments,
+    });
   }
   for (const p of remotePosts) {
     if (localIds.has(p.id)) continue;
@@ -138,6 +143,11 @@ import {
   apiJoinGroupByInvite,
   apiRespondGroupJoinRequest,
   apiRecordProfileVisit,
+  apiTogglePostLike,
+  apiTogglePostRepost,
+  apiUpsertPost,
+  apiAddPostComment,
+  apiRecordStoryView,
 } from "./apiBackend";
 import { subscribeRealtimeEvents, USER_REGISTERED_WINDOW_EVENT } from "./realtimeEvents";
 import {
@@ -1595,6 +1605,7 @@ export function AppProvider({
   const fullPullTimerRef = useRef<number | null>(null);
   const remoteSyncTimerRef = useRef<number | null>(null);
   const MIN_FULL_PULL_MS = 18_000;
+  const MIN_URGENT_PULL_MS = 500;
 
   const pullSocialState = useCallback(async () => {
     if (!apiBackendEnabled()) return;
@@ -2730,19 +2741,35 @@ export function AppProvider({
       return next;
     });
     if (!nextState) return;
+    const created = nextState.posts[0];
     socialSyncBusyRef.current = true;
     pushSnapshotNow(nextState);
+    const token = getApiToken();
+    if (token && apiBackendEnabled() && created?.userId === nextState.currentUserId) {
+      void apiUpsertPost(token, {
+        id: created.id,
+        type: created.type,
+        text: created.text,
+        image: created.image,
+        video: created.video,
+        createdAt: created.createdAt,
+      });
+    }
     window.setTimeout(() => {
       socialSyncBusyRef.current = false;
     }, 2500);
   };
 
-  const toggleLike = (postId: ID) =>
+  const toggleLike = (postId: ID) => {
+    const token = getApiToken();
+    const useApi = Boolean(token && apiBackendEnabled());
+    let rollbackLikes: string[] | null = null;
     setState((s) => {
       const post = s.posts.find((p) => p.id === postId);
       if (!post || !s.currentUserId || isGuestUserId(s.currentUserId)) return s;
+      rollbackLikes = [...post.likes];
       const liked = post.likes.includes(s.currentUserId);
-      const next = {
+      return {
         ...s,
         posts: s.posts.map((p) =>
           p.id === postId
@@ -2755,29 +2782,27 @@ export function AppProvider({
             : p,
         ),
       };
-      const out = liked
-        ? next
-        : pushNotif(next, {
-            userId: post.userId,
-            fromId: s.currentUserId,
-            type: "like",
-            postId,
-            text:
-              post.type === "reel"
-                ? "أعجب بمقطعك"
-                : post.type === "tweet"
-                  ? "أعجب بتغريدتك"
-                  : "وضع ❤️ على منشورك",
-          });
-      const token = getApiToken();
-      if (token && apiBackendEnabled()) {
-        socialSyncBusyRef.current = true;
-        void pushRemoteAppState(token, out).finally(() => {
-          socialSyncBusyRef.current = false;
-        });
-      }
-      return out;
     });
+    if (useApi && token) {
+      void apiTogglePostLike(token, postId).then(res => {
+        if (!res.ok) {
+          if (rollbackLikes) {
+            setState(s => ({
+              ...s,
+              posts: s.posts.map(p => (p.id === postId ? { ...p, likes: rollbackLikes! } : p)),
+            }));
+          }
+          return;
+        }
+        setState(s => ({
+          ...s,
+          posts: s.posts.map(p =>
+            p.id === postId ? { ...p, likes: res.likes } : p,
+          ),
+        }));
+      });
+    }
+  };
   const toggleStoryLike: Ctx["toggleStoryLike"] = (storyId) =>
     setState((s) => {
       if (!s.currentUserId || isGuestUserId(s.currentUserId)) return s;
@@ -2801,7 +2826,9 @@ export function AppProvider({
         text: "وضع ❤️ على ستوريك",
       });
     });
-  const recordStoryView: Ctx["recordStoryView"] = (storyId) =>
+  const recordStoryView: Ctx["recordStoryView"] = (storyId) => {
+    const token = getApiToken();
+    const useApi = Boolean(token && apiBackendEnabled());
     setState((s) => {
       if (!s.currentUserId || isGuestUserId(s.currentUserId)) return s;
       const meId = s.currentUserId;
@@ -2809,18 +2836,22 @@ export function AppProvider({
       if (!st || st.userId === meId) return s;
       const v = st.viewedByUserIds || [];
       if (v.includes(meId)) return s;
-      const next = {
+      const at = Date.now();
+      return {
         ...s,
         stories: s.stories.map((x) =>
-          x.id === storyId ? { ...x, viewedByUserIds: [...v, meId] } : x,
+          x.id === storyId
+            ? {
+                ...x,
+                viewedByUserIds: [...v, meId],
+                viewedAtByUserIds: { ...(x.viewedAtByUserIds || {}), [meId]: at },
+              }
+            : x,
         ),
       };
-      const token = getApiToken();
-      if (token && apiBackendEnabled()) {
-        void pushRemoteAppState(token, next);
-      }
-      return next;
     });
+    if (useApi && token) void apiRecordStoryView(token, storyId);
+  };
   const toggleFavorite = (postId: ID) =>
     setState((s) => {
       if (!s.currentUserId || isGuestUserId(s.currentUserId)) return s;
@@ -2835,12 +2866,14 @@ export function AppProvider({
         }),
       };
     });
-  const toggleRepost = (postId: ID) =>
+  const toggleRepost = (postId: ID) => {
+    const token = getApiToken();
+    const useApi = Boolean(token && apiBackendEnabled());
     setState((s) => {
       const post = s.posts.find((p) => p.id === postId);
       if (!post || !s.currentUserId || isGuestUserId(s.currentUserId)) return s;
       const r = post.reposts.includes(s.currentUserId);
-      const next = {
+      return {
         ...s,
         posts: s.posts.map((p) =>
           p.id === postId
@@ -2853,61 +2886,67 @@ export function AppProvider({
             : p,
         ),
       };
-      const out = r
-        ? {
-            ...next,
-            notifications: (next.notifications || []).filter(
-              n =>
-                !(
-                  n.type === "repost" &&
-                  n.postId === postId &&
-                  n.fromId === s.currentUserId &&
-                  n.userId === post.userId
-                ),
-            ),
-          }
-        : pushNotif(next, {
-            userId: post.userId,
-            fromId: s.currentUserId,
-            type: "repost",
-            postId,
-            text: "أعاد نشر منشورك",
-          });
-      const token = getApiToken();
-      if (token && apiBackendEnabled()) {
-        socialSyncBusyRef.current = true;
-        void pushRemoteAppState(token, out).finally(() => {
-          socialSyncBusyRef.current = false;
-        });
-      }
-      return out;
     });
-  const addComment = (postId: ID, text: string) =>
+    if (useApi && token) {
+      void apiTogglePostRepost(token, postId).then(res => {
+        if (!res.ok) return;
+        setState(s => ({
+          ...s,
+          posts: s.posts.map(p =>
+            p.id === postId ? { ...p, reposts: res.reposts } : p,
+          ),
+        }));
+      });
+    }
+  };
+  const addComment = (postId: ID, text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    const token = getApiToken();
+    const useApi = Boolean(token && apiBackendEnabled());
+    const optimisticId = uid();
     setState((s) => {
-      if (!s.currentUserId || isGuestUserId(s.currentUserId) || !text.trim()) return s;
+      if (!s.currentUserId || isGuestUserId(s.currentUserId)) return s;
       const post = s.posts.find((p) => p.id === postId);
       if (!post) return s;
-      const c: Comment = { id: uid(), userId: s.currentUserId, text, createdAt: Date.now() };
-      const next = {
-        ...s,
-        posts: s.posts.map((p) => (p.id === postId ? { ...p, comments: [...p.comments, c] } : p)),
+      const c: Comment = {
+        id: optimisticId,
+        userId: s.currentUserId,
+        text: trimmed,
+        createdAt: Date.now(),
       };
-      const out = pushNotif(next, {
-        userId: post.userId,
-        fromId: s.currentUserId,
-        type: "comment",
-        postId,
-        text: `علّق على منشورك: ${text.trim().slice(0, 120)}${text.trim().length > 120 ? "…" : ""}`,
-      });
-      const token = getApiToken();
-      if (token && apiBackendEnabled()) {
-        socialSyncBusyRef.current = true;
-        void pushRemoteAppState(token, out).finally(() => {
-          socialSyncBusyRef.current = false;
-        });
-      }
-      return out;
+      return {
+        ...s,
+        posts: s.posts.map((p) =>
+          p.id === postId ? { ...p, comments: [...p.comments, c] } : p,
+        ),
+      };
     });
+    if (useApi && token) {
+      void apiAddPostComment(token, postId, trimmed).then(res => {
+        if (!res.ok) {
+          setState(s => ({
+            ...s,
+            posts: s.posts.map(p =>
+              p.id === postId
+                ? { ...p, comments: p.comments.filter(c => c.id !== optimisticId) }
+                : p,
+            ),
+          }));
+          return;
+        }
+        setState(s => ({
+          ...s,
+          posts: s.posts.map(p => {
+            if (p.id !== postId) return p;
+            const withoutTemp = p.comments.filter(c => c.id !== optimisticId);
+            if (withoutTemp.some(c => c.id === res.comment.id)) return p;
+            return { ...p, comments: [...withoutTemp, res.comment] };
+          }),
+        }));
+      });
+    }
+  };
   const deleteComment = (postId: ID, commentId: ID) => {
     markCommentLocallyRemoved(postId, commentId);
     setState((s) => {
@@ -4508,8 +4547,9 @@ export function AppProvider({
     return { ok: true };
   }, []);
 
-  const refreshFromServer = useCallback(() => {
-    if (storyPublishBusyRef.current || socialSyncBusyRef.current) return;
+  const refreshFromServer = useCallback((opts?: { urgent?: boolean }) => {
+    if (storyPublishBusyRef.current) return;
+    if (!opts?.urgent && socialSyncBusyRef.current) return;
     if (!apiBackendEnabled() || !getApiToken() || isGuestUserId(stateRef.current.currentUserId)) return;
 
     const runPull = () => {
@@ -4566,7 +4606,8 @@ export function AppProvider({
     };
 
     const now = Date.now();
-    if (now - lastFullPullAtRef.current >= MIN_FULL_PULL_MS) {
+    const minGap = opts?.urgent ? MIN_URGENT_PULL_MS : MIN_FULL_PULL_MS;
+    if (now - lastFullPullAtRef.current >= minGap) {
       if (fullPullTimerRef.current) {
         window.clearTimeout(fullPullTimerRef.current);
         fullPullTimerRef.current = null;
@@ -4579,7 +4620,7 @@ export function AppProvider({
     if (fullPullTimerRef.current) window.clearTimeout(fullPullTimerRef.current);
     fullPullTimerRef.current = window.setTimeout(
       runPull,
-      MIN_FULL_PULL_MS - (now - lastFullPullAtRef.current),
+      minGap - (now - lastFullPullAtRef.current),
     );
   }, [setStateRaw]);
 
@@ -4920,10 +4961,44 @@ export function AppProvider({
         }
         return;
       }
+      if (event === "post_update") {
+        const payload = data as { post?: Post };
+        const patch = payload?.post;
+        if (!patch?.id) return;
+        setState(s => {
+          if (!s.currentUserId || isGuestUserId(s.currentUserId)) return s;
+          const i = s.posts.findIndex(p => p.id === patch.id);
+          if (i < 0) {
+            return { ...s, posts: [patch, ...s.posts].sort((a, b) => b.createdAt - a.createdAt) };
+          }
+          const prev = s.posts[i];
+          const comments =
+            patch.comments.length > 0
+              ? patch.comments
+              : prev.comments;
+          return {
+            ...s,
+            posts: s.posts.map(p =>
+              p.id === patch.id
+                ? {
+                    ...p,
+                    ...patch,
+                    likes: patch.likes,
+                    reposts: patch.reposts,
+                    comments,
+                  }
+                : p,
+            ),
+          };
+        });
+        return;
+      }
       if (event === "sync_hint") {
         const kind = (data as { kind?: string })?.kind;
-        if (kind === "chats" || kind === "feed") {
-          if (!socialSyncBusyRef.current && !profileSaveBusyRef.current) refreshFromServer();
+        if (kind === "chats" || kind === "feed" || kind === "story" || kind === "profile") {
+          if (!profileSaveBusyRef.current) {
+            refreshFromServer({ urgent: kind === "feed" || kind === "story" });
+          }
           return;
         }
         if (!socialSyncBusyRef.current) scheduleRemoteSync();

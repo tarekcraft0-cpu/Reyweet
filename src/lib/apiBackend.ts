@@ -7,7 +7,15 @@ import {
   peekApiBaseUrl,
   useViteDevProxy,
 } from "./apiConfig";
-import { isNativeCapacitorShell, isPublicAppHost, isVpsProductionHost } from "./apiUrlPolicy";
+import {
+  isNativeCapacitorShell,
+  isPrivateApiUrl,
+  isPublicAppHost,
+  isStaleMobileApiUrl,
+  isVpsProductionHost,
+  VERCEL_SITE_URL,
+} from "./apiUrlPolicy";
+import { formatFetchError, logApi, redactBody, shouldLogApi } from "./apiDebug";
 import { isGuestUserId } from "./guestUser";
 import { scopeAppStateToAccount } from "./scopeAppState";
 import { isReactNativeWebView } from "./nativeShell";
@@ -19,8 +27,9 @@ export function getApiBaseUrl(): string {
   const fromPeek = peekApiBaseUrl();
 
   let raw = "";
+  let useMobileBase = false;
   try {
-    const useMobileBase =
+    useMobileBase =
       Capacitor.isNativePlatform() ||
       (typeof window !== "undefined" && isReactNativeWebView());
     if (useMobileBase) {
@@ -28,11 +37,19 @@ export function getApiBaseUrl(): string {
         (import.meta.env.VITE_API_URL_MOBILE as string | undefined)?.trim() ||
         (import.meta.env.VITE_API_URL as string | undefined)?.trim() ||
         "";
+      if (raw && (isPrivateApiUrl(raw) || isStaleMobileApiUrl(raw))) {
+        logApi("mobile-api-url-rejected", { raw, reason: "private-or-stale" });
+        raw = "";
+      }
     }
   } catch {
     /* ignore */
   }
-  return (raw.replace(/\/$/, "") || fromPeek).replace(/\/$/, "");
+  const base = (raw.replace(/\/$/, "") || fromPeek).replace(/\/$/, "");
+  if (useMobileBase && !base && isNativeCapacitorShell()) {
+    return VERCEL_SITE_URL;
+  }
+  return base;
 }
 
 /** اتصال فعلي بخادم Retweet API (نفق / LAN / بروكسي التطوير) */
@@ -154,26 +171,59 @@ export async function apiFetch(
   const t = init.token ?? getApiToken();
   if (t) headers.set("Authorization", `Bearer ${t}`);
 
+  const method = (init.method || "GET").toUpperCase();
+  if (shouldLogApi()) {
+    logApi("request", {
+      method,
+      url,
+      base: base || "(same-origin)",
+      body: redactBody(init.body),
+      hasToken: !!t,
+    });
+  }
+
   const ctl = new AbortController();
   const { timeoutMs: fetchTimeoutMs, ...fetchInit } = init;
   const timer = setTimeout(() => ctl.abort(), fetchTimeoutMs ?? API_FETCH_TIMEOUT_MS);
   try {
-    return await fetch(url, { ...fetchInit, headers, signal: ctl.signal, cache: "no-store" });
+    const res = await fetch(url, { ...fetchInit, headers, signal: ctl.signal, cache: "no-store" });
+    if (shouldLogApi()) {
+      const preview = await res
+        .clone()
+        .text()
+        .then(t => (t.length > 400 ? `${t.slice(0, 400)}…` : t))
+        .catch(() => "");
+      logApi("response", { method, url, status: res.status, ok: res.ok, preview });
+    }
+    return res;
   } catch (e) {
     const aborted = e instanceof Error && e.name === "AbortError";
+    const networkMsg = formatFetchError(e, url);
+    logApi("error", { method, url, aborted, error: e });
     const hint =
-      import.meta.env.DEV && url.startsWith("/")
-        ? " — تأكد أن الخادم يعمل: npm run backend:dev (والواجهة عبر npm run spa:dev:lan)"
-        : import.meta.env.DEV
-          ? ` — العنوان: ${url}`
-          : "";
-    const msg = aborted
-      ? `انتهت مهلة الاتصال بالخادم${hint}`
-      : `تعذر الاتصال بالخادم${hint}`;
-    return new Response(JSON.stringify({ error: msg }), {
-      status: aborted ? 504 : 503,
-      headers: { "Content-Type": "application/json" },
-    });
+      isNativeCapacitorShell()
+        ? " — تأكد من الإنترنت وأن التطبيق مبني بـ Codemagic (API: reyweet.vercel.app)"
+        : import.meta.env.DEV && url.startsWith("/")
+          ? " — تأكد أن الخادم يعمل: npm run backend:dev"
+          : import.meta.env.DEV
+            ? ` — العنوان: ${url}`
+            : "";
+    const msg = aborted ? `انتهت مهلة الاتصال بالخادم (${url})${hint}` : `${networkMsg}${hint}`;
+    return new Response(
+      JSON.stringify({
+        error: msg,
+        detail: {
+          url,
+          base: base || null,
+          aborted,
+          cause: e instanceof Error ? e.message : String(e),
+        },
+      }),
+      {
+        status: aborted ? 504 : 503,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   } finally {
     clearTimeout(timer);
   }
@@ -194,6 +244,14 @@ export async function apiLogin(
   | { ok: true; requiresOtp: true; emailHint?: string }
   | { ok: false; error: string }
 > {
+  await ensureApiRuntimeConfig();
+  const base = getApiBaseUrl();
+  logApi("login-start", {
+    base: base || "(empty)",
+    endpoint: `${base || ""}/auth/login`,
+    identifier: identifier.trim(),
+  });
+
   const res = await apiFetch("/auth/login", {
     method: "POST",
     body: JSON.stringify({ identifier: identifier.trim(), password }),
@@ -205,11 +263,26 @@ export async function apiLogin(
     user?: ApiAuthUser;
     requiresOtp?: boolean;
     emailHint?: string;
+    detail?: { url?: string; cause?: string };
   };
   if (res.status === 503 || res.status === 504) {
-    return { ok: false, error: data.error || "تعذر الاتصال بالخادم — شغّل: npm run backend:dev" };
+    const detail = data.detail?.cause ? ` (${data.detail.cause})` : "";
+    const urlHint = data.detail?.url ? ` [${data.detail.url}]` : "";
+    return {
+      ok: false,
+      error:
+        data.error ||
+        `تعذر الاتصال بالخادم${urlHint}${detail}${
+          isNativeCapacitorShell()
+            ? " — تحقق من الإنترنت أو أعد تثبيت IPA من Codemagic"
+            : " — شغّل: npm run backend:dev"
+        }`,
+    };
   }
-  if (!res.ok) return { ok: false, error: data.error || "فشل تسجيل الدخول" };
+  if (!res.ok) {
+    logApi("login-failed", { status: res.status, error: data.error });
+    return { ok: false, error: data.error || `فشل تسجيل الدخول (${res.status})` };
+  }
   if (data.requiresOtp) {
     return { ok: true, requiresOtp: true, emailHint: data.emailHint };
   }
@@ -742,6 +815,93 @@ export async function apiRecordProfileVisit(
   }
 }
 
+export async function apiUpsertPost(
+  token: string,
+  post: {
+    id: string;
+    type: "post" | "tweet" | "reel";
+    text: string;
+    image?: string;
+    video?: string;
+    createdAt: number;
+  },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const res = await apiFetch("/v1/posts", {
+    method: "POST",
+    token,
+    body: JSON.stringify(post),
+  });
+  const data = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) return { ok: false, error: data.error || "فشل حفظ المنشور على الخادم" };
+  return { ok: true };
+}
+
+export async function apiTogglePostLike(
+  token: string,
+  postId: string,
+): Promise<{ ok: true; liked: boolean; likes: string[] } | { ok: false; error: string }> {
+  const res = await apiFetch(`/v1/posts/${encodeURIComponent(postId)}/like`, {
+    method: "POST",
+    token,
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    liked?: boolean;
+    likes?: string[];
+    error?: string;
+  };
+  if (!res.ok) return { ok: false, error: data.error || "فشل الإعجاب" };
+  return { ok: true, liked: Boolean(data.liked), likes: data.likes ?? [] };
+}
+
+export async function apiTogglePostRepost(
+  token: string,
+  postId: string,
+): Promise<{ ok: true; reposted: boolean; reposts: string[] } | { ok: false; error: string }> {
+  const res = await apiFetch(`/v1/posts/${encodeURIComponent(postId)}/repost`, {
+    method: "POST",
+    token,
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    reposted?: boolean;
+    reposts?: string[];
+    error?: string;
+  };
+  if (!res.ok) return { ok: false, error: data.error || "فشل إعادة النشر" };
+  return { ok: true, reposted: Boolean(data.reposted), reposts: data.reposts ?? [] };
+}
+
+export async function apiAddPostComment(
+  token: string,
+  postId: string,
+  text: string,
+): Promise<
+  | { ok: true; comment: import("./types").Comment }
+  | { ok: false; error: string }
+> {
+  const res = await apiFetch(`/v1/posts/${encodeURIComponent(postId)}/comments`, {
+    method: "POST",
+    token,
+    body: JSON.stringify({ text }),
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    comment?: import("./types").Comment;
+    error?: string;
+  };
+  if (!res.ok || !data.comment) return { ok: false, error: data.error || "فشل التعليق" };
+  return { ok: true, comment: data.comment };
+}
+
+export async function apiRecordStoryView(token: string, storyId: string): Promise<void> {
+  try {
+    await apiFetch(`/v1/stories/${encodeURIComponent(storyId)}/view`, {
+      method: "POST",
+      token,
+    });
+  } catch {
+    /* non-critical */
+  }
+}
+
 export async function apiPatchProfile(
   token: string,
   patch: {
@@ -772,8 +932,13 @@ export async function apiPatchProfile(
 export async function apiUploadMedia(
   token: string,
   file: File,
-  opts?: { timeoutMs?: number; storyVideo?: boolean; avatarAnimated?: boolean },
-): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
+  opts?: {
+    timeoutMs?: number;
+    storyVideo?: boolean;
+    reelVideo?: boolean;
+    avatarAnimated?: boolean;
+  },
+): Promise<{ ok: true; url: string; posterUrl?: string } | { ok: false; error: string }> {
   await ensureApiRuntimeConfig();
   const base = getApiBaseUrl().replace(/\/$/, "");
   if (!base) {
@@ -785,6 +950,7 @@ export async function apiUploadMedia(
   let uploadPath = "/v1/media/upload";
   const q: string[] = [];
   if (opts?.storyVideo) q.push("story=1");
+  if (opts?.reelVideo) q.push("reel=1");
   if (opts?.avatarAnimated) q.push("avatar=1");
   if (q.length) uploadPath += `?${q.join("&")}`;
   const url = `${base}${uploadPath}`;
@@ -801,11 +967,17 @@ export async function apiUploadMedia(
       signal: ctl.signal,
       cache: "no-store",
     });
-    const data = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
+    const data = (await res.json().catch(() => ({}))) as {
+      url?: string;
+      posterUrl?: string;
+      error?: string;
+    };
     if (res.status === 413) {
       return {
         ok: false,
-        error: "الملف كبير جداً — جرّب فيديو أقصر (دقيقة) أو صورة أخف",
+        error: opts?.reelVideo
+          ? "الملف كبير جداً — الحد 500 ميجا للريلز"
+          : "الملف كبير جداً — جرّب فيديو أقصر (دقيقة) أو صورة أخف",
       };
     }
     if (!res.ok || !data.url) {
@@ -818,14 +990,16 @@ export async function apiUploadMedia(
         error: err || (file.type.startsWith("video/") ? "فشل رفع الفيديو" : "فشل رفع الصورة"),
       };
     }
-    return { ok: true, url: data.url };
+    return { ok: true, url: data.url, posterUrl: data.posterUrl };
   } catch (e) {
     const aborted = e instanceof Error && e.name === "AbortError";
     return {
       ok: false,
       error: aborted
         ? file.type.startsWith("video/")
-          ? "انتهت مهلة رفع الفيديو — جرّب شبكة أسرع أو مقطعاً أقصر"
+          ? opts?.reelVideo
+            ? "انتهت مهلة رفع الريل — جرّب شبكة أسرع أو مقطعاً أقصر"
+            : "انتهت مهلة رفع الفيديو — جرّب شبكة أسرع أو مقطعاً أقصر"
           : "انتهت مهلة رفع الملف — جرّب مرة أخرى"
         : "تعذر الاتصال بالخادم — تأكد أن npm run api:tunnel يعمل على جهازك",
     };

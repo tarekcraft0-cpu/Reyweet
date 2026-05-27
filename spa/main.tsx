@@ -4,9 +4,11 @@ import { WebAppRoot } from "@/spa/WebAppRoot";
 import { AppErrorBoundary } from "@/components/AppErrorBoundary";
 import { registerPwa } from "@/lib/registerPwa";
 import { warmGlobalPointerBackRouter } from "@/lib/globalPointerBackRouter";
+import { installNativeTextSelectionGuard } from "@/lib/nativeTextSelectionGuard";
 import "@/styles.css";
 
 warmGlobalPointerBackRouter();
+installNativeTextSelectionGuard();
 registerPwa();
 applyDeviceThemeToDom(readDeviceTheme());
 

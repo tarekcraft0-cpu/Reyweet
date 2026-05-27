@@ -949,6 +949,102 @@ app.post("/v1/social/follow-request/decline", authMiddleware, async (req, res) =
   }
 });
 
+const createPostSchema = z.object({
+  id: z.string().min(1).max(80),
+  type: z.enum(["post", "tweet", "reel"]),
+  text: z.string().max(10_000).optional(),
+  image: z.string().max(2_000_000).optional(),
+  video: z.string().max(2_000_000).optional(),
+  createdAt: z.number().optional(),
+});
+
+app.post("/v1/posts", authMiddleware, async (req, res) => {
+  const userId = (req as Request & { userId: string }).userId;
+  const parsed = createPostSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "بيانات المنشور غير صالحة" });
+  try {
+    const { upsertPostOnServer } = await import("./lib/postSocial.js");
+    const post = await upsertPostOnServer(userId, {
+      id: parsed.data.id,
+      userId,
+      type: parsed.data.type,
+      text: parsed.data.text ?? "",
+      image: parsed.data.image,
+      video: parsed.data.video,
+      likes: [],
+      reposts: [],
+      comments: [],
+      createdAt: parsed.data.createdAt ?? Date.now(),
+    });
+    setNoStoreApi(res);
+    return res.json({ ok: true, post });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "فشل حفظ المنشور";
+    return res.status(400).json({ error: msg });
+  }
+});
+
+app.post("/v1/posts/:postId/like", authMiddleware, async (req, res) => {
+  const actorId = (req as Request & { userId: string }).userId;
+  const postId = String(req.params.postId ?? "").trim();
+  if (!postId) return res.status(400).json({ error: "postId مطلوب" });
+  try {
+    const { togglePostLikeOnServer } = await import("./lib/postSocial.js");
+    const result = await togglePostLikeOnServer(actorId, postId);
+    setNoStoreApi(res);
+    return res.json({ ok: true, ...result });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "فشل الإعجاب";
+    return res.status(400).json({ error: msg });
+  }
+});
+
+app.post("/v1/posts/:postId/repost", authMiddleware, async (req, res) => {
+  const actorId = (req as Request & { userId: string }).userId;
+  const postId = String(req.params.postId ?? "").trim();
+  if (!postId) return res.status(400).json({ error: "postId مطلوب" });
+  try {
+    const { togglePostRepostOnServer } = await import("./lib/postSocial.js");
+    const result = await togglePostRepostOnServer(actorId, postId);
+    setNoStoreApi(res);
+    return res.json({ ok: true, ...result });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "فشل إعادة النشر";
+    return res.status(400).json({ error: msg });
+  }
+});
+
+app.post("/v1/posts/:postId/comments", authMiddleware, async (req, res) => {
+  const actorId = (req as Request & { userId: string }).userId;
+  const postId = String(req.params.postId ?? "").trim();
+  const parsed = z.object({ text: z.string().min(1).max(2000) }).safeParse(req.body);
+  if (!postId) return res.status(400).json({ error: "postId مطلوب" });
+  if (!parsed.success) return res.status(400).json({ error: "نص التعليق مطلوب" });
+  try {
+    const { addPostCommentOnServer } = await import("./lib/postSocial.js");
+    const comment = await addPostCommentOnServer(actorId, postId, parsed.data.text);
+    setNoStoreApi(res);
+    return res.json({ ok: true, comment });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "فشل التعليق";
+    return res.status(400).json({ error: msg });
+  }
+});
+
+app.post("/v1/stories/:storyId/view", authMiddleware, async (req, res) => {
+  const viewerId = (req as Request & { userId: string }).userId;
+  const storyId = String(req.params.storyId ?? "").trim();
+  if (!storyId) return res.status(400).json({ error: "storyId مطلوب" });
+  try {
+    const { recordStoryViewOnServer } = await import("./lib/postSocial.js");
+    await recordStoryViewOnServer(viewerId, storyId);
+    return res.json({ ok: true });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "فشل تسجيل المشاهدة";
+    return res.status(400).json({ error: msg });
+  }
+});
+
 const pwdChangeSchema = z.object({
   oldPassword: z.string().min(1),
   newPassword: z.string().min(6).max(128),
@@ -1425,25 +1521,19 @@ app.post("/v1/admin/cleanup-stale-reels", authMiddleware, async (req, res) => {
   return res.json({ ok: true, deleted });
 });
 
-/** تسجيل زيارة ملف شخصي — يُحدّث قائمة الزوار في لقطة المُزار */
+/** تسجيل زيارة ملف شخصي — يُحدّث قائمة الزوار + إشعار للمُزار */
 app.post("/v1/users/:targetId/visit", authMiddleware, async (req, res) => {
   setNoStoreApi(res);
   const visitorId = (req as Request & { userId: string }).userId;
-  const { targetId } = req.params;
+  const targetId = String(req.params.targetId ?? "").trim();
   if (!targetId || targetId === visitorId) return res.json({ ok: true });
-  const snap = (await getSnapshot(targetId)) as AppState | null;
-  if (!snap) return res.json({ ok: true });
-  const now = Date.now();
-  const users = (snap.users || []).map(u => {
-    if (u.id !== targetId) return u;
-    const views = [
-      { userId: visitorId, at: now },
-      ...(u.profileViews || []).filter(v => v.userId !== visitorId),
-    ].slice(0, 60);
-    return { ...u, profileViews: views };
-  });
-  await setSnapshot(targetId, { ...snap, users });
-  return res.json({ ok: true });
+  try {
+    const { recordProfileVisitOnServer } = await import("./lib/postSocial.js");
+    await recordProfileVisitOnServer(visitorId, targetId);
+    return res.json({ ok: true });
+  } catch {
+    return res.json({ ok: true });
+  }
 });
 
 app.put("/v1/me/password", authMiddleware, async (req, res) => {
@@ -1461,12 +1551,21 @@ app.put("/v1/me/password", authMiddleware, async (req, res) => {
   return res.json({ ok: true });
 });
 
-const upload = multer({
+const uploadDefault = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 80 * 1024 * 1024 },
 });
+const uploadReel = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 500 * 1024 * 1024 },
+});
 
-app.post("/v1/media/upload", authMiddleware, upload.single("file"), async (req, res) => {
+function mediaUploadMiddleware(req: Request, res: Response, next: NextFunction) {
+  const isReel = String(req.query.reel ?? "") === "1";
+  (isReel ? uploadReel : uploadDefault).single("file")(req, res, next);
+}
+
+app.post("/v1/media/upload", authMiddleware, mediaUploadMiddleware, async (req, res) => {
   const userId = (req as Request & { userId: string }).userId;
   const file = req.file;
   if (!file) return res.status(400).json({ error: "no file" });
@@ -1497,10 +1596,16 @@ app.post("/v1/media/upload", authMiddleware, upload.single("file"), async (req, 
       const tmpIn = path.join(tmpDir, `${crypto.randomUUID()}.${ext}`);
       await fs.writeFile(tmpIn, file.buffer);
       const storyFast = String(req.query.story ?? "") === "1";
+      const forReel = String(req.query.reel ?? "") === "1";
       try {
         if (storyFast) {
           const { url } = await saveVideoFile(tmpIn);
           return res.json({ url, kind: "video" });
+        }
+        if (forReel) {
+          const { compressAndSaveReelVideo } = await import("./lib/reelTranscode.js");
+          const { url, posterUrl } = await compressAndSaveReelVideo(tmpIn);
+          return res.json({ url, posterUrl, kind: "video" });
         }
         const { url } = await compressAndSaveVideo(tmpIn);
         return res.json({ url, kind: "video" });

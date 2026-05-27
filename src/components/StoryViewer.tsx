@@ -4,10 +4,15 @@ import {
   userById,
   visibleMediaNotes,
   isMutual,
-  visibleStoryUserIds,
-  nextStoryAuthorAfter,
   storiesForUser,
 } from "@/lib/store";
+import {
+  firstUnseenStoryIndex,
+  nextAuthorInTray,
+  prevAuthorInTray,
+} from "@/lib/storyTray";
+import { preloadStoryUrls } from "@/lib/storyPreload";
+import { StoryViewsSheet } from "./stories/StoryViewsSheet";
 import { notifyGuestActionBlocked } from "@/lib/guestBlocked";
 import type { MediaNote } from "@/lib/types";
 import { Avatar } from "./Avatar";
@@ -16,19 +21,27 @@ import { NoteReplySheet } from "./NoteReplySheet";
 import { StoryStickerLayer } from "./story/StoryStickerLayer";
 import { VerifiedMarkForUser } from "./VerifiedBadge";
 import { normalizeStoryMedia } from "@/lib/storyMedia";
-import { setStoryFullscreen } from "@/lib/storyChrome";
-import { X, Send, Share2, Bookmark, ChevronLeft, Heart, ChevronUp, Trash2 } from "lucide-react";
+import { lockStoryFullscreen } from "@/lib/storyChrome";
+import { X, Send, Share2, Bookmark, ChevronLeft, Heart, ChevronUp } from "lucide-react";
 
 const STORY_SEGMENT_CAP_MS = 5000;
 
 export function StoryViewer({
   userId,
+  trayRing,
+  initialStoryId,
+  openOrigin,
   onClose,
   onOpenProfile,
   onOpenChat,
   onRequestAuthor,
 }: {
   userId: string;
+  /** ترتيب شريط الستوري (للتنقل الأفقي بين الحسابات) */
+  trayRing: string[];
+  initialStoryId?: string;
+  /** موضع الصورة الدائرية لأنيميشن الفتح */
+  openOrigin?: DOMRect;
   onClose: () => void;
   onOpenProfile?: (id: string) => void;
   onOpenChat?: (chatId: string) => void;
@@ -44,9 +57,23 @@ export function StoryViewer({
   const author = userById(state, userId);
   const stories = storiesForUser(state, userId, me.id);
 
-  const ring = visibleStoryUserIds(state, me.id);
+  const ring = trayRing.length > 0 ? trayRing : [userId];
 
   const [i, setI] = useState(0);
+  const pendingStoryIdRef = useRef(initialStoryId);
+  const [entering, setEntering] = useState(true);
+  const [userSlideX, setUserSlideX] = useState(0);
+  const [userSlideSpring, setUserSlideSpring] = useState(false);
+  const horizDragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startSlideX: number;
+    lastX: number;
+    lastT: number;
+    velocity: number;
+    axis: "none" | "h" | "v";
+  } | null>(null);
+  const viewportWRef = useRef(typeof window !== "undefined" ? window.innerWidth : 390);
   const cappedStoryIndex = stories.length > 0 ? Math.min(Math.max(0, i), stories.length - 1) : 0;
   const curStoryForHooks = stories.length > 0 ? stories[cappedStoryIndex] : undefined;
 
@@ -83,14 +110,29 @@ export function StoryViewer({
     velocity: number;
   } | null>(null);
   const viewportHRef = useRef(typeof window !== "undefined" ? window.innerHeight : 800);
+  const dismissDoneRef = useRef(false);
+  const closeTimerRef = useRef<number | null>(null);
+  const gestureRafRef = useRef<number | null>(null);
+  const pendingGestureRef = useRef<{ x?: number; y?: number }>({});
 
   useEffect(() => {
-    setStoryFullscreen(true);
+    const releaseFullscreen = lockStoryFullscreen();
     document.documentElement.classList.add("retweet-story-open");
     return () => {
-      setStoryFullscreen(false);
+      releaseFullscreen();
       document.documentElement.classList.remove("retweet-story-open");
+      if (closeTimerRef.current != null) {
+        window.clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
+      dismissDoneRef.current = false;
     };
+  }, []);
+
+  const closeViewer = useCallback(() => {
+    if (dismissDoneRef.current) return;
+    dismissDoneRef.current = true;
+    onCloseRef.current();
   }, []);
 
   const showTopChrome = useCallback(() => {
@@ -139,51 +181,103 @@ export function StoryViewer({
     }
   }, []);
 
+  const goToNextAuthor = useCallback(() => {
+    const nextU = nextAuthorInTray(ring, userId);
+    if (nextU) {
+      pendingStoryIdRef.current = undefined;
+      onRequestAuthor?.(nextU);
+      return true;
+    }
+    if (onRequestAuthor) onRequestAuthor(null);
+    else closeViewer();
+    return false;
+  }, [onRequestAuthor, ring, userId, closeViewer]);
+
+  const goToPrevAuthor = useCallback(() => {
+    const prevU = prevAuthorInTray(ring, userId);
+    if (prevU) {
+      pendingStoryIdRef.current = undefined;
+      onRequestAuthor?.(prevU);
+      return true;
+    }
+    return false;
+  }, [onRequestAuthor, ring, userId]);
+
   const goForward = useCallback(() => {
     clearAdvanceTimer();
     setI(prev => {
-      const { storiesLen, userId: uid, ring: r } = snapRef.current;
+      const { storiesLen, userId: uid } = snapRef.current;
       if (prev < storiesLen - 1) return prev + 1;
-      const nextU = nextStoryAuthorAfter(r, uid);
-      if (nextU) {
-        onRequestAuthor?.(nextU);
-        return prev;
-      }
-      if (onRequestAuthor) onRequestAuthor(null);
-      else onCloseRef.current();
+      goToNextAuthor();
       return prev;
     });
-  }, [onRequestAuthor, clearAdvanceTimer]);
+  }, [goToNextAuthor, clearAdvanceTimer]);
 
   const goBack = useCallback(() => {
-    setI(prev => (prev > 0 ? prev - 1 : prev));
-  }, []);
+    setI(prev => {
+      if (prev > 0) return prev - 1;
+      goToPrevAuthor();
+      return prev;
+    });
+  }, [goToPrevAuthor]);
 
   const goForwardRef = useRef(goForward);
   goForwardRef.current = goForward;
 
   useEffect(() => {
-    setI(0);
     setDismissY(0);
     setDismissSpring(false);
+    setUserSlideX(0);
+    setUserSlideSpring(false);
+    setEntering(true);
+    const t = window.setTimeout(() => setEntering(false), 400);
+    const list = storiesForUser(state, userId, me.id);
+    const fromId = pendingStoryIdRef.current;
+    let start = 0;
+    if (fromId) {
+      const fi = list.findIndex(s => s.id === fromId);
+      start = fi >= 0 ? fi : 0;
+      pendingStoryIdRef.current = undefined;
+    } else {
+      start = firstUnseenStoryIndex(list, me.id);
+    }
+    setI(start);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- إعادة ضبط الشريحة عند تغيير الحساب فقط
   }, [userId]);
 
   useEffect(() => {
     const onResize = () => {
       viewportHRef.current = window.innerHeight;
+      viewportWRef.current = window.innerWidth;
     };
     window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      if (gestureRafRef.current != null) {
+        cancelAnimationFrame(gestureRafRef.current);
+        gestureRafRef.current = null;
+      }
+    };
   }, []);
 
   const finishDismiss = useCallback(() => {
+    if (dismissDoneRef.current) return;
     const h = viewportHRef.current;
     setDismissSpring(true);
     setDismissY(h);
-    window.setTimeout(() => onCloseRef.current(), 300);
-  }, []);
+    if (closeTimerRef.current != null) window.clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = window.setTimeout(() => {
+      closeTimerRef.current = null;
+      closeViewer();
+    }, 280);
+  }, [closeViewer]);
 
   const snapDismissBack = useCallback(() => {
+    if (closeTimerRef.current != null) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
     setDismissSpring(true);
     setDismissY(0);
     window.setTimeout(() => setDismissSpring(false), 320);
@@ -196,10 +290,10 @@ export function StoryViewer({
 
   useEffect(() => {
     if (!author) {
-      const t = window.setTimeout(() => onCloseRef.current(), 0);
+      const t = window.setTimeout(() => closeViewer(), 0);
       return () => clearTimeout(t);
     }
-  }, [author]);
+  }, [author, closeViewer]);
 
   useEffect(() => {
     if (!curStoryForHooks?.id) return;
@@ -256,6 +350,20 @@ export function StoryViewer({
     return () => clearAdvanceTimer();
   }, [i, stories.length, author, userId, segmentMs, ownViewsOpen, armAdvanceTimer, clearAdvanceTimer]);
 
+  useEffect(() => {
+    if (!author || stories.length === 0) return;
+    const idx = Math.min(Math.max(0, i), stories.length - 1);
+    const urls: string[] = [];
+    for (let off = -1; off <= 2; off++) {
+      const s = stories[idx + off];
+      if (!s) continue;
+      const m = normalizeStoryMedia(s);
+      if (m.imageUrl) urls.push(m.imageUrl);
+      if (m.videoUrl) urls.push(m.videoUrl);
+    }
+    preloadStoryUrls(urls);
+  }, [userId, i, stories, author]);
+
   if (!author) {
     return null;
   }
@@ -263,12 +371,12 @@ export function StoryViewer({
   if (stories.length === 0) {
     return (
       <div className="fixed inset-0 bg-black z-[200] flex flex-col items-center justify-center p-6 text-white">
-        <button type="button" className="absolute top-3 end-3 p-2 rounded-full bg-white/10" onClick={() => onCloseRef.current()} aria-label="إغلاق">
+        <button type="button" className="absolute top-3 end-3 p-2 rounded-full bg-white/10" onClick={closeViewer} aria-label="إغلاق">
           <X size={24} />
         </button>
         <p className="text-center text-base mb-2 mt-8">لا توجد ستوريات لهذا الحساب حالياً.</p>
         {userId === me.id && <p className="text-center text-sm text-white/70 mb-6">أنشئ ستوري من زر + ثم اختر «ستوري».</p>}
-        <button type="button" className="bg-[#0095F6] px-8 py-2.5 rounded-full font-semibold" onClick={() => onCloseRef.current()}>
+        <button type="button" className="bg-[#0095F6] px-8 py-2.5 rounded-full font-semibold" onClick={closeViewer}>
           رجوع
         </button>
       </div>
@@ -280,11 +388,6 @@ export function StoryViewer({
   const storyMedia = normalizeStoryMedia(cur);
   const storyLiked = (cur.likes || []).includes(me.id);
   const storyNotes = visibleMediaNotes(state, "story", cur.id, me.id).slice(0, 8);
-
-  const storyViewerIds = [...new Set((state.stories.find(s => s.id === cur.id)?.viewedByUserIds) || [])];
-  const storyViewersSorted = storyViewerIds
-    .filter(id => userById(state, id))
-    .sort((a, b) => userById(state, a)!.username.localeCompare(userById(state, b)!.username, "ar"));
 
   const submitReply = (e: React.FormEvent) => {
     e.preventDefault();
@@ -324,7 +427,7 @@ export function StoryViewer({
     setOwnViewsOpen(false);
     if (remaining <= 0) {
       if (onRequestAuthor) onRequestAuthor(null);
-      else onCloseRef.current();
+      else closeViewer();
       return;
     }
     if (atLast) setI((prev) => Math.max(0, prev - 1));
@@ -366,9 +469,24 @@ export function StoryViewer({
   const dismissScale = Math.max(0.88, 1 - dismissProgress * 0.1);
   const backdropOpacity = Math.max(0, 1 - dismissProgress * 0.9);
 
-  const onDismissPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+  const snapUserSlideBack = useCallback(() => {
+    setUserSlideSpring(true);
+    setUserSlideX(0);
+    window.setTimeout(() => setUserSlideSpring(false), 280);
+  }, []);
+
+  const onGesturePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0 || ownViewsOpen) return;
     if ((e.target as HTMLElement).closest("[data-story-interactive]")) return;
+    horizDragRef.current = {
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startSlideX: userSlideX,
+      lastX: e.clientX,
+      lastT: performance.now(),
+      velocity: 0,
+      axis: "none",
+    };
     dismissDragRef.current = {
       pointerId: e.pointerId,
       startY: e.clientY,
@@ -378,6 +496,7 @@ export function StoryViewer({
       velocity: 0,
     };
     setDismissSpring(false);
+    setUserSlideSpring(false);
     try {
       e.currentTarget.setPointerCapture(e.pointerId);
     } catch {
@@ -385,20 +504,66 @@ export function StoryViewer({
     }
   };
 
-  const onDismissPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+  const onGesturePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const h = horizDragRef.current;
     const p = dismissDragRef.current;
-    if (!p || e.pointerId !== p.pointerId || ownViewsOpen) return;
-    const dy = Math.max(0, e.clientY - p.startY);
+    if (!h || !p || e.pointerId !== h.pointerId || ownViewsOpen) return;
+
+    const dx = e.clientX - h.startX;
+    const dy = e.clientY - p.startY;
+
+    if (h.axis === "none") {
+      if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+        h.axis = Math.abs(dx) > Math.abs(dy) ? "h" : "v";
+      }
+    }
+
     const now = performance.now();
-    const dt = Math.max(1, now - p.lastT);
-    p.velocity = (e.clientY - p.lastY) / dt;
-    p.lastY = e.clientY;
-    p.lastT = now;
-    setDismissY(p.startDismissY + dy);
+    const dt = Math.max(1, now - h.lastT);
+    h.velocity = (e.clientX - h.lastX) / dt;
+    h.lastX = e.clientX;
+    h.lastT = now;
+
+    if (h.axis === "h") {
+      const w = viewportWRef.current;
+      const atStart = !prevAuthorInTray(ring, userId) && dx > 0;
+      const atEnd = !nextAuthorInTray(ring, userId) && dx < 0;
+      let x = h.startSlideX + dx;
+      if (atStart && x > 0) x *= 0.35;
+      if (atEnd && x < 0) x *= 0.35;
+      pendingGestureRef.current.x = Math.max(-w, Math.min(w, x));
+      if (gestureRafRef.current == null) {
+        gestureRafRef.current = requestAnimationFrame(() => {
+          gestureRafRef.current = null;
+          if (typeof pendingGestureRef.current.x === "number") {
+            setUserSlideX(pendingGestureRef.current.x);
+          }
+        });
+      }
+      return;
+    }
+
+    if (h.axis === "v") {
+      const ddy = Math.max(0, dy);
+      p.velocity = (e.clientY - p.lastY) / dt;
+      p.lastY = e.clientY;
+      p.lastT = now;
+      pendingGestureRef.current.y = p.startDismissY + ddy;
+      if (gestureRafRef.current == null) {
+        gestureRafRef.current = requestAnimationFrame(() => {
+          gestureRafRef.current = null;
+          if (typeof pendingGestureRef.current.y === "number") {
+            setDismissY(pendingGestureRef.current.y);
+          }
+        });
+      }
+    }
   };
 
-  const endDismissDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+  const endGestureDrag = (e: React.PointerEvent<HTMLDivElement>) => {
+    const h = horizDragRef.current;
     const p = dismissDragRef.current;
+    horizDragRef.current = null;
     dismissDragRef.current = null;
     try {
       if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
@@ -407,12 +572,55 @@ export function StoryViewer({
     } catch {
       /* ignore */
     }
-    if (!p || e.pointerId !== p.pointerId || ownViewsOpen) return;
-    const h = viewportHRef.current;
-    const dy = Math.max(0, e.clientY - p.startY) + p.startDismissY;
-    if (dy > h * 0.42 || p.velocity > 0.42) finishDismiss();
-    else snapDismissBack();
+    if (!h || !p || e.pointerId !== h.pointerId || ownViewsOpen) return;
+
+    if (h.axis === "h") {
+      const w = viewportWRef.current;
+      const x = userSlideX;
+      const rtl =
+        typeof document !== "undefined" &&
+        document.documentElement.getAttribute("dir") === "rtl";
+      const goNext = rtl ? x > w * 0.22 || h.velocity > 0.35 : x < -w * 0.22 || h.velocity < -0.35;
+      const goPrev = rtl ? x < -w * 0.22 || h.velocity < -0.35 : x > w * 0.22 || h.velocity > 0.35;
+      if (goNext) {
+        setUserSlideSpring(true);
+        setUserSlideX(rtl ? w : -w);
+        window.setTimeout(() => {
+          goToNextAuthor();
+          setUserSlideX(0);
+          setUserSlideSpring(false);
+        }, 220);
+      } else if (goPrev) {
+        setUserSlideSpring(true);
+        setUserSlideX(rtl ? -w : w);
+        window.setTimeout(() => {
+          goToPrevAuthor();
+          setUserSlideX(0);
+          setUserSlideSpring(false);
+        }, 220);
+      } else {
+        snapUserSlideBack();
+      }
+      return;
+    }
+
+    if (h.axis === "v") {
+      const vh = viewportHRef.current;
+      const dy = Math.max(0, e.clientY - p.startY) + p.startDismissY;
+      if (dy > vh * 0.42 || p.velocity > 0.42) finishDismiss();
+      else snapDismissBack();
+    }
   };
+
+  const heroScale = openOrigin
+    ? Math.max(0.35, Math.min(1, (openOrigin.width * 1.1) / viewportWRef.current))
+    : 1;
+  const heroTx = openOrigin
+    ? openOrigin.left + openOrigin.width / 2 - viewportWRef.current / 2
+    : 0;
+  const heroTy = openOrigin
+    ? openOrigin.top + openOrigin.height / 2 - viewportHRef.current / 2
+    : 0;
 
   return (
     <div className="fixed inset-0 z-[200] touch-none">
@@ -425,17 +633,26 @@ export function StoryViewer({
         aria-hidden
       />
       <div
-        className="absolute inset-0 flex flex-col bg-black"
+        className={
+          "absolute inset-0 flex flex-col bg-black " + (entering ? "story-viewer-enter" : "")
+        }
         style={{
-          transform: `translate3d(0, ${dismissY}px, 0) scale(${dismissScale})`,
-          transformOrigin: "center top",
-          transition: dismissSpring ? "transform 0.32s cubic-bezier(0.25, 1, 0.35, 1)" : "none",
+          transform: entering
+            ? `translate3d(${heroTx}px, ${heroTy}px, 0) scale(${heroScale})`
+            : `translate3d(${userSlideX}px, ${dismissY}px, 0) scale(${dismissScale})`,
+          transformOrigin: "center center",
+          transition:
+            dismissSpring || userSlideSpring
+              ? "transform 0.32s cubic-bezier(0.22, 1, 0.36, 1)"
+              : entering
+                ? undefined
+                : "none",
           willChange: "transform",
         }}
-        onPointerDown={onDismissPointerDown}
-        onPointerMove={onDismissPointerMove}
-        onPointerUp={endDismissDrag}
-        onPointerCancel={endDismissDrag}
+        onPointerDown={onGesturePointerDown}
+        onPointerMove={onGesturePointerMove}
+        onPointerUp={endGestureDrag}
+        onPointerCancel={endGestureDrag}
       >
       <div
         className={
@@ -445,12 +662,13 @@ export function StoryViewer({
         }
       >
       <div className="flex gap-1 p-2 shrink-0">
-        {stories.map((_, idx) => (
-          <div key={idx} className="flex-1 h-0.5 bg-white/30 rounded">
+        {stories.map((seg, idx) => (
+          <div key={seg.id} className="flex-1 h-[2px] bg-white/35 rounded-full overflow-hidden">
             <div
+              key={idx === displayIdx ? `${seg.id}-active` : seg.id}
               className={
-                "h-full bg-white rounded transition-all " +
-                (idx < displayIdx ? "w-full" : idx === displayIdx ? "w-full animate-story-seg" : "w-0")
+                "h-full bg-white rounded-full " +
+                (idx < displayIdx ? "w-full" : idx === displayIdx ? "w-0 animate-story-seg" : "w-0")
               }
               style={
                 idx === displayIdx
@@ -458,14 +676,16 @@ export function StoryViewer({
                       animationDuration: `${segmentMs / 1000}s`,
                       animationPlayState: middleHold || ownViewsOpen ? "paused" : "running",
                     }
-                  : undefined
+                  : idx < displayIdx
+                    ? { width: "100%" }
+                    : undefined
               }
             />
           </div>
         ))}
       </div>
       <div className="flex shrink-0 items-center gap-2 px-3 text-white" data-story-interactive>
-        <button type="button" onClick={() => onCloseRef.current()} className="p-2" aria-label="رجوع">
+        <button type="button" onClick={closeViewer} className="p-2" aria-label="رجوع">
           <ChevronLeft size={24} />
         </button>
 
@@ -680,7 +900,7 @@ export function StoryViewer({
             onPointerDown={e => e.stopPropagation()}
             onClick={() => setOwnViewsOpen(true)}
           >
-            المشاهدات ({storyViewersSorted.length})
+            المشاهدات ({(cur.viewedByUserIds || []).length})
           </button>
         </div>
       )}
@@ -714,71 +934,14 @@ export function StoryViewer({
         </div>
       )}
 
-      {userId === me.id && ownViewsOpen && (
-        <div className="fixed inset-0 z-[80] flex flex-col justify-end" role="dialog" aria-modal="true" aria-labelledby="story-views-title">
-          <button
-            type="button"
-            className="absolute inset-0 bg-black/55 backdrop-blur-[2px] transition-opacity duration-200"
-            aria-label="إغلاق قائمة المشاهدات"
-            onClick={() => setOwnViewsOpen(false)}
-          />
-          <div
-            className="relative mx-auto w-full max-w-md rounded-t-[1.35rem] border border-white/10 border-b-0 bg-[#1c1c1e] shadow-[0_-8px_40px_rgba(0,0,0,0.45)] max-h-[min(78dvh,640px)] flex flex-col transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]"
-            onPointerDown={e => e.stopPropagation()}
-          >
-            <div className="flex justify-center pt-2.5 pb-1" aria-hidden>
-              <div className="h-1 w-11 rounded-full bg-white/22" />
-            </div>
-            <h2 id="story-views-title" className="px-4 pb-2 text-center text-[15px] font-semibold text-white">
-              المشاهدات · {storyViewersSorted.length}
-            </h2>
-            <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-2 pb-2 [-webkit-overflow-scrolling:touch]">
-              {storyViewersSorted.length === 0 ? (
-                <p className="py-12 text-center text-sm text-white/45">لا مشاهدات بعد</p>
-              ) : (
-                <ul className="space-y-0.5 pb-[env(safe-area-inset-bottom,0px)]">
-                  {storyViewersSorted.map(vid => {
-                    const vu = userById(state, vid)!;
-                    return (
-                      <li key={vid}>
-                        <button
-                          type="button"
-                          className="flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-start transition-[transform,background-color] duration-150 ease-[cubic-bezier(0.25,0.1,0.25,1)] hover:bg-white/10 active:scale-[0.99]"
-                          onClick={() => {
-                            setOwnViewsOpen(false);
-                            onOpenProfile?.(vu.id);
-                          }}
-                        >
-                          <Avatar name={vu.username} src={vu.avatar} size={40} />
-                          <span className="min-w-0 flex-1 truncate font-medium text-white">@{vu.username}</span>
-                          <VerifiedMarkForUser user={vu} size={16} />
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-            <div className="shrink-0 space-y-2 border-t border-white/10 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]">
-              <button
-                type="button"
-                className="flex w-full items-center justify-center gap-2 rounded-2xl bg-red-500/20 py-3 text-sm font-semibold text-red-300 transition active:opacity-90"
-                onClick={handleDeleteCurrentStory}
-              >
-                <Trash2 size={18} aria-hidden />
-                حذف الستوري
-              </button>
-              <button
-                type="button"
-                className="w-full rounded-2xl bg-white/12 py-3 text-sm font-semibold text-white transition-[transform,opacity] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] active:scale-[0.98] active:opacity-90"
-                onClick={() => setOwnViewsOpen(false)}
-              >
-                تم
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <StoryViewsSheet
+        open={userId === me.id && ownViewsOpen}
+        story={cur}
+        state={state}
+        onClose={() => setOwnViewsOpen(false)}
+        onOpenProfile={onOpenProfile}
+        onDelete={handleDeleteCurrentStory}
+      />
       </div>
     </div>
   );

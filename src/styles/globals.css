@@ -103,9 +103,85 @@
   max-height: 100dvh;
 }
 
+/** ═══ تحسينات أداء المحادثة ═══ */
+
+/* منطقة التمرير: GPU layer مستقلة — 60fps بدون إعادة رسم الصفحة */
+.chat-scroll-pane {
+  will-change: scroll-position;
+  /* isolate: creates stacking context — يمنع الـ repaint من التسرّب للخارج */
+  isolation: isolate;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* صفوف الرسائل — layer منفصلة لكل رسالة */
+.chat-msg-row {
+  contain: layout style;
+}
+
+/* شريط الكتابة — layer ثابتة منفصلة */
+.chat-composer-bar {
+  will-change: transform;
+  isolation: isolate;
+}
+
+/* الأزرار في شريط الكتابة */
+.chat-composer-bar button {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* وضع ملء الشاشة عند فتح الستوري */
 html.retweet-story-open {
   overflow: hidden;
+}
+
+/**
+ * التطبيق بالكامل — بدون تحديد أزرق أو قائمة iOS على أي شاشة.
+ * الاستثناء: حقول الإدخال و .chat-allow-select (مربع الكتابة).
+ */
+html.retweet-native-shell,
+html.retweet-native-shell *,
+#root,
+#root *,
+.retweet-no-select-pane,
+.retweet-no-select-pane * {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+  -webkit-user-modify: read-only !important;
+}
+
+html.retweet-native-shell input,
+html.retweet-native-shell textarea,
+html.retweet-native-shell select,
+html.retweet-native-shell [contenteditable="true"],
+html.retweet-native-shell .chat-allow-select,
+html.retweet-native-shell .chat-allow-select * {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+  -webkit-touch-callout: auto !important;
+}
+
+html.retweet-native-shell ::selection {
+  background: transparent !important;
+  color: inherit !important;
+}
+
+html.retweet-native-shell img,
+html.retweet-native-shell video,
+html.retweet-native-shell canvas,
+html.retweet-native-shell svg {
+  -webkit-user-drag: none !important;
+  user-drag: none;
+  -webkit-touch-callout: none !important;
+}
+
+html.retweet-native-shell [data-native-long-press] {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
+  touch-action: none !important;
 }
 
 /* منع ارتداد iOS/Safari في الريلز والمحادثة */
@@ -133,6 +209,11 @@ html.retweet-overscroll-lock body {
 .reels-snap-viewport > [data-reel-slide] {
   scroll-snap-align: start;
   scroll-snap-stop: always;
+}
+
+/* مناطق أمان الريلز: محتوى مهم أعلى ~70%، هامش لأزرار التفاعل يميناً */
+.reel-safe-stage {
+  --reel-safe-inline-end: 4.5rem;
 }
 
 .chat-inbox-pane {

@@ -16,6 +16,7 @@ import {
 } from "@/lib/apiBackend";
 import { resolveDisplayFollowerCount } from "@/lib/publicProfileCache";
 import { notifyGuestActionBlocked } from "@/lib/guestBlocked";
+import { storyViewerTrayRing } from "@/lib/storyTray";
 import { useT } from "@/lib/i18n";
 import type { HighlightEntry, StoryItem, Post, ProfileGridTab, ProfileReturnContext, User, AppState } from "@/lib/types";
 import { ProfilePostsFeedOverlay } from "../profile/ProfilePostsFeedOverlay";
@@ -1012,6 +1013,7 @@ export function ProfileScreen({
       {storyViewerUserId && (
         <StoryViewer
           userId={storyViewerUserId}
+          trayRing={storyViewerTrayRing(state, currentUser!.id)}
           onClose={() => setStoryViewerUserId(null)}
           onRequestAuthor={id => setStoryViewerUserId(id)}
           onOpenProfile={pid => {

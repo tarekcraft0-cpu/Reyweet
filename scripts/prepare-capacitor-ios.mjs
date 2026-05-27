@@ -47,10 +47,25 @@ function removeIosPlatform() {
 function injectNativeShellIndex(indexPath) {
   if (!fs.existsSync(indexPath)) return;
   let html = fs.readFileSync(indexPath, "utf8");
-  const tag = `<script>window.__RETWEET_NATIVE_SHELL__=true;window.__RETWEET_API_URL__=${JSON.stringify(apiUrl)};</script>`;
+  const bootstrap = `<script src="./native-no-select-bootstrap.js"></script>`;
+  if (!html.includes("native-no-select-bootstrap.js")) {
+    html = html.replace("</head>", `${bootstrap}\n</head>`);
+  }
+  const tag = `<script>window.__RETWEET_NATIVE_SHELL__=true;window.__RETWEET_NO_SELECT_BOOT__=true;window.__RETWEET_API_DEBUG__=true;window.__RETWEET_API_URL__=${JSON.stringify(apiUrl)};document.documentElement.classList.add("retweet-native-shell");window.dispatchEvent(new Event("retweet-api-config-ready"));</script>`;
   html = html.replace(/<script>window\.__RETWEET[^<]*<\/script>\s*/gi, "");
+  html = html.replace(/<html([^>]*)>/i, (m, attrs) => {
+    if (/retweet-native-shell/i.test(attrs)) return m;
+    const cls = /class="([^"]*)"/i.exec(attrs);
+    if (cls) return `<html${attrs.replace(cls[0], `class="${cls[1]} retweet-native-shell"`)}>`;
+    return `<html${attrs} class="retweet-native-shell">`;
+  });
   if (!html.includes("__RETWEET_NATIVE_SHELL__")) {
     html = html.replace("</head>", `${tag}\n</head>`);
+  } else {
+    html = html.replace(
+      /<script>window\.__RETWEET_NATIVE_SHELL__[^<]*<\/script>/i,
+      tag,
+    );
   }
   fs.writeFileSync(indexPath, html, "utf8");
   fixCapacitorBundledHtml(indexPath);
@@ -168,4 +183,8 @@ fs.writeFileSync(
   "utf8",
 );
 console.log("  ✓ ios-app.config.json");
+
+console.log("\n→ التحقق من حزمة iOS…");
+run("node scripts/verify-ios-api-bundle.mjs");
+
 console.log("\n✓ جاهز لـ Codemagic / Xcode — مجلد ios/\n");

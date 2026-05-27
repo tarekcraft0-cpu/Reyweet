@@ -1,6 +1,29 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl" class="h-full">
+<html lang="ar" dir="rtl" class="h-full retweet-native-shell">
   <head>
+    <style id="retweet-no-select-critical">
+      html.retweet-native-shell,
+      html.retweet-native-shell *,
+      #root,
+      #root * {
+        -webkit-user-select: none !important;
+        user-select: none !important;
+        -webkit-touch-callout: none !important;
+      }
+      html.retweet-native-shell input,
+      html.retweet-native-shell textarea,
+      html.retweet-native-shell select,
+      html.retweet-native-shell [contenteditable="true"],
+      html.retweet-native-shell .chat-allow-select,
+      html.retweet-native-shell .chat-allow-select * {
+        -webkit-user-select: text !important;
+        user-select: text !important;
+      }
+      html.retweet-native-shell ::selection,
+      #root ::selection {
+        background: transparent !important;
+      }
+    </style>
     <meta charset="UTF-8" />
     <meta
       name="viewport"
@@ -19,9 +42,11 @@
     <link rel="apple-touch-icon" sizes="180x180" href="/app/icons/apple-touch-icon.png" />
     <link rel="apple-touch-icon" sizes="167x167" href="/app/icons/apple-touch-icon.png" />
     <link rel="apple-touch-icon" sizes="152x152" href="/app/icons/apple-touch-icon.png" />
+    <!-- قبل React: منع التحديد الأزرق وقائمة iOS على كل الشاشات -->
+    <script src="/app/native-no-select-bootstrap.js"></script>
   </head>
   <body class="h-full min-h-dvh overflow-x-hidden bg-background antialiased">
-    <div id="root" class="h-full min-h-dvh"></div>
+    <div id="root" class="retweet-no-select-pane h-full min-h-dvh"></div>
     <script type="module" src="/main.tsx"></script>
   </body>
 </html>

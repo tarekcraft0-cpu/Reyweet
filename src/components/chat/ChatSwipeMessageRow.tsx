@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { memo, useCallback, useRef, useState } from "react";
 import { Reply } from "lucide-react";
 import { Avatar } from "../Avatar";
 import type { Message } from "@/lib/types";
@@ -11,7 +11,7 @@ const SWIPE_MAX = 76;
  * - رسائلي: يمين الشاشة
  * - الطرف الآخر: يسار الشاشة + أفاتار يسار الفقاعة
  */
-export function ChatSwipeMessageRow({
+function ChatSwipeMessageRowInner({
   message,
   mine,
   avatarName,
@@ -100,7 +100,7 @@ export function ChatSwipeMessageRow({
     [message, onPointerUp, onSwipeReply],
   );
 
-  const replyOpacity = Math.min(1, dragX / SWIPE_THRESHOLD);
+  const replyOpacity = dragX > 0 ? Math.min(1, dragX / SWIPE_THRESHOLD) : 0;
 
   return (
     <div
@@ -172,3 +172,38 @@ export function ChatSwipeMessageRow({
     </div>
   );
 }
+
+/**
+ * React.memo — يمنع إعادة رسم الرسالة ما لم تتغيّر خصائصها.
+ * المقارنة: id الرسالة + status + reactions + mine (كافية للدردشة).
+ */
+/**
+ * React.memo مع مقارنة مخصّصة:
+ * - message: مقارنة id + status + reactions (بدل reference equality لأن الـ store يُنشئ objects جديدة)
+ * - باقي الـ props: === عادية
+ * - الـ callbacks (onSwipeReply/onAvatarClick): يُعاد إنشاؤها في map لذا نتجاهلها في المقارنة
+ *   وبدلاً من ذلك نعتمد على أن message.id يتغيّر عند تغيير الرسالة الفعلي.
+ */
+function messageChanged(a: Message, b: Message): boolean {
+  return (
+    a.id !== b.id ||
+    a.status !== b.status ||
+    a.content !== b.content ||
+    a.type !== b.type ||
+    JSON.stringify(a.reactions) !== JSON.stringify(b.reactions)
+  );
+}
+
+export const ChatSwipeMessageRow = memo(ChatSwipeMessageRowInner, (prev, next) => {
+  if (messageChanged(prev.message, next.message)) return false;
+  if (prev.mine !== next.mine) return false;
+  if (prev.avatarName !== next.avatarName) return false;
+  if (prev.avatarSrc !== next.avatarSrc) return false;
+  if (prev.reservePeerAvatarSlot !== next.reservePeerAvatarSlot) return false;
+  if (prev.isQuran !== next.isQuran) return false;
+  if (prev.onPointerDown !== next.onPointerDown) return false;
+  if (prev.onPointerMove !== next.onPointerMove) return false;
+  if (prev.onPointerUp !== next.onPointerUp) return false;
+  // children: نتجاهل المقارنة لأنها تتبع message (المقارَن أعلاه)
+  return true;
+});

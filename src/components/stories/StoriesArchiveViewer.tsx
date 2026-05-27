@@ -6,7 +6,7 @@ import { normalizeStoryMedia } from "@/lib/storyMedia";
 import { StoryStickerLayer } from "../story/StoryStickerLayer";
 import { ShareSheet } from "../ShareSheet";
 import { formatRelativeTime } from "@/lib/formatRelativeTime";
-import { setStoryFullscreen } from "@/lib/storyChrome";
+import { lockStoryFullscreen } from "@/lib/storyChrome";
 
 const SEGMENT_MS = 8000;
 
@@ -32,10 +32,10 @@ export function StoriesArchiveViewer({
   const cur = stories[safeIndex];
 
   useEffect(() => {
-    setStoryFullscreen(true);
+    const releaseFullscreen = lockStoryFullscreen();
     document.documentElement.classList.add("retweet-story-open");
     return () => {
-      setStoryFullscreen(false);
+      releaseFullscreen();
       document.documentElement.classList.remove("retweet-story-open");
     };
   }, []);

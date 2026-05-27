@@ -9,6 +9,8 @@ interface Props {
   size?: number;
   className?: string;
   ring?: boolean;
+  /** حلقة باهتة — تمت مشاهدة كل الستوريات */
+  ringSeen?: boolean;
 }
 
 /** يتعرّف على صور الرفع (data URL) والروابط و blob — بحساسية غير مهمة لحالة الأحرف */
@@ -20,10 +22,11 @@ function isRenderableAvatarImageUrl(src: string): boolean {
   if (low.startsWith("data:image/")) return true;
   if (low.startsWith("data:") && (low.includes("image/") || low.includes("base64,"))) return true;
   if (low.startsWith("/media/")) return true;
+  if (low.startsWith("/stickers/") || low.startsWith("/app/")) return true;
   return /^https?:\/\//i.test(s);
 }
 
-export function Avatar({ name = "?", src, size = 40, className, ring }: Props) {
+export function Avatar({ name = "?", src, size = 40, className, ring, ringSeen }: Props) {
   const initials = name.slice(0, 2).toUpperCase();
   const [imgFailed, setImgFailed] = useState(false);
   const [videoFailed, setVideoFailed] = useState(false);
@@ -95,7 +98,11 @@ export function Avatar({ name = "?", src, size = 40, className, ring }: Props) {
   );
   if (ring) {
     return (
-      <div className="story-ring inline-block">
+      <div
+        className={
+          "inline-block " + (ringSeen ? "story-ring-seen" : "story-ring-brand")
+        }
+      >
         <div className="bg-background rounded-full p-[2px]">{inner}</div>
       </div>
     );

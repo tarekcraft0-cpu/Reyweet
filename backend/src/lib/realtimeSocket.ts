@@ -183,3 +183,8 @@ export function emitToUsers(userIds: string[], event: string, payload: unknown):
     io.to(`user:${uid}`).emit(event, payload);
   }
 }
+
+/** بث لجميع متصلي Socket.io (إعجابات/تعليقات المنشورات) */
+export function broadcastSocketEvent(event: string, payload: unknown): void {
+  io?.emit(event, payload);
+}

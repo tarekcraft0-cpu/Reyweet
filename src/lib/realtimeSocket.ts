@@ -97,6 +97,7 @@ export async function connectRealtimeSocket(
   s.on("social_update", forward("social_update"));
   s.on("social_graph_update", forward("social_graph_update"));
   s.on("sync_hint", forward("sync_hint"));
+  s.on("post_update", forward("post_update"));
   s.on("user_registered", forward("user_registered"));
   s.on("user_profile_updated", forward("user_profile_updated"));
   s.on("group_invite", forward("group_invite"));

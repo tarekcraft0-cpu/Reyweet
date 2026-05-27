@@ -1,10 +1,10 @@
-import { r as reactExports, a2 as getAugmentedNamespace, S as getDefaultExportFromCjs, W as jsxRuntimeExports, V as React__default, a3 as React } from "./server-DYEllImC.js";
+import { r as reactExports, a2 as getAugmentedNamespace, S as getDefaultExportFromCjs, W as jsxRuntimeExports, V as React__default, a3 as React } from "./server-cOnhn9i1.js";
 import require$$0 from "fs";
 import require$$1 from "url";
-import { n as notImplementedClass, a as notImplemented } from "./worker-entry-BAkfWDBe.js";
+import { n as notImplementedClass, a as notImplemented } from "./worker-entry-Bhjg5D_H.js";
 import require$$3 from "http";
 import require$$4 from "https";
-import { r as reactDomExports, R as ReactDOM } from "./router-DOdrsiFV.js";
+import { r as reactDomExports, R as ReactDOM } from "./router-LwRfq5R-.js";
 import require$$0$1 from "util";
 import require$$1$1 from "stream";
 import require$$1$2 from "zlib";
@@ -510,6 +510,13 @@ class CapacitorHttpPluginWeb extends WebPlugin {
 registerPlugin("CapacitorHttp", {
   web: () => new CapacitorHttpPluginWeb()
 });
+const PRODUCTION_VPS_HOST = "109.199.111.29";
+const PRODUCTION_VPS_API = `http://${PRODUCTION_VPS_HOST}`;
+const VERCEL_SITE_URL = "https://reyweet.vercel.app";
+function isVpsProductionHost(hostname) {
+  const h = hostname ?? (typeof window !== "undefined" ? window.location.hostname : "");
+  return h === PRODUCTION_VPS_HOST;
+}
 function isPrivateApiUrl(url2) {
   const u = url2.trim();
   if (!u) return false;
@@ -532,13 +539,38 @@ function isTunnelPublicHost(hostname) {
 function isPublicAppHost() {
   if (typeof window === "undefined") return false;
   const h = window.location.hostname;
-  return h === "reyweet.vercel.app" || h.endsWith(".vercel.app") || isTunnelPublicHost(h);
+  return isVpsProductionHost(h) || h === "reyweet.vercel.app" || h.endsWith(".vercel.app") || isTunnelPublicHost(h);
+}
+function isProductionVpsApiUrl(url2) {
+  try {
+    return new URL(url2.trim()).hostname === PRODUCTION_VPS_HOST;
+  } catch {
+    return false;
+  }
 }
 function isLanOrLocalHostname(hostname) {
   if (!hostname || hostname === "localhost" || hostname === "127.0.0.1") return true;
   if (/^192\.168\.\d{1,3}\.\d{1,3}$/i.test(hostname)) return true;
   if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/i.test(hostname)) return true;
   if (/^172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}$/i.test(hostname)) return true;
+  return false;
+}
+function isNativeCapacitorShell() {
+  if (typeof window === "undefined") return false;
+  const w = window;
+  if (w.__RETWEET_NATIVE_SHELL__ === true) return true;
+  try {
+    return w.Capacitor?.isNativePlatform?.() === true;
+  } catch {
+    return false;
+  }
+}
+function isStaleMobileApiUrl(url2) {
+  const u = url2.trim();
+  if (!u) return false;
+  if (/\.trycloudflare\.com/i.test(u)) return true;
+  if (isProductionVpsApiUrl(u)) return true;
+  if (u.startsWith("http://") && !isPrivateApiUrl(u)) return true;
   return false;
 }
 const API_RUNTIME_KEY = "retweet_web_api_config";
@@ -559,6 +591,9 @@ function viteDevWebOrigin() {
 }
 function resolveHealthCheckUrl() {
   if (typeof window === "undefined") return "/health";
+  if (isNativeCapacitorShell()) return `${VERCEL_SITE_URL}/health`;
+  if (isVpsProductionHost() && onAppPath()) return "/health";
+  if (isPublicAppHost() && !isVpsProductionHost() && onAppPath()) return "/health";
   const injected = trimUrl(
     window.__RETWEET_API_URL__
   );
@@ -638,7 +673,19 @@ function clearStaleApiConfig() {
       localStorage.removeItem(API_RUNTIME_KEY);
       return;
     }
-    if (isLanOrLocalHostname(window.location.hostname) && (/\.trycloudflare\.com/i.test(u) || u.includes("vercel.app"))) {
+    if (isVpsProductionHost() && (u.includes("vercel.app") || u.includes(":3000") || isPrivateApiUrl(u))) {
+      localStorage.removeItem(API_RUNTIME_KEY);
+      return;
+    }
+    if (isPublicAppHost() && !isVpsProductionHost() && onAppPath() && isProductionVpsApiUrl(u)) {
+      localStorage.removeItem(API_RUNTIME_KEY);
+      return;
+    }
+    if (isLanOrLocalHostname(window.location.hostname) && !isNativeCapacitorShell() && (/\.trycloudflare\.com/i.test(u) || u.includes("vercel.app"))) {
+      localStorage.removeItem(API_RUNTIME_KEY);
+      return;
+    }
+    if (isNativeCapacitorShell() && isStaleMobileApiUrl(u)) {
       localStorage.removeItem(API_RUNTIME_KEY);
       return;
     }
@@ -666,7 +713,7 @@ async function probeUrl(base) {
   try {
     const ctl = new AbortController();
     const nativeShell = typeof window !== "undefined" && (window.__RETWEET_NATIVE_SHELL__ === true || !!window.Capacitor?.isNativePlatform?.());
-    const timeoutMs = nativeShell ? 4e3 : 5e3;
+    const timeoutMs = nativeShell ? 1e4 : 5e3;
     const t = setTimeout(() => ctl.abort(), timeoutMs);
     const res = await fetch(path, { signal: ctl.signal, cache: "no-store" });
     clearTimeout(t);
@@ -701,13 +748,11 @@ async function loadConfigFileUrls() {
   if (typeof window === "undefined") return [];
   const base = "/";
   const root = base.endsWith("/") ? base : `${base}/`;
-  const vercelSite = "https://reyweet.vercel.app";
   const urls = [];
   for (const file of [
-    `${vercelSite}/public/app-config.json`,
-    `${vercelSite}/app/web-auth-config.json`,
     `${root}web-auth-config.json`,
     `${window.location.origin}/app/web-auth-config.json`,
+    `${PRODUCTION_VPS_API}/app/web-auth-config.json`,
     `${window.location.origin}/public/app-config.json`
   ]) {
     try {
@@ -717,6 +762,7 @@ async function loadConfigFileUrls() {
       const u = trimUrl(j.apiUrl);
       if (!u) continue;
       if (isPublicAppHost() && isPrivateApiUrl(u)) continue;
+      if (isNativeCapacitorShell() && isStaleMobileApiUrl(u)) continue;
       if (isTunnelPublicHost() && new URL(u).origin !== window.location.origin) continue;
       urls.push(u);
     } catch {
@@ -759,6 +805,9 @@ async function ensureApiRuntimeConfig() {
       } catch {
       }
     }
+    if (injected?.startsWith("http") && isNativeCapacitorShell() && isStaleMobileApiUrl(injected)) {
+      skipInjected = true;
+    }
     if (injected?.startsWith("http") && !skipInjected) {
       const u = injected.replace(/\/$/, "");
       if (!(isPublicAppHost() && isPrivateApiUrl(u))) {
@@ -780,6 +829,23 @@ async function ensureApiRuntimeConfig() {
   if (resolvedMode !== "unset") {
     return resolvedMode === "relative" ? "" : resolvedAbsoluteUrl;
   }
+  if (isNativeCapacitorShell()) {
+    const injected = trimUrl(
+      window.__RETWEET_API_URL__
+    );
+    const target = injected && !isStaleMobileApiUrl(injected) && !isPrivateApiUrl(injected) ? injected : VERCEL_SITE_URL;
+    resolvedMode = "absolute";
+    resolvedAbsoluteUrl = target;
+    persistAbsolute(target);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("retweet-api-config-ready"));
+    }
+    return target;
+  }
+  if (isVpsProductionHost() && onAppPath()) {
+    const r2 = await resolveSameOriginApi();
+    if (r2 !== null) return r2;
+  }
   if (useViteDevProxy() && onAppPath()) {
     const r2 = await resolveSameOriginApi();
     if (r2 !== null) return r2;
@@ -789,6 +855,10 @@ async function ensureApiRuntimeConfig() {
     if (r2 !== null) return r2;
   }
   const fileUrls = await loadConfigFileUrls();
+  if (isPublicAppHost() && onAppPath() && !isVpsProductionHost()) {
+    const r2 = await resolveSameOriginApi();
+    if (r2 !== null) return r2;
+  }
   if (isPublicAppHost() && onAppPath()) {
     for (const u of fileUrls) {
       if (await probeUrl(u)) {
@@ -801,6 +871,7 @@ async function ensureApiRuntimeConfig() {
   }
   const candidates = [
     ...fileUrls,
+    ...isPublicAppHost() && !isVpsProductionHost() && !isLanOrLocalHostname(window.location.hostname) ? [] : isPublicAppHost() && !isLanOrLocalHostname(window.location.hostname) ? [PRODUCTION_VPS_API] : [],
     trimUrl("http://192.168.100.166:3000"),
     trimUrl(void 0),
     ...(() => {
@@ -817,7 +888,7 @@ async function ensureApiRuntimeConfig() {
   ];
   if (typeof window !== "undefined") {
     const host = window.location.hostname;
-    if (isLanOrLocalHostname(host)) {
+    if (isLanOrLocalHostname(host) && (useViteDevProxy() || false)) {
       candidates.push(
         `http://${host}:3000`,
         "http://127.0.0.1:3000",
@@ -831,6 +902,9 @@ async function ensureApiRuntimeConfig() {
     const u = trimUrl(raw);
     if (!u || seen.has(u)) continue;
     if (isPublicAppHost() && isPrivateApiUrl(u)) continue;
+    if (isPublicAppHost() && !isVpsProductionHost() && onAppPath() && isProductionVpsApiUrl(u)) {
+      continue;
+    }
     if (isTunnelPublicHost()) {
       try {
         if (new URL(u).origin !== window.location.origin) continue;
@@ -869,19 +943,29 @@ function peekApiBaseUrl() {
   const cached2 = readCachedApiUrl();
   if (cached2) return cached2;
   if (useViteDevProxy()) return "";
+  if (isVpsProductionHost() && onAppPath()) return "";
   if (useUnifiedLocalServer() || onAppPath() && isTunnelPublicHost()) return "";
   const fromBuild = trimUrl(void 0);
-  if (fromBuild && !(isPublicAppHost() && isPrivateApiUrl(fromBuild))) return fromBuild;
+  if (fromBuild && !(isPublicAppHost() && isPrivateApiUrl(fromBuild))) {
+    if (!isPublicAppHost() || isLanOrLocalHostname(window.location.hostname)) return fromBuild;
+    if (onAppPath() && !isProductionVpsApiUrl(fromBuild)) return fromBuild;
+  }
+  if (typeof window !== "undefined" && isNativeCapacitorShell()) {
+    return VERCEL_SITE_URL;
+  }
+  if (typeof window !== "undefined" && isPublicAppHost() && !isVpsProductionHost() && onAppPath()) {
+    return "";
+  }
   if (typeof window !== "undefined") {
     const h = window.location.hostname;
-    if (isLanOrLocalHostname(h)) return `http://${h}:3000`;
+    if (isLanOrLocalHostname(h) && (useViteDevProxy() || false)) return `http://${h}:3000`;
   }
   return "";
 }
 function isRenderableMediaUrl(s) {
   if (!s?.trim()) return false;
   const t = s.trim();
-  return t.startsWith("data:") || t.startsWith("http://") || t.startsWith("https://") || t.startsWith("blob:") || t.startsWith("/media/");
+  return t.startsWith("data:") || t.startsWith("http://") || t.startsWith("https://") || t.startsWith("blob:") || t.startsWith("/media/") || t.startsWith("/stickers/") || t.startsWith("/app/");
 }
 function coerceMediaBaseForHttpsPage(base) {
   const b = base.trim().replace(/\/$/, "");
@@ -917,7 +1001,7 @@ function normalizeMediaRef(src) {
     try {
       const u = new URL(v);
       if (u.pathname.startsWith("/media/")) {
-        path = u.pathname;
+        path = `${u.pathname}${u.search || ""}`;
       } else if (v.includes("/media/")) {
         const m = v.match(/(\/media\/(?:images|videos)\/[^\s?#"']+)/i);
         if (m) path = m[1];
@@ -928,12 +1012,37 @@ function normalizeMediaRef(src) {
     }
   }
   if (path.startsWith("/media/")) {
-    const base = getMediaResolveBase();
-    if (base) return `${base}${path.split("?")[0]}`;
-    return path.split("?")[0] ?? path;
+    const base = getMediaResolveBase().replace(/\/$/, "");
+    const search = path.includes("?") ? path.slice(path.indexOf("?")) : "";
+    const pathnameOnly = path.split("?")[0] ?? path;
+    if (base) return `${base}${pathnameOnly}${search}`;
+    return `${pathnameOnly}${search}`;
   }
   if (/^https?:\/\//i.test(v)) {
-    return "";
+    try {
+      const u = new URL(v);
+      if (isPrivateApiUrl(v)) return "";
+      if (isTunnelPublicHost(u.hostname) || /\.trycloudflare\.com$/i.test(u.hostname)) return "";
+      if (u.pathname.startsWith("/media/")) {
+        const b = getMediaResolveBase().replace(/\/$/, "");
+        const origin = typeof window !== "undefined" ? window.location.origin.replace(/\/$/, "") : "";
+        const merged = (b || origin).replace(/\/$/, "");
+        return merged ? `${merged}${u.pathname}${u.search || ""}` : `${u.pathname}${u.search || ""}`;
+      }
+      if (u.hostname === PRODUCTION_VPS_HOST && (u.pathname.startsWith("/stickers/") || u.pathname.startsWith("/app/") || u.pathname.startsWith("/public/"))) {
+        const origin = typeof window !== "undefined" ? window.location.origin.replace(/\/$/, "") : "";
+        if (origin) return `${origin}${u.pathname}${u.search || ""}`;
+      }
+      const h = u.hostname;
+      if (typeof window !== "undefined" && h === window.location.hostname)
+        return `${u.origin}${u.pathname}${u.search || ""}`;
+      if (h === "reyweet.vercel.app" || h.endsWith(".vercel.app"))
+        return `${u.origin}${u.pathname}${u.search || ""}`;
+      if (u.protocol === "https:") return `${u.origin}${u.pathname}${u.search || ""}`;
+      return "";
+    } catch {
+      return "";
+    }
   }
   return v;
 }
@@ -1671,6 +1780,43 @@ function migrateLegacyApiToken(userId, username, email) {
   if (!token || getAccountSession(userId)) return;
   upsertAccountSession({ userId, token, username, email });
 }
+const PREFIX = "[Retweet API]";
+function shouldLogApi() {
+  if (typeof window === "undefined") return false;
+  const w = window;
+  if (w.__RETWEET_API_DEBUG__ === true) return true;
+  try {
+    if (Capacitor.isNativePlatform()) return true;
+  } catch {
+  }
+  return isNativeCapacitorShell();
+}
+function logApi(phase, detail) {
+  if (!shouldLogApi()) return;
+  console.log(PREFIX, phase, detail ?? "");
+}
+function formatFetchError(e, url2) {
+  if (e instanceof Error) {
+    if (e.name === "AbortError") return `انتهت مهلة الاتصال (${url2})`;
+    const msg = e.message?.trim();
+    if (msg) return `${msg} — ${url2}`;
+    return `تعذر الاتصال بالخادم — ${url2}`;
+  }
+  return `تعذر الاتصال بالخادم — ${url2}`;
+}
+function redactBody(body) {
+  if (typeof body !== "string") return body;
+  try {
+    const j = JSON.parse(body);
+    if ("password" in j) return { ...j, password: "***" };
+    if ("code" in j && typeof j.code === "string" && j.code.length > 2) {
+      return { ...j, code: "***" };
+    }
+    return j;
+  } catch {
+    return body.length > 200 ? `${body.slice(0, 200)}…` : body;
+  }
+}
 function isReactNativeWebView() {
   if (typeof window === "undefined") return false;
   return !!window.ReactNativeWebView;
@@ -1683,14 +1829,23 @@ const TOKEN_KEY = "retweet_api_token";
 function getApiBaseUrl() {
   const fromPeek = peekApiBaseUrl();
   let raw = "";
+  let useMobileBase = false;
   try {
-    const useMobileBase = Capacitor.isNativePlatform() || typeof window !== "undefined" && isReactNativeWebView();
+    useMobileBase = Capacitor.isNativePlatform() || typeof window !== "undefined" && isReactNativeWebView();
     if (useMobileBase) {
       raw = "http://192.168.100.166:3000"?.trim() || void 0 || "";
+      if (raw && (isPrivateApiUrl(raw) || isStaleMobileApiUrl(raw))) {
+        logApi("mobile-api-url-rejected", { raw, reason: "private-or-stale" });
+        raw = "";
+      }
     }
   } catch {
   }
-  return (raw.replace(/\/$/, "") || fromPeek).replace(/\/$/, "");
+  const base = (raw.replace(/\/$/, "") || fromPeek).replace(/\/$/, "");
+  if (useMobileBase && !base && isNativeCapacitorShell()) {
+    return VERCEL_SITE_URL;
+  }
+  return base;
 }
 function hasApiBackendConnection() {
   if (getApiBaseUrl().length > 0) return true;
@@ -1698,6 +1853,15 @@ function hasApiBackendConnection() {
     const injected = window.__RETWEET_API_URL__;
     if (injected?.startsWith("http")) return true;
     if (useViteDevProxy()) {
+      return true;
+    }
+    if (isVpsProductionHost() && (window.location.pathname || "").startsWith("/app")) {
+      return true;
+    }
+    if (isPublicAppHost() && !isVpsProductionHost() && (window.location.pathname || "").startsWith("/app")) {
+      return true;
+    }
+    if (isNativeCapacitorShell()) {
       return true;
     }
   }
@@ -1754,7 +1918,9 @@ async function apiFetch$1(path, init = {}) {
   const base = getApiBaseUrl();
   if (!base && true) {
     return new Response(
-      JSON.stringify({ error: "الخادم غير متصل — تأكد أن npm run stack:reyweet يعمل على جهازك" }),
+      JSON.stringify({
+        error: isPublicAppHost() ? "الخادم غير متصل — تأكد من اتصال الإنترنت أو جرّب لاحقاً" : "الخادم غير متصل — شغّل npm run stack:reyweet للتطوير المحلي"
+      }),
       { status: 503, headers: { "Content-Type": "application/json" } }
     );
   }
@@ -1765,24 +1931,59 @@ async function apiFetch$1(path, init = {}) {
   }
   const t = init.token ?? getApiToken();
   if (t) headers.set("Authorization", `Bearer ${t}`);
+  const method = (init.method || "GET").toUpperCase();
+  if (shouldLogApi()) {
+    logApi("request", {
+      method,
+      url: url2,
+      base: base || "(same-origin)",
+      body: redactBody(init.body),
+      hasToken: !!t
+    });
+  }
   const ctl = new AbortController();
   const { timeoutMs: fetchTimeoutMs, ...fetchInit } = init;
   const timer = setTimeout(() => ctl.abort(), fetchTimeoutMs ?? API_FETCH_TIMEOUT_MS);
   try {
-    return await fetch(url2, { ...fetchInit, headers, signal: ctl.signal, cache: "no-store" });
+    const res = await fetch(url2, { ...fetchInit, headers, signal: ctl.signal, cache: "no-store" });
+    if (shouldLogApi()) {
+      const preview = await res.clone().text().then((t2) => t2.length > 400 ? `${t2.slice(0, 400)}…` : t2).catch(() => "");
+      logApi("response", { method, url: url2, status: res.status, ok: res.ok, preview });
+    }
+    return res;
   } catch (e) {
     const aborted = e instanceof Error && e.name === "AbortError";
-    const hint = "";
-    const msg = aborted ? `انتهت مهلة الاتصال بالخادم${hint}` : `تعذر الاتصال بالخادم${hint}`;
-    return new Response(JSON.stringify({ error: msg }), {
-      status: aborted ? 504 : 503,
-      headers: { "Content-Type": "application/json" }
-    });
+    const networkMsg = formatFetchError(e, url2);
+    logApi("error", { method, url: url2, aborted, error: e });
+    const hint = isNativeCapacitorShell() ? " — تأكد من الإنترنت وأن التطبيق مبني بـ Codemagic (API: reyweet.vercel.app)" : "";
+    const msg = aborted ? `انتهت مهلة الاتصال بالخادم (${url2})${hint}` : `${networkMsg}${hint}`;
+    return new Response(
+      JSON.stringify({
+        error: msg,
+        detail: {
+          url: url2,
+          base: base || null,
+          aborted,
+          cause: e instanceof Error ? e.message : String(e)
+        }
+      }),
+      {
+        status: aborted ? 504 : 503,
+        headers: { "Content-Type": "application/json" }
+      }
+    );
   } finally {
     clearTimeout(timer);
   }
 }
 async function apiLogin(identifier, password) {
+  await ensureApiRuntimeConfig();
+  const base = getApiBaseUrl();
+  logApi("login-start", {
+    base: base || "(empty)",
+    endpoint: `${base || ""}/auth/login`,
+    identifier: identifier.trim()
+  });
   const res = await apiFetch$1("/auth/login", {
     method: "POST",
     body: JSON.stringify({ identifier: identifier.trim(), password }),
@@ -1790,9 +1991,17 @@ async function apiLogin(identifier, password) {
   });
   const data = await res.json().catch(() => ({}));
   if (res.status === 503 || res.status === 504) {
-    return { ok: false, error: data.error || "تعذر الاتصال بالخادم — شغّل: npm run backend:dev" };
+    const detail = data.detail?.cause ? ` (${data.detail.cause})` : "";
+    const urlHint = data.detail?.url ? ` [${data.detail.url}]` : "";
+    return {
+      ok: false,
+      error: data.error || `تعذر الاتصال بالخادم${urlHint}${detail}${isNativeCapacitorShell() ? " — تحقق من الإنترنت أو أعد تثبيت IPA من Codemagic" : " — شغّل: npm run backend:dev"}`
+    };
   }
-  if (!res.ok) return { ok: false, error: data.error || "فشل تسجيل الدخول" };
+  if (!res.ok) {
+    logApi("login-failed", { status: res.status, error: data.error });
+    return { ok: false, error: data.error || `فشل تسجيل الدخول (${res.status})` };
+  }
   if (data.requiresOtp) {
     return { ok: true, requiresOtp: true, emailHint: data.emailHint };
   }
@@ -2092,6 +2301,18 @@ async function apiPostMessage(token, chatId, receiverId, message) {
   const data = await res.json().catch(() => null);
   return data?.message ?? message;
 }
+async function apiPostChatTyping(token, chatId, peerId, active2) {
+  const res = await apiFetch$1("/v1/chats/typing", {
+    method: "POST",
+    token,
+    body: JSON.stringify({
+      chatId,
+      peerId: peerId ?? void 0,
+      active: active2
+    })
+  });
+  return res.ok;
+}
 async function apiGetSocialRelation(token, targetUserId) {
   const res = await apiFetch$1(`/v1/social/relation/${encodeURIComponent(targetUserId)}`, {
     method: "GET",
@@ -2142,6 +2363,53 @@ async function apiRecordProfileVisit(token, targetUserId) {
   } catch {
   }
 }
+async function apiUpsertPost(token, post) {
+  const res = await apiFetch$1("/v1/posts", {
+    method: "POST",
+    token,
+    body: JSON.stringify(post)
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) return { ok: false, error: data.error || "فشل حفظ المنشور على الخادم" };
+  return { ok: true };
+}
+async function apiTogglePostLike(token, postId) {
+  const res = await apiFetch$1(`/v1/posts/${encodeURIComponent(postId)}/like`, {
+    method: "POST",
+    token
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) return { ok: false, error: data.error || "فشل الإعجاب" };
+  return { ok: true, liked: Boolean(data.liked), likes: data.likes ?? [] };
+}
+async function apiTogglePostRepost(token, postId) {
+  const res = await apiFetch$1(`/v1/posts/${encodeURIComponent(postId)}/repost`, {
+    method: "POST",
+    token
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) return { ok: false, error: data.error || "فشل إعادة النشر" };
+  return { ok: true, reposted: Boolean(data.reposted), reposts: data.reposts ?? [] };
+}
+async function apiAddPostComment(token, postId, text) {
+  const res = await apiFetch$1(`/v1/posts/${encodeURIComponent(postId)}/comments`, {
+    method: "POST",
+    token,
+    body: JSON.stringify({ text })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.comment) return { ok: false, error: data.error || "فشل التعليق" };
+  return { ok: true, comment: data.comment };
+}
+async function apiRecordStoryView(token, storyId) {
+  try {
+    await apiFetch$1(`/v1/stories/${encodeURIComponent(storyId)}/view`, {
+      method: "POST",
+      token
+    });
+  } catch {
+  }
+}
 async function apiPatchProfile(token, patch) {
   const res = await apiFetch$1("/v1/me/profile", {
     method: "PATCH",
@@ -2164,6 +2432,7 @@ async function apiUploadMedia(token, file, opts) {
   let uploadPath = "/v1/media/upload";
   const q = [];
   if (opts?.storyVideo) q.push("story=1");
+  if (opts?.reelVideo) q.push("reel=1");
   if (opts?.avatarAnimated) q.push("avatar=1");
   if (q.length) uploadPath += `?${q.join("&")}`;
   const url2 = `${base}${uploadPath}`;
@@ -2184,7 +2453,7 @@ async function apiUploadMedia(token, file, opts) {
     if (res.status === 413) {
       return {
         ok: false,
-        error: "الملف كبير جداً — جرّب فيديو أقصر (دقيقة) أو صورة أخف"
+        error: opts?.reelVideo ? "الملف كبير جداً — الحد 500 ميجا للريلز" : "الملف كبير جداً — جرّب فيديو أقصر (دقيقة) أو صورة أخف"
       };
     }
     if (!res.ok || !data.url) {
@@ -2197,12 +2466,12 @@ async function apiUploadMedia(token, file, opts) {
         error: err || (file.type.startsWith("video/") ? "فشل رفع الفيديو" : "فشل رفع الصورة")
       };
     }
-    return { ok: true, url: data.url };
+    return { ok: true, url: data.url, posterUrl: data.posterUrl };
   } catch (e) {
     const aborted = e instanceof Error && e.name === "AbortError";
     return {
       ok: false,
-      error: aborted ? file.type.startsWith("video/") ? "انتهت مهلة رفع الفيديو — جرّب شبكة أسرع أو مقطعاً أقصر" : "انتهت مهلة رفع الملف — جرّب مرة أخرى" : "تعذر الاتصال بالخادم — تأكد أن npm run api:tunnel يعمل على جهازك"
+      error: aborted ? file.type.startsWith("video/") ? opts?.reelVideo ? "انتهت مهلة رفع الريل — جرّب شبكة أسرع أو مقطعاً أقصر" : "انتهت مهلة رفع الفيديو — جرّب شبكة أسرع أو مقطعاً أقصر" : "انتهت مهلة رفع الملف — جرّب مرة أخرى" : "تعذر الاتصال بالخادم — تأكد أن npm run api:tunnel يعمل على جهازك"
     };
   } finally {
     clearTimeout(timer);
@@ -2310,6 +2579,7 @@ const apiBackend = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePr
   __proto__: null,
   apiAcceptFollowRequest,
   apiAddGroupMembers,
+  apiAddPostComment,
   apiBackendEnabled,
   apiChangePassword,
   apiCompletePasswordReset,
@@ -2333,15 +2603,20 @@ const apiBackend = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePr
   apiLookupUserByUsername,
   apiPatchGroup,
   apiPatchProfile,
+  apiPostChatTyping,
   apiPostMessage,
   apiRecordProfileVisit,
+  apiRecordStoryView,
   apiRegister,
   apiRequestPasswordReset,
   apiRequestSignupVerification,
   apiRespondGroupJoinRequest,
   apiSearchUsers,
   apiToggleFollow,
+  apiTogglePostLike,
+  apiTogglePostRepost,
   apiUploadMedia,
+  apiUpsertPost,
   apiVerifyLogin,
   ensureApiRuntimeConfig,
   getApiBaseUrl,
@@ -6370,8 +6645,23 @@ function resolveSocketUrl(base) {
   if (typeof window !== "undefined") return window.location.origin;
   return "";
 }
-function isRealtimeSocketConnected() {
-  return Boolean(socket?.connected);
+function waitForRealtimeSocket(maxMs = 2e3) {
+  if (typeof window === "undefined") return Promise.resolve(false);
+  if (socket?.connected) return Promise.resolve(true);
+  const s = socket;
+  if (!s) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    const timer = window.setTimeout(() => {
+      s.off("connect", onConnect);
+      resolve(false);
+    }, maxMs);
+    const onConnect = () => {
+      window.clearTimeout(timer);
+      s.off("connect", onConnect);
+      resolve(true);
+    };
+    s.on("connect", onConnect);
+  });
 }
 async function connectRealtimeSocket(onEvent, hooks) {
   if (typeof window === "undefined" || !apiBackendEnabled()) return () => {
@@ -6405,6 +6695,7 @@ async function connectRealtimeSocket(onEvent, hooks) {
   s.on("social_update", forward("social_update"));
   s.on("social_graph_update", forward("social_graph_update"));
   s.on("sync_hint", forward("sync_hint"));
+  s.on("post_update", forward("post_update"));
   s.on("user_registered", forward("user_registered"));
   s.on("user_profile_updated", forward("user_profile_updated"));
   s.on("group_invite", forward("group_invite"));
@@ -6435,22 +6726,28 @@ async function connectRealtimeSocket(onEvent, hooks) {
 function getRealtimeSocket() {
   return socket;
 }
-function emitDirectMessage(body, senderId) {
+async function emitDirectMessage(body, senderId) {
+  const activeToken = ensureApiTokenMatchesUser(senderId);
+  if (!activeToken || activeToken !== socketAuthToken) return false;
+  if (!socket?.connected) {
+    const ready = await waitForRealtimeSocket(1800);
+    if (!ready || !socket?.connected) return false;
+  }
   return new Promise((resolve) => {
-    const activeToken = ensureApiTokenMatchesUser(senderId);
-    if (!socket?.connected || !activeToken || activeToken !== socketAuthToken) {
+    const s = socket;
+    if (!s?.connected) {
       resolve(false);
       return;
     }
-    const timer = window.setTimeout(() => resolve(false), 1200);
-    socket.emit("message:send", body, (ack) => {
+    const timer = window.setTimeout(() => resolve(false), 2800);
+    s.emit("message:send", body, (ack) => {
       window.clearTimeout(timer);
       resolve(Boolean(ack?.ok));
     });
   });
 }
 const RECONNECT_MS = 5e3;
-const SSE_FALLBACK_MS = 8e3;
+const SSE_FALLBACK_MS = 800;
 function sleep(ms) {
   return new Promise((r2) => setTimeout(r2, ms));
 }
@@ -6573,14 +6870,34 @@ function subscribeRealtimeEvents(onEvent) {
 }
 const USER_REGISTERED_WINDOW_EVENT = "retweet-user-registered";
 const TYPING_STOP_MS = 2e3;
+const REST_TYPING_MIN_MS = 1200;
 const typingStopTimers = /* @__PURE__ */ new Map();
+const lastRestTypingPulseAt = /* @__PURE__ */ new Map();
 function typingSessionKey(chatId, peerId) {
   return `${chatId}\0${peerId ?? ""}`;
 }
+function emitChatTypingRest(chatId, peerId, active2) {
+  if (!apiBackendEnabled()) return;
+  const token = getApiToken();
+  if (!token) return;
+  const key = typingSessionKey(chatId, peerId);
+  if (active2) {
+    const now = Date.now();
+    const prev = lastRestTypingPulseAt.get(key) ?? 0;
+    if (now - prev < REST_TYPING_MIN_MS) return;
+    lastRestTypingPulseAt.set(key, now);
+  } else {
+    lastRestTypingPulseAt.delete(key);
+  }
+  void apiPostChatTyping(token, chatId, peerId, active2);
+}
 function emitChatTyping(chatId, peerId, active2) {
   const socket2 = getRealtimeSocket();
-  if (!socket2?.connected) return;
-  socket2.emit("typing", { chatId, peerId: peerId ?? void 0, active: active2 });
+  if (socket2?.connected) {
+    socket2.emit("typing", { chatId, peerId: peerId ?? void 0, active: active2 });
+    return;
+  }
+  emitChatTypingRest(chatId, peerId, active2);
 }
 function flushTypingStop(chatId, peerId) {
   const key = typingSessionKey(chatId, peerId);
@@ -7130,7 +7447,12 @@ function mergePostsPreservingLocalDeletes(localPosts, remotePosts) {
       ...p.comments,
       ...filteredRemoteComments.filter((c) => !localCommentIds.has(c.id))
     ].filter((c) => !locallyRemovedCommentKeys.has(`${p.id}:${c.id}`));
-    merged.push({ ...base, comments });
+    merged.push({
+      ...base,
+      likes: remote?.likes ?? p.likes,
+      reposts: remote?.reposts ?? p.reposts,
+      comments
+    });
   }
   for (const p of remotePosts) {
     if (localIds.has(p.id)) continue;
@@ -8141,6 +8463,7 @@ function AppProvider({
   const fullPullTimerRef = reactExports.useRef(null);
   const remoteSyncTimerRef = reactExports.useRef(null);
   const MIN_FULL_PULL_MS = 18e3;
+  const MIN_URGENT_PULL_MS = 500;
   const pullSocialState = reactExports.useCallback(async () => {
     if (!apiBackendEnabled()) return;
     const token = getApiToken();
@@ -9142,41 +9465,63 @@ function AppProvider({
       return next;
     });
     if (!nextState) return;
+    const created = nextState.posts[0];
     socialSyncBusyRef.current = true;
     pushSnapshotNow(nextState);
+    const token = getApiToken();
+    if (token && apiBackendEnabled() && created?.userId === nextState.currentUserId) {
+      void apiUpsertPost(token, {
+        id: created.id,
+        type: created.type,
+        text: created.text,
+        image: created.image,
+        video: created.video,
+        createdAt: created.createdAt
+      });
+    }
     window.setTimeout(() => {
       socialSyncBusyRef.current = false;
     }, 2500);
   };
-  const toggleLike = (postId) => setState((s) => {
-    const post = s.posts.find((p) => p.id === postId);
-    if (!post || !s.currentUserId || isGuestUserId(s.currentUserId)) return s;
-    const liked = post.likes.includes(s.currentUserId);
-    const next = {
-      ...s,
-      posts: s.posts.map(
-        (p) => p.id === postId ? {
-          ...p,
-          likes: liked ? p.likes.filter((x) => x !== s.currentUserId) : [...p.likes, s.currentUserId]
-        } : p
-      )
-    };
-    const out = liked ? next : pushNotif(next, {
-      userId: post.userId,
-      fromId: s.currentUserId,
-      type: "like",
-      postId,
-      text: post.type === "reel" ? "أعجب بمقطعك" : post.type === "tweet" ? "أعجب بتغريدتك" : "وضع ❤️ على منشورك"
-    });
+  const toggleLike = (postId) => {
     const token = getApiToken();
-    if (token && apiBackendEnabled()) {
-      socialSyncBusyRef.current = true;
-      void pushRemoteAppState(token, out).finally(() => {
-        socialSyncBusyRef.current = false;
+    const useApi = Boolean(token && apiBackendEnabled());
+    let rollbackLikes = null;
+    setState((s) => {
+      const post = s.posts.find((p) => p.id === postId);
+      if (!post || !s.currentUserId || isGuestUserId(s.currentUserId)) return s;
+      rollbackLikes = [...post.likes];
+      const liked = post.likes.includes(s.currentUserId);
+      return {
+        ...s,
+        posts: s.posts.map(
+          (p) => p.id === postId ? {
+            ...p,
+            likes: liked ? p.likes.filter((x) => x !== s.currentUserId) : [...p.likes, s.currentUserId]
+          } : p
+        )
+      };
+    });
+    if (useApi && token) {
+      void apiTogglePostLike(token, postId).then((res) => {
+        if (!res.ok) {
+          if (rollbackLikes) {
+            setState((s) => ({
+              ...s,
+              posts: s.posts.map((p) => p.id === postId ? { ...p, likes: rollbackLikes } : p)
+            }));
+          }
+          return;
+        }
+        setState((s) => ({
+          ...s,
+          posts: s.posts.map(
+            (p) => p.id === postId ? { ...p, likes: res.likes } : p
+          )
+        }));
       });
     }
-    return out;
-  });
+  };
   const toggleStoryLike = (storyId) => setState((s) => {
     if (!s.currentUserId || isGuestUserId(s.currentUserId)) return s;
     const st = s.stories.find((x) => x.id === storyId);
@@ -9197,25 +9542,30 @@ function AppProvider({
       text: "وضع ❤️ على ستوريك"
     });
   });
-  const recordStoryView = (storyId) => setState((s) => {
-    if (!s.currentUserId || isGuestUserId(s.currentUserId)) return s;
-    const meId = s.currentUserId;
-    const st = s.stories.find((x) => x.id === storyId);
-    if (!st || st.userId === meId) return s;
-    const v = st.viewedByUserIds || [];
-    if (v.includes(meId)) return s;
-    const next = {
-      ...s,
-      stories: s.stories.map(
-        (x) => x.id === storyId ? { ...x, viewedByUserIds: [...v, meId] } : x
-      )
-    };
+  const recordStoryView = (storyId) => {
     const token = getApiToken();
-    if (token && apiBackendEnabled()) {
-      void pushRemoteAppState(token, next);
-    }
-    return next;
-  });
+    const useApi = Boolean(token && apiBackendEnabled());
+    setState((s) => {
+      if (!s.currentUserId || isGuestUserId(s.currentUserId)) return s;
+      const meId = s.currentUserId;
+      const st = s.stories.find((x) => x.id === storyId);
+      if (!st || st.userId === meId) return s;
+      const v = st.viewedByUserIds || [];
+      if (v.includes(meId)) return s;
+      const at = Date.now();
+      return {
+        ...s,
+        stories: s.stories.map(
+          (x) => x.id === storyId ? {
+            ...x,
+            viewedByUserIds: [...v, meId],
+            viewedAtByUserIds: { ...x.viewedAtByUserIds || {}, [meId]: at }
+          } : x
+        )
+      };
+    });
+    if (useApi && token) void apiRecordStoryView(token, storyId);
+  };
   const toggleFavorite = (postId) => setState((s) => {
     if (!s.currentUserId || isGuestUserId(s.currentUserId)) return s;
     return {
@@ -9227,65 +9577,81 @@ function AppProvider({
       })
     };
   });
-  const toggleRepost = (postId) => setState((s) => {
-    const post = s.posts.find((p) => p.id === postId);
-    if (!post || !s.currentUserId || isGuestUserId(s.currentUserId)) return s;
-    const r2 = post.reposts.includes(s.currentUserId);
-    const next = {
-      ...s,
-      posts: s.posts.map(
-        (p) => p.id === postId ? {
-          ...p,
-          reposts: r2 ? p.reposts.filter((x) => x !== s.currentUserId) : [...p.reposts, s.currentUserId]
-        } : p
-      )
-    };
-    const out = r2 ? {
-      ...next,
-      notifications: (next.notifications || []).filter(
-        (n) => !(n.type === "repost" && n.postId === postId && n.fromId === s.currentUserId && n.userId === post.userId)
-      )
-    } : pushNotif(next, {
-      userId: post.userId,
-      fromId: s.currentUserId,
-      type: "repost",
-      postId,
-      text: "أعاد نشر منشورك"
-    });
+  const toggleRepost = (postId) => {
     const token = getApiToken();
-    if (token && apiBackendEnabled()) {
-      socialSyncBusyRef.current = true;
-      void pushRemoteAppState(token, out).finally(() => {
-        socialSyncBusyRef.current = false;
+    const useApi = Boolean(token && apiBackendEnabled());
+    setState((s) => {
+      const post = s.posts.find((p) => p.id === postId);
+      if (!post || !s.currentUserId || isGuestUserId(s.currentUserId)) return s;
+      const r2 = post.reposts.includes(s.currentUserId);
+      return {
+        ...s,
+        posts: s.posts.map(
+          (p) => p.id === postId ? {
+            ...p,
+            reposts: r2 ? p.reposts.filter((x) => x !== s.currentUserId) : [...p.reposts, s.currentUserId]
+          } : p
+        )
+      };
+    });
+    if (useApi && token) {
+      void apiTogglePostRepost(token, postId).then((res) => {
+        if (!res.ok) return;
+        setState((s) => ({
+          ...s,
+          posts: s.posts.map(
+            (p) => p.id === postId ? { ...p, reposts: res.reposts } : p
+          )
+        }));
       });
     }
-    return out;
-  });
-  const addComment = (postId, text) => setState((s) => {
-    if (!s.currentUserId || isGuestUserId(s.currentUserId) || !text.trim()) return s;
-    const post = s.posts.find((p) => p.id === postId);
-    if (!post) return s;
-    const c = { id: uid(), userId: s.currentUserId, text, createdAt: Date.now() };
-    const next = {
-      ...s,
-      posts: s.posts.map((p) => p.id === postId ? { ...p, comments: [...p.comments, c] } : p)
-    };
-    const out = pushNotif(next, {
-      userId: post.userId,
-      fromId: s.currentUserId,
-      type: "comment",
-      postId,
-      text: `علّق على منشورك: ${text.trim().slice(0, 120)}${text.trim().length > 120 ? "…" : ""}`
-    });
+  };
+  const addComment = (postId, text) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
     const token = getApiToken();
-    if (token && apiBackendEnabled()) {
-      socialSyncBusyRef.current = true;
-      void pushRemoteAppState(token, out).finally(() => {
-        socialSyncBusyRef.current = false;
+    const useApi = Boolean(token && apiBackendEnabled());
+    const optimisticId = uid();
+    setState((s) => {
+      if (!s.currentUserId || isGuestUserId(s.currentUserId)) return s;
+      const post = s.posts.find((p) => p.id === postId);
+      if (!post) return s;
+      const c = {
+        id: optimisticId,
+        userId: s.currentUserId,
+        text: trimmed,
+        createdAt: Date.now()
+      };
+      return {
+        ...s,
+        posts: s.posts.map(
+          (p) => p.id === postId ? { ...p, comments: [...p.comments, c] } : p
+        )
+      };
+    });
+    if (useApi && token) {
+      void apiAddPostComment(token, postId, trimmed).then((res) => {
+        if (!res.ok) {
+          setState((s) => ({
+            ...s,
+            posts: s.posts.map(
+              (p) => p.id === postId ? { ...p, comments: p.comments.filter((c) => c.id !== optimisticId) } : p
+            )
+          }));
+          return;
+        }
+        setState((s) => ({
+          ...s,
+          posts: s.posts.map((p) => {
+            if (p.id !== postId) return p;
+            const withoutTemp = p.comments.filter((c) => c.id !== optimisticId);
+            if (withoutTemp.some((c) => c.id === res.comment.id)) return p;
+            return { ...p, comments: [...withoutTemp, res.comment] };
+          })
+        }));
       });
     }
-    return out;
-  });
+  };
   const deleteComment = (postId, commentId) => {
     markCommentLocallyRemoved(postId, commentId);
     setState((s) => {
@@ -9778,17 +10144,29 @@ function AppProvider({
         forwardedFrom: m.forwardedFrom
       };
       void (async () => {
-        let delivered = false;
-        if (isRealtimeSocketConnected()) {
-          delivered = await emitDirectMessage(body, senderId);
-        }
-        if (!delivered) {
+        const attemptSocket = async () => emitDirectMessage(body, senderId);
+        const attemptRest = async () => {
           const restToken = ensureApiTokenMatchesUser(senderId);
-          if (restToken && stateRef.current.currentUserId === senderId) {
-            const result = await apiPostMessage(restToken, storageChatId, receiverId, m);
-            delivered = result !== null;
-          }
-        }
+          if (!restToken || stateRef.current.currentUserId !== senderId) return false;
+          const result = await apiPostMessage(restToken, storageChatId, receiverId, m);
+          return result !== null;
+        };
+        const delivered = await new Promise((resolve) => {
+          let settled = false;
+          const finish = (ok) => {
+            if (settled || !ok) return;
+            settled = true;
+            resolve(true);
+          };
+          void attemptSocket().then(finish);
+          void attemptRest().then(finish);
+          window.setTimeout(() => {
+            if (!settled) {
+              settled = true;
+              resolve(false);
+            }
+          }, 12e3);
+        });
         if (!delivered && stateRef.current.currentUserId === senderId) {
           setState((s) => {
             if (s.currentUserId !== senderId) return s;
@@ -10724,8 +11102,9 @@ function AppProvider({
     lastFullPullAtRef.current = Date.now();
     return { ok: true };
   }, []);
-  const refreshFromServer = reactExports.useCallback(() => {
-    if (storyPublishBusyRef.current || socialSyncBusyRef.current) return;
+  const refreshFromServer = reactExports.useCallback((opts) => {
+    if (storyPublishBusyRef.current) return;
+    if (!opts?.urgent && socialSyncBusyRef.current) return;
     if (!apiBackendEnabled() || !getApiToken() || isGuestUserId(stateRef.current.currentUserId)) return;
     const runPull = () => {
       if (hydrateRemoteBusy.current || groupSyncBusyRef.current || messageSendBusyRef.current || socialSyncBusyRef.current || storyPublishBusyRef.current || profileSaveBusyRef.current) {
@@ -10773,7 +11152,8 @@ function AppProvider({
       })();
     };
     const now = Date.now();
-    if (now - lastFullPullAtRef.current >= MIN_FULL_PULL_MS) {
+    const minGap = opts?.urgent ? MIN_URGENT_PULL_MS : MIN_FULL_PULL_MS;
+    if (now - lastFullPullAtRef.current >= minGap) {
       if (fullPullTimerRef.current) {
         window.clearTimeout(fullPullTimerRef.current);
         fullPullTimerRef.current = null;
@@ -10786,7 +11166,7 @@ function AppProvider({
     if (fullPullTimerRef.current) window.clearTimeout(fullPullTimerRef.current);
     fullPullTimerRef.current = window.setTimeout(
       runPull,
-      MIN_FULL_PULL_MS - (now - lastFullPullAtRef.current)
+      minGap - (now - lastFullPullAtRef.current)
     );
   }, [setStateRaw]);
   const refreshSocialRelation = reactExports.useCallback(
@@ -10829,6 +11209,11 @@ function AppProvider({
         if (!payload?.chatId || !payload?.userId) return;
         const chatId = payload.chatId;
         const typerId = payload.userId;
+        const meId = stateRef.current.currentUserId;
+        const chatKeys = /* @__PURE__ */ new Set([chatId]);
+        if (meId && typerId !== meId) {
+          chatKeys.add(dmChatId(meId, typerId));
+        }
         const timerKey = `${chatId}:${typerId}`;
         const existing = typingIndicatorTimersRef.get(timerKey);
         if (existing) {
@@ -10836,25 +11221,37 @@ function AppProvider({
           typingIndicatorTimersRef.delete(timerKey);
         }
         if (payload.active) {
-          setTypingUserByChatId((prev) => ({ ...prev, [chatId]: typerId }));
+          setTypingUserByChatId((prev) => {
+            const next = { ...prev };
+            for (const key of chatKeys) next[key] = typerId;
+            return next;
+          });
           typingIndicatorTimersRef.set(
             timerKey,
             setTimeout(() => {
               typingIndicatorTimersRef.delete(timerKey);
               setTypingUserByChatId((prev) => {
-                if (prev[chatId] !== typerId) return prev;
+                let changed = false;
                 const next = { ...prev };
-                delete next[chatId];
-                return next;
+                for (const key of chatKeys) {
+                  if (next[key] !== typerId) continue;
+                  delete next[key];
+                  changed = true;
+                }
+                return changed ? next : prev;
               });
             }, 4e3)
           );
         } else {
           setTypingUserByChatId((prev) => {
-            if (prev[chatId] !== typerId) return prev;
+            let changed = false;
             const next = { ...prev };
-            delete next[chatId];
-            return next;
+            for (const key of chatKeys) {
+              if (next[key] !== typerId) continue;
+              delete next[key];
+              changed = true;
+            }
+            return changed ? next : prev;
           });
         }
         return;
@@ -11065,10 +11462,39 @@ function AppProvider({
         }
         return;
       }
+      if (event === "post_update") {
+        const payload = data;
+        const patch = payload?.post;
+        if (!patch?.id) return;
+        setState((s) => {
+          if (!s.currentUserId || isGuestUserId(s.currentUserId)) return s;
+          const i = s.posts.findIndex((p) => p.id === patch.id);
+          if (i < 0) {
+            return { ...s, posts: [patch, ...s.posts].sort((a, b) => b.createdAt - a.createdAt) };
+          }
+          const prev = s.posts[i];
+          const comments = patch.comments.length > 0 ? patch.comments : prev.comments;
+          return {
+            ...s,
+            posts: s.posts.map(
+              (p) => p.id === patch.id ? {
+                ...p,
+                ...patch,
+                likes: patch.likes,
+                reposts: patch.reposts,
+                comments
+              } : p
+            )
+          };
+        });
+        return;
+      }
       if (event === "sync_hint") {
         const kind = data?.kind;
-        if (kind === "chats" || kind === "feed") {
-          if (!socialSyncBusyRef.current && !profileSaveBusyRef.current) refreshFromServer();
+        if (kind === "chats" || kind === "feed" || kind === "story" || kind === "profile") {
+          if (!profileSaveBusyRef.current) {
+            refreshFromServer({ urgent: kind === "feed" || kind === "story" });
+          }
           return;
         }
         if (!socialSyncBusyRef.current) scheduleRemoteSync();
@@ -11543,23 +11969,23 @@ const createLucideIcon = (iconName, iconNode) => {
   Component.displayName = toPascalCase(iconName);
   return Component;
 };
-const __iconNode$1r = [
+const __iconNode$1s = [
   ["rect", { width: "20", height: "5", x: "2", y: "3", rx: "1", key: "1wp1u1" }],
   ["path", { d: "M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8", key: "1s80jp" }],
   ["path", { d: "M10 12h4", key: "a56b0p" }]
 ];
-const Archive = createLucideIcon("archive", __iconNode$1r);
-const __iconNode$1q = [
+const Archive = createLucideIcon("archive", __iconNode$1s);
+const __iconNode$1r = [
   ["path", { d: "M5 12h14", key: "1ays0h" }],
   ["path", { d: "m12 5 7 7-7 7", key: "xquz4c" }]
 ];
-const ArrowRight = createLucideIcon("arrow-right", __iconNode$1q);
-const __iconNode$1p = [
+const ArrowRight = createLucideIcon("arrow-right", __iconNode$1r);
+const __iconNode$1q = [
   ["circle", { cx: "12", cy: "12", r: "4", key: "4exip2" }],
   ["path", { d: "M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8", key: "7n84p3" }]
 ];
-const AtSign = createLucideIcon("at-sign", __iconNode$1p);
-const __iconNode$1o = [
+const AtSign = createLucideIcon("at-sign", __iconNode$1q);
+const __iconNode$1p = [
   [
     "path",
     {
@@ -11569,8 +11995,8 @@ const __iconNode$1o = [
   ],
   ["path", { d: "m9 12 2 2 4-4", key: "dzmm74" }]
 ];
-const BadgeCheck = createLucideIcon("badge-check", __iconNode$1o);
-const __iconNode$1n = [
+const BadgeCheck = createLucideIcon("badge-check", __iconNode$1p);
+const __iconNode$1o = [
   ["path", { d: "M10.268 21a2 2 0 0 0 3.464 0", key: "vwvbt9" }],
   [
     "path",
@@ -11582,8 +12008,8 @@ const __iconNode$1n = [
   ["path", { d: "m2 2 20 20", key: "1ooewy" }],
   ["path", { d: "M8.668 3.01A6 6 0 0 1 18 8c0 2.687.77 4.653 1.707 6.05", key: "1hqiys" }]
 ];
-const BellOff = createLucideIcon("bell-off", __iconNode$1n);
-const __iconNode$1m = [
+const BellOff = createLucideIcon("bell-off", __iconNode$1o);
+const __iconNode$1n = [
   ["path", { d: "M10.268 21a2 2 0 0 0 3.464 0", key: "vwvbt9" }],
   [
     "path",
@@ -11593,8 +12019,8 @@ const __iconNode$1m = [
     }
   ]
 ];
-const Bell = createLucideIcon("bell", __iconNode$1m);
-const __iconNode$1l = [
+const Bell = createLucideIcon("bell", __iconNode$1n);
+const __iconNode$1m = [
   ["path", { d: "M12 7v14", key: "1akyts" }],
   [
     "path",
@@ -11604,8 +12030,8 @@ const __iconNode$1l = [
     }
   ]
 ];
-const BookOpen = createLucideIcon("book-open", __iconNode$1l);
-const __iconNode$1k = [
+const BookOpen = createLucideIcon("book-open", __iconNode$1m);
+const __iconNode$1l = [
   [
     "path",
     {
@@ -11614,8 +12040,8 @@ const __iconNode$1k = [
     }
   ]
 ];
-const Bookmark = createLucideIcon("bookmark", __iconNode$1k);
-const __iconNode$1j = [
+const Bookmark = createLucideIcon("bookmark", __iconNode$1l);
+const __iconNode$1k = [
   [
     "path",
     {
@@ -11625,92 +12051,92 @@ const __iconNode$1j = [
   ],
   ["circle", { cx: "12", cy: "13", r: "3", key: "1vg3eu" }]
 ];
-const Camera = createLucideIcon("camera", __iconNode$1j);
-const __iconNode$1i = [
+const Camera = createLucideIcon("camera", __iconNode$1k);
+const __iconNode$1j = [
   ["path", { d: "M5 21v-6", key: "1hz6c0" }],
   ["path", { d: "M12 21V3", key: "1lcnhd" }],
   ["path", { d: "M19 21V9", key: "unv183" }]
 ];
-const ChartNoAxesColumn = createLucideIcon("chart-no-axes-column", __iconNode$1i);
-const __iconNode$1h = [
+const ChartNoAxesColumn = createLucideIcon("chart-no-axes-column", __iconNode$1j);
+const __iconNode$1i = [
   ["path", { d: "M18 6 7 17l-5-5", key: "116fxf" }],
   ["path", { d: "m22 10-7.5 7.5L13 16", key: "ke71qq" }]
 ];
-const CheckCheck = createLucideIcon("check-check", __iconNode$1h);
-const __iconNode$1g = [["path", { d: "M20 6 9 17l-5-5", key: "1gmf2c" }]];
-const Check = createLucideIcon("check", __iconNode$1g);
-const __iconNode$1f = [["path", { d: "m6 9 6 6 6-6", key: "qrunsl" }]];
-const ChevronDown = createLucideIcon("chevron-down", __iconNode$1f);
-const __iconNode$1e = [["path", { d: "m15 18-6-6 6-6", key: "1wnfg3" }]];
-const ChevronLeft = createLucideIcon("chevron-left", __iconNode$1e);
-const __iconNode$1d = [["path", { d: "m9 18 6-6-6-6", key: "mthhwq" }]];
-const ChevronRight = createLucideIcon("chevron-right", __iconNode$1d);
-const __iconNode$1c = [["path", { d: "m18 15-6-6-6 6", key: "153udz" }]];
-const ChevronUp = createLucideIcon("chevron-up", __iconNode$1c);
-const __iconNode$1b = [
+const CheckCheck = createLucideIcon("check-check", __iconNode$1i);
+const __iconNode$1h = [["path", { d: "M20 6 9 17l-5-5", key: "1gmf2c" }]];
+const Check = createLucideIcon("check", __iconNode$1h);
+const __iconNode$1g = [["path", { d: "m6 9 6 6 6-6", key: "qrunsl" }]];
+const ChevronDown = createLucideIcon("chevron-down", __iconNode$1g);
+const __iconNode$1f = [["path", { d: "m15 18-6-6 6-6", key: "1wnfg3" }]];
+const ChevronLeft = createLucideIcon("chevron-left", __iconNode$1f);
+const __iconNode$1e = [["path", { d: "m9 18 6-6-6-6", key: "mthhwq" }]];
+const ChevronRight = createLucideIcon("chevron-right", __iconNode$1e);
+const __iconNode$1d = [["path", { d: "m18 15-6-6-6 6", key: "153udz" }]];
+const ChevronUp = createLucideIcon("chevron-up", __iconNode$1d);
+const __iconNode$1c = [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["line", { x1: "12", x2: "12", y1: "8", y2: "12", key: "1pkeuh" }],
   ["line", { x1: "12", x2: "12.01", y1: "16", y2: "16", key: "4dfq90" }]
 ];
-const CircleAlert = createLucideIcon("circle-alert", __iconNode$1b);
-const __iconNode$1a = [
+const CircleAlert = createLucideIcon("circle-alert", __iconNode$1c);
+const __iconNode$1b = [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["path", { d: "M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3", key: "1u773s" }],
   ["path", { d: "M12 17h.01", key: "p32p05" }]
 ];
-const CircleQuestionMark = createLucideIcon("circle-question-mark", __iconNode$1a);
-const __iconNode$19 = [
+const CircleQuestionMark = createLucideIcon("circle-question-mark", __iconNode$1b);
+const __iconNode$1a = [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["circle", { cx: "12", cy: "10", r: "3", key: "ilqhr7" }],
   ["path", { d: "M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662", key: "154egf" }]
 ];
-const CircleUser = createLucideIcon("circle-user", __iconNode$19);
-const __iconNode$18 = [
+const CircleUser = createLucideIcon("circle-user", __iconNode$1a);
+const __iconNode$19 = [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["path", { d: "m15 9-6 6", key: "1uzhvr" }],
   ["path", { d: "m9 9 6 6", key: "z0biqf" }]
 ];
-const CircleX = createLucideIcon("circle-x", __iconNode$18);
-const __iconNode$17 = [
+const CircleX = createLucideIcon("circle-x", __iconNode$19);
+const __iconNode$18 = [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["path", { d: "M12 6v6l4 2", key: "mmk7yg" }]
 ];
-const Clock = createLucideIcon("clock", __iconNode$17);
-const __iconNode$16 = [
+const Clock = createLucideIcon("clock", __iconNode$18);
+const __iconNode$17 = [
   ["rect", { width: "14", height: "14", x: "8", y: "8", rx: "2", ry: "2", key: "17jyea" }],
   ["path", { d: "M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2", key: "zix9uf" }]
 ];
-const Copy = createLucideIcon("copy", __iconNode$16);
-const __iconNode$15 = [
+const Copy = createLucideIcon("copy", __iconNode$17);
+const __iconNode$16 = [
   ["rect", { width: "20", height: "14", x: "2", y: "5", rx: "2", key: "ynyp8z" }],
   ["line", { x1: "2", x2: "22", y1: "10", y2: "10", key: "1b3vmo" }]
 ];
-const CreditCard = createLucideIcon("credit-card", __iconNode$15);
-const __iconNode$14 = [
+const CreditCard = createLucideIcon("credit-card", __iconNode$16);
+const __iconNode$15 = [
   ["path", { d: "M12 15V3", key: "m9g1x1" }],
   ["path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", key: "ih7n3h" }],
   ["path", { d: "m7 10 5 5 5-5", key: "brsn70" }]
 ];
-const Download = createLucideIcon("download", __iconNode$14);
-const __iconNode$13 = [
+const Download = createLucideIcon("download", __iconNode$15);
+const __iconNode$14 = [
   ["circle", { cx: "12", cy: "12", r: "1", key: "41hilf" }],
   ["circle", { cx: "12", cy: "5", r: "1", key: "gxeob9" }],
   ["circle", { cx: "12", cy: "19", r: "1", key: "lyex9k" }]
 ];
-const EllipsisVertical = createLucideIcon("ellipsis-vertical", __iconNode$13);
-const __iconNode$12 = [
+const EllipsisVertical = createLucideIcon("ellipsis-vertical", __iconNode$14);
+const __iconNode$13 = [
   ["circle", { cx: "12", cy: "12", r: "1", key: "41hilf" }],
   ["circle", { cx: "19", cy: "12", r: "1", key: "1wjl8i" }],
   ["circle", { cx: "5", cy: "12", r: "1", key: "1pcz8c" }]
 ];
-const Ellipsis = createLucideIcon("ellipsis", __iconNode$12);
-const __iconNode$11 = [
+const Ellipsis = createLucideIcon("ellipsis", __iconNode$13);
+const __iconNode$12 = [
   ["path", { d: "M15 3h6v6", key: "1q9fwt" }],
   ["path", { d: "M10 14 21 3", key: "gplh6r" }],
   ["path", { d: "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6", key: "a6xqqp" }]
 ];
-const ExternalLink = createLucideIcon("external-link", __iconNode$11);
-const __iconNode$10 = [
+const ExternalLink = createLucideIcon("external-link", __iconNode$12);
+const __iconNode$11 = [
   [
     "path",
     {
@@ -11728,8 +12154,8 @@ const __iconNode$10 = [
   ],
   ["path", { d: "m2 2 20 20", key: "1ooewy" }]
 ];
-const EyeOff = createLucideIcon("eye-off", __iconNode$10);
-const __iconNode$$ = [
+const EyeOff = createLucideIcon("eye-off", __iconNode$11);
+const __iconNode$10 = [
   [
     "path",
     {
@@ -11739,8 +12165,8 @@ const __iconNode$$ = [
   ],
   ["circle", { cx: "12", cy: "12", r: "3", key: "1v7zrd" }]
 ];
-const Eye = createLucideIcon("eye", __iconNode$$);
-const __iconNode$_ = [
+const Eye = createLucideIcon("eye", __iconNode$10);
+const __iconNode$$ = [
   ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", key: "afitv7" }],
   ["path", { d: "M7 3v18", key: "bbkbws" }],
   ["path", { d: "M3 7.5h4", key: "zfgn84" }],
@@ -11750,8 +12176,8 @@ const __iconNode$_ = [
   ["path", { d: "M17 7.5h4", key: "myr1c1" }],
   ["path", { d: "M17 16.5h4", key: "go4c1d" }]
 ];
-const Film = createLucideIcon("film", __iconNode$_);
-const __iconNode$Z = [
+const Film = createLucideIcon("film", __iconNode$$);
+const __iconNode$_ = [
   [
     "path",
     {
@@ -11760,8 +12186,8 @@ const __iconNode$Z = [
     }
   ]
 ];
-const Flag = createLucideIcon("flag", __iconNode$Z);
-const __iconNode$Y = [
+const Flag = createLucideIcon("flag", __iconNode$_);
+const __iconNode$Z = [
   [
     "path",
     {
@@ -11779,26 +12205,26 @@ const __iconNode$Y = [
   ["path", { d: "M16 17h4", key: "1dejxt" }],
   ["path", { d: "M4 13h4", key: "1bwh8b" }]
 ];
-const Footprints = createLucideIcon("footprints", __iconNode$Y);
-const __iconNode$X = [
+const Footprints = createLucideIcon("footprints", __iconNode$Z);
+const __iconNode$Y = [
   ["path", { d: "m15 17 5-5-5-5", key: "nf172w" }],
   ["path", { d: "M4 18v-2a4 4 0 0 1 4-4h12", key: "jmiej9" }]
 ];
-const Forward = createLucideIcon("forward", __iconNode$X);
-const __iconNode$W = [
+const Forward = createLucideIcon("forward", __iconNode$Y);
+const __iconNode$X = [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["path", { d: "M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20", key: "13o1zl" }],
   ["path", { d: "M2 12h20", key: "9i4pu4" }]
 ];
-const Globe = createLucideIcon("globe", __iconNode$W);
-const __iconNode$V = [
+const Globe = createLucideIcon("globe", __iconNode$X);
+const __iconNode$W = [
   ["line", { x1: "4", x2: "20", y1: "9", y2: "9", key: "4lhtct" }],
   ["line", { x1: "4", x2: "20", y1: "15", y2: "15", key: "vyu0kd" }],
   ["line", { x1: "10", x2: "8", y1: "3", y2: "21", key: "1ggp8o" }],
   ["line", { x1: "16", x2: "14", y1: "3", y2: "21", key: "weycgp" }]
 ];
-const Hash = createLucideIcon("hash", __iconNode$V);
-const __iconNode$U = [
+const Hash = createLucideIcon("hash", __iconNode$W);
+const __iconNode$V = [
   [
     "path",
     {
@@ -11807,8 +12233,8 @@ const __iconNode$U = [
     }
   ]
 ];
-const Heart = createLucideIcon("heart", __iconNode$U);
-const __iconNode$T = [
+const Heart = createLucideIcon("heart", __iconNode$V);
+const __iconNode$U = [
   ["path", { d: "M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8", key: "5wwlr5" }],
   [
     "path",
@@ -11818,24 +12244,24 @@ const __iconNode$T = [
     }
   ]
 ];
-const House = createLucideIcon("house", __iconNode$T);
-const __iconNode$S = [
+const House = createLucideIcon("house", __iconNode$U);
+const __iconNode$T = [
   ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", ry: "2", key: "1m3agn" }],
   ["circle", { cx: "9", cy: "9", r: "2", key: "af1f0g" }],
   ["path", { d: "m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21", key: "1xmnt7" }]
 ];
-const Image$1 = createLucideIcon("image", __iconNode$S);
-const __iconNode$R = [
+const Image$1 = createLucideIcon("image", __iconNode$T);
+const __iconNode$S = [
   ["path", { d: "M6 16c5 0 7-8 12-8a4 4 0 0 1 0 8c-5 0-7-8-12-8a4 4 0 1 0 0 8", key: "18ogeb" }]
 ];
-const Infinity$1 = createLucideIcon("infinity", __iconNode$R);
-const __iconNode$Q = [
+const Infinity$1 = createLucideIcon("infinity", __iconNode$S);
+const __iconNode$R = [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["path", { d: "M12 16v-4", key: "1dtifu" }],
   ["path", { d: "M12 8h.01", key: "e9boi3" }]
 ];
-const Info = createLucideIcon("info", __iconNode$Q);
-const __iconNode$P = [
+const Info = createLucideIcon("info", __iconNode$R);
+const __iconNode$Q = [
   [
     "path",
     {
@@ -11845,15 +12271,15 @@ const __iconNode$P = [
   ],
   ["circle", { cx: "16.5", cy: "7.5", r: ".5", fill: "currentColor", key: "w0ekpg" }]
 ];
-const KeyRound = createLucideIcon("key-round", __iconNode$P);
-const __iconNode$O = [
+const KeyRound = createLucideIcon("key-round", __iconNode$Q);
+const __iconNode$P = [
   ["rect", { width: "7", height: "7", x: "3", y: "3", rx: "1", key: "1g98yp" }],
   ["rect", { width: "7", height: "7", x: "14", y: "3", rx: "1", key: "6d4xhi" }],
   ["rect", { width: "7", height: "7", x: "14", y: "14", rx: "1", key: "nxv5o0" }],
   ["rect", { width: "7", height: "7", x: "3", y: "14", rx: "1", key: "1bb6yr" }]
 ];
-const LayoutGrid = createLucideIcon("layout-grid", __iconNode$O);
-const __iconNode$N = [
+const LayoutGrid = createLucideIcon("layout-grid", __iconNode$P);
+const __iconNode$O = [
   ["rect", { width: "7", height: "7", x: "3", y: "3", rx: "1", key: "1g98yp" }],
   ["rect", { width: "7", height: "7", x: "3", y: "14", rx: "1", key: "1bb6yr" }],
   ["path", { d: "M14 4h7", key: "3xa0d5" }],
@@ -11861,19 +12287,19 @@ const __iconNode$N = [
   ["path", { d: "M14 15h7", key: "1mj8o2" }],
   ["path", { d: "M14 20h7", key: "11slyb" }]
 ];
-const LayoutList = createLucideIcon("layout-list", __iconNode$N);
-const __iconNode$M = [
+const LayoutList = createLucideIcon("layout-list", __iconNode$O);
+const __iconNode$N = [
   ["path", { d: "M9 17H7A5 5 0 0 1 7 7h2", key: "8i5ue5" }],
   ["path", { d: "M15 7h2a5 5 0 1 1 0 10h-2", key: "1b9ql8" }],
   ["line", { x1: "8", x2: "16", y1: "12", y2: "12", key: "1jonct" }]
 ];
-const Link2 = createLucideIcon("link-2", __iconNode$M);
-const __iconNode$L = [
+const Link2 = createLucideIcon("link-2", __iconNode$N);
+const __iconNode$M = [
   ["path", { d: "M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71", key: "1cjeqo" }],
   ["path", { d: "M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71", key: "19qd67" }]
 ];
-const Link = createLucideIcon("link", __iconNode$L);
-const __iconNode$K = [
+const Link = createLucideIcon("link", __iconNode$M);
+const __iconNode$L = [
   ["path", { d: "M11 5h10", key: "1cz7ny" }],
   ["path", { d: "M11 12h10", key: "1438ji" }],
   ["path", { d: "M11 19h10", key: "11t30w" }],
@@ -11881,21 +12307,21 @@ const __iconNode$K = [
   ["path", { d: "M4 9h2", key: "r1h2o0" }],
   ["path", { d: "M6.5 20H3.4c0-1 2.6-1.925 2.6-3.5a1.5 1.5 0 0 0-2.6-1.02", key: "xtkcd5" }]
 ];
-const ListOrdered = createLucideIcon("list-ordered", __iconNode$K);
-const __iconNode$J = [["path", { d: "M21 12a9 9 0 1 1-6.219-8.56", key: "13zald" }]];
-const LoaderCircle = createLucideIcon("loader-circle", __iconNode$J);
-const __iconNode$I = [
+const ListOrdered = createLucideIcon("list-ordered", __iconNode$L);
+const __iconNode$K = [["path", { d: "M21 12a9 9 0 1 1-6.219-8.56", key: "13zald" }]];
+const LoaderCircle = createLucideIcon("loader-circle", __iconNode$K);
+const __iconNode$J = [
   ["rect", { width: "18", height: "11", x: "3", y: "11", rx: "2", ry: "2", key: "1w4ew1" }],
   ["path", { d: "M7 11V7a5 5 0 0 1 10 0v4", key: "fwvmzm" }]
 ];
-const Lock = createLucideIcon("lock", __iconNode$I);
-const __iconNode$H = [
+const Lock = createLucideIcon("lock", __iconNode$J);
+const __iconNode$I = [
   ["path", { d: "m16 17 5-5-5-5", key: "1bji2h" }],
   ["path", { d: "M21 12H9", key: "dn1m92" }],
   ["path", { d: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4", key: "1uf3rs" }]
 ];
-const LogOut = createLucideIcon("log-out", __iconNode$H);
-const __iconNode$G = [
+const LogOut = createLucideIcon("log-out", __iconNode$I);
+const __iconNode$H = [
   [
     "path",
     {
@@ -11905,8 +12331,8 @@ const __iconNode$G = [
   ],
   ["circle", { cx: "12", cy: "10", r: "3", key: "ilqhr7" }]
 ];
-const MapPin = createLucideIcon("map-pin", __iconNode$G);
-const __iconNode$F = [
+const MapPin = createLucideIcon("map-pin", __iconNode$H);
+const __iconNode$G = [
   [
     "path",
     {
@@ -11917,14 +12343,14 @@ const __iconNode$F = [
   ["path", { d: "M6 14a12 12 0 0 0 2.4 7.2 2 2 0 0 0 3.2-2.4A8 8 0 0 1 10 14", key: "1853fq" }],
   ["path", { d: "M8 6v8", key: "15ugcq" }]
 ];
-const Megaphone = createLucideIcon("megaphone", __iconNode$F);
-const __iconNode$E = [
+const Megaphone = createLucideIcon("megaphone", __iconNode$G);
+const __iconNode$F = [
   ["path", { d: "M4 5h16", key: "1tepv9" }],
   ["path", { d: "M4 12h16", key: "1lakjw" }],
   ["path", { d: "M4 19h16", key: "1djgab" }]
 ];
-const Menu = createLucideIcon("menu", __iconNode$E);
-const __iconNode$D = [
+const Menu = createLucideIcon("menu", __iconNode$F);
+const __iconNode$E = [
   [
     "path",
     {
@@ -11935,8 +12361,8 @@ const __iconNode$D = [
   ["path", { d: "M8 12h8", key: "1wcyev" }],
   ["path", { d: "M12 8v8", key: "napkw2" }]
 ];
-const MessageCirclePlus = createLucideIcon("message-circle-plus", __iconNode$D);
-const __iconNode$C = [
+const MessageCirclePlus = createLucideIcon("message-circle-plus", __iconNode$E);
+const __iconNode$D = [
   [
     "path",
     {
@@ -11945,8 +12371,8 @@ const __iconNode$C = [
     }
   ]
 ];
-const MessageCircle = createLucideIcon("message-circle", __iconNode$C);
-const __iconNode$B = [
+const MessageCircle = createLucideIcon("message-circle", __iconNode$D);
+const __iconNode$C = [
   [
     "path",
     {
@@ -11955,8 +12381,8 @@ const __iconNode$B = [
     }
   ]
 ];
-const MessageSquare = createLucideIcon("message-square", __iconNode$B);
-const __iconNode$A = [
+const MessageSquare = createLucideIcon("message-square", __iconNode$C);
+const __iconNode$B = [
   ["path", { d: "M12 19v3", key: "npa21l" }],
   ["path", { d: "M15 9.34V5a3 3 0 0 0-5.68-1.33", key: "1gzdoj" }],
   ["path", { d: "M16.95 16.95A7 7 0 0 1 5 12v-2", key: "cqa7eg" }],
@@ -11964,14 +12390,14 @@ const __iconNode$A = [
   ["path", { d: "m2 2 20 20", key: "1ooewy" }],
   ["path", { d: "M9 9v3a3 3 0 0 0 5.12 2.12", key: "r2i35w" }]
 ];
-const MicOff = createLucideIcon("mic-off", __iconNode$A);
-const __iconNode$z = [
+const MicOff = createLucideIcon("mic-off", __iconNode$B);
+const __iconNode$A = [
   ["path", { d: "M12 19v3", key: "npa21l" }],
   ["path", { d: "M19 10v2a7 7 0 0 1-14 0v-2", key: "1vc78b" }],
   ["rect", { x: "9", y: "2", width: "6", height: "13", rx: "3", key: "s6n7sd" }]
 ];
-const Mic = createLucideIcon("mic", __iconNode$z);
-const __iconNode$y = [
+const Mic = createLucideIcon("mic", __iconNode$A);
+const __iconNode$z = [
   [
     "path",
     {
@@ -11980,7 +12406,12 @@ const __iconNode$y = [
     }
   ]
 ];
-const Moon = createLucideIcon("moon", __iconNode$y);
+const Moon = createLucideIcon("moon", __iconNode$z);
+const __iconNode$y = [
+  ["circle", { cx: "8", cy: "18", r: "4", key: "1fc0mg" }],
+  ["path", { d: "M12 18V2l7 4", key: "g04rme" }]
+];
+const Music2 = createLucideIcon("music-2", __iconNode$y);
 const __iconNode$x = [
   ["path", { d: "M9 18V5l12-2v13", key: "1jmyc2" }],
   ["circle", { cx: "6", cy: "18", r: "3", key: "fqmcym" }],
@@ -15686,7 +16117,7 @@ function chatStackDismissTransforms(dragTx, widthPx) {
   }
 }
 let nextLayerId = 1;
-let installed = false;
+let installed$1 = false;
 const layers = [];
 let activePointerId = null;
 let activeLayerId = null;
@@ -15708,8 +16139,8 @@ function isInteractiveTarget(target) {
   );
 }
 function installDocumentRouter() {
-  if (installed || typeof document === "undefined") return;
-  installed = true;
+  if (installed$1 || typeof document === "undefined") return;
+  installed$1 = true;
   const onDown = (e) => {
     if (e.button !== 0 || activePointerId != null) return;
     const layer = topLayer();
@@ -16726,9 +17157,25 @@ function MainTabStack({
 }
 const STORY_FULLSCREEN_EVENT = "retweet-story-fullscreen";
 const OPEN_STORY_EVENT = "retweet-open-story";
-function setStoryFullscreen(open) {
+let fullscreenLocks = 0;
+function emitStoryFullscreen() {
   if (typeof window === "undefined") return;
-  window.dispatchEvent(new CustomEvent(STORY_FULLSCREEN_EVENT, { detail: { open } }));
+  window.dispatchEvent(
+    new CustomEvent(STORY_FULLSCREEN_EVENT, {
+      detail: { open: fullscreenLocks > 0, locks: fullscreenLocks }
+    })
+  );
+}
+function lockStoryFullscreen() {
+  fullscreenLocks += 1;
+  emitStoryFullscreen();
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    fullscreenLocks = Math.max(0, fullscreenLocks - 1);
+    emitStoryFullscreen();
+  };
 }
 function openStoryViewer(userId, storyId) {
   if (typeof window === "undefined") return;
@@ -16865,7 +17312,7 @@ function TabPanelShell({
     "div",
     {
       ref: scrollRef,
-      className: "tab-panel-scroll tab-panel-immersive flex h-full min-h-0 w-full flex-1 flex-col overflow-x-hidden " + chromeClass + " " + (lockScroll ? "overflow-hidden" : "no-scrollbar overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]"),
+      className: "retweet-no-select-pane select-none tab-panel-scroll tab-panel-immersive flex h-full min-h-0 w-full flex-1 flex-col overflow-x-hidden " + chromeClass + " " + (lockScroll ? "overflow-hidden" : "no-scrollbar overflow-y-auto overscroll-y-contain [-webkit-overflow-scrolling:touch]"),
       style: fullHeight ? { height: "100%", minHeight: 0 } : void 0,
       children
     }
@@ -17452,9 +17899,10 @@ function isRenderableAvatarImageUrl(src) {
   if (low.startsWith("data:image/")) return true;
   if (low.startsWith("data:") && (low.includes("image/") || low.includes("base64,"))) return true;
   if (low.startsWith("/media/")) return true;
+  if (low.startsWith("/stickers/") || low.startsWith("/app/")) return true;
   return /^https?:\/\//i.test(s);
 }
-function Avatar({ name = "?", src, size = 40, className, ring }) {
+function Avatar$1({ name = "?", src, size = 40, className, ring, ringSeen }) {
   const initials = name.slice(0, 2).toUpperCase();
   const [imgFailed, setImgFailed] = reactExports.useState(false);
   const [videoFailed, setVideoFailed] = reactExports.useState(false);
@@ -17513,7 +17961,13 @@ function Avatar({ name = "?", src, size = 40, className, ring }) {
     }
   );
   if (ring) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "story-ring inline-block", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "bg-background rounded-full p-[2px]", children: inner }) });
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "div",
+      {
+        className: "inline-block " + (ringSeen ? "story-ring-seen" : "story-ring-brand"),
+        children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "bg-background rounded-full p-[2px]", children: inner })
+      }
+    );
   }
   return inner;
 }
@@ -17965,7 +18419,8 @@ function PostFeedMediaBlock({
     ] });
   }
   if (postMedia.hasVideo) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsxs(PostFeedMedia, { aspect: "video", onClick: onOpen, profileInset, children: [
+    const reelGrid = post.type === "reel";
+    return /* @__PURE__ */ jsxRuntimeExports.jsxs(PostFeedMedia, { aspect: reelGrid ? "square" : "video", onClick: onOpen, profileInset, children: [
       notesOverlay,
       /* @__PURE__ */ jsxRuntimeExports.jsx(
         "video",
@@ -17975,7 +18430,7 @@ function PostFeedMediaBlock({
           controls: true,
           playsInline: true,
           preload: "none",
-          className: "h-full w-full object-cover",
+          className: "h-full w-full " + (reelGrid ? "object-cover object-center" : "object-cover"),
           onClick: (e) => e.stopPropagation()
         }
       )
@@ -18055,7 +18510,7 @@ function FeedPostColumnShell({
   className = ""
 }) {
   return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "relative px-3 py-3 " + className, dir: "ltr", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-3", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onOpenAuthor, className: "h-10 w-10 shrink-0 self-start", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: author.username, src: author.avatar, size: 40 }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onOpenAuthor, className: "h-10 w-10 shrink-0 self-start", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: author.username, src: author.avatar, size: 40 }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "min-w-0 flex-1", children })
   ] }) });
 }
@@ -18182,7 +18637,7 @@ function PostCardInner({
             e.stopPropagation();
             openAuthorProfile(nu.id);
           },
-          children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: nu.username, src: nu.avatar, size: 26 })
+          children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: nu.username, src: nu.avatar, size: 26 })
         }
       )
     ] }, n.id);
@@ -18325,6 +18780,63 @@ const HomeFeedPostItem = reactExports.memo(
   },
   (prev, next) => postFeedSignature(prev.post) === postFeedSignature(next.post)
 );
+function authorHasUnseenStories(state, viewerId, authorId) {
+  const stories = storiesForUser(state, authorId, viewerId);
+  if (stories.length === 0) return false;
+  return stories.some((s) => !storyViewedBy(s, viewerId));
+}
+function storyViewedBy(story, viewerId) {
+  return (story.viewedByUserIds || []).includes(viewerId);
+}
+function firstUnseenStoryIndex(stories, viewerId) {
+  const i = stories.findIndex((s) => !storyViewedBy(s, viewerId));
+  return i >= 0 ? i : 0;
+}
+function orderStoryTrayUserIds(state, viewerId, userIds) {
+  const latest = /* @__PURE__ */ new Map();
+  for (const s of state.stories) {
+    if (!userIds.includes(s.userId)) continue;
+    latest.set(s.userId, Math.max(latest.get(s.userId) ?? 0, s.createdAt));
+  }
+  const unseen = [];
+  const seen = [];
+  for (const id of userIds) {
+    if (authorHasUnseenStories(state, viewerId, id)) unseen.push(id);
+    else seen.push(id);
+  }
+  const byLatest = (a, b) => (latest.get(b) ?? 0) - (latest.get(a) ?? 0);
+  unseen.sort(byLatest);
+  seen.sort(byLatest);
+  return [...unseen, ...seen];
+}
+function storyViewerTrayRing(state, viewerId) {
+  const friends = visibleStoryUserIds(state, viewerId).filter((id) => id !== viewerId);
+  const me = userById(state, viewerId);
+  const hasMe = storiesForUser(state, viewerId, viewerId).length > 0;
+  const orderedFriends = orderStoryTrayUserIds(state, viewerId, friends);
+  if (hasMe && me) return [viewerId, ...orderedFriends];
+  return orderedFriends;
+}
+function nextAuthorInTray(ring, current) {
+  const i = ring.indexOf(current);
+  if (i < 0 || i >= ring.length - 1) return null;
+  return ring[i + 1] ?? null;
+}
+function prevAuthorInTray(ring, current) {
+  const i = ring.indexOf(current);
+  if (i <= 0) return null;
+  return ring[i - 1] ?? null;
+}
+function storyViewerSeenAt(story, viewerId) {
+  return story.viewedAtByUserIds?.[viewerId];
+}
+function formatStoryViewTime(ts) {
+  const diff = Date.now() - ts;
+  if (diff < 6e4) return "الآن";
+  if (diff < 36e5) return `${Math.floor(diff / 6e4)} د`;
+  if (diff < 864e5) return `${Math.floor(diff / 36e5)} س`;
+  return new Date(ts).toLocaleDateString("ar", { day: "numeric", month: "short" });
+}
 const MAX_STORY_UPLOAD_BYTES = 78 * 1024 * 1024;
 let pendingStoryPickFile = null;
 function stashPendingStoryFile(file) {
@@ -18402,7 +18914,7 @@ async function prepareStoryFile(file) {
   return file;
 }
 const MAX_STORY_VIDEO_DURATION_SEC = 60;
-function uploadTimeoutMs(file) {
+function uploadTimeoutMs$1(file) {
   if (file.type.startsWith("video/")) {
     if (file.size > 40 * 1024 * 1024) return 3e5;
     if (file.size > 15 * 1024 * 1024) return 24e4;
@@ -18459,7 +18971,7 @@ async function uploadStoryFile(file, opts) {
       };
     }
     const up = await apiUploadMedia(token, prepared, {
-      timeoutMs: uploadTimeoutMs(prepared),
+      timeoutMs: uploadTimeoutMs$1(prepared),
       storyVideo: prepared.type.startsWith("video/")
     });
     if (!up.ok) return { ok: false, error: up.error };
@@ -18641,7 +19153,7 @@ function ShareSheet({ target, onClose }) {
     /* @__PURE__ */ jsxRuntimeExports.jsx("h4", { className: "text-xs text-muted-foreground mb-2 px-1", children: "إرسال إلى" }),
     friends.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-center text-muted-foreground py-4 text-sm", children: "تابع أصدقاء أولاً" }),
     /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "grid grid-cols-4 gap-3", children: friends.map((u) => u && /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", onClick: () => sendToFriend(u.id), className: "flex flex-col items-center gap-1", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u.username, src: u.avatar, size: 56 }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: u.username, src: u.avatar, size: 56 }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs truncate w-full text-center", children: u.username })
     ] }, u.id)) })
   ] }) });
@@ -18772,7 +19284,7 @@ function PostDetail({ post: postProp, onBack, onOpenProfile, onOpenChat, profile
                 type: "button",
                 onClick: () => reactExports.startTransition(() => onOpenProfile(author.id, returnCtx(false))),
                 className: "shrink-0",
-                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: author.username, src: author.avatar, size: 36 })
+                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: author.username, src: author.avatar, size: 36 })
               }
             ),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1 text-start", children: [
@@ -18816,7 +19328,7 @@ function PostDetail({ post: postProp, onBack, onOpenProfile, onOpenChat, profile
                 children: n.text
               }
             ) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "line-clamp-2 w-full rounded-xl border border-white/25 bg-black/45 px-2 py-1 text-start text-[11px] font-medium leading-snug text-white backdrop-blur-sm", children: n.text }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => reactExports.startTransition(() => onOpenProfile(nu.id, returnCtx(false))), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: nu.username, src: nu.avatar, size: 26 }) })
+            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => reactExports.startTransition(() => onOpenProfile(nu.id, returnCtx(false))), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: nu.username, src: nu.avatar, size: 26 }) })
           ] }, n.id);
         }) }),
         isRenderableMediaUrl(post.image) ? /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: resolveMediaUrl(post.image), className: "max-h-[70vh] w-full object-contain", alt: "" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex min-h-[10rem] items-center justify-center py-12 text-5xl", children: post.image })
@@ -18839,7 +19351,7 @@ function PostDetail({ post: postProp, onBack, onOpenProfile, onOpenChat, profile
                 children: n.text
               }
             ) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "line-clamp-2 w-full rounded-xl border border-white/25 bg-black/45 px-2 py-1 text-start text-[11px] font-medium leading-snug text-white backdrop-blur-sm", children: n.text }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => reactExports.startTransition(() => onOpenProfile(nu.id, returnCtx(false))), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: nu.username, src: nu.avatar, size: 26 }) })
+            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => reactExports.startTransition(() => onOpenProfile(nu.id, returnCtx(false))), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: nu.username, src: nu.avatar, size: 26 }) })
           ] }, n.id);
         }) }),
         isRenderableMediaUrl(post.video) ? /* @__PURE__ */ jsxRuntimeExports.jsx("video", { src: resolveMediaUrl(post.video), controls: true, playsInline: true, className: "max-h-[70vh] w-full object-contain" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex min-h-[10rem] items-center justify-center py-12 text-5xl text-white", children: post.video })
@@ -18860,7 +19372,7 @@ function PostDetail({ post: postProp, onBack, onOpenProfile, onOpenChat, profile
               children: n.text
             }
           ) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[9px] leading-tight text-start bg-secondary rounded-lg px-1.5 py-0.5 mb-0.5 line-clamp-3 border border-border", children: n.text }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => reactExports.startTransition(() => onOpenProfile(nu.id, returnCtx(false))), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: nu.username, src: nu.avatar, size: 28 }) })
+          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => reactExports.startTransition(() => onOpenProfile(nu.id, returnCtx(false))), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: nu.username, src: nu.avatar, size: 28 }) })
         ] }, n.id);
       }) }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-5 px-4 pt-3", children: [
@@ -18896,7 +19408,7 @@ function PostDetail({ post: postProp, onBack, onOpenProfile, onOpenChat, profile
         post.comments.map((c) => {
           const u = userById(state, c.userId);
           return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative flex gap-2 text-sm", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "shrink-0 rounded-full", onClick: () => reactExports.startTransition(() => u && onOpenProfile(u.id, returnCtx(true))), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u?.username || "?", src: u?.avatar, size: 28 }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "shrink-0 rounded-full", onClick: () => reactExports.startTransition(() => u && onOpenProfile(u.id, returnCtx(true))), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: u?.username || "?", src: u?.avatar, size: 28 }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1", children: [
               /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", className: "font-semibold", onClick: () => reactExports.startTransition(() => u && onOpenProfile(u.id, returnCtx(true))), children: [
                 "@",
@@ -18964,6 +19476,185 @@ function PostDetail({ post: postProp, onBack, onOpenProfile, onOpenChat, profile
       }
     )
   ] }) });
+}
+function preloadStoryUrls(urls) {
+  if (typeof window === "undefined") return;
+  for (const raw of urls) {
+    const u = raw?.trim();
+    if (!u || u.startsWith("data:")) continue;
+    const isVideo = /\.(mp4|webm|mov)(\?|$)/i.test(u) || u.includes("/videos/");
+    if (isVideo) {
+      const v = document.createElement("video");
+      v.preload = "auto";
+      v.muted = true;
+      v.playsInline = true;
+      v.src = u;
+    } else {
+      const img = new Image();
+      img.decoding = "async";
+      img.src = u;
+    }
+  }
+}
+function StoryViewsSheet({
+  open,
+  story,
+  state,
+  onClose,
+  onOpenProfile,
+  onDelete
+}) {
+  const [sheetY, setSheetY] = reactExports.useState(0);
+  const [sheetSpring, setSheetSpring] = reactExports.useState(false);
+  const dragRef = reactExports.useRef(null);
+  const sheetMaxRef = reactExports.useRef(0);
+  const viewerIds = [...new Set(story.viewedByUserIds || [])];
+  const viewers = viewerIds.map((id) => {
+    const u = userById(state, id);
+    if (!u) return null;
+    const at = storyViewerSeenAt(story, id) ?? story.createdAt;
+    return { user: u, at };
+  }).filter(Boolean);
+  viewers.sort((a, b) => b.at - a.at);
+  reactExports.useEffect(() => {
+    if (!open) {
+      setSheetY(0);
+      setSheetSpring(false);
+    }
+  }, [open]);
+  reactExports.useEffect(() => {
+    sheetMaxRef.current = Math.min(window.innerHeight * 0.78, 640);
+  }, [open]);
+  const snapClose = reactExports.useCallback(() => {
+    setSheetSpring(true);
+    setSheetY(sheetMaxRef.current);
+    window.setTimeout(() => onClose(), 280);
+  }, [onClose]);
+  const snapOpen = reactExports.useCallback(() => {
+    setSheetSpring(true);
+    setSheetY(0);
+    window.setTimeout(() => setSheetSpring(false), 320);
+  }, []);
+  const onSheetPointerDown = (e) => {
+    if (e.button !== 0) return;
+    dragRef.current = {
+      pointerId: e.pointerId,
+      startY: e.clientY,
+      startSheetY: sheetY,
+      lastY: e.clientY,
+      lastT: performance.now(),
+      velocity: 0
+    };
+    setSheetSpring(false);
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+    }
+  };
+  const onSheetPointerMove = (e) => {
+    const p = dragRef.current;
+    if (!p || e.pointerId !== p.pointerId) return;
+    const dy = Math.max(0, e.clientY - p.startY);
+    const now = performance.now();
+    const dt = Math.max(1, now - p.lastT);
+    p.velocity = (e.clientY - p.lastY) / dt;
+    p.lastY = e.clientY;
+    p.lastT = now;
+    setSheetY(p.startSheetY + dy);
+  };
+  const endSheetDrag = (e) => {
+    const p = dragRef.current;
+    dragRef.current = null;
+    try {
+      if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+    } catch {
+    }
+    if (!p || e.pointerId !== p.pointerId) return;
+    const dy = sheetY;
+    if (dy > sheetMaxRef.current * 0.28 || p.velocity > 0.45) snapClose();
+    else snapOpen();
+  };
+  if (!open) return null;
+  const sheetProgress = sheetY / Math.max(1, sheetMaxRef.current);
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "fixed inset-0 z-[80] flex flex-col justify-end", role: "dialog", "aria-modal": "true", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "button",
+      {
+        type: "button",
+        className: "absolute inset-0 bg-black/50 backdrop-blur-md transition-opacity duration-200",
+        style: { opacity: Math.max(0, 1 - sheetProgress * 0.5) },
+        "aria-label": "إغلاق",
+        onClick: snapClose
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "div",
+      {
+        className: "relative mx-auto w-full max-w-md flex flex-col rounded-t-[1.35rem] border border-white/10 border-b-0 bg-[#1c1c1e] shadow-[0_-12px_48px_rgba(0,0,0,0.55)] touch-none",
+        style: {
+          maxHeight: "min(78dvh, 640px)",
+          transform: `translate3d(0, ${sheetY}px, 0)`,
+          transition: sheetSpring ? "transform 0.32s cubic-bezier(0.32, 0.72, 0, 1)" : "none"
+        },
+        onPointerDown: onSheetPointerDown,
+        onPointerMove: onSheetPointerMove,
+        onPointerUp: endSheetDrag,
+        onPointerCancel: endSheetDrag,
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex justify-center pt-2.5 pb-1", "aria-hidden": true, children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-1 w-11 rounded-full bg-white/25" }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("h2", { className: "px-4 pb-2 text-center text-[15px] font-semibold text-white", children: [
+            "المشاهدات · ",
+            viewers.length
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-2 [-webkit-overflow-scrolling:touch]", children: viewers.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "py-12 text-center text-sm text-white/45", children: "لا مشاهدات بعد" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("ul", { className: "space-y-0.5 pb-2", children: viewers.map(({ user: vu, at }) => /* @__PURE__ */ jsxRuntimeExports.jsx("li", { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "button",
+            {
+              type: "button",
+              className: "flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-start active:bg-white/10",
+              onClick: () => {
+                onClose();
+                onOpenProfile?.(vu.id);
+              },
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: vu.username, src: vu.avatar, size: 44 }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "min-w-0 flex-1", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "flex items-center gap-1 font-medium text-white", children: [
+                  "@",
+                  vu.username,
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(VerifiedMarkForUser, { user: vu, size: 14 })
+                ] }) }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "shrink-0 text-xs text-white/45", children: formatStoryViewTime(at) })
+              ]
+            }
+          ) }, vu.id)) }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "shrink-0 space-y-2 border-t border-white/10 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]", children: [
+            onDelete && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "button",
+              {
+                type: "button",
+                className: "flex w-full items-center justify-center gap-2 rounded-2xl bg-red-500/20 py-3 text-sm font-semibold text-red-300",
+                onClick: onDelete,
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 18, "aria-hidden": true }),
+                  "حذف الستوري"
+                ]
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                type: "button",
+                className: "w-full rounded-2xl bg-white/12 py-3 text-sm font-semibold text-white",
+                onClick: snapClose,
+                children: "تم"
+              }
+            )
+          ] })
+        ]
+      }
+    )
+  ] });
 }
 function CountdownBlock({ targetAt, title }) {
   const [now, setNow] = reactExports.useState(() => Date.now());
@@ -19217,6 +19908,9 @@ function SliderSticker({
 const STORY_SEGMENT_CAP_MS = 5e3;
 function StoryViewer({
   userId,
+  trayRing,
+  initialStoryId,
+  openOrigin,
   onClose,
   onOpenProfile,
   onOpenChat,
@@ -19228,8 +19922,14 @@ function StoryViewer({
   onCloseRef.current = onClose;
   const author = userById(state, userId);
   const stories = storiesForUser(state, userId, me.id);
-  const ring = visibleStoryUserIds(state, me.id);
+  const ring = trayRing.length > 0 ? trayRing : [userId];
   const [i, setI] = reactExports.useState(0);
+  const pendingStoryIdRef = reactExports.useRef(initialStoryId);
+  const [entering, setEntering] = reactExports.useState(true);
+  const [userSlideX, setUserSlideX] = reactExports.useState(0);
+  const [userSlideSpring, setUserSlideSpring] = reactExports.useState(false);
+  const horizDragRef = reactExports.useRef(null);
+  const viewportWRef = reactExports.useRef(typeof window !== "undefined" ? window.innerWidth : 390);
   const cappedStoryIndex = stories.length > 0 ? Math.min(Math.max(0, i), stories.length - 1) : 0;
   const curStoryForHooks = stories.length > 0 ? stories[cappedStoryIndex] : void 0;
   const [reply, setReply] = reactExports.useState("");
@@ -19255,13 +19955,27 @@ function StoryViewer({
   const [dismissSpring, setDismissSpring] = reactExports.useState(false);
   const dismissDragRef = reactExports.useRef(null);
   const viewportHRef = reactExports.useRef(typeof window !== "undefined" ? window.innerHeight : 800);
+  const dismissDoneRef = reactExports.useRef(false);
+  const closeTimerRef = reactExports.useRef(null);
+  const gestureRafRef = reactExports.useRef(null);
+  const pendingGestureRef = reactExports.useRef({});
   reactExports.useEffect(() => {
-    setStoryFullscreen(true);
+    const releaseFullscreen = lockStoryFullscreen();
     document.documentElement.classList.add("retweet-story-open");
     return () => {
-      setStoryFullscreen(false);
+      releaseFullscreen();
       document.documentElement.classList.remove("retweet-story-open");
+      if (closeTimerRef.current != null) {
+        window.clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
+      dismissDoneRef.current = false;
     };
+  }, []);
+  const closeViewer = reactExports.useCallback(() => {
+    if (dismissDoneRef.current) return;
+    dismissDoneRef.current = true;
+    onCloseRef.current();
   }, []);
   const showTopChrome = reactExports.useCallback(() => {
     setTopChromeVisible(true);
@@ -19303,45 +20017,94 @@ function StoryViewer({
       advanceTimerRef.current = null;
     }
   }, []);
+  const goToNextAuthor = reactExports.useCallback(() => {
+    const nextU = nextAuthorInTray(ring, userId);
+    if (nextU) {
+      pendingStoryIdRef.current = void 0;
+      onRequestAuthor?.(nextU);
+      return true;
+    }
+    if (onRequestAuthor) onRequestAuthor(null);
+    else closeViewer();
+    return false;
+  }, [onRequestAuthor, ring, userId, closeViewer]);
+  const goToPrevAuthor = reactExports.useCallback(() => {
+    const prevU = prevAuthorInTray(ring, userId);
+    if (prevU) {
+      pendingStoryIdRef.current = void 0;
+      onRequestAuthor?.(prevU);
+      return true;
+    }
+    return false;
+  }, [onRequestAuthor, ring, userId]);
   const goForward = reactExports.useCallback(() => {
     clearAdvanceTimer();
     setI((prev) => {
-      const { storiesLen, userId: uid2, ring: r2 } = snapRef.current;
+      const { storiesLen, userId: uid2 } = snapRef.current;
       if (prev < storiesLen - 1) return prev + 1;
-      const nextU = nextStoryAuthorAfter(r2, uid2);
-      if (nextU) {
-        onRequestAuthor?.(nextU);
-        return prev;
-      }
-      if (onRequestAuthor) onRequestAuthor(null);
-      else onCloseRef.current();
+      goToNextAuthor();
       return prev;
     });
-  }, [onRequestAuthor, clearAdvanceTimer]);
+  }, [goToNextAuthor, clearAdvanceTimer]);
   const goBack = reactExports.useCallback(() => {
-    setI((prev) => prev > 0 ? prev - 1 : prev);
-  }, []);
+    setI((prev) => {
+      if (prev > 0) return prev - 1;
+      goToPrevAuthor();
+      return prev;
+    });
+  }, [goToPrevAuthor]);
   const goForwardRef = reactExports.useRef(goForward);
   goForwardRef.current = goForward;
   reactExports.useEffect(() => {
-    setI(0);
     setDismissY(0);
     setDismissSpring(false);
+    setUserSlideX(0);
+    setUserSlideSpring(false);
+    setEntering(true);
+    const t = window.setTimeout(() => setEntering(false), 400);
+    const list = storiesForUser(state, userId, me.id);
+    const fromId = pendingStoryIdRef.current;
+    let start = 0;
+    if (fromId) {
+      const fi = list.findIndex((s) => s.id === fromId);
+      start = fi >= 0 ? fi : 0;
+      pendingStoryIdRef.current = void 0;
+    } else {
+      start = firstUnseenStoryIndex(list, me.id);
+    }
+    setI(start);
+    return () => clearTimeout(t);
   }, [userId]);
   reactExports.useEffect(() => {
     const onResize = () => {
       viewportHRef.current = window.innerHeight;
+      viewportWRef.current = window.innerWidth;
     };
     window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      if (gestureRafRef.current != null) {
+        cancelAnimationFrame(gestureRafRef.current);
+        gestureRafRef.current = null;
+      }
+    };
   }, []);
   const finishDismiss = reactExports.useCallback(() => {
+    if (dismissDoneRef.current) return;
     const h = viewportHRef.current;
     setDismissSpring(true);
     setDismissY(h);
-    window.setTimeout(() => onCloseRef.current(), 300);
-  }, []);
+    if (closeTimerRef.current != null) window.clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = window.setTimeout(() => {
+      closeTimerRef.current = null;
+      closeViewer();
+    }, 280);
+  }, [closeViewer]);
   const snapDismissBack = reactExports.useCallback(() => {
+    if (closeTimerRef.current != null) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
     setDismissSpring(true);
     setDismissY(0);
     window.setTimeout(() => setDismissSpring(false), 320);
@@ -19352,10 +20115,10 @@ function StoryViewer({
   }, [stories.length]);
   reactExports.useEffect(() => {
     if (!author) {
-      const t = window.setTimeout(() => onCloseRef.current(), 0);
+      const t = window.setTimeout(() => closeViewer(), 0);
       return () => clearTimeout(t);
     }
-  }, [author]);
+  }, [author, closeViewer]);
   reactExports.useEffect(() => {
     if (!curStoryForHooks?.id) return;
     setSegmentMs(STORY_SEGMENT_CAP_MS);
@@ -19404,15 +20167,28 @@ function StoryViewer({
     armAdvanceTimer();
     return () => clearAdvanceTimer();
   }, [i, stories.length, author, userId, segmentMs, ownViewsOpen, armAdvanceTimer, clearAdvanceTimer]);
+  reactExports.useEffect(() => {
+    if (!author || stories.length === 0) return;
+    const idx = Math.min(Math.max(0, i), stories.length - 1);
+    const urls = [];
+    for (let off = -1; off <= 2; off++) {
+      const s = stories[idx + off];
+      if (!s) continue;
+      const m = normalizeStoryMedia(s);
+      if (m.imageUrl) urls.push(m.imageUrl);
+      if (m.videoUrl) urls.push(m.videoUrl);
+    }
+    preloadStoryUrls(urls);
+  }, [userId, i, stories, author]);
   if (!author) {
     return null;
   }
   if (stories.length === 0) {
     return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "fixed inset-0 bg-black z-[200] flex flex-col items-center justify-center p-6 text-white", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "absolute top-3 end-3 p-2 rounded-full bg-white/10", onClick: () => onCloseRef.current(), "aria-label": "إغلاق", children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 24 }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "absolute top-3 end-3 p-2 rounded-full bg-white/10", onClick: closeViewer, "aria-label": "إغلاق", children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 24 }) }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-center text-base mb-2 mt-8", children: "لا توجد ستوريات لهذا الحساب حالياً." }),
       userId === me.id && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-center text-sm text-white/70 mb-6", children: "أنشئ ستوري من زر + ثم اختر «ستوري»." }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "bg-[#0095F6] px-8 py-2.5 rounded-full font-semibold", onClick: () => onCloseRef.current(), children: "رجوع" })
+      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "bg-[#0095F6] px-8 py-2.5 rounded-full font-semibold", onClick: closeViewer, children: "رجوع" })
     ] });
   }
   const displayIdx = Math.min(Math.max(0, i), stories.length - 1);
@@ -19420,8 +20196,6 @@ function StoryViewer({
   const storyMedia = normalizeStoryMedia(cur);
   const storyLiked = (cur.likes || []).includes(me.id);
   const storyNotes = visibleMediaNotes(state, "story", cur.id, me.id).slice(0, 8);
-  const storyViewerIds = [...new Set(state.stories.find((s) => s.id === cur.id)?.viewedByUserIds || [])];
-  const storyViewersSorted = storyViewerIds.filter((id) => userById(state, id)).sort((a, b) => userById(state, a).username.localeCompare(userById(state, b).username, "ar"));
   const submitReply = (e) => {
     e.preventDefault();
     if (isGuest) {
@@ -19458,7 +20232,7 @@ function StoryViewer({
     setOwnViewsOpen(false);
     if (remaining <= 0) {
       if (onRequestAuthor) onRequestAuthor(null);
-      else onCloseRef.current();
+      else closeViewer();
       return;
     }
     if (atLast) setI((prev) => Math.max(0, prev - 1));
@@ -19493,9 +20267,23 @@ function StoryViewer({
   const dismissProgress = dismissY / Math.max(1, viewportHRef.current);
   const dismissScale = Math.max(0.88, 1 - dismissProgress * 0.1);
   const backdropOpacity = Math.max(0, 1 - dismissProgress * 0.9);
-  const onDismissPointerDown = (e) => {
+  const snapUserSlideBack = reactExports.useCallback(() => {
+    setUserSlideSpring(true);
+    setUserSlideX(0);
+    window.setTimeout(() => setUserSlideSpring(false), 280);
+  }, []);
+  const onGesturePointerDown = (e) => {
     if (e.button !== 0 || ownViewsOpen) return;
     if (e.target.closest("[data-story-interactive]")) return;
+    horizDragRef.current = {
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startSlideX: userSlideX,
+      lastX: e.clientX,
+      lastT: performance.now(),
+      velocity: 0,
+      axis: "none"
+    };
     dismissDragRef.current = {
       pointerId: e.pointerId,
       startY: e.clientY,
@@ -19505,24 +20293,66 @@ function StoryViewer({
       velocity: 0
     };
     setDismissSpring(false);
+    setUserSlideSpring(false);
     try {
       e.currentTarget.setPointerCapture(e.pointerId);
     } catch {
     }
   };
-  const onDismissPointerMove = (e) => {
+  const onGesturePointerMove = (e) => {
+    const h = horizDragRef.current;
     const p = dismissDragRef.current;
-    if (!p || e.pointerId !== p.pointerId || ownViewsOpen) return;
-    const dy = Math.max(0, e.clientY - p.startY);
+    if (!h || !p || e.pointerId !== h.pointerId || ownViewsOpen) return;
+    const dx = e.clientX - h.startX;
+    const dy = e.clientY - p.startY;
+    if (h.axis === "none") {
+      if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+        h.axis = Math.abs(dx) > Math.abs(dy) ? "h" : "v";
+      }
+    }
     const now = performance.now();
-    const dt = Math.max(1, now - p.lastT);
-    p.velocity = (e.clientY - p.lastY) / dt;
-    p.lastY = e.clientY;
-    p.lastT = now;
-    setDismissY(p.startDismissY + dy);
+    const dt = Math.max(1, now - h.lastT);
+    h.velocity = (e.clientX - h.lastX) / dt;
+    h.lastX = e.clientX;
+    h.lastT = now;
+    if (h.axis === "h") {
+      const w = viewportWRef.current;
+      const atStart = !prevAuthorInTray(ring, userId) && dx > 0;
+      const atEnd = !nextAuthorInTray(ring, userId) && dx < 0;
+      let x = h.startSlideX + dx;
+      if (atStart && x > 0) x *= 0.35;
+      if (atEnd && x < 0) x *= 0.35;
+      pendingGestureRef.current.x = Math.max(-w, Math.min(w, x));
+      if (gestureRafRef.current == null) {
+        gestureRafRef.current = requestAnimationFrame(() => {
+          gestureRafRef.current = null;
+          if (typeof pendingGestureRef.current.x === "number") {
+            setUserSlideX(pendingGestureRef.current.x);
+          }
+        });
+      }
+      return;
+    }
+    if (h.axis === "v") {
+      const ddy = Math.max(0, dy);
+      p.velocity = (e.clientY - p.lastY) / dt;
+      p.lastY = e.clientY;
+      p.lastT = now;
+      pendingGestureRef.current.y = p.startDismissY + ddy;
+      if (gestureRafRef.current == null) {
+        gestureRafRef.current = requestAnimationFrame(() => {
+          gestureRafRef.current = null;
+          if (typeof pendingGestureRef.current.y === "number") {
+            setDismissY(pendingGestureRef.current.y);
+          }
+        });
+      }
+    }
   };
-  const endDismissDrag = (e) => {
+  const endGestureDrag = (e) => {
+    const h = horizDragRef.current;
     const p = dismissDragRef.current;
+    horizDragRef.current = null;
     dismissDragRef.current = null;
     try {
       if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
@@ -19530,12 +20360,44 @@ function StoryViewer({
       }
     } catch {
     }
-    if (!p || e.pointerId !== p.pointerId || ownViewsOpen) return;
-    const h = viewportHRef.current;
-    const dy = Math.max(0, e.clientY - p.startY) + p.startDismissY;
-    if (dy > h * 0.42 || p.velocity > 0.42) finishDismiss();
-    else snapDismissBack();
+    if (!h || !p || e.pointerId !== h.pointerId || ownViewsOpen) return;
+    if (h.axis === "h") {
+      const w = viewportWRef.current;
+      const x = userSlideX;
+      const rtl = typeof document !== "undefined" && document.documentElement.getAttribute("dir") === "rtl";
+      const goNext = rtl ? x > w * 0.22 || h.velocity > 0.35 : x < -w * 0.22 || h.velocity < -0.35;
+      const goPrev = rtl ? x < -w * 0.22 || h.velocity < -0.35 : x > w * 0.22 || h.velocity > 0.35;
+      if (goNext) {
+        setUserSlideSpring(true);
+        setUserSlideX(rtl ? w : -w);
+        window.setTimeout(() => {
+          goToNextAuthor();
+          setUserSlideX(0);
+          setUserSlideSpring(false);
+        }, 220);
+      } else if (goPrev) {
+        setUserSlideSpring(true);
+        setUserSlideX(rtl ? -w : w);
+        window.setTimeout(() => {
+          goToPrevAuthor();
+          setUserSlideX(0);
+          setUserSlideSpring(false);
+        }, 220);
+      } else {
+        snapUserSlideBack();
+      }
+      return;
+    }
+    if (h.axis === "v") {
+      const vh = viewportHRef.current;
+      const dy = Math.max(0, e.clientY - p.startY) + p.startDismissY;
+      if (dy > vh * 0.42 || p.velocity > 0.42) finishDismiss();
+      else snapDismissBack();
+    }
   };
+  const heroScale = openOrigin ? Math.max(0.35, Math.min(1, openOrigin.width * 1.1 / viewportWRef.current)) : 1;
+  const heroTx = openOrigin ? openOrigin.left + openOrigin.width / 2 - viewportWRef.current / 2 : 0;
+  const heroTy = openOrigin ? openOrigin.top + openOrigin.height / 2 - viewportHRef.current / 2 : 0;
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "fixed inset-0 z-[200] touch-none", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx(
       "div",
@@ -19551,37 +20413,38 @@ function StoryViewer({
     /* @__PURE__ */ jsxRuntimeExports.jsxs(
       "div",
       {
-        className: "absolute inset-0 flex flex-col bg-black",
+        className: "absolute inset-0 flex flex-col bg-black " + (entering ? "story-viewer-enter" : ""),
         style: {
-          transform: `translate3d(0, ${dismissY}px, 0) scale(${dismissScale})`,
-          transformOrigin: "center top",
-          transition: dismissSpring ? "transform 0.32s cubic-bezier(0.25, 1, 0.35, 1)" : "none",
+          transform: entering ? `translate3d(${heroTx}px, ${heroTy}px, 0) scale(${heroScale})` : `translate3d(${userSlideX}px, ${dismissY}px, 0) scale(${dismissScale})`,
+          transformOrigin: "center center",
+          transition: dismissSpring || userSlideSpring ? "transform 0.32s cubic-bezier(0.22, 1, 0.36, 1)" : entering ? void 0 : "none",
           willChange: "transform"
         },
-        onPointerDown: onDismissPointerDown,
-        onPointerMove: onDismissPointerMove,
-        onPointerUp: endDismissDrag,
-        onPointerCancel: endDismissDrag,
+        onPointerDown: onGesturePointerDown,
+        onPointerMove: onGesturePointerMove,
+        onPointerUp: endGestureDrag,
+        onPointerCancel: endGestureDrag,
         children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs(
             "div",
             {
               className: "absolute inset-x-0 top-0 z-50 flex flex-col pt-[max(0.25rem,env(safe-area-inset-top,0px))] bg-gradient-to-b from-black/75 via-black/40 to-transparent transition-opacity duration-300 " + (topChromeVisible && !ownViewsOpen ? "opacity-100" : "opacity-0 pointer-events-none"),
               children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex gap-1 p-2 shrink-0", children: stories.map((_, idx) => /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex-1 h-0.5 bg-white/30 rounded", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex gap-1 p-2 shrink-0", children: stories.map((seg, idx) => /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex-1 h-[2px] bg-white/35 rounded-full overflow-hidden", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
                   "div",
                   {
-                    className: "h-full bg-white rounded transition-all " + (idx < displayIdx ? "w-full" : idx === displayIdx ? "w-full animate-story-seg" : "w-0"),
+                    className: "h-full bg-white rounded-full " + (idx < displayIdx ? "w-full" : idx === displayIdx ? "w-0 animate-story-seg" : "w-0"),
                     style: idx === displayIdx ? {
                       animationDuration: `${segmentMs / 1e3}s`,
                       animationPlayState: middleHold || ownViewsOpen ? "paused" : "running"
-                    } : void 0
-                  }
-                ) }, idx)) }),
+                    } : idx < displayIdx ? { width: "100%" } : void 0
+                  },
+                  idx === displayIdx ? `${seg.id}-active` : seg.id
+                ) }, seg.id)) }),
                 /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex shrink-0 items-center gap-2 px-3 text-white", "data-story-interactive": true, children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => onCloseRef.current(), className: "p-2", "aria-label": "رجوع", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronLeft, { size: 24 }) }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: closeViewer, className: "p-2", "aria-label": "رجوع", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronLeft, { size: 24 }) }),
                   /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", onClick: () => onOpenProfile?.(author.id), className: "flex items-center gap-2 flex-1 min-w-0", children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: author.username, src: author.avatar, size: 32 }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: author.username, src: author.avatar, size: 32 }),
                     /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-sm font-semibold inline-flex items-center gap-1", children: [
                       "@",
                       author.username,
@@ -19633,7 +20496,7 @@ function StoryViewer({
                         children: n.text
                       }
                     ) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[10px] leading-tight text-start bg-white/10 rounded-xl px-1.5 py-0.5 mb-1 line-clamp-2 text-white w-full", children: n.text }),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => onOpenProfile?.(nu.id), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: nu.username, src: nu.avatar, size: 32 }) })
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => onOpenProfile?.(nu.id), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: nu.username, src: nu.avatar, size: 32 }) })
                   ] }, n.id);
                 }) })
               ]
@@ -19782,7 +20645,7 @@ function StoryViewer({
                     onClick: () => setOwnViewsOpen(true),
                     children: [
                       "المشاهدات (",
-                      storyViewersSorted.length,
+                      (cur.viewedByUserIds || []).length,
                       ")"
                     ]
                   }
@@ -19810,80 +20673,186 @@ function StoryViewer({
               /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: saveAsHighlight, className: "flex-1 py-3 rounded-2xl bg-primary text-primary-foreground font-semibold", children: "حفظ" })
             ] })
           ] }) }),
-          userId === me.id && ownViewsOpen && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "fixed inset-0 z-[80] flex flex-col justify-end", role: "dialog", "aria-modal": "true", "aria-labelledby": "story-views-title", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "button",
-              {
-                type: "button",
-                className: "absolute inset-0 bg-black/55 backdrop-blur-[2px] transition-opacity duration-200",
-                "aria-label": "إغلاق قائمة المشاهدات",
-                onClick: () => setOwnViewsOpen(false)
-              }
-            ),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs(
-              "div",
-              {
-                className: "relative mx-auto w-full max-w-md rounded-t-[1.35rem] border border-white/10 border-b-0 bg-[#1c1c1e] shadow-[0_-8px_40px_rgba(0,0,0,0.45)] max-h-[min(78dvh,640px)] flex flex-col transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)]",
-                onPointerDown: (e) => e.stopPropagation(),
-                children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex justify-center pt-2.5 pb-1", "aria-hidden": true, children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-1 w-11 rounded-full bg-white/22" }) }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs("h2", { id: "story-views-title", className: "px-4 pb-2 text-center text-[15px] font-semibold text-white", children: [
-                    "المشاهدات · ",
-                    storyViewersSorted.length
-                  ] }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-2 pb-2 [-webkit-overflow-scrolling:touch]", children: storyViewersSorted.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "py-12 text-center text-sm text-white/45", children: "لا مشاهدات بعد" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("ul", { className: "space-y-0.5 pb-[env(safe-area-inset-bottom,0px)]", children: storyViewersSorted.map((vid) => {
-                    const vu = userById(state, vid);
-                    return /* @__PURE__ */ jsxRuntimeExports.jsx("li", { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                      "button",
-                      {
-                        type: "button",
-                        className: "flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-start transition-[transform,background-color] duration-150 ease-[cubic-bezier(0.25,0.1,0.25,1)] hover:bg-white/10 active:scale-[0.99]",
-                        onClick: () => {
-                          setOwnViewsOpen(false);
-                          onOpenProfile?.(vu.id);
-                        },
-                        children: [
-                          /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: vu.username, src: vu.avatar, size: 40 }),
-                          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "min-w-0 flex-1 truncate font-medium text-white", children: [
-                            "@",
-                            vu.username
-                          ] }),
-                          /* @__PURE__ */ jsxRuntimeExports.jsx(VerifiedMarkForUser, { user: vu, size: 16 })
-                        ]
-                      }
-                    ) }, vid);
-                  }) }) }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "shrink-0 space-y-2 border-t border-white/10 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]", children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                      "button",
-                      {
-                        type: "button",
-                        className: "flex w-full items-center justify-center gap-2 rounded-2xl bg-red-500/20 py-3 text-sm font-semibold text-red-300 transition active:opacity-90",
-                        onClick: handleDeleteCurrentStory,
-                        children: [
-                          /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 18, "aria-hidden": true }),
-                          "حذف الستوري"
-                        ]
-                      }
-                    ),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(
-                      "button",
-                      {
-                        type: "button",
-                        className: "w-full rounded-2xl bg-white/12 py-3 text-sm font-semibold text-white transition-[transform,opacity] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] active:scale-[0.98] active:opacity-90",
-                        onClick: () => setOwnViewsOpen(false),
-                        children: "تم"
-                      }
-                    )
-                  ] })
-                ]
-              }
-            )
-          ] })
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            StoryViewsSheet,
+            {
+              open: userId === me.id && ownViewsOpen,
+              story: cur,
+              state,
+              onClose: () => setOwnViewsOpen(false),
+              onOpenProfile,
+              onDelete: handleDeleteCurrentStory
+            }
+          )
         ]
       }
     )
   ] });
+}
+const StoryTrayItem = reactExports.memo(function StoryTrayItem2({
+  id,
+  label,
+  unseen,
+  onOpen
+}) {
+  const { state } = useApp();
+  const u = userById(state, id);
+  const btnRef = reactExports.useRef(null);
+  const [visible, setVisible] = reactExports.useState(false);
+  const ioRef = reactExports.useRef(null);
+  reactExports.useEffect(() => {
+    const el = btnRef.current;
+    if (!el) return;
+    ioRef.current = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) setVisible(true);
+      },
+      { rootMargin: "80px" }
+    );
+    ioRef.current.observe(el);
+    return () => ioRef.current?.disconnect();
+  }, []);
+  if (!u) return null;
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "button",
+    {
+      ref: btnRef,
+      type: "button",
+      onClick: () => {
+        const rect = btnRef.current?.getBoundingClientRect();
+        if (rect) onOpen(rect);
+      },
+      className: "flex w-[4.25rem] shrink-0 flex-col items-center gap-1 touch-manipulation story-tray-item",
+      style: {
+        contentVisibility: visible ? "visible" : "auto",
+        containIntrinsicSize: "0 88px"
+      },
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          Avatar$1,
+          {
+            name: u.username,
+            src: u.avatar,
+            size: 66,
+            ring: true,
+            ringSeen: !unseen
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "max-w-[4.25rem] truncate text-[11px] text-foreground", children: label })
+      ]
+    }
+  );
+});
+function StoriesRow({ userIds, onOpenStory, onCreateStory }) {
+  const { state, currentUser, isGuest } = useApp();
+  const t = useT();
+  const me = currentUser;
+  const scrollRef = reactExports.useRef(null);
+  const orderedIds = reactExports.useMemo(
+    () => orderStoryTrayUserIds(state, me.id, userIds),
+    [state.stories, userIds, me.id]
+  );
+  const hasMyStories = reactExports.useMemo(
+    () => userHasVisibleStories(state, me.id, me.id),
+    [state.stories, me.id]
+  );
+  const myBtnRef = reactExports.useRef(null);
+  const openMyStory = reactExports.useCallback(() => {
+    if (isGuest) {
+      notifyGuestActionBlocked();
+      return;
+    }
+    const rect = myBtnRef.current?.getBoundingClientRect();
+    if (hasMyStories) {
+      onOpenStory({ userId: me.id, origin: rect });
+    } else {
+      onCreateStory();
+    }
+  }, [hasMyStories, isGuest, me.id, onCreateStory, onOpenStory]);
+  const openFriend = reactExports.useCallback(
+    (id, origin) => {
+      onOpenStory({ userId: id, origin });
+    },
+    [onOpenStory]
+  );
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "section",
+    {
+      "aria-label": "الستوريات",
+      className: "relative z-10 shrink-0 border-b border-border bg-background",
+      children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "div",
+        {
+          ref: scrollRef,
+          className: "flex gap-3 overflow-x-auto overscroll-x-contain px-4 py-3 no-scrollbar scroll-smooth",
+          style: { WebkitOverflowScrolling: "touch" },
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "button",
+              {
+                ref: myBtnRef,
+                type: "button",
+                onClick: openMyStory,
+                "aria-disabled": isGuest,
+                className: "flex w-[4.25rem] shrink-0 flex-col items-center gap-1 touch-manipulation " + (isGuest ? "cursor-not-allowed opacity-50" : ""),
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      Avatar$1,
+                      {
+                        name: me.username,
+                        src: me.avatar,
+                        size: 66,
+                        ring: hasMyStories,
+                        ringSeen: hasMyStories && !authorHasUnseenStories(state, me.id, me.id)
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "span",
+                      {
+                        role: "button",
+                        tabIndex: 0,
+                        "aria-label": "إنشاء ستوري",
+                        onClick: (e) => {
+                          e.stopPropagation();
+                          onCreateStory();
+                        },
+                        onKeyDown: (e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            onCreateStory();
+                          }
+                        },
+                        className: "absolute -bottom-0.5 -end-0.5 z-10 flex h-5 w-5 cursor-pointer items-center justify-center rounded-full bg-primary text-xs text-primary-foreground shadow",
+                        children: "+"
+                      }
+                    )
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "max-w-[4.25rem] truncate text-[11px]", children: t("yourStory") })
+                ]
+              }
+            ),
+            orderedIds.map((id) => {
+              const u = userById(state, id);
+              if (!u) return null;
+              const unseen = authorHasUnseenStories(state, me.id, id);
+              return /* @__PURE__ */ jsxRuntimeExports.jsx(
+                StoryTrayItem,
+                {
+                  id,
+                  label: u.username,
+                  unseen,
+                  onOpen: (origin) => openFriend(id, origin)
+                },
+                id
+              );
+            })
+          ]
+        }
+      )
+    }
+  );
 }
 function HomeScreen({
   onOpenProfile,
@@ -19894,7 +20863,7 @@ function HomeScreen({
   const { state, currentUser, addComment, deleteComment, isGuest } = useApp();
   const t = useT();
   const [shareTarget, setShareTarget] = reactExports.useState(null);
-  const [storyUserId, setStoryUserId] = reactExports.useState(null);
+  const [storyOpen, setStoryOpen] = reactExports.useState(null);
   const [openPostId, setOpenPostId] = reactExports.useState(null);
   const [focusCommentsOnOpen, setFocusCommentsOnOpen] = reactExports.useState(false);
   const [commentsSheetPostId, setCommentsSheetPostId] = reactExports.useState(null);
@@ -19904,18 +20873,19 @@ function HomeScreen({
   const [pullHint, setPullHint] = reactExports.useState(false);
   const touchRef = reactExports.useRef({ y0: 0, active: false });
   const me = currentUser;
-  const closeStory = reactExports.useCallback(() => setStoryUserId(null), []);
+  const closeStory = reactExports.useCallback(() => setStoryOpen(null), []);
   const openProfileFromStory = reactExports.useCallback((id) => {
     try {
-      sessionStorage.setItem("retweet_return_story_user_id", storyUserId || "");
+      sessionStorage.setItem("retweet_return_story_user_id", storyOpen?.userId || "");
     } catch {
     }
     onOpenProfile(id);
-  }, [onOpenProfile, storyUserId]);
+  }, [onOpenProfile, storyOpen?.userId]);
   reactExports.useEffect(() => {
     const handler = (e) => {
-      const id = e?.detail?.userId;
-      if (id) setStoryUserId(id);
+      const d = e.detail;
+      const id = d?.userId;
+      if (id) setStoryOpen({ userId: id, storyId: d?.storyId });
     };
     window.addEventListener("retweet-open-story", handler);
     return () => window.removeEventListener("retweet-open-story", handler);
@@ -19993,22 +20963,14 @@ function HomeScreen({
       window.removeEventListener("touchend", onEnd);
     };
   }, [tabScrollRef]);
-  const hasMyStories = reactExports.useMemo(
-    () => userHasVisibleStories(state, me.id, me.id),
-    [state.stories, state.users, me.id, feedTick]
-  );
-  const storyUsers = reactExports.useMemo(
+  const storyFriends = reactExports.useMemo(
     () => visibleStoryFriendsUserIds(state, me.id),
     [state.stories, state.users, me.id, me.following, feedTick]
   );
-  const openMyStoryOrCreate = () => {
-    if (isGuest) {
-      notifyGuestActionBlocked();
-      return;
-    }
-    if (hasMyStories) setStoryUserId(me.id);
-    else handleStoryCreate();
-  };
+  const storyTrayRing = reactExports.useMemo(
+    () => storyViewerTrayRing(state, me.id),
+    [state.stories, me.id, feedTick]
+  );
   const openPostById = reactExports.useCallback((postId) => {
     setFocusCommentsOnOpen(false);
     setCommentsSheetPostId(null);
@@ -20052,56 +21014,11 @@ function HomeScreen({
         children: [
           pullHint && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mx-3 mt-1 shrink-0 rounded-full bg-primary/90 text-primary-foreground text-center text-xs py-2 px-3 shadow-md", children: "تم التحديث — أحدث المنشورات والستوريات" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "section",
+            StoriesRow,
             {
-              "aria-label": "الستوريات",
-              className: "relative z-10 shrink-0 border-b border-border bg-background",
-              children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-3 overflow-x-auto no-scrollbar px-4 py-3", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                  "button",
-                  {
-                    type: "button",
-                    onClick: openMyStoryOrCreate,
-                    "aria-disabled": isGuest,
-                    className: "flex flex-col items-center gap-1 shrink-0 touch-manipulation " + (isGuest ? "cursor-not-allowed opacity-50" : ""),
-                    children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative", children: [
-                        /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: me.username, src: me.avatar, size: 62, ring: hasMyStories }),
-                        /* @__PURE__ */ jsxRuntimeExports.jsx(
-                          "span",
-                          {
-                            role: "button",
-                            tabIndex: 0,
-                            "aria-label": "إنشاء ستوري",
-                            onClick: (e) => {
-                              e.stopPropagation();
-                              handleStoryCreate();
-                            },
-                            onKeyDown: (e) => {
-                              if (e.key === "Enter" || e.key === " ") {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                handleStoryCreate();
-                              }
-                            },
-                            className: "absolute -bottom-1 -end-1 z-10 flex h-5 w-5 cursor-pointer items-center justify-center rounded-full bg-primary text-xs text-primary-foreground",
-                            children: "+"
-                          }
-                        )
-                      ] }),
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs", children: t("yourStory") })
-                    ]
-                  }
-                ),
-                storyUsers.map((id) => {
-                  const u = userById(state, id);
-                  if (!u) return null;
-                  return /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { onClick: () => setStoryUserId(id), className: "flex flex-col items-center gap-1 shrink-0", children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u.username, src: u.avatar, size: 62, ring: true }),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs max-w-16 truncate", children: u.username })
-                  ] }, id);
-                })
-              ] })
+              userIds: storyFriends,
+              onOpenStory: setStoryOpen,
+              onCreateStory: handleStoryCreate
             }
           ),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { "aria-label": "الخلاصة", className: "relative z-0 flex flex-col bg-background", children: [
@@ -20207,11 +21124,14 @@ function HomeScreen({
               ]
             }
           ) }),
-          storyUserId && /* @__PURE__ */ jsxRuntimeExports.jsx(
+          storyOpen && /* @__PURE__ */ jsxRuntimeExports.jsx(
             StoryViewer,
             {
-              userId: storyUserId,
-              onRequestAuthor: (id) => setStoryUserId(id),
+              userId: storyOpen.userId,
+              trayRing: storyTrayRing,
+              initialStoryId: storyOpen.storyId,
+              openOrigin: storyOpen.origin,
+              onRequestAuthor: (id) => id ? setStoryOpen({ userId: id }) : closeStory(),
               onClose: closeStory,
               onOpenProfile: openProfileFromStory,
               onOpenChat
@@ -20464,7 +21384,7 @@ function SearchScreen({
             searching && accountList.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground py-2", children: "جاري التحديث من الخادم…" }),
             !searching && accountList.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground py-2", children: qq ? "لا توجد حسابات مطابقة" : "لا توجد حسابات بعد" }),
             accountList.map((u) => /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", onClick: () => onOpenProfile(u.id), className: "w-full flex items-center gap-3 p-2 hover:bg-secondary rounded-2xl", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u.username, src: u.avatar }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: u.username, src: u.avatar }),
               /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 text-start", children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "truncate text-sm font-semibold", children: userDisplayName(u) }),
                 /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "truncate text-xs text-muted-foreground", dir: "ltr", children: [
@@ -20505,50 +21425,130 @@ function SearchScreen({
     )
   ] });
 }
-function ReelMediaPlayer({
+const REEL_HEIGHT = 1920;
+const REEL_SAFE_CONTENT_HEIGHT = 1350;
+const REEL_MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
+const REEL_MAX_UPLOAD_MB = 500;
+const REEL_ACCEPT_VIDEO = "video/mp4,video/quicktime,video/webm,video/*";
+function formatReelMaxSizeError(bytes) {
+  const mb = (bytes / (1024 * 1024)).toFixed(0);
+  return `الملف ${mb} ميجا — الحد الأقصى ${REEL_MAX_UPLOAD_MB} ميجا للريلز.`;
+}
+const REEL_SAFE_CONTENT_RATIO = REEL_SAFE_CONTENT_HEIGHT / REEL_HEIGHT;
+const ReelMediaPlayer = reactExports.memo(function ReelMediaPlayer2({
   media,
   active: active2,
-  soundOn
+  soundOn,
+  paused,
+  onDoubleTap,
+  onHoldStart,
+  onHoldEnd
 }) {
   const videoRef = reactExports.useRef(null);
+  const holdTimerRef = reactExports.useRef(null);
+  const lastTapRef = reactExports.useRef(null);
   reactExports.useEffect(() => {
     const v = videoRef.current;
     if (!v || !media.hasVideo) return;
     if (active2) {
       v.muted = !soundOn;
       const play = v.play();
-      if (play) {
-        play.catch(() => {
-          v.muted = true;
-          void v.play();
-        });
-      }
+      if (play) play.catch(() => {
+        v.muted = true;
+        void v.play();
+      });
     } else {
       v.pause();
       v.currentTime = 0;
     }
   }, [active2, soundOn, media.hasVideo, media.videoUrl]);
+  reactExports.useEffect(() => {
+    const v = videoRef.current;
+    if (!v || !media.hasVideo || !active2) return;
+    if (paused) v.pause();
+    else {
+      const p = v.play();
+      if (p) p.catch(() => {
+      });
+    }
+  }, [paused, active2, media.hasVideo]);
+  const onPointerDown = (e) => {
+    if (e.button !== 0 && e.pointerType !== "touch") return;
+    const now = Date.now();
+    const prev = lastTapRef.current;
+    if (prev && now - prev.t < 320 && Math.hypot(e.clientX - prev.x, e.clientY - prev.y) < 60) {
+      lastTapRef.current = null;
+      onDoubleTap(e.clientX, e.clientY);
+      return;
+    }
+    lastTapRef.current = { t: now, x: e.clientX, y: e.clientY };
+    holdTimerRef.current = window.setTimeout(() => {
+      holdTimerRef.current = null;
+      onHoldStart();
+    }, 380);
+  };
+  const onPointerUp = () => {
+    if (holdTimerRef.current != null) {
+      window.clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+    onHoldEnd();
+  };
   const frameClass = "absolute inset-0 flex items-center justify-center bg-black";
-  if (media.hasVideo && media.videoUrl) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: frameClass, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-      "video",
-      {
-        ref: videoRef,
-        src: media.videoUrl,
-        loop: true,
-        playsInline: true,
-        poster: media.posterUrl || void 0,
-        className: "max-h-full max-w-full object-contain"
-      }
-    ) });
-  }
-  if (media.hasImage && media.imageUrl) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: frameClass, children: /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: media.imageUrl, alt: "", className: "max-h-full max-w-full object-contain" }) });
-  }
-  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: frameClass + " text-5xl text-white/90", children: media.emojiFallback || "🎬" });
+  const fillFrame = !!media.videoUrl && (/\/media\/videos\//.test(media.videoUrl) || media.videoUrl.includes(".mp4"));
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "div",
+    {
+      className: "absolute inset-0 cursor-pointer reel-safe-stage",
+      style: {
+        ["--reel-safe-bottom-ratio"]: String(1 - REEL_SAFE_CONTENT_RATIO)
+      },
+      onPointerDown,
+      onPointerUp,
+      onPointerCancel: onPointerUp,
+      children: media.hasVideo && media.videoUrl ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: frameClass, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "video",
+        {
+          ref: videoRef,
+          src: media.videoUrl,
+          loop: true,
+          playsInline: true,
+          preload: "auto",
+          poster: media.posterUrl || void 0,
+          className: "h-full w-full " + (fillFrame ? "object-cover object-center" : "object-contain")
+        }
+      ) }) : media.hasImage && media.imageUrl ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: frameClass, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "img",
+        {
+          src: media.imageUrl,
+          alt: "",
+          className: "h-full w-full " + (fillFrame ? "object-cover object-center" : "object-contain")
+        }
+      ) }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: frameClass + " text-6xl", children: media.emojiFallback || "🎬" })
+    }
+  );
+});
+function HeartBurst({ x, y }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "div",
+    {
+      className: "pointer-events-none fixed z-[200] -translate-x-1/2 -translate-y-1/2",
+      style: { left: x, top: y },
+      children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+        Heart,
+        {
+          size: 96,
+          className: "fill-white stroke-white drop-shadow-[0_0_24px_rgba(255,255,255,0.6)] animate-reel-heart"
+        }
+      )
+    }
+  );
 }
-const REEL_SLIDE_HEIGHT_FALLBACK = "calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 3.25rem)";
-function ReelSlide({
+function PausedOverlay() {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-black/30", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-full bg-black/50 p-5 backdrop-blur-sm", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pause, { size: 44, className: "fill-white stroke-white" }) }) });
+}
+const REEL_SLIDE_HEIGHT_FALLBACK = "calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))";
+const ReelSlide = reactExports.memo(function ReelSlide2({
   reelId,
   slideHeightPx,
   children
@@ -20564,6 +21564,33 @@ function ReelSlide({
       children
     }
   );
+});
+function SideActionButton({
+  onClick,
+  label,
+  icon,
+  count: count2,
+  active: active2,
+  activeColor = "text-rose-500"
+}) {
+  const [pressed, setPressed] = reactExports.useState(false);
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "button",
+    {
+      type: "button",
+      "aria-label": label,
+      onClick,
+      onPointerDown: () => setPressed(true),
+      onPointerUp: () => setPressed(false),
+      onPointerLeave: () => setPressed(false),
+      className: "flex flex-col items-center gap-1 transition-transform duration-100 " + (pressed ? "scale-75" : "scale-100") + " " + (active2 ? activeColor : "text-white"),
+      style: { filter: "drop-shadow(0 2px 8px rgba(0,0,0,0.55))" },
+      children: [
+        icon,
+        count2 != null && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs font-semibold leading-none drop-shadow-sm", children: count2 > 999 ? `${(count2 / 1e3).toFixed(1)}k` : count2 })
+      ]
+    }
+  );
 }
 function ReelsScreen({
   onOpenProfile,
@@ -20571,7 +21598,7 @@ function ReelsScreen({
   restoreFromProfileContext = null,
   onConsumedRestoreFromProfile
 }) {
-  const { state, toggleLike, toggleRepost, currentUser, addComment, isGuest, refreshFromServer } = useApp();
+  const { state, toggleLike, currentUser, addComment, isGuest, refreshFromServer } = useApp();
   const isTabActive = useIsTabActive("reels");
   const t = useT();
   const me = currentUser;
@@ -20591,6 +21618,8 @@ function ReelsScreen({
   const [soundUnlocked, setSoundUnlocked] = reactExports.useState(false);
   const [reelMenuId, setReelMenuId] = reactExports.useState(null);
   const [commentMenuId, setCommentMenuId] = reactExports.useState(null);
+  const [heartBurst, setHeartBurst] = reactExports.useState(null);
+  const [holdPaused, setHoldPaused] = reactExports.useState(false);
   const scrollRef = reactExports.useRef(null);
   const pullRef = reactExports.useRef({ y0: 0, active: false });
   const activeReelIdRef = reactExports.useRef(null);
@@ -20677,6 +21706,7 @@ function ReelsScreen({
   }, [reelIdSetKey, tab, slideHeightPx]);
   reactExports.useEffect(() => {
     activeReelIdRef.current = activeReelId;
+    setHoldPaused(false);
   }, [activeReelId]);
   const snapToNearestReel = reactExports.useCallback(
     (behavior = "auto") => {
@@ -20763,78 +21793,128 @@ function ReelsScreen({
     });
   }, [restoreFromProfileContext, state.posts, onConsumedRestoreFromProfile, reels, slideHeightPx]);
   const effectiveSoundOn = soundOn && soundUnlocked;
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-black text-white overscroll-none", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "shrink-0 flex border-b border-white/10 z-20 bg-black", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "button",
-        {
-          type: "button",
-          onClick: () => setTab("all"),
-          className: "flex-1 py-3 text-sm font-semibold " + (tab === "all" ? "border-b-2 border-white" : "text-white/60"),
-          children: "ريلز"
-        }
-      ),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "button",
-        {
-          type: "button",
-          onClick: () => setTab("friends"),
-          className: "flex-1 py-3 text-sm font-semibold " + (tab === "friends" ? "border-b-2 border-white" : "text-white/60"),
-          children: "فريند"
-        }
-      ),
-      reels.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "button",
-        {
-          type: "button",
-          onClick: () => {
-            unlockSound();
-            setSoundOn((s) => !s);
-          },
-          className: "px-3 py-3 text-white/80 hover:text-white",
-          "aria-label": soundOn ? "كتم الصوت" : "تشغيل الصوت",
-          children: soundOn && effectiveSoundOn ? /* @__PURE__ */ jsxRuntimeExports.jsx(Volume2, { size: 22 }) : /* @__PURE__ */ jsxRuntimeExports.jsx(VolumeX, { size: 22 })
-        }
-      )
-    ] }),
-    reelPullHint && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "shrink-0 text-center text-xs py-1.5 bg-white/10 text-white border-b border-white/10", children: "تم تحديث الريلز" }),
+  const handleDoubleTap = reactExports.useCallback(
+    (postId, x, y) => {
+      if (guestBlock()) return;
+      const post = reels.find((r2) => r2.id === postId);
+      if (!post) return;
+      if (!post.likes.includes(me.id)) toggleLike(postId);
+      try {
+        navigator.vibrate?.(15);
+      } catch {
+      }
+      setHeartBurst({ id: postId, x, y });
+      window.setTimeout(() => setHeartBurst((prev) => prev?.id === postId ? null : prev), 800);
+    },
+    [reels, me.id, toggleLike, isGuest]
+  );
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-black text-white overscroll-none", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "div",
+      {
+        className: "pointer-events-auto absolute inset-x-0 top-0 z-40 flex items-end justify-between pb-2 pt-[env(safe-area-inset-top,0px)]",
+        style: {
+          background: "linear-gradient(to bottom, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0) 100%)",
+          backdropFilter: "none"
+        },
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-1 items-center justify-center gap-6 px-4", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                type: "button",
+                onClick: () => setTab("all"),
+                className: "pb-1 text-[15px] font-semibold transition-all duration-200 " + (tab === "all" ? "border-b-2 border-white text-white" : "text-white/55"),
+                children: "ريلز"
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                type: "button",
+                onClick: () => setTab("friends"),
+                className: "pb-1 text-[15px] font-semibold transition-all duration-200 " + (tab === "friends" ? "border-b-2 border-white text-white" : "text-white/55"),
+                children: "أصدقاء"
+              }
+            )
+          ] }),
+          reels.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              type: "button",
+              onClick: () => {
+                unlockSound();
+                setSoundOn((s) => !s);
+              },
+              className: "absolute end-4 bottom-2 rounded-full bg-black/35 p-2 backdrop-blur-sm",
+              "aria-label": soundOn ? "كتم الصوت" : "تشغيل الصوت",
+              children: soundOn && effectiveSoundOn ? /* @__PURE__ */ jsxRuntimeExports.jsx(Volume2, { size: 20 }) : /* @__PURE__ */ jsxRuntimeExports.jsx(VolumeX, { size: 20 })
+            }
+          )
+        ]
+      }
+    ),
+    reelPullHint && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-x-0 top-[calc(env(safe-area-inset-top,0px)+3.5rem)] z-50 flex justify-center", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "rounded-full bg-white/20 px-4 py-1.5 text-xs font-medium backdrop-blur-md", children: "تم التحديث ✓" }) }),
+    heartBurst && /* @__PURE__ */ jsxRuntimeExports.jsx(HeartBurst, { x: heartBurst.x, y: heartBurst.y }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs(
       "div",
       {
         ref: scrollRef,
         "data-no-tab-swipe": true,
-        className: "reels-snap-viewport no-scrollbar mx-auto h-0 min-h-0 w-full max-w-md flex-1 basis-0 overflow-y-scroll overscroll-none",
+        className: "reels-snap-viewport no-scrollbar mx-auto h-full min-h-0 w-full max-w-md flex-1 overflow-y-scroll overscroll-none",
         onPointerDown: unlockSound,
         onTouchStart: unlockSound,
         children: [
           reels.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(
             "p",
             {
-              className: "flex items-center justify-center text-center text-white/70 px-4",
+              className: "flex items-center justify-center text-center text-white/60 px-4 text-sm",
               style: { minHeight: REEL_SLIDE_HEIGHT_FALLBACK },
               children: t("noReels")
             }
           ),
           reels.map((r2) => {
-            const slideH = slideHeightPx > 0 ? slideHeightPx : void 0;
+            const slideH = slideHeightPx > 0 ? slideHeightPx : 0;
             const u = userById(state, r2.userId);
             const media = normalizePostMedia(r2);
             const liked = r2.likes.includes(me.id);
-            const reposted = r2.reposts.includes(me.id);
             const notes = visibleMediaNotes(state, "post", r2.id, me.id).slice(0, 8);
             const isActive = isTabActive && activeReelId === r2.id;
-            return /* @__PURE__ */ jsxRuntimeExports.jsx(ReelSlide, { reelId: r2.id, slideHeightPx: slideH ?? 0, children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative h-full w-full min-h-0", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx(ReelMediaPlayer, { media, active: isActive, soundOn: effectiveSoundOn }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent pointer-events-none" }),
-              r2.userId === me.id && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "absolute top-4 end-4 z-20", children: [
+            return /* @__PURE__ */ jsxRuntimeExports.jsxs(ReelSlide, { reelId: r2.id, slideHeightPx: slideH, children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                ReelMediaPlayer,
+                {
+                  media,
+                  active: isActive,
+                  soundOn: effectiveSoundOn,
+                  paused: isActive && holdPaused,
+                  onDoubleTap: (x, y) => handleDoubleTap(r2.id, x, y),
+                  onHoldStart: () => {
+                    if (isActive) setHoldPaused(true);
+                  },
+                  onHoldEnd: () => setHoldPaused(false)
+                }
+              ),
+              isActive && holdPaused && /* @__PURE__ */ jsxRuntimeExports.jsx(PausedOverlay, {}),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "div",
+                {
+                  className: "pointer-events-none absolute inset-x-0 bottom-0 z-10",
+                  style: {
+                    height: "65%",
+                    background: "linear-gradient(to top, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.38) 45%, transparent 100%)"
+                  }
+                }
+              ),
+              r2.userId === me.id && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "absolute top-[calc(env(safe-area-inset-top,0px)+3.5rem)] end-4 z-30", children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsx(
                   "button",
                   {
                     type: "button",
                     onClick: () => setReelMenuId(reelMenuId === r2.id ? null : r2.id),
-                    className: "rounded-full bg-black/45 p-2 text-white backdrop-blur-sm",
+                    className: "rounded-full bg-black/40 p-2 text-white backdrop-blur-sm",
                     "aria-label": "خيارات الريل",
-                    children: /* @__PURE__ */ jsxRuntimeExports.jsx(EllipsisVertical, { size: 22 })
+                    children: /* @__PURE__ */ jsxRuntimeExports.jsx(EllipsisVertical, { size: 20 })
                   }
                 ),
                 reelMenuId === r2.id && /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -20852,219 +21932,274 @@ function ReelsScreen({
               /* @__PURE__ */ jsxRuntimeExports.jsxs(
                 "div",
                 {
-                  className: "absolute inset-x-4 z-10 flex items-end justify-between pointer-events-none",
-                  style: { bottom: "max(1.25rem, calc(var(--retweet-nav-float-inset, 3.5rem) + 12px))" },
+                  className: "absolute end-3 z-20 flex flex-col items-center gap-5",
+                  style: {
+                    bottom: "max(5.5rem, calc(var(--retweet-nav-float-inset, 3.5rem) + 56px))"
+                  },
                   children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "bg-black/35 backdrop-blur-md rounded-2xl p-3 max-w-[72%] border border-white/10 pointer-events-auto", children: [
-                      notes.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex flex-wrap gap-1.5 mb-2 max-h-16 overflow-y-auto no-scrollbar", children: notes.map((n) => {
-                        const nu = userById(state, n.authorId);
-                        if (!nu) return null;
-                        const show = n.authorId === me.id || isMutual(state, me.id, n.authorId);
-                        if (!show) return null;
-                        const canReplyNote = n.authorId !== me.id;
-                        return /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                          "div",
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      SideActionButton,
+                      {
+                        onClick: () => {
+                          if (guestBlock()) return;
+                          toggleLike(r2.id);
+                        },
+                        label: "إعجاب",
+                        icon: /* @__PURE__ */ jsxRuntimeExports.jsx(
+                          Heart,
                           {
-                            className: "flex items-center gap-1.5 bg-black/55 rounded-full ps-1 pe-2 py-0.5 border border-white/15 max-w-[min(100%,14rem)]",
-                            children: [
-                              /* @__PURE__ */ jsxRuntimeExports.jsx(
-                                "button",
-                                {
-                                  type: "button",
-                                  onClick: () => onOpenProfile(nu.id, { tab: "reels" }),
-                                  className: "shrink-0 ring-1 ring-white/30 rounded-full",
-                                  children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: nu.username, src: nu.avatar, size: 22 })
-                                }
-                              ),
-                              canReplyNote ? /* @__PURE__ */ jsxRuntimeExports.jsx(
-                                "button",
-                                {
-                                  type: "button",
-                                  title: "رد في الخاص",
-                                  onClick: () => {
-                                    if (guestBlock()) return;
-                                    setNoteToReply(n);
-                                  },
-                                  className: "text-[10px] leading-snug text-white/95 line-clamp-2 text-start hover:underline",
-                                  children: n.text
-                                }
-                              ) : /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[10px] leading-snug text-white/95 line-clamp-2", children: n.text })
-                            ]
-                          },
-                          n.id
-                        );
-                      }) }),
-                      /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                        "button",
+                            size: 30,
+                            strokeWidth: liked ? 0 : 1.75,
+                            className: liked ? "fill-rose-500 text-rose-500" : "fill-transparent text-white",
+                            style: { filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.6))" }
+                          }
+                        ),
+                        count: r2.likes.length,
+                        active: liked,
+                        activeColor: "text-rose-500"
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      SideActionButton,
+                      {
+                        onClick: () => setCommentsFor(r2),
+                        label: "تعليقات",
+                        icon: /* @__PURE__ */ jsxRuntimeExports.jsx(MessageCircle, { size: 30, strokeWidth: 1.75, style: { filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.6))" } }),
+                        count: r2.comments.length
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      SideActionButton,
+                      {
+                        onClick: () => {
+                          if (guestBlock()) return;
+                          setSharePost(r2);
+                        },
+                        label: "مشاركة",
+                        icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Send, { size: 28, strokeWidth: 1.75, style: { filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.6))" } })
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      SideActionButton,
+                      {
+                        onClick: () => {
+                          if (guestBlock()) return;
+                        },
+                        label: "حفظ",
+                        icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Bookmark, { size: 28, strokeWidth: 1.75, style: { filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.6))" } })
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-9 w-9 overflow-hidden rounded-full border-2 border-white/50 shadow-lg", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: u?.username || "?", src: u?.avatar, size: 36 }) })
+                  ]
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                "div",
+                {
+                  className: "absolute start-3 z-20 max-w-[min(62%,calc(100%-5.5rem))] pe-1",
+                  style: {
+                    bottom: "max(5.5rem, calc(var(--retweet-nav-float-inset, 3.5rem) + 56px))",
+                    paddingInlineEnd: "var(--reel-safe-inline-end, 4.5rem)"
+                  },
+                  children: [
+                    notes.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-2.5 flex flex-wrap gap-1.5 max-h-14 overflow-y-auto no-scrollbar", children: notes.map((n) => {
+                      const nu = userById(state, n.authorId);
+                      if (!nu) return null;
+                      const show = n.authorId === me.id || isMutual(state, me.id, n.authorId);
+                      if (!show) return null;
+                      const canReplyNote = n.authorId !== me.id;
+                      return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                        "div",
                         {
-                          type: "button",
-                          onClick: () => u && onOpenProfile(u.id, { tab: "reels" }),
-                          className: "font-semibold block text-start inline-flex items-center gap-1",
+                          className: "flex items-center gap-1 rounded-full border border-white/20 bg-black/50 py-0.5 ps-1 pe-2 backdrop-blur-sm max-w-[12rem]",
                           children: [
+                            /* @__PURE__ */ jsxRuntimeExports.jsx(
+                              "button",
+                              {
+                                type: "button",
+                                onClick: () => onOpenProfile(nu.id, { tab: "reels" }),
+                                className: "shrink-0 ring-1 ring-white/30 rounded-full",
+                                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: nu.username, src: nu.avatar, size: 20 })
+                              }
+                            ),
+                            canReplyNote ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+                              "button",
+                              {
+                                type: "button",
+                                onClick: () => {
+                                  if (guestBlock()) return;
+                                  setNoteToReply(n);
+                                },
+                                className: "text-[10px] leading-snug text-white/90 line-clamp-1 text-start hover:underline",
+                                children: n.text
+                              }
+                            ) : /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[10px] leading-snug text-white/90 line-clamp-1", children: n.text })
+                          ]
+                        },
+                        n.id
+                      );
+                    }) }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                      "button",
+                      {
+                        type: "button",
+                        onClick: () => u && onOpenProfile(u.id, { tab: "reels" }),
+                        className: "mb-1 flex items-center gap-1.5",
+                        children: [
+                          /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: u?.username || "?", src: u?.avatar, size: 28, className: "ring-2 ring-white/40" }),
+                          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-[14px] font-semibold drop-shadow-sm", children: [
                             "@",
-                            u?.username ?? "user",
-                            u && /* @__PURE__ */ jsxRuntimeExports.jsx(VerifiedMarkForUser, { user: u, size: 16 })
-                          ]
-                        }
-                      ),
-                      r2.text ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-sm line-clamp-3", children: r2.text }) : null
-                    ] }),
-                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col gap-3 items-center bg-black/35 backdrop-blur-md rounded-2xl p-2 border border-white/10 pointer-events-auto", children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                        "button",
-                        {
-                          type: "button",
-                          onClick: () => {
-                            if (guestBlock()) return;
-                            toggleLike(r2.id);
-                          },
-                          className: "flex flex-col items-center w-12 h-12 justify-center",
-                          children: [
-                            /* @__PURE__ */ jsxRuntimeExports.jsx(Heart, { size: 28, className: liked ? "fill-[var(--color-like)] stroke-[var(--color-like)]" : "" }),
-                            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs", children: r2.likes.length })
-                          ]
-                        }
-                      ),
-                      /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", onClick: () => setCommentsFor(r2), className: "flex flex-col items-center w-12 h-12 justify-center", children: [
-                        /* @__PURE__ */ jsxRuntimeExports.jsx(MessageCircle, { size: 28 }),
-                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs", children: r2.comments.length })
-                      ] }),
-                      /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                        "button",
-                        {
-                          type: "button",
-                          onClick: () => {
-                            if (guestBlock()) return;
-                            toggleRepost(r2.id);
-                          },
-                          className: "flex flex-col items-center w-12 h-12 justify-center " + (reposted ? "text-sky-400" : ""),
-                          children: [
-                            /* @__PURE__ */ jsxRuntimeExports.jsx(Repeat2, { size: 26 }),
-                            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs", children: r2.reposts.length })
-                          ]
-                        }
-                      ),
-                      /* @__PURE__ */ jsxRuntimeExports.jsx(
-                        "button",
-                        {
-                          type: "button",
-                          onClick: () => {
-                            if (guestBlock()) return;
-                            setSharePost(r2);
-                          },
-                          className: "w-12 h-12 flex items-center justify-center",
-                          children: /* @__PURE__ */ jsxRuntimeExports.jsx(Send, { size: 26 })
-                        }
-                      )
+                            u?.username ?? "user"
+                          ] }),
+                          u && /* @__PURE__ */ jsxRuntimeExports.jsx(VerifiedMarkForUser, { user: u, size: 15 })
+                        ]
+                      }
+                    ),
+                    r2.text ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[13px] leading-snug text-white/90 line-clamp-2 drop-shadow-sm", children: r2.text }) : null,
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-1.5 flex items-center gap-1.5 text-white/70", children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx(Music2, { size: 13, className: "shrink-0" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[11px] truncate", children: u?.username ? `${u.username} · صوت أصلي` : "صوت أصلي" })
                     ] })
                   ]
                 }
               )
-            ] }) }, r2.id);
-          }),
-          reels.length > 0 && slideHeightPx <= 0 && isTabActive && /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "div",
-            {
-              className: "pointer-events-none absolute inset-0 flex items-center justify-center bg-black text-white/50 text-sm",
-              "aria-hidden": true,
-              children: "…"
-            }
-          )
+            ] }, r2.id);
+          })
         ]
       }
     ),
     sharePost && /* @__PURE__ */ jsxRuntimeExports.jsx(ShareSheet, { target: { kind: "post", post: sharePost }, onClose: () => setSharePost(null) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(NoteReplySheet, { note: noteToReply, contentLabelAr: "الريلز", onClose: () => setNoteToReply(null), onSent: onOpenChat }),
-    commentsFor && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-50 bg-black/70 flex items-end", onClick: () => setCommentsFor(null), children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      NoteReplySheet,
+      {
+        note: noteToReply,
+        contentLabelAr: "الريلز",
+        onClose: () => setNoteToReply(null),
+        onSent: onOpenChat
+      }
+    ),
+    commentsFor && /* @__PURE__ */ jsxRuntimeExports.jsx(
       "div",
       {
-        className: "bg-background text-foreground w-full max-w-md mx-auto rounded-t-3xl max-h-[65vh] flex flex-col",
-        onClick: (e) => e.stopPropagation(),
-        children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between p-3 border-b border-border", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "font-semibold text-sm", children: "تعليقات الريلز" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => setCommentsFor(null), "aria-label": "إغلاق", children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 22 }) })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1 overflow-y-auto p-3 space-y-2", children: [
-            commentsFor.comments.map((c) => {
-              const cu = userById(state, c.userId);
-              return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative flex gap-2 text-sm", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "button",
-                  {
-                    type: "button",
-                    onClick: () => cu && onOpenProfile(cu.id, { postId: commentsFor.id, tab: "reels", commentsOpen: true }),
-                    children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: cu?.username || "?", src: cu?.avatar, size: 32 })
-                  }
-                ),
-                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1", children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                    "button",
-                    {
-                      type: "button",
-                      className: "font-semibold",
-                      onClick: () => cu && onOpenProfile(cu.id, { postId: commentsFor.id, tab: "reels", commentsOpen: true }),
-                      children: [
-                        "@",
-                        cu?.username
-                      ]
-                    }
-                  ),
-                  " ",
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: c.text })
-                ] }),
-                c.userId === me.id && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative shrink-0", children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx(
-                    "button",
-                    {
-                      type: "button",
-                      onClick: () => setCommentMenuId(commentMenuId === c.id ? null : c.id),
-                      className: "rounded-full p-1 text-muted-foreground hover:bg-secondary",
-                      "aria-label": "خيارات التعليق",
-                      children: /* @__PURE__ */ jsxRuntimeExports.jsx(EllipsisVertical, { size: 18 })
-                    }
-                  ),
-                  commentMenuId === c.id && commentsFor && /* @__PURE__ */ jsxRuntimeExports.jsx(
-                    CommentOptionsMenu,
-                    {
-                      postId: commentsFor.id,
-                      commentId: c.id,
-                      authorId: c.userId,
-                      onClose: () => setCommentMenuId(null)
-                    }
-                  )
-                ] })
-              ] }, c.id);
-            }),
-            commentsFor.comments.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-center text-muted-foreground text-sm py-4", children: "لا تعليقات بعد" })
-          ] }),
-          !isGuest ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
-            "form",
-            {
-              className: "p-3 border-t border-border flex gap-2",
-              onSubmit: (e) => {
-                e.preventDefault();
-                if (!commentDraft.trim()) return;
-                addComment(commentsFor.id, commentDraft);
-                setCommentDraft("");
-              },
-              children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "input",
-                  {
-                    value: commentDraft,
-                    onChange: (e) => setCommentDraft(e.target.value),
-                    placeholder: "أضف تعليقاً...",
-                    className: "flex-1 bg-input rounded-full px-4 py-2 text-sm outline-none"
-                  }
-                ),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "submit", className: "text-primary font-semibold text-sm px-2", children: "إرسال" })
-              ]
-            }
-          ) : /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "border-t border-border p-3 text-center text-xs text-muted-foreground", children: "سجّل الدخول للتعليق أو التفاعل." })
-        ]
+        className: "fixed inset-0 z-50 flex items-end bg-black/60",
+        onClick: () => setCommentsFor(null),
+        children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "div",
+          {
+            className: "w-full max-w-md mx-auto flex flex-col rounded-t-3xl",
+            style: {
+              background: "rgba(18,18,18,0.97)",
+              backdropFilter: "blur(20px)",
+              WebkitBackdropFilter: "blur(20px)",
+              maxHeight: "68vh",
+              paddingBottom: "env(safe-area-inset-bottom,0px)"
+            },
+            onClick: (e) => e.stopPropagation(),
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex justify-center pt-3 pb-1", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-1 w-10 rounded-full bg-white/25" }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between px-4 pb-3", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[15px] font-semibold text-white", children: commentsFor.comments.length > 0 ? `${commentsFor.comments.length} تعليق` : "تعليقات" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => setCommentsFor(null), "aria-label": "إغلاق", children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 22, className: "text-white/70" }) })
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1 overflow-y-auto px-4 pb-2 space-y-4 no-scrollbar", children: [
+                commentsFor.comments.map((c) => {
+                  const cu = userById(state, c.userId);
+                  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-2.5 text-sm", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "button",
+                      {
+                        type: "button",
+                        onClick: () => cu && onOpenProfile(cu.id, {
+                          postId: commentsFor.id,
+                          tab: "reels",
+                          commentsOpen: true
+                        }),
+                        children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: cu?.username || "?", src: cu?.avatar, size: 34 })
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1", children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                        "button",
+                        {
+                          type: "button",
+                          className: "font-semibold text-white/90",
+                          onClick: () => cu && onOpenProfile(cu.id, {
+                            postId: commentsFor.id,
+                            tab: "reels",
+                            commentsOpen: true
+                          }),
+                          children: [
+                            "@",
+                            cu?.username
+                          ]
+                        }
+                      ),
+                      " ",
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-white/75", children: c.text })
+                    ] }),
+                    c.userId === me.id && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative shrink-0", children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx(
+                        "button",
+                        {
+                          type: "button",
+                          onClick: () => setCommentMenuId(commentMenuId === c.id ? null : c.id),
+                          className: "rounded-full p-1 text-white/50",
+                          "aria-label": "خيارات التعليق",
+                          children: /* @__PURE__ */ jsxRuntimeExports.jsx(EllipsisVertical, { size: 16 })
+                        }
+                      ),
+                      commentMenuId === c.id && commentsFor && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                        CommentOptionsMenu,
+                        {
+                          postId: commentsFor.id,
+                          commentId: c.id,
+                          authorId: c.userId,
+                          onClose: () => setCommentMenuId(null)
+                        }
+                      )
+                    ] })
+                  ] }, c.id);
+                }),
+                commentsFor.comments.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "py-8 text-center text-white/40 text-sm", children: "لا تعليقات بعد" })
+              ] }),
+              !isGuest ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                "form",
+                {
+                  className: "flex gap-2 px-4 pt-2 pb-2 border-t border-white/10",
+                  onSubmit: (e) => {
+                    e.preventDefault();
+                    if (!commentDraft.trim()) return;
+                    addComment(commentsFor.id, commentDraft);
+                    setCommentDraft("");
+                  },
+                  children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: me.username, src: me.avatar, size: 32, className: "shrink-0" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "input",
+                      {
+                        value: commentDraft,
+                        onChange: (e) => setCommentDraft(e.target.value),
+                        placeholder: "أضف تعليقاً...",
+                        className: "flex-1 rounded-full bg-white/10 px-4 py-2 text-[14px] text-white placeholder-white/35 outline-none",
+                        style: { caretColor: "white" }
+                      }
+                    ),
+                    commentDraft.trim() && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "button",
+                      {
+                        type: "submit",
+                        className: "self-center text-[14px] font-bold text-sky-400",
+                        children: "إرسال"
+                      }
+                    )
+                  ]
+                }
+              ) : /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "border-t border-white/10 px-4 py-3 text-center text-xs text-white/40", children: "سجّل الدخول للتعليق" })
+            ]
+          }
+        )
       }
-    ) })
+    )
   ] });
 }
 function useLockPageScroll(locked) {
@@ -21187,15 +22322,23 @@ function readVisualViewportLayout() {
       keyboardInset: 0
     };
   }
-  const keyboardInset = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+  const keyboardInset = Math.max(
+    0,
+    Math.round(window.innerHeight - vv.height - vv.offsetTop)
+  );
   return {
     height: Math.round(vv.height),
     offsetTop: Math.round(vv.offsetTop),
     keyboardInset
   };
 }
+function chatComposerBottomPadding(keyboardOpen) {
+  return keyboardOpen ? "0px" : "env(safe-area-inset-bottom, 0px)";
+}
 function useVisualViewportLayout() {
   const [layout, setLayout] = reactExports.useState(readVisualViewportLayout);
+  const prevInsetRef = reactExports.useRef(layout.keyboardInset);
+  const prevHeightRef = reactExports.useRef(layout.height);
   reactExports.useEffect(() => {
     const vv = window.visualViewport;
     let raf = 0;
@@ -21203,14 +22346,26 @@ function useVisualViewportLayout() {
       if (raf) cancelAnimationFrame(raf);
       raf = requestAnimationFrame(() => {
         raf = 0;
-        setLayout(readVisualViewportLayout());
+        const next = readVisualViewportLayout();
+        const root = document.documentElement;
+        root.style.setProperty("--vv-height", `${next.height}px`);
+        root.style.setProperty("--vv-offset-top", `${next.offsetTop}px`);
+        root.style.setProperty("--vv-keyboard-inset", `${next.keyboardInset}px`);
+        const wasOpen = prevInsetRef.current > 8;
+        const isOpen = next.keyboardInset > 8;
+        const heightDelta = Math.abs(next.height - prevHeightRef.current);
+        prevInsetRef.current = next.keyboardInset;
+        prevHeightRef.current = next.height;
+        if (wasOpen !== isOpen || heightDelta > 50) {
+          setLayout(next);
+        }
       });
     };
     sync();
-    vv?.addEventListener("resize", sync);
-    vv?.addEventListener("scroll", sync);
-    window.addEventListener("resize", sync);
-    window.addEventListener("orientationchange", sync);
+    vv?.addEventListener("resize", sync, { passive: true });
+    vv?.addEventListener("scroll", sync, { passive: true });
+    window.addEventListener("resize", sync, { passive: true });
+    window.addEventListener("orientationchange", sync, { passive: true });
     return () => {
       if (raf) cancelAnimationFrame(raf);
       vv?.removeEventListener("resize", sync);
@@ -21221,20 +22376,245 @@ function useVisualViewportLayout() {
   }, []);
   return layout;
 }
-const CHAT_ALLOW_SELECT_SELECTOR = 'input, textarea, select, [contenteditable="true"], .chat-allow-select';
-function isChatAllowSelectTarget(target) {
+const NATIVE_LONG_PRESS_ATTR = "data-native-long-press";
+const ALLOW_SELECT_SELECTOR = 'input, textarea, select, [contenteditable="true"], .chat-allow-select, .native-allow-select';
+const NO_SELECT_STYLE_ID = "retweet-ios-no-select";
+const NO_SELECT_SHELL_CLASS = "retweet-native-shell";
+const NO_SELECT_GLOBAL_CSS = `
+html.${NO_SELECT_SHELL_CLASS},
+html.${NO_SELECT_SHELL_CLASS} *,
+#root,
+#root * {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+  -webkit-user-modify: read-only !important;
+}
+html.${NO_SELECT_SHELL_CLASS} input,
+html.${NO_SELECT_SHELL_CLASS} textarea,
+html.${NO_SELECT_SHELL_CLASS} select,
+html.${NO_SELECT_SHELL_CLASS} [contenteditable="true"],
+html.${NO_SELECT_SHELL_CLASS} .chat-allow-select,
+html.${NO_SELECT_SHELL_CLASS} .chat-allow-select *,
+#root input,
+#root textarea,
+#root select,
+#root [contenteditable="true"],
+#root .chat-allow-select,
+#root .chat-allow-select * {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+  -webkit-touch-callout: auto !important;
+  -webkit-user-modify: read-write !important;
+}
+html.${NO_SELECT_SHELL_CLASS} ::selection,
+#root ::selection {
+  background: transparent !important;
+  color: inherit !important;
+}
+html.${NO_SELECT_SHELL_CLASS} img,
+html.${NO_SELECT_SHELL_CLASS} video,
+html.${NO_SELECT_SHELL_CLASS} canvas,
+html.${NO_SELECT_SHELL_CLASS} svg,
+#root img,
+#root video,
+#root canvas,
+#root svg {
+  -webkit-user-drag: none !important;
+  user-drag: none !important;
+  -webkit-touch-callout: none !important;
+  pointer-events: auto;
+}
+html.${NO_SELECT_SHELL_CLASS} [${NATIVE_LONG_PRESS_ATTR}],
+#root [${NATIVE_LONG_PRESS_ATTR}] {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
+  touch-action: none !important;
+}
+.retweet-no-select-pane,
+.retweet-no-select-pane *:not(.chat-allow-select):not(.chat-allow-select *) {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
+}
+`.trim();
+function isIosWebKitTouchDevice() {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent;
+  return /iPad|iPhone|iPod/.test(ua) || navigator.maxTouchPoints > 1 && /Mac/.test(navigator.platform);
+}
+function isNoSelectShellActive() {
+  if (typeof window === "undefined") return false;
+  const w = window;
+  if (w.__RETWEET_NO_SELECT_BOOT__ === true) return true;
+  if (w.__RETWEET_NATIVE_SHELL__ === true) return true;
+  if (isNativeCapacitorShell()) return true;
+  if (isIosWebKitTouchDevice()) return true;
+  try {
+    return window.location.pathname.includes("/app");
+  } catch {
+    return true;
+  }
+}
+function isNativeAllowSelectTarget(target) {
   if (!(target instanceof Element)) return false;
-  return !!target.closest(CHAT_ALLOW_SELECT_SELECTOR);
+  return !!target.closest(ALLOW_SELECT_SELECTOR);
 }
-function preventChatNativeTextMenu(e) {
-  if (isChatAllowSelectTarget(e.target)) return;
+function isNativeLongPressTarget(target) {
+  if (!(target instanceof Element)) return false;
+  return !!target.closest(`[${NATIVE_LONG_PRESS_ATTR}]`);
+}
+function clearNativeSelection() {
+  try {
+    const sel = window.getSelection();
+    if (sel && !sel.isCollapsed) sel.removeAllRanges();
+  } catch {
+  }
+  try {
+    const doc = document;
+    doc.selection?.empty?.();
+  } catch {
+  }
+}
+function blockNativeTextMenu(e) {
+  if (!isNoSelectShellActive()) return;
+  if (isNativeAllowSelectTarget(e.target)) return;
+  if (isNativeLongPressTarget(e.target)) return;
   e.preventDefault();
+  e.stopPropagation();
+  clearNativeSelection();
 }
-const chatNoSelectCaptureHandlers = {
-  onSelectStartCapture: preventChatNativeTextMenu,
-  onContextMenuCapture: preventChatNativeTextMenu,
-  onDragStartCapture: preventChatNativeTextMenu
+function onSelectionChange() {
+  if (!isNoSelectShellActive()) return;
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed) return;
+  const node = sel.anchorNode;
+  if (!node) return;
+  const el = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+  if (el && isNativeAllowSelectTarget(el)) return;
+  sel.removeAllRanges();
+}
+function injectNoSelectStyles() {
+  if (typeof document === "undefined") return;
+  document.documentElement.classList.add(NO_SELECT_SHELL_CLASS);
+  const root = document.getElementById("root");
+  root?.classList.add("retweet-no-select-pane");
+  document.documentElement.style.setProperty("-webkit-user-select", "none");
+  document.documentElement.style.setProperty("-webkit-touch-callout", "none");
+  if (document.body) {
+    document.body.style.setProperty("-webkit-user-select", "none");
+    document.body.style.setProperty("-webkit-touch-callout", "none");
+  }
+  if (document.getElementById(NO_SELECT_STYLE_ID)) return;
+  const style = document.createElement("style");
+  style.id = NO_SELECT_STYLE_ID;
+  style.textContent = NO_SELECT_GLOBAL_CSS;
+  (document.head || document.documentElement).appendChild(style);
+}
+function installTouchSelectionBlocker() {
+  let startX = 0;
+  let startY = 0;
+  let touchMoved = false;
+  let rafId = 0;
+  const stopRaf = () => {
+    if (rafId) {
+      cancelAnimationFrame(rafId);
+      rafId = 0;
+    }
+  };
+  const loopClearSelection = () => {
+    clearNativeSelection();
+    rafId = requestAnimationFrame(loopClearSelection);
+  };
+  document.addEventListener(
+    "touchstart",
+    (e) => {
+      stopRaf();
+      if (e.touches.length !== 1) return;
+      if (isNativeAllowSelectTarget(e.target)) return;
+      if (isNativeLongPressTarget(e.target)) return;
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      touchMoved = false;
+      clearNativeSelection();
+      rafId = requestAnimationFrame(loopClearSelection);
+    },
+    { capture: true, passive: true }
+  );
+  document.addEventListener(
+    "touchmove",
+    (e) => {
+      if (!e.touches[0]) return;
+      if (isNativeAllowSelectTarget(e.target)) return;
+      if (isNativeLongPressTarget(e.target)) return;
+      const dx = Math.abs(e.touches[0].clientX - startX);
+      const dy = Math.abs(e.touches[0].clientY - startY);
+      if (dx > 12 || dy > 12) {
+        touchMoved = true;
+        stopRaf();
+        return;
+      }
+      if (!touchMoved) {
+        e.preventDefault();
+        clearNativeSelection();
+      }
+    },
+    { capture: true, passive: false }
+  );
+  const endTouch = () => {
+    stopRaf();
+    touchMoved = false;
+    clearNativeSelection();
+  };
+  document.addEventListener("touchend", endTouch, { capture: true, passive: true });
+  document.addEventListener("touchcancel", endTouch, { capture: true, passive: true });
+}
+const nativeNoSelectCaptureHandlers = {
+  onSelectStartCapture: blockNativeTextMenu,
+  onContextMenuCapture: blockNativeTextMenu,
+  onDragStartCapture: blockNativeTextMenu,
+  onCopyCapture: blockNativeTextMenu,
+  onCutCapture: blockNativeTextMenu,
+  onPointerDownCapture: (e) => {
+    if (!isNoSelectShellActive()) return;
+    if (isNativeAllowSelectTarget(e.target)) return;
+    if (isNativeLongPressTarget(e.target)) return;
+    clearNativeSelection();
+  }
 };
+let installed = false;
+function installNativeTextSelectionGuard() {
+  if (typeof document === "undefined" || installed) return;
+  installed = true;
+  const w = window;
+  w.__RETWEET_NO_SELECT_BOOT__ = true;
+  injectNoSelectStyles();
+  const opts = { capture: true, passive: false };
+  for (const ev of ["selectstart", "contextmenu", "dragstart", "copy", "cut"]) {
+    document.addEventListener(ev, blockNativeTextMenu, opts);
+  }
+  document.addEventListener("selectionchange", onSelectionChange, { capture: true });
+  document.addEventListener(
+    "mousedown",
+    (e) => {
+      if (isNativeAllowSelectTarget(e.target)) return;
+      if (isNativeLongPressTarget(e.target)) return;
+      clearNativeSelection();
+    },
+    { capture: true, passive: true }
+  );
+  installTouchSelectionBlocker();
+  document.addEventListener(
+    "gesturestart",
+    (e) => {
+      if (!isNativeAllowSelectTarget(e.target)) e.preventDefault();
+    },
+    { capture: true, passive: false }
+  );
+}
+const chatNoSelectCaptureHandlers = nativeNoSelectCaptureHandlers;
 function formatCompactCount(n) {
   if (!Number.isFinite(n) || n < 0) return "0";
   if (n < 1e3) return String(Math.floor(n));
@@ -21283,7 +22663,7 @@ function ChatDmIntroCard({ other, meId, state, onOpenProfile, isQuran, hasMessag
         onClick: onOpenProfile,
         className: "rounded-full transition active:scale-[0.98]",
         "aria-label": `عرض ملف @${other.username}`,
-        children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: other.username, src: other.avatar, size: 72 })
+        children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: other.username, src: other.avatar, size: 72 })
       }
     ),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", onClick: onOpenProfile, className: "mt-3 flex max-w-full items-center justify-center gap-1", children: [
@@ -21308,7 +22688,7 @@ function ChatDmIntroCard({ other, meId, state, onOpenProfile, isQuran, hasMessag
       ] })
     ] }),
     mutualUsers.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4 flex max-w-full flex-col items-center gap-2", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex items-center justify-center -space-x-2 rtl:space-x-reverse", children: mutualUsers.slice(0, 3).map((u) => /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u.username, src: u.avatar, size: 28 }, u.id)) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex items-center justify-center -space-x-2 rtl:space-x-reverse", children: mutualUsers.slice(0, 3).map((u) => /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: u.username, src: u.avatar, size: 28 }, u.id)) }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm " + muted, children: mutualUsers.length === 1 ? `صديق مشترك · @${mutualUsers[0].username}` : `${formatCompactCount(mutualUsers.length)} أصدقاء مشتركون` })
     ] }) : followingEachOther ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-4 text-sm " + muted, children: "أنتم تتابعان بعضكم" }) : state.users.find((u) => u.id === meId)?.following.includes(other.id) ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-4 text-sm " + muted, children: "أنت تتابعه" }) : other.followers.includes(meId) ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-4 text-sm " + muted, children: "يتابعك" }) : null,
     other.bio?.trim() ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-3 max-w-sm text-sm leading-relaxed line-clamp-2 " + muted, children: other.bio.trim() }) : null,
@@ -21845,7 +23225,7 @@ function ChatCameraComposeModal({
           },
           className: "flex w-full items-center justify-center gap-2 rounded-full bg-white py-3 text-sm font-semibold text-black shadow-lg active:scale-[0.99]",
           children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: senderName || "?", src: senderAvatar, size: 28 }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: senderName || "?", src: senderAvatar, size: 28 }),
             "إرسال"
           ]
         }
@@ -22105,7 +23485,7 @@ function ChatDrawComposeModal({
               disabled: !layers2.length,
               className: "flex w-full items-center justify-center gap-2 rounded-full py-3 text-sm font-semibold shadow-lg active:scale-[0.99] disabled:opacity-40 " + (isQuranChannel ? "bg-emerald-500 text-black" : "bg-white text-black"),
               children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: senderName || "?", src: senderAvatar, size: 28 }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: senderName || "?", src: senderAvatar, size: 28 }),
                 "إرسال الرسمة"
               ]
             }
@@ -22162,7 +23542,7 @@ function ChatInlineMediaLightbox({ media, src, sender, senderLabel, onClose }) {
         children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onClose, className: "rounded-full p-2.5 text-white transition hover:bg-white/10", "aria-label": "رجوع", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronLeft, { size: 26, strokeWidth: 2.25 }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-w-0 flex-1 items-center justify-center gap-2 px-1", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: displayName.replace(/^@/, ""), src: sender?.avatar, size: 34 }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: displayName.replace(/^@/, ""), src: sender?.avatar, size: 34 }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "truncate text-sm font-semibold text-white", children: displayName })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative flex shrink-0 items-center gap-0.5", children: [
@@ -22227,7 +23607,7 @@ function ShareFeedPostSection({ postId }) {
   const emojiOnly = !!(img && !hasImg && img.length <= 6);
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-h-0 flex-1 flex-col bg-background", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3 px-4 pt-4", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: author.username, src: author.avatar, size: 44 }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: author.username, src: author.avatar, size: 44 }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1 text-start", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1 truncate text-base font-semibold", children: [
           "@",
@@ -22267,7 +23647,7 @@ function ShareFeedStorySection({ storyId }) {
   }
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-h-0 flex-1 flex-col bg-background", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3 px-4 pt-4", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: author.username, src: author.avatar, size: 44 }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: author.username, src: author.avatar, size: 44 }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1 text-start", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1 truncate text-base font-semibold", children: [
           "@",
@@ -22375,7 +23755,7 @@ function SharedPostPreview({ postId, comment, compact = false, variant = "defaul
     const mediaFrame = "relative w-full overflow-hidden rounded-none bg-transparent";
     return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "w-full max-w-[min(96vw,360px)] overflow-hidden rounded-none border-0 bg-transparent shadow-none ring-0", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 px-1 py-1.5", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: author.username, src: author.avatar, size: 22 }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: author.username, src: author.avatar, size: 22 }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1 text-start", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1 truncate", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "truncate text-xs font-semibold", children: userDisplayName(author) }),
@@ -22438,7 +23818,7 @@ function SharedPostPreview({ postId, comment, compact = false, variant = "defaul
   if (compact) {
     return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl bg-muted/40 p-3 dark:bg-zinc-900/60", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-2 flex items-center gap-2", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: author.username, src: author.avatar, size: 20 }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: author.username, src: author.avatar, size: 20 }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-xs font-medium", children: [
           "@",
           author.username
@@ -22465,7 +23845,7 @@ function SharedPostPreview({ postId, comment, compact = false, variant = "defaul
   }
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "overflow-hidden rounded-xl bg-muted/30 dark:bg-zinc-900/70", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 p-3", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: author.username, src: author.avatar, size: 24 }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: author.username, src: author.avatar, size: 24 }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-sm font-medium", children: [
@@ -22515,7 +23895,7 @@ function SharedStoryChatPreview({ storyId, comment }) {
   }
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "w-full max-w-[min(96vw,360px)] overflow-hidden rounded-none border-0 bg-transparent shadow-none ring-0", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 px-1 py-1.5", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: author.username, src: author.avatar, size: 22 }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: author.username, src: author.avatar, size: 22 }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1 text-start", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1 truncate", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "truncate text-xs font-semibold", children: [
@@ -22614,7 +23994,7 @@ function SharedGroupInvitePreview({
   }
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "w-full max-w-[min(96vw,340px)] overflow-hidden rounded-2xl border border-border bg-card p-3 shadow-sm", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: info.name, src: info.avatar, size: 52 }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: info.name, src: info.avatar, size: 52 }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1 text-start", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "truncate font-semibold", children: info.name }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-0.5 flex items-center gap-1 text-xs text-muted-foreground", children: [
@@ -22687,7 +24067,7 @@ function ChatStoryReplyStack({
         },
         children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 border-b border-border/60 px-2.5 py-1.5", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: author.username, src: author.avatar, size: 24 }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: author.username, src: author.avatar, size: 24 }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-xs font-semibold", children: [
               "@",
               author.username
@@ -22721,7 +24101,7 @@ function ChatStoryReplyStack({
 }
 const SWIPE_THRESHOLD = 48;
 const SWIPE_MAX = 76;
-function ChatSwipeMessageRow({
+function ChatSwipeMessageRowInner({
   message,
   mine,
   avatarName,
@@ -22791,7 +24171,7 @@ function ChatSwipeMessageRow({
     },
     [message, onPointerUp, onSwipeReply]
   );
-  const replyOpacity = Math.min(1, dragX / SWIPE_THRESHOLD);
+  const replyOpacity = dragX > 0 ? Math.min(1, dragX / SWIPE_THRESHOLD) : 0;
   return /* @__PURE__ */ jsxRuntimeExports.jsx(
     "div",
     {
@@ -22826,9 +24206,9 @@ function ChatSwipeMessageRow({
                   e.stopPropagation();
                   onAvatarClick();
                 },
-                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: avatarName, src: avatarSrc, size: 28 })
+                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: avatarName, src: avatarSrc, size: 28 })
               }
-            ) : /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: avatarName, src: avatarSrc, size: 28, className: "mb-0.5 shrink-0 self-end" })),
+            ) : /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: avatarName, src: avatarSrc, size: 28, className: "mb-0.5 shrink-0 self-end" })),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative w-max max-w-full", children: [
               dragX > 6 && /* @__PURE__ */ jsxRuntimeExports.jsx(
                 "span",
@@ -22857,6 +24237,21 @@ function ChatSwipeMessageRow({
     }
   );
 }
+function messageChanged(a, b) {
+  return a.id !== b.id || a.status !== b.status || a.content !== b.content || a.type !== b.type || JSON.stringify(a.reactions) !== JSON.stringify(b.reactions);
+}
+const ChatSwipeMessageRow = reactExports.memo(ChatSwipeMessageRowInner, (prev, next) => {
+  if (messageChanged(prev.message, next.message)) return false;
+  if (prev.mine !== next.mine) return false;
+  if (prev.avatarName !== next.avatarName) return false;
+  if (prev.avatarSrc !== next.avatarSrc) return false;
+  if (prev.reservePeerAvatarSlot !== next.reservePeerAvatarSlot) return false;
+  if (prev.isQuran !== next.isQuran) return false;
+  if (prev.onPointerDown !== next.onPointerDown) return false;
+  if (prev.onPointerMove !== next.onPointerMove) return false;
+  if (prev.onPointerUp !== next.onPointerUp) return false;
+  return true;
+});
 function ChatMessageStatus({
   status,
   mine,
@@ -23153,14 +24548,14 @@ function GroupStackedAvatars({
   size = 96
 }) {
   if (chat.avatar && !chat.avatar.startsWith("👥") && chat.avatar.length > 4) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: chat.name || "مجموعة", src: chat.avatar, size, className: "mx-auto" });
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: chat.name || "مجموعة", src: chat.avatar, size, className: "mx-auto" });
   }
   const slice = memberUsers.slice(0, 3);
   if (slice.length === 0) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: chat.name || "مجموعة", src: chat.avatar, size, className: "mx-auto" });
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: chat.name || "مجموعة", src: chat.avatar, size, className: "mx-auto" });
   }
   if (slice.length === 1) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: slice[0].username, src: slice[0].avatar, size, className: "mx-auto" });
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: slice[0].username, src: slice[0].avatar, size, className: "mx-auto" });
   }
   const cell = Math.round(size * 0.58);
   const overlap = Math.round(cell * 0.42);
@@ -23170,7 +24565,7 @@ function GroupStackedAvatars({
     {
       className: "absolute rounded-full ring-[3px] ring-background",
       style: { width: cell, height: cell, insetInlineStart: i * overlap, zIndex: slice.length - i },
-      children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u.username, src: u.avatar, size: cell })
+      children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: u.username, src: u.avatar, size: cell })
     },
     u.id
   )) });
@@ -23514,7 +24909,7 @@ function GroupDetailsScreen({
               const admin = chat.admins.includes(u.id);
               const host = (chat.hosts || []).includes(u.id);
               return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-wrap items-center gap-2 rounded-2xl bg-secondary/60 p-2", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => onOpenProfile(u.id), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u.username, src: u.avatar, size: 40 }) }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => onOpenProfile(u.id), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: u.username, src: u.avatar, size: 40 }) }),
                 /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1 text-start text-sm", children: [
                   "@",
                   u.username,
@@ -23634,7 +25029,7 @@ function GroupDetailsScreen({
               (chat.joinRequests || []).map((req) => {
                 const u = userById(state, req.userId);
                 return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2", children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u?.username || "?", src: u?.avatar, size: 32 }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: u?.username || "?", src: u?.avatar, size: 32 }),
                   /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "flex-1 text-sm", children: [
                     "@",
                     u?.username || "?"
@@ -23760,7 +25155,7 @@ function GroupDetailsScreen({
                         onClick: () => setPickIds((ids) => ids.includes(u.id) ? ids.filter((x) => x !== u.id) : [...ids, u.id]),
                         className: "flex w-full touch-manipulation items-center gap-3 rounded-2xl p-2.5 hover:bg-secondary active:bg-secondary/80",
                         children: [
-                          /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u.username, src: u.avatar, size: 36 }),
+                          /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: u.username, src: u.avatar, size: 36 }),
                           /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "flex-1 text-start text-sm", children: [
                             "@",
                             u.username
@@ -24204,7 +25599,6 @@ function MentionComposerField({
         ref,
         value: value2,
         onChange: (e) => onChange(e.target.value),
-        onInput: (e) => onChange(e.currentTarget.value),
         className: cn(
           "relative z-[1] w-full resize-none caret-current selection:bg-primary/25",
           value2 ? "text-transparent" : "text-inherit",
@@ -24886,7 +26280,7 @@ function RSocialAvatar({ name = "?", src, size = 48, ring, className }) {
   reactExports.useEffect(() => setImgFailed(false), [resolved]);
   const showImg = !!(resolved && canShowImage(resolved) && !imgFailed);
   const { bg, color } = pastelAvatarColors(name);
-  const inner = showImg ? /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name, src, size, className }) : /* @__PURE__ */ jsxRuntimeExports.jsx(
+  const inner = showImg ? /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name, src, size, className }) : /* @__PURE__ */ jsxRuntimeExports.jsx(
     "div",
     {
       className: "rounded-full flex items-center justify-center overflow-hidden font-bold select-none shrink-0 " + (className || ""),
@@ -24988,7 +26382,7 @@ function CallScreen({
       )
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col items-center gap-3 " + (video ? "py-6" : "flex-1 justify-center"), children: [
-      !video && /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: other?.username || "?", src: other?.avatar, size: 120 }),
+      !video && /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: other?.username || "?", src: other?.avatar, size: 120 }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-xl font-semibold", children: [
         "@",
         other?.username || "?"
@@ -25022,6 +26416,11 @@ const CHAT_STACK_PROGRESS_VAR = "--retweet-chat-stack-progress";
 const CHAT_STACK_OPEN_FRACTION = 0.5;
 const CHAT_TAP_OPEN_MS = 280;
 const CHAT_TAP_OPEN_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
+const galleryLongPressBtnProps = {
+  [NATIVE_LONG_PRESS_ATTR]: "gallery",
+  onContextMenu: (e) => e.preventDefault(),
+  onSelectStart: (e) => e.preventDefault()
+};
 const CHAT_COMPOSER_LINE_PX = 20;
 const CHAT_COMPOSER_MAX_LINES = 5;
 const CHAT_COMPOSER_MAX_HEIGHT_PX = CHAT_COMPOSER_LINE_PX * CHAT_COMPOSER_MAX_LINES;
@@ -25173,7 +26572,7 @@ function ForwardChatSheet({
                 onClose();
               },
               children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: label, src: av, size: 40 }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: label, src: av, size: 40 }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "min-w-0 flex-1 truncate font-medium", children: label })
               ]
             },
@@ -26866,7 +28265,7 @@ function ChatScreen({
   ]);
   reactExports.useEffect(() => {
     if (typeof document === "undefined") return;
-    const onSelectionChange = () => {
+    const onSelectionChange2 = () => {
       if (openChat || stackDragChatId || stackClosingId) return;
       const sel = document.getSelection();
       if (!sel || sel.isCollapsed) return;
@@ -26874,8 +28273,8 @@ function ChatScreen({
       releaseChatChromeAfterGesture();
       if (stackProgress > 0.04) resetStackToInboxRest();
     };
-    document.addEventListener("selectionchange", onSelectionChange);
-    return () => document.removeEventListener("selectionchange", onSelectionChange);
+    document.addEventListener("selectionchange", onSelectionChange2);
+    return () => document.removeEventListener("selectionchange", onSelectionChange2);
   }, [
     openChat,
     stackDragChatId,
@@ -26950,10 +28349,8 @@ function ChatScreen({
         delete document.documentElement.dataset.chatThreadOpen;
       }
     }
-    reactExports.startTransition(() => {
-      onThreadOpen?.(threadImmersive);
-      onHideBottomNav?.(hideBottomNav);
-    });
+    onThreadOpen?.(threadImmersive);
+    onHideBottomNav?.(hideBottomNav);
   }, [
     openChat,
     stackDragChatId,
@@ -26964,6 +28361,16 @@ function ChatScreen({
     onThreadOpen,
     onHideBottomNav
   ]);
+  reactExports.useEffect(() => {
+    return () => {
+      onThreadOpen?.(false);
+      onHideBottomNav?.(false);
+      onExitNavRevealProgress?.(null);
+      if (typeof document !== "undefined") {
+        delete document.documentElement.dataset.chatThreadOpen;
+      }
+    };
+  }, [onThreadOpen, onHideBottomNav, onExitNavRevealProgress]);
   const beginCloseChatThread = reactExports.useCallback(
     function beginCloseChatThreadImpl(closingKey) {
       if (stackClosingId) return;
@@ -27495,45 +28902,139 @@ function ChatScreen({
           sortedFilteredChats.length === 0 && !!search.trim() && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "py-12 text-center text-[14px] text-zinc-400", children: isRtl ? "لا نتائج لـ «" + search + "»" : `No results for "${search}"` }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-3", "aria-hidden": true })
         ] }),
-        editingNote && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-50 flex items-end justify-center bg-black/50 pb-6 px-3", onClick: () => setEditingNote(false), children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        editingNote && /* @__PURE__ */ jsxRuntimeExports.jsx(
           "div",
           {
-            dir: isRtl ? "rtl" : "ltr",
-            className: "w-full max-w-sm rounded-3xl bg-background p-5 shadow-2xl space-y-4",
-            onClick: (e) => e.stopPropagation(),
-            children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(RSocialAvatar, { name: me.username, src: me.avatar, size: 42 }),
-                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "font-bold text-[15px]", children: [
-                    "@",
-                    me.username
+            className: "fixed inset-0 z-[260] flex items-center justify-center bg-black/70 backdrop-blur-xl",
+            onClick: () => setEditingNote(false),
+            children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "div",
+              {
+                dir: isRtl ? "rtl" : "ltr",
+                className: "relative w-full max-w-xs mx-auto flex flex-col items-center gap-5 px-4",
+                onClick: (e) => e.stopPropagation(),
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "button",
+                    {
+                      type: "button",
+                      onClick: () => setEditingNote(false),
+                      className: "absolute top-[max(0.75rem,env(safe-area-inset-top,0px))] end-4 rounded-full bg-black/40 p-1.5 text-white/90 backdrop-blur",
+                      "aria-label": t("cancel"),
+                      children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 18 })
+                    }
+                  ),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-[3.5rem] flex flex-col items-center gap-2", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      RSocialAvatar,
+                      {
+                        name: me.username,
+                        src: me.avatar,
+                        size: 82,
+                        className: "ring-2 ring-white/80 shadow-[0_0_24px_rgba(0,0,0,0.65)]"
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative mt-3 max-w-[220px]", children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-2xl bg-white/95 px-4 py-2.5 text-center text-[13px] font-medium text-zinc-900 shadow-lg", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+                        "input",
+                        {
+                          value: noteInput,
+                          onChange: (e) => setNoteInput(e.target.value),
+                          maxLength: 60,
+                          autoFocus: true,
+                          dir: isRtl ? "rtl" : "ltr",
+                          placeholder: isRtl ? "أكتب نوت قصيرة…" : "Share a short note…",
+                          className: "w-full bg-transparent text-center text-[13px] font-medium text-zinc-900 placeholder:text-zinc-400 outline-none border-none"
+                        }
+                      ) }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx(
+                        "div",
+                        {
+                          className: "absolute left-1/2 h-3 w-3 -translate-x-1/2 rotate-45 bg-white/95",
+                          style: { bottom: "-6px", boxShadow: "0 6px 16px rgba(0,0,0,0.25)" },
+                          "aria-hidden": true
+                        }
+                      )
+                    ] }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-3 text-[11px] text-white/75", children: isRtl ? "مرئية للمتابعين لمدة ٢٤ ساعة" : "Visible to followers for 24 hours" })
                   ] }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[12px] text-muted-foreground", children: isRtl ? "مرئي للمتابِعين" : "Visible to followers" })
-                ] })
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx(
-                "input",
-                {
-                  value: noteInput,
-                  onChange: (e) => setNoteInput(e.target.value),
-                  maxLength: 60,
-                  autoFocus: true,
-                  dir: isRtl ? "rtl" : "ltr",
-                  placeholder: isRtl ? "أضف نوت… (٦٠ حرفاً)" : "Add a note… (60 chars)",
-                  className: "w-full rounded-2xl bg-zinc-100 dark:bg-zinc-800 px-4 py-3 text-[15px] font-medium placeholder:text-zinc-400 outline-none"
-                }
-              ),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-2", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => setEditingNote(false), className: "flex-1 rounded-2xl bg-zinc-100 dark:bg-zinc-800 py-2.5 text-[14px] font-semibold text-foreground", children: t("cancel") }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => {
-                  setNote(noteInput);
-                  setEditingNote(false);
-                }, className: "flex-1 rounded-2xl bg-[#FFFC00] py-2.5 text-[14px] font-bold text-zinc-900 shadow-sm", children: t("save") })
-              ] })
-            ]
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4 flex items-center justify-center gap-4 text-white/90", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                      "button",
+                      {
+                        type: "button",
+                        className: "flex flex-col items-center gap-1 rounded-2xl bg-white/10 px-3 py-2 text-[11px] backdrop-blur hover:bg-white/16 active:scale-95 transition",
+                        onClick: () => {
+                          const base = noteInput.replace(/^🎵[^|]*\|\s*/u, "");
+                          const demo = isRtl ? "🎵 أغنية تجريبية | " : "🎵 Demo song | ";
+                          setNoteInput(demo + base.trim());
+                        },
+                        children: [
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-lg leading-none", children: "🎵" }),
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: isRtl ? "موسيقى" : "Music" })
+                        ]
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                      "button",
+                      {
+                        type: "button",
+                        className: "flex flex-col items-center gap-1 rounded-2xl bg-white/10 px-3 py-2 text-[11px] backdrop-blur hover:bg-white/16 active:scale-95 transition",
+                        onClick: () => {
+                          const base = noteInput.replace(/^📍[^|]*\|\s*/u, "");
+                          const demo = isRtl ? "📍 الرياض | " : "📍 Riyadh | ";
+                          setNoteInput(demo + base.trim());
+                        },
+                        children: [
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-lg leading-none", children: "📍" }),
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: isRtl ? "الموقع" : "Location" })
+                        ]
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                      "button",
+                      {
+                        type: "button",
+                        className: "flex flex-col items-center gap-1 rounded-2xl bg-white/10 px-3 py-2 text-[11px] backdrop-blur hover:bg-white/16 active:scale-95 transition",
+                        onClick: () => {
+                          const extra = isRtl ? " 😄" : " 😄";
+                          if (!noteInput.includes("😄")) setNoteInput((v) => (v || "مزاج جميل") + extra);
+                        },
+                        children: [
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-lg leading-none", children: "😊" }),
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: isRtl ? "المزاج" : "Mood" })
+                        ]
+                      }
+                    )
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-6 flex w-full max-w-xs gap-2", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "button",
+                      {
+                        type: "button",
+                        onClick: () => setEditingNote(false),
+                        className: "flex-1 rounded-2xl bg-white/10 py-2.5 text-[13px] font-semibold text-white hover:bg-white/16 active:scale-[0.97] transition",
+                        children: t("cancel")
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "button",
+                      {
+                        type: "button",
+                        onClick: () => {
+                          setNote(noteInput.trim());
+                          setEditingNote(false);
+                        },
+                        className: "flex-1 rounded-2xl bg-white text-[13px] font-bold text-zinc-900 py-2.5 shadow-[0_4px_18px_rgba(0,0,0,0.35)] active:scale-[0.97] transition",
+                        children: t("save")
+                      }
+                    )
+                  ] })
+                ]
+              }
+            )
           }
-        ) }),
+        ),
         showCreate === "menu" && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-[220] flex items-end justify-center bg-black/50", onClick: () => setShowCreate(null), children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { dir: isRtl ? "rtl" : "ltr", className: "w-full max-w-md rounded-t-3xl bg-background p-4 pb-8", onClick: (e) => e.stopPropagation(), children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mx-auto mb-4 h-1 w-10 rounded-full bg-zinc-200 dark:bg-zinc-700", "aria-hidden": true }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { onClick: () => setShowCreate("group"), className: "flex w-full items-center gap-3 rounded-2xl p-4 hover:bg-secondary active:bg-secondary text-[15px] font-medium", children: [
@@ -27609,7 +29110,7 @@ function ChatScreen({
       {
         className: "fixed inset-x-0 z-[250] mx-auto max-w-md px-3 " + (hideInboxChrome ? "bottom-[max(0.75rem,env(safe-area-inset-bottom,0px))]" : "bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))]"),
         children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3 rounded-2xl border border-border bg-card p-3 shadow-lg", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: caller?.username || "?", src: caller?.avatar, size: 44 }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: caller?.username || "?", src: caller?.avatar, size: 44 }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1 text-start", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-sm font-semibold", children: [
               "مكالمة ",
@@ -27721,7 +29222,7 @@ function RequestsList({
             className: "flex w-full items-center gap-3 text-start touch-manipulation rounded-xl py-1 hover:bg-secondary/50",
             onClick: () => reactExports.startTransition(() => onOpenProfile(otherId)),
             children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: other?.username || "?", src: other?.avatar, size: 48 }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: other?.username || "?", src: other?.avatar, size: 48 }),
               /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1", children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "truncate font-semibold", children: [
                   "@",
@@ -27891,7 +29392,7 @@ function CreateGroup({ mode: mode2, onBack, onCreated }) {
     step === 1 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-3", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col items-center gap-2", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "relative cursor-pointer", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: name || "مجموعة", src: avatar, size: 96 }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: name || "مجموعة", src: avatar, size: 96 }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "absolute inset-0 flex items-center justify-center rounded-full bg-black/40 text-xs text-white opacity-0 hover:opacity-100", children: avatarBusy ? "…" : "صورة" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("input", { type: "file", accept: "image/*", className: "sr-only", onChange: onAvatarFile, disabled: avatarBusy })
         ] }),
@@ -27927,7 +29428,7 @@ function CreateGroup({ mode: mode2, onBack, onCreated }) {
           onClick: () => setSelected((s) => s.includes(u.id) ? s.filter((x) => x !== u.id) : [...s, u.id]),
           className: "flex w-full touch-manipulation items-center gap-3 rounded-2xl p-2 hover:bg-secondary active:bg-secondary/80",
           children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u.username, src: u.avatar }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: u.username, src: u.avatar }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1 text-start", children: [
               "@",
               u.username
@@ -28068,6 +29569,7 @@ function ChatRoom({
   );
   const composerInputRef = reactExports.useRef(null);
   const composingRef = reactExports.useRef(false);
+  const composerIgnoreInputUntilRef = reactExports.useRef(0);
   const roomBackAtRef = reactExports.useRef(0);
   const blockMicUntilRef = reactExports.useRef(0);
   const [composerMicCooldown, setComposerMicCooldown] = reactExports.useState(false);
@@ -28125,7 +29627,8 @@ function ChatRoom({
       flushTypingStop(sendChatId, otherId);
     };
   }, [isDmRoom, otherId, sendChatId]);
-  const onComposerChange = (v) => {
+  const onComposerChange = reactExports.useCallback((v) => {
+    if (Date.now() < composerIgnoreInputUntilRef.current) return;
     setText(v);
     if (isDmRoom && otherId) {
       if (v.trim()) scheduleTypingPulse(sendChatId, otherId);
@@ -28141,7 +29644,7 @@ function ChatRoom({
     } else {
       setMentionPick(null);
     }
-  };
+  }, [isDmRoom, otherId, sendChatId, chat.isChannel]);
   reactExports.useLayoutEffect(() => {
     syncComposerHeight();
   }, [text, syncComposerHeight]);
@@ -28158,6 +29661,17 @@ function ChatRoom({
     if (!isDmRoom || vanishMessages.length === 0) return visibleMessages;
     return [...visibleMessages, ...vanishMessages].slice().sort((a, b) => a.createdAt - b.createdAt);
   }, [isDmRoom, visibleMessages, vanishMessages]);
+  const [visibleWindowCount, setVisibleWindowCount] = reactExports.useState(60);
+  const isLoadingOlderRef = reactExports.useRef(false);
+  reactExports.useEffect(() => {
+    setVisibleWindowCount(60);
+    isLoadingOlderRef.current = false;
+  }, [chat.id]);
+  const windowedMessages = reactExports.useMemo(() => {
+    if (displayMessages.length <= visibleWindowCount) return displayMessages;
+    return displayMessages.slice(displayMessages.length - visibleWindowCount);
+  }, [displayMessages, visibleWindowCount]);
+  const hasOlderMessages = displayMessages.length > visibleWindowCount;
   const noMessagesYet = displayMessages.length === 0;
   const showDmIntro = isDmRoom && !!other && !!otherId && !vanishMode && noMessagesYet;
   const [messageContext, setMessageContext] = reactExports.useState(null);
@@ -28172,6 +29686,8 @@ function ChatRoom({
   const composerRef = reactExports.useRef(null);
   const vv = useVisualViewportLayout();
   const keyboardOpen = vv.keyboardInset > 8;
+  const pinChatToVisualViewport = !embedInStack || keyboardOpen;
+  const composerBottomPad = chatComposerBottomPadding(keyboardOpen);
   const scrollMessagesToBottom = reactExports.useCallback(() => {
     const el = messagesScrollRef.current;
     if (!el) return;
@@ -28273,7 +29789,7 @@ function ChatRoom({
   }, [scrollToMessageId]);
   const openShareFeedFromMessage = reactExports.useCallback(
     (m) => {
-      const chain2 = visibleMessages.filter((x) => x.type === "shared_post" || x.type === "shared_story");
+      const chain2 = displayMessages.filter((x) => x.type === "shared_post" || x.type === "shared_story");
       const idx = chain2.findIndex((x) => x.id === m.id);
       if (idx < 0) return;
       const items = chain2.map((x) => ({
@@ -28284,7 +29800,7 @@ function ChatRoom({
       }));
       setShareFeedOpen({ items, initialIndex: idx });
     },
-    [visibleMessages]
+    [displayMessages]
   );
   const clearLongPress = reactExports.useCallback(() => {
     if (lpTimerRef.current != null) {
@@ -28448,6 +29964,17 @@ function ChatRoom({
     if (!el) return;
     const dist2 = el.scrollHeight - el.scrollTop - el.clientHeight;
     stickToBottomRef.current = dist2 < 72;
+    if (el.scrollTop < el.scrollHeight * 0.2 && !isLoadingOlderRef.current) {
+      isLoadingOlderRef.current = true;
+      const prevScrollHeight = el.scrollHeight;
+      setVisibleWindowCount((prev) => prev + 40);
+      requestAnimationFrame(() => {
+        if (!messagesScrollRef.current) return;
+        const added = messagesScrollRef.current.scrollHeight - prevScrollHeight;
+        if (added > 0) messagesScrollRef.current.scrollTop += added;
+        isLoadingOlderRef.current = false;
+      });
+    }
   }, []);
   reactExports.useLayoutEffect(() => {
     if (!keyboardOpen) return;
@@ -28472,20 +29999,20 @@ function ChatRoom({
     if (!useIgDm || !otherId) return false;
     const last = chat.lastOpenAtByUser?.[otherId] ?? 0;
     return Date.now() - last < 5 * 6e4;
-  }, [useIgDm, otherId, chat.lastOpenAtByUser, displayMessages.length]);
+  }, [useIgDm, otherId, chat.lastOpenAtByUser]);
   const chatTimelineRows = reactExports.useMemo(
-    () => useIgDm ? buildChatTimelineRows(displayMessages, meId, state.language) : null,
-    [useIgDm, displayMessages, meId, state.language]
+    () => useIgDm ? buildChatTimelineRows(windowedMessages, meId, state.language) : null,
+    [useIgDm, windowedMessages, meId, state.language]
   );
   const rowsToRender = reactExports.useMemo(() => {
     if (chatTimelineRows) return chatTimelineRows;
-    return displayMessages.map((m) => ({
+    return windowedMessages.map((m) => ({
       kind: "message",
       key: m.id,
       message: m,
       showPeerAvatar: true
     }));
-  }, [chatTimelineRows, displayMessages]);
+  }, [chatTimelineRows, windowedMessages]);
   const themeBg = isQuranChannel ? "bg-black text-white" : useIgDm && dmPalette ? dmPalette.headerTitleClass : theme === "blue" ? "bg-blue-50 dark:bg-blue-950" : theme === "pink" ? "bg-pink-50 dark:bg-pink-950" : "bg-background";
   const clearGalleryLongPress = reactExports.useCallback(() => {
     if (galleryLpTimerRef.current) {
@@ -28504,13 +30031,31 @@ function ChatRoom({
           return;
         }
         const durationSec = isVid ? await readVideoDurationSec(file) : await readAudioDurationSec(file);
-        const reader = new FileReader();
-        reader.onload = () => dispatchSend({
-          type: "voice",
-          content: String(reader.result),
-          durationSec
-        });
-        reader.readAsDataURL(file);
+        try {
+          const compressed = await compressChatMediaFile(file);
+          const token = getApiToken();
+          if (apiBackendEnabled() && token) {
+            const up = await apiUploadMedia(token, compressed, { timeoutMs: 12e4 });
+            if (up.ok) {
+              dispatchSend({
+                type: "voice",
+                content: up.url,
+                durationSec
+              });
+              return;
+            }
+          }
+          const reader = new FileReader();
+          reader.onload = () => dispatchSend({
+            type: "voice",
+            content: String(reader.result),
+            durationSec
+          });
+          reader.readAsDataURL(compressed);
+        } catch (err) {
+          console.error("[gallery-voice] failed:", err);
+          window.alert("تعذّر إرسال المقطع كرسالة صوتية. جرّب من جديد أو قصّر طول الفيديو.");
+        }
       })();
     },
     [dispatchSend]
@@ -28547,6 +30092,14 @@ function ChatRoom({
     },
     [sendGalleryVideoAsVoice]
   );
+  const openGalleryVideoVoiceStudio = reactExports.useCallback(() => {
+    setPlusAttachOpen(false);
+    if (isGuest) {
+      notifyGuestActionBlocked();
+      return;
+    }
+    galleryVideoVoiceInputRef.current?.click();
+  }, [isGuest]);
   const onGalleryButtonClick = reactExports.useCallback(() => {
     if (galleryLpFiredRef.current) {
       galleryLpFiredRef.current = false;
@@ -28583,6 +30136,41 @@ function ChatRoom({
     },
     [clearGalleryLongPress]
   );
+  const onGalleryTouchStart = reactExports.useCallback(
+    (e) => {
+      if (e.touches.length !== 1) return;
+      galleryLpFiredRef.current = false;
+      clearGalleryLongPress();
+      const t2 = e.touches[0];
+      galleryLpStartRef.current = { x: t2.clientX, y: t2.clientY };
+      galleryLpTimerRef.current = window.setTimeout(() => {
+        galleryLpTimerRef.current = null;
+        galleryLpStartRef.current = null;
+        galleryLpFiredRef.current = true;
+        galleryVideoVoiceInputRef.current?.click();
+        try {
+          navigator.vibrate?.(12);
+        } catch {
+        }
+      }, 420);
+    },
+    [clearGalleryLongPress]
+  );
+  const onGalleryTouchMove = reactExports.useCallback(
+    (e) => {
+      const start = galleryLpStartRef.current;
+      if (!start || !galleryLpTimerRef.current) return;
+      const t2 = e.touches[0];
+      if (!t2) return;
+      if (Math.hypot(t2.clientX - start.x, t2.clientY - start.y) > 12) {
+        clearGalleryLongPress();
+      }
+    },
+    [clearGalleryLongPress]
+  );
+  const onGalleryTouchEnd = reactExports.useCallback(() => {
+    clearGalleryLongPress();
+  }, [clearGalleryLongPress]);
   const startRecording = async () => {
     if (Date.now() < blockMicUntilRef.current) return;
     if (isReactNativeWebView()) {
@@ -29005,22 +30593,23 @@ function ChatRoom({
     },
     [drawComposeOpen, isDmRoom, canPost, handleVanishPullDown]
   );
-  const myOutgoing = visibleMessages.filter((m) => m.senderId === meId);
-  let seenFooter = null;
-  if (!chat.isGroup && !chat.isChannel && otherId) {
+  const myOutgoing = reactExports.useMemo(
+    () => visibleMessages.filter((m) => m.senderId === meId),
+    [visibleMessages, meId]
+  );
+  const seenFooter = reactExports.useMemo(() => {
+    if (chat.isGroup || chat.isChannel || !otherId) return null;
     const otherLastOpen = chat.lastOpenAtByUser?.[otherId] ?? 0;
     const lastMine = myOutgoing[myOutgoing.length - 1];
-    if (lastMine && otherLastOpen >= lastMine.createdAt) {
-      const otherRepliedAfter = visibleMessages.some((m) => m.senderId === otherId && m.createdAt >= lastMine.createdAt);
-      const lang = state.language;
-      if (!otherRepliedAfter) {
-        const mins = Math.max(0, Math.floor((Date.now() - otherLastOpen) / 6e4));
-        seenFooter = mins === 0 ? lang === "en" ? "Seen" : "تمت القراءة" : lang === "en" ? `Seen · ${mins}m` : `تمت القراءة · منذ ${mins} د`;
-      } else {
-        seenFooter = lang === "en" ? "Seen" : "تمت القراءة";
-      }
+    if (!lastMine || otherLastOpen < lastMine.createdAt) return null;
+    const otherRepliedAfter = visibleMessages.some((m) => m.senderId === otherId && m.createdAt >= lastMine.createdAt);
+    const lang = state.language;
+    if (!otherRepliedAfter) {
+      const mins = Math.max(0, Math.floor((Date.now() - otherLastOpen) / 6e4));
+      return mins === 0 ? lang === "en" ? "Seen" : "تمت القراءة" : lang === "en" ? `Seen · ${mins}m` : `تمت القراءة · منذ ${mins} د`;
     }
-  }
+    return lang === "en" ? "Seen" : "تمت القراءة";
+  }, [chat.isGroup, chat.isChannel, otherId, chat.lastOpenAtByUser, myOutgoing, visibleMessages, state.language]);
   const inlineMediaLightboxUser = inlineMediaViewer && !inlineMediaViewer.viewOnce && (inlineMediaViewer.type === "image" || inlineMediaViewer.type === "video") ? userById(state, inlineMediaViewer.senderId) ?? null : null;
   const inlineMediaLightboxLabel = inlineMediaLightboxUser != null ? `@${inlineMediaLightboxUser.username}` : inlineMediaViewer?.senderId === meId ? `@${currentUser?.username ?? "?"}` : "?";
   const composerHasText = text.trim().length > 0;
@@ -29028,19 +30617,8 @@ function ChatRoom({
     const raw = composerInputRef.current?.value ?? text;
     return raw.trim();
   }, [text]);
-  const submitTextMessage = reactExports.useCallback(() => {
-    const body = readComposerBody();
-    if (!body) return;
-    const rt = replyingTo ? { id: replyingTo.id, content: chatReplyPreview(replyingTo), type: replyingTo.type } : void 0;
-    const sent = dispatchSend({
-      type: "text",
-      content: body,
-      replyTo: rt,
-      parentMessageId: replyingTo?.id
-    });
-    if (!sent) return;
-    blockMicUntilRef.current = Date.now() + 520;
-    setComposerMicCooldown(true);
+  const clearComposer = reactExports.useCallback(() => {
+    composerIgnoreInputUntilRef.current = Date.now() + 320;
     setText("");
     if (composerInputRef.current) {
       composerInputRef.current.value = "";
@@ -29049,8 +30627,31 @@ function ChatRoom({
     }
     setReplyingTo(null);
     setMentionPick(null);
+  }, []);
+  const submitTextMessage = reactExports.useCallback(() => {
+    if (composingRef.current) return;
+    const body = readComposerBody();
+    if (!body) return;
+    const replyTarget = replyingTo;
+    const rt = replyTarget ? { id: replyTarget.id, content: chatReplyPreview(replyTarget), type: replyTarget.type } : void 0;
+    clearComposer();
+    blockMicUntilRef.current = Date.now() + 520;
+    setComposerMicCooldown(true);
+    const sent = dispatchSend({
+      type: "text",
+      content: body,
+      replyTo: rt,
+      parentMessageId: replyTarget?.id
+    });
+    if (!sent) {
+      composerIgnoreInputUntilRef.current = 0;
+      setText(body);
+      if (composerInputRef.current) composerInputRef.current.value = body;
+      window.setTimeout(() => setComposerMicCooldown(false), 80);
+      return;
+    }
     window.setTimeout(() => setComposerMicCooldown(false), 480);
-  }, [readComposerBody, replyingTo, dispatchSend]);
+  }, [readComposerBody, replyingTo, dispatchSend, clearComposer]);
   const edgeSwipeBackBlocked = reactExports.useMemo(
     () => !!messageContext || !!forwardingMessage || !!cameraCompose || drawComposeOpen || !!viewOnceOverlay || !!inlineMediaViewer || !!shareFeedOpen || showStickers || recording || showPrivacyMenu,
     [
@@ -29153,13 +30754,23 @@ function ChatRoom({
       "data-chat-swipe-column": true,
       "data-chat-dismiss-rtl": "1",
       className: (embedInStack ? "relative flex h-full min-h-0 w-full flex-col overflow-hidden overscroll-none pointer-events-auto touch-manipulation " : "fixed inset-x-0 z-[200] box-border flex justify-center overflow-hidden overscroll-none pointer-events-none touch-manipulation ") + (useIgDm ? "" : "bg-background"),
-      style: embedInStack ? useIgDm && dmPalette ? igDmSurfaceStyle : void 0 : {
+      style: pinChatToVisualViewport ? {
+        ...embedInStack ? {
+          position: "fixed",
+          left: 0,
+          right: 0,
+          zIndex: 210,
+          marginInline: "auto",
+          maxWidth: "28rem",
+          width: "100%"
+        } : {},
         top: vv.offsetTop,
         height: vv.height,
+        maxHeight: vv.height,
         bottom: "auto",
-        ...panelDismissTouchStyle,
+        ...!embedInStack ? panelDismissTouchStyle : {},
         ...useIgDm && dmPalette ? igDmSurfaceStyle : {}
-      },
+      } : embedInStack && useIgDm && dmPalette ? igDmSurfaceStyle : void 0,
       ...{
         onPointerDownCapture: panelDismissDown,
         onPointerMoveCapture: panelDismissMove,
@@ -29234,7 +30845,7 @@ function ChatRoom({
                               className: "relative z-[10] flex min-w-0 flex-1 items-center gap-2 text-start justify-start",
                               children: [
                                 /* @__PURE__ */ jsxRuntimeExports.jsx(
-                                  Avatar,
+                                  Avatar$1,
                                   {
                                     name: chat.isGroup ? chat.name : other?.username || "?",
                                     src: chat.isGroup ? chat.avatar : other?.avatar,
@@ -29436,6 +31047,7 @@ function ChatRoom({
                           {
                             className: "flex min-h-full w-full flex-col justify-end gap-2 px-3 pt-2 pb-0 " + (isQuranChannel ? "bg-zinc-950" : ""),
                             children: [
+                              hasOlderMessages && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex w-full justify-center py-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[11px] text-muted-foreground opacity-60", children: "↑ مرّر للأعلى لتحميل رسائل أقدم" }) }),
                               rowsToRender.map((row) => {
                                 if (row.kind === "day") {
                                   return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex w-full justify-center py-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -29875,11 +31487,11 @@ function ChatRoom({
                     {
                       ref: composerRef,
                       className: "relative z-[56] shrink-0 isolate",
-                      style: keyboardOpen && embedInStack && vv.keyboardInset > 0 ? { paddingBottom: vv.keyboardInset } : void 0,
+                      style: { ["--chat-composer-bottom-pad"]: composerBottomPad },
                       children: !canPost ? /* @__PURE__ */ jsxRuntimeExports.jsx(
                         "div",
                         {
-                          className: "p-4 text-center text-sm border-t border-border " + (keyboardOpen ? "pb-1.5" : "pb-[max(0.5rem,env(safe-area-inset-bottom,0px))]") + " " + (isQuranChannel ? "text-zinc-400 bg-zinc-900 border-zinc-700" : "text-muted-foreground bg-background"),
+                          className: "p-4 text-center text-sm border-t border-border pb-[var(--chat-composer-bottom-pad)]  " + (isQuranChannel ? "text-zinc-400 bg-zinc-900 border-zinc-700" : "text-muted-foreground bg-background"),
                           children: t("onlyOwner")
                         }
                       ) : /* @__PURE__ */ jsxRuntimeExports.jsxs(
@@ -29922,7 +31534,7 @@ function ChatRoom({
                                   className: "flex w-full items-center gap-2 rounded-xl px-2 py-2 text-sm hover:bg-secondary",
                                   onClick: () => pickMention(u.username),
                                   children: [
-                                    /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u.username, src: u.avatar, size: 28 }),
+                                    /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: u.username, src: u.avatar, size: 28 }),
                                     "@",
                                     u.username
                                   ]
@@ -29937,7 +31549,7 @@ function ChatRoom({
                                   e.preventDefault();
                                   submitTextMessage();
                                 },
-                                className: "px-3 pt-2 " + (keyboardOpen ? "pb-2" : "pb-[max(0.75rem,env(safe-area-inset-bottom,0.75rem))]"),
+                                className: "chat-composer-bar px-3 pt-2 pb-[var(--chat-composer-bottom-pad)]",
                                 children: [
                                   useIgDm ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { dir: dmDir, className: "relative flex min-h-[44px] items-center gap-2", children: [
                                     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { ref: plusAttachMenuRef, className: "relative shrink-0", children: [
@@ -30000,6 +31612,19 @@ function ChatRoom({
                                                 children: [
                                                   /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex h-7 w-7 items-center justify-center rounded-full bg-white/15", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Image$1, { size: 15, strokeWidth: 2 }) }),
                                                   /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: state.language === "ar" ? "الصور" : "Photos" })
+                                                ]
+                                              }
+                                            ),
+                                            /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                                              "button",
+                                              {
+                                                type: "button",
+                                                disabled: isGuest,
+                                                className: "flex w-full items-center gap-3 px-4 py-3 text-start text-[14px] font-medium transition-colors duration-100 " + (dmPalette?.attachMenuItemClass ?? "text-white hover:bg-white/10") + (isGuest ? " cursor-not-allowed opacity-40" : ""),
+                                                onClick: openGalleryVideoVoiceStudio,
+                                                children: [
+                                                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex h-7 w-7 items-center justify-center rounded-full bg-white/15", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Video, { size: 15, strokeWidth: 2 }) }),
+                                                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: state.language === "ar" ? "استديو — مقطع كصوت" : "Studio — voice clip" })
                                                 ]
                                               }
                                             ),
@@ -30146,6 +31771,7 @@ function ChatRoom({
                                               {
                                                 type: "button",
                                                 className: "flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full transition " + (dmPalette?.composerIconClass ?? "text-zinc-300 hover:bg-white/10"),
+                                                style: { touchAction: "none" },
                                                 "aria-label": "تسجيل صوتي",
                                                 onClick: () => {
                                                   if (Date.now() < blockMicUntilRef.current) return;
@@ -30158,8 +31784,9 @@ function ChatRoom({
                                               "button",
                                               {
                                                 type: "button",
+                                                ...galleryLongPressBtnProps,
                                                 className: "flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full transition " + (dmPalette?.composerIconClass ?? "text-zinc-300 hover:bg-white/10"),
-                                                "aria-label": "معرض الصور",
+                                                "aria-label": "معرض الصور — ضغط مطوّل لاختيار فيديو كرسالة صوتية",
                                                 onClick: () => {
                                                   setPlusAttachOpen(false);
                                                   onGalleryButtonClick();
@@ -30172,6 +31799,10 @@ function ChatRoom({
                                                 onPointerUp: clearGalleryLongPress,
                                                 onPointerCancel: clearGalleryLongPress,
                                                 onPointerLeave: clearGalleryLongPress,
+                                                onTouchStart: onGalleryTouchStart,
+                                                onTouchMove: onGalleryTouchMove,
+                                                onTouchEnd: onGalleryTouchEnd,
+                                                onTouchCancel: onGalleryTouchEnd,
                                                 children: /* @__PURE__ */ jsxRuntimeExports.jsx(Image$1, { size: 20, strokeWidth: 2 })
                                               }
                                             ),
@@ -30292,7 +31923,9 @@ function ChatRoom({
                                             "button",
                                             {
                                               type: "button",
+                                              ...galleryLongPressBtnProps,
                                               className: "flex h-10 w-10 shrink-0 touch-manipulation items-center justify-center rounded-full text-foreground/85 transition hover:bg-black/[0.06] dark:hover:bg-white/10 " + (isQuranChannel ? "text-zinc-200" : ""),
+                                              style: { touchAction: "none" },
                                               "aria-label": "الاستديو: ضغطة للصور والفيديو، ضغط مطوّل لمقاطع كرسالة صوتية",
                                               onClick: () => {
                                                 setPlusAttachOpen(false);
@@ -30306,6 +31939,10 @@ function ChatRoom({
                                               onPointerUp: clearGalleryLongPress,
                                               onPointerCancel: clearGalleryLongPress,
                                               onPointerLeave: clearGalleryLongPress,
+                                              onTouchStart: onGalleryTouchStart,
+                                              onTouchMove: onGalleryTouchMove,
+                                              onTouchEnd: onGalleryTouchEnd,
+                                              onTouchCancel: onGalleryTouchEnd,
                                               children: /* @__PURE__ */ jsxRuntimeExports.jsx(Image$1, { size: 21, strokeWidth: 2 })
                                             }
                                           ),
@@ -30360,6 +31997,20 @@ function ChatRoom({
                                                         /* @__PURE__ */ jsxRuntimeExports.jsx(PenLine, { size: 18 }),
                                                         " ",
                                                         /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "رسم وكتابة" })
+                                                      ]
+                                                    }
+                                                  ),
+                                                  /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                                                    "button",
+                                                    {
+                                                      type: "button",
+                                                      disabled: isGuest,
+                                                      className: "flex w-full items-center gap-3 px-4 py-3 text-start text-sm transition hover:bg-secondary " + (isQuranChannel ? "text-zinc-100" : "") + (isGuest ? " cursor-not-allowed opacity-40" : ""),
+                                                      onClick: openGalleryVideoVoiceStudio,
+                                                      children: [
+                                                        /* @__PURE__ */ jsxRuntimeExports.jsx(Video, { size: 18 }),
+                                                        " ",
+                                                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "استديو — مقطع كصوت" })
                                                       ]
                                                     }
                                                   ),
@@ -31098,7 +32749,7 @@ function PostMediaNotesOverlay({
             e.stopPropagation();
             onOpenAuthor(nu.id);
           },
-          children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: nu.username, src: nu.avatar, size: 26 })
+          children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: nu.username, src: nu.avatar, size: 26 })
         }
       )
     ] }, n.id);
@@ -31275,7 +32926,7 @@ function ProfileTweetCard({
             livePost.comments.map((c) => {
               const u = users.find((x) => x.id === c.userId);
               return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-2 text-sm", dir: "ltr", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "shrink-0", onClick: () => u && onOpenProfile(u.id), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u?.username || "?", src: u?.avatar, size: 26 }) }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "shrink-0", onClick: () => u && onOpenProfile(u.id), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: u?.username || "?", src: u?.avatar, size: 26 }) }),
                 /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1", dir: "rtl", children: [
                   /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", className: "font-semibold", onClick: () => u && onOpenProfile(u.id), children: [
                     "@",
@@ -31493,7 +33144,7 @@ function ProfileFeedItem({
                   type: "button",
                   className: "shrink-0 rounded-full",
                   onClick: () => reactExports.startTransition(() => u && onOpenProfile(u.id, returnCtx(true))),
-                  children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u?.username || "?", src: u?.avatar, size: 28 })
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: u?.username || "?", src: u?.avatar, size: 28 })
                 }
               ),
               /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1", dir: "rtl", children: [
@@ -31669,7 +33320,7 @@ function FollowersFollowingScreen({
         onClick: () => onOpenProfile(x.id),
         className: "flex w-full items-center gap-3 border-b border-border/60 px-4 py-3 text-start hover:bg-secondary/50",
         children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: x.username, src: x.avatar, size: 44 }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: x.username, src: x.avatar, size: 44 }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1 font-semibold", children: [
               /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "truncate", children: [
@@ -36374,7 +38025,7 @@ ${profileUrl}`;
       /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: onClose, className: "p-2 rounded-full hover:bg-secondary", children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 20 }) })
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col items-center mb-6", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: user.username, src: user.avatar, size: 80 }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: user.username, src: user.avatar, size: 80 }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("h4", { className: "text-lg font-semibold mt-2", children: [
         "@",
         user.username
@@ -36430,7 +38081,7 @@ ${profileUrl}`;
             onClick: () => shareWithFriend(friend.id),
             className: "flex flex-col items-center gap-1 p-2 rounded-xl hover:bg-secondary",
             children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: friend.username, src: friend.avatar, size: 40 }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: friend.username, src: friend.avatar, size: 40 }),
               /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs truncate w-full text-center", children: friend.username })
             ]
           },
@@ -36995,7 +38646,7 @@ function ProfileScreen({
                 const req = userById(state, id);
                 if (!req) return null;
                 return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 flex-wrap", children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: req.username, src: req.avatar, size: 36 }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: req.username, src: req.avatar, size: 36 }),
                   /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1 min-w-0 text-start", children: [
                     /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "truncate text-sm font-semibold", children: userDisplayName(req) }),
                     /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "truncate text-xs text-muted-foreground", dir: "ltr", children: [
@@ -37109,7 +38760,7 @@ function ProfileScreen({
                     },
                     className: "shrink-0 flex flex-col items-center w-[4.75rem] active:opacity-90",
                     children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: sug.username, src: sug.avatar, size: 52 }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: sug.username, src: sug.avatar, size: 52 }),
                       /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[10px] font-semibold truncate w-full mt-1.5 leading-tight", children: userDisplayName(sug) }),
                       /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-[9px] text-muted-foreground truncate w-full leading-tight", dir: "ltr", children: [
                         "@",
@@ -37202,7 +38853,7 @@ function ProfileScreen({
           showFollowers === "followers" && u.displayFollowerCount != null && u.followers.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "px-3 py-8 text-center text-sm text-muted-foreground leading-relaxed", children: "يُعرض هنا العدد الإجمالي للمتابعين فقط؛ قائمة الأسماء غير متوفرة في النسخة التجريبية." }) : (showFollowers === "followers" ? u.followers : u.following).map((id) => {
             const x = userById(state, id);
             return x ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3 p-2", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: x.username, src: x.avatar }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: x.username, src: x.avatar }),
               /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1 min-w-0 text-start", children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "truncate text-sm font-semibold", children: userDisplayName(x) }),
                 /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "truncate text-xs text-muted-foreground", dir: "ltr", children: [
@@ -37272,6 +38923,7 @@ function ProfileScreen({
       StoryViewer,
       {
         userId: storyViewerUserId,
+        trayRing: storyViewerTrayRing(state, currentUser.id),
         onClose: () => setStoryViewerUserId(null),
         onRequestAuthor: (id) => setStoryViewerUserId(id),
         onOpenProfile: (pid) => {
@@ -38754,10 +40406,10 @@ function StoriesArchiveViewer({
   const safeIndex = stories.length > 0 ? Math.min(Math.max(0, index), stories.length - 1) : 0;
   const cur = stories[safeIndex];
   reactExports.useEffect(() => {
-    setStoryFullscreen(true);
+    const releaseFullscreen = lockStoryFullscreen();
     document.documentElement.classList.add("retweet-story-open");
     return () => {
-      setStoryFullscreen(false);
+      releaseFullscreen();
       document.documentElement.classList.remove("retweet-story-open");
     };
   }, []);
@@ -39795,6 +41447,112 @@ function StoryCreationStickers({
     ] }) })
   ] });
 }
+function uploadTimeoutMs(file) {
+  const mb = file.size / (1024 * 1024);
+  if (mb > 200) return 6e5;
+  if (mb > 80) return 42e4;
+  return 24e4;
+}
+async function validateReelVideoFile(file) {
+  if (!file.type.startsWith("video/") && !REEL_ACCEPT_VIDEO.includes(file.type)) {
+    return { ok: false, error: "الريلز يتطلب ملف فيديو (MP4 موصى به)" };
+  }
+  if (file.size > REEL_MAX_UPLOAD_BYTES) {
+    return { ok: false, error: formatReelMaxSizeError(file.size) };
+  }
+  return { ok: true };
+}
+function drawSquareCover(video, size) {
+  const canvas2 = document.createElement("canvas");
+  canvas2.width = size;
+  canvas2.height = size;
+  const ctx = canvas2.getContext("2d");
+  if (!ctx) throw new Error("canvas");
+  const vw = video.videoWidth || 1;
+  const vh = video.videoHeight || 1;
+  const side = Math.min(vw, vh);
+  const sx = (vw - side) / 2;
+  const sy = (vh - side) / 2;
+  ctx.drawImage(video, sx, sy, side, side, 0, 0, size, size);
+  return canvas2.toDataURL("image/jpeg", 0.88);
+}
+function captureReelCoverFromVideo(video, timeSec = 1) {
+  const seekTo = Math.min(
+    Math.max(timeSec, 0),
+    Math.max(0.05, (Number.isFinite(video.duration) ? video.duration : 1) - 0.05)
+  );
+  const captureAtTime = () => new Promise((resolve, reject) => {
+    const snap = () => {
+      try {
+        resolve(drawSquareCover(video, 720));
+      } catch (e) {
+        reject(e);
+      }
+    };
+    if (Math.abs(video.currentTime - seekTo) < 0.08 && video.readyState >= 2) {
+      snap();
+      return;
+    }
+    const onSeeked = () => {
+      video.removeEventListener("seeked", onSeeked);
+      snap();
+    };
+    video.addEventListener("seeked", onSeeked);
+    video.currentTime = seekTo;
+    window.setTimeout(() => {
+      video.removeEventListener("seeked", onSeeked);
+      if (video.readyState >= 2) snap();
+      else reject(new Error("seek timeout"));
+    }, 4e3);
+  });
+  if (video.readyState >= 1) return captureAtTime();
+  return new Promise((resolve, reject) => {
+    video.addEventListener(
+      "loadeddata",
+      () => {
+        captureAtTime().then(resolve).catch(reject);
+      },
+      { once: true }
+    );
+  });
+}
+async function uploadReelVideo(file) {
+  const token = getApiToken();
+  if (!apiBackendEnabled() || !token) {
+    return { ok: false, error: "الخادم غير متصل — شغّل API ثم أعد المحاولة" };
+  }
+  const check = await validateReelVideoFile(file);
+  if (!check.ok) return check;
+  await ensureApiRuntimeConfig();
+  const up = await apiUploadMedia(token, file, {
+    timeoutMs: uploadTimeoutMs(file),
+    reelVideo: true
+  });
+  if (!up.ok) return { ok: false, error: up.error };
+  if (!isVideoMediaRef(up.url)) {
+    return { ok: false, error: "تعذر معالجة الفيديو — جرّب MP4" };
+  }
+  return { ok: true, videoUrl: up.url, posterUrl: up.posterUrl };
+}
+async function uploadReelCoverImage(dataUrl) {
+  const token = getApiToken();
+  if (!apiBackendEnabled() || !token) {
+    return { ok: false, error: "الخادم غير متصل" };
+  }
+  await ensureApiRuntimeConfig();
+  const m = dataUrl.match(/^data:([^;,]+)/);
+  const mime = (m?.[1] || "image/jpeg").toLowerCase();
+  const b64 = dataUrl.split(",")[1];
+  if (!b64) return { ok: false, error: "صورة غلاف غير صالحة" };
+  const bin = atob(b64);
+  const buf = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+  const ext = mime.includes("png") ? "png" : "jpg";
+  const file = new File([buf], `reel-cover.${ext}`, { type: mime });
+  const up = await apiUploadMedia(token, file, { timeoutMs: 9e4 });
+  if (!up.ok) return { ok: false, error: up.error };
+  return { ok: true, url: up.url };
+}
 function CreateScreen({
   onBack,
   initial: initial2
@@ -39814,6 +41572,8 @@ function CreateScreen({
   const postCharLimit = ent.postCharacterLimit;
   const storyFileRef = reactExports.useRef(null);
   const previewObjectUrlRef = reactExports.useRef(null);
+  const reelPreviewVideoRef = reactExports.useRef(null);
+  const [reelCover, setReelCover] = reactExports.useState("");
   const revokePreviewUrl = () => {
     if (previewObjectUrlRef.current) {
       URL.revokeObjectURL(previewObjectUrlRef.current);
@@ -39840,6 +41600,22 @@ function CreateScreen({
   const onFile = (e) => {
     const f = e.target.files?.[0];
     if (!f) return;
+    if (type === "reel") {
+      void (async () => {
+        const check = await validateReelVideoFile(f);
+        if (!check.ok) {
+          alert(check.error);
+          return;
+        }
+        storyFileRef.current = f;
+        revokePreviewUrl();
+        setReelCover("");
+        const previewUrl = URL.createObjectURL(f);
+        previewObjectUrlRef.current = previewUrl;
+        setMedia(previewUrl);
+      })();
+      return;
+    }
     if (type === "story") {
       revokePreviewUrl();
       storyFileRef.current = f;
@@ -39896,13 +41672,78 @@ function CreateScreen({
       }
     }
     const needsUpload = media.startsWith("data:") || media.startsWith("blob:");
-    let videoUrl = isVideo || type === "reel" ? media : "";
+    let videoUrl = isVideo && type !== "reel" ? media : "";
     let imageUrl = !isVideo && type !== "reel" ? media || "" : "";
-    if (type === "reel" && !isVideo && hasCreateAttachmentMedia(media, !!pickedFile)) {
-      imageUrl = media;
-      videoUrl = "";
-    }
-    if (needsUpload && media?.startsWith("data:")) {
+    if (type === "reel") {
+      setPublishing(true);
+      let coverUrl = reelCover ? resolveMediaUrl(reelCover) : "";
+      let resolvedVideo = "";
+      if (pickedFile) {
+        const uploaded = await uploadReelVideo(pickedFile);
+        if (!uploaded.ok) {
+          setPublishing(false);
+          alert(uploaded.error);
+          return;
+        }
+        resolvedVideo = resolveMediaUrl(uploaded.videoUrl);
+        if (!coverUrl && uploaded.posterUrl) {
+          coverUrl = resolveMediaUrl(uploaded.posterUrl);
+        }
+      } else if (needsUpload && media.startsWith("blob:")) {
+        try {
+          const res = await fetch(media);
+          const blob = await res.blob();
+          const file = new File([blob], "reel.mp4", { type: blob.type || "video/mp4" });
+          const uploaded = await uploadReelVideo(file);
+          if (!uploaded.ok) {
+            setPublishing(false);
+            alert(uploaded.error);
+            return;
+          }
+          resolvedVideo = resolveMediaUrl(uploaded.videoUrl);
+          if (!coverUrl && uploaded.posterUrl) coverUrl = resolveMediaUrl(uploaded.posterUrl);
+        } catch {
+          setPublishing(false);
+          alert("أعد اختيار الفيديو من زر الإرفاق");
+          return;
+        }
+      } else if (media.startsWith("data:video")) {
+        try {
+          const res = await fetch(media);
+          const blob = await res.blob();
+          const file = new File([blob], "reel.mp4", { type: blob.type || "video/mp4" });
+          const uploaded = await uploadReelVideo(file);
+          if (!uploaded.ok) {
+            setPublishing(false);
+            alert(uploaded.error);
+            return;
+          }
+          resolvedVideo = resolveMediaUrl(uploaded.videoUrl);
+          if (!coverUrl && uploaded.posterUrl) coverUrl = resolveMediaUrl(uploaded.posterUrl);
+        } catch {
+          setPublishing(false);
+          alert("تعذر رفع الفيديو");
+          return;
+        }
+      } else if (isVideoMediaRef(media)) {
+        resolvedVideo = resolveMediaUrl(media);
+      }
+      if (reelCover.startsWith("data:")) {
+        const coverUp = await uploadReelCoverImage(reelCover);
+        if (coverUp.ok) coverUrl = resolveMediaUrl(coverUp.url);
+      }
+      setPublishing(false);
+      if (!resolvedVideo || !isVideoMediaRef(resolvedVideo)) {
+        alert("يجب إرفاق مقطع فيديو صالح للريلز");
+        return;
+      }
+      createPost({
+        type: "reel",
+        text,
+        video: resolvedVideo,
+        image: coverUrl && !isVideoMediaRef(coverUrl) ? coverUrl : "🎬"
+      });
+    } else if (needsUpload && media?.startsWith("data:")) {
       setPublishing(true);
       const uploaded = await resolvePostMediaForSave(media);
       setPublishing(false);
@@ -39915,18 +41756,8 @@ function CreateScreen({
       imageUrl = payload.image || (!isVideo ? uploaded.url : imageUrl);
     }
     if (type === "reel") {
-      const resolvedVideo = videoUrl ? resolveMediaUrl(videoUrl) : "";
-      const hasVideo = !!resolvedVideo && (isVideoMediaRef(resolvedVideo) || resolvedVideo.startsWith("data:video"));
-      if (!hasVideo) {
-        alert("يجب إرفاق مقطع فيديو صالح للريلز");
-        return;
-      }
-      createPost({
-        type: "reel",
-        text,
-        video: resolvedVideo,
-        image: imageUrl && !isVideoMediaRef(imageUrl) ? resolveMediaUrl(imageUrl) : "🎬"
-      });
+      onBack();
+      return;
     } else if (type === "tweet") {
       createPost(
         videoUrl ? { type: "tweet", text, video: videoUrl } : { type: "tweet", text, image: imageUrl || void 0 }
@@ -39985,13 +41816,83 @@ function CreateScreen({
         "input",
         {
           type: "file",
-          accept: type === "reel" ? "image/*,video/*" : "image/*,video/*",
+          accept: type === "reel" ? REEL_ACCEPT_VIDEO : "image/*,video/*",
           onChange: onFile,
           className: "mt-1 block w-full text-sm"
         }
       ),
-      type === "reel" && !media && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-xs text-muted-foreground", children: "لا يمكن نشر ريلز بدون فيديو أو صورة" }),
-      media && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-2 aspect-[9/16] max-h-[min(52vh,420px)] mx-auto bg-muted rounded-2xl overflow-hidden flex items-center justify-center", children: storyFileRef.current?.type.startsWith("video/") || isVideoMediaRef(media) ? /* @__PURE__ */ jsxRuntimeExports.jsx("video", { src: media, controls: true, className: "w-full h-full object-cover", playsInline: true }) : media.startsWith("data:image") || media.startsWith("blob:") || isRenderableMediaUrl(media) ? /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: media, className: "w-full h-full object-cover", alt: "" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-7xl", children: media }) })
+      type === "reel" && /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-1 text-xs text-muted-foreground leading-relaxed", children: [
+        "عمودي 9:16 (1080×1920) · MP4 H.264 · حتى ",
+        REEL_MAX_UPLOAD_MB,
+        " ميجا — يُعاد ترميز الفيديو على الخادم"
+      ] }),
+      type === "reel" && !media && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-xs text-muted-foreground", children: "لا يمكن نشر ريلز بدون فيديو" }),
+      media && type === "reel" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-2 relative aspect-[9/16] max-h-[min(52vh,420px)] mx-auto bg-black rounded-2xl overflow-hidden", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "video",
+          {
+            ref: reelPreviewVideoRef,
+            src: media,
+            controls: true,
+            playsInline: true,
+            className: "h-full w-full object-contain"
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "div",
+          {
+            className: "pointer-events-none absolute inset-x-0 bottom-0 border-t border-dashed border-white/35",
+            style: { height: `${(1920 - 1350) / 1920 * 100}%` },
+            "aria-hidden": true
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "pointer-events-none absolute inset-y-0 end-0 w-[18%] border-s border-dashed border-white/25", "aria-hidden": true })
+      ] }),
+      media && type !== "reel" && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-2 aspect-[9/16] max-h-[min(52vh,420px)] mx-auto bg-muted rounded-2xl overflow-hidden flex items-center justify-center", children: storyFileRef.current?.type.startsWith("video/") || isVideoMediaRef(media) ? /* @__PURE__ */ jsxRuntimeExports.jsx("video", { src: media, controls: true, className: "w-full h-full object-cover", playsInline: true }) : media.startsWith("data:image") || media.startsWith("blob:") || isRenderableMediaUrl(media) ? /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: media, className: "w-full h-full object-cover", alt: "" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-7xl", children: media }) }),
+      type === "reel" && media && (storyFileRef.current?.type.startsWith("video/") || media.startsWith("blob:")) && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2 rounded-2xl bg-secondary/60 p-3", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs font-medium text-muted-foreground", children: "صورة الغلاف (1:1 في الملف الشخصي)" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-wrap gap-2", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              type: "button",
+              className: "rounded-xl bg-background px-3 py-2 text-xs font-semibold",
+              onClick: () => {
+                const v = reelPreviewVideoRef.current;
+                if (!v) return;
+                void captureReelCoverFromVideo(v, v.currentTime || 1).then(setReelCover).catch(() => alert("تعذر التقاط لقطة — شغّل الفيديو ثم أعد المحاولة"));
+              },
+              children: "لقطة من الفيديو"
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "rounded-xl bg-background px-3 py-2 text-xs font-semibold cursor-pointer", children: [
+            "صورة مخصصة",
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "input",
+              {
+                type: "file",
+                accept: "image/*",
+                className: "sr-only",
+                onChange: (e) => {
+                  const f = e.target.files?.[0];
+                  if (!f) return;
+                  const r2 = new FileReader();
+                  r2.onload = () => setReelCover(String(r2.result));
+                  r2.readAsDataURL(f);
+                }
+              }
+            )
+          ] })
+        ] }),
+        (reelCover || media) && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mx-auto aspect-square w-24 overflow-hidden rounded-xl bg-muted", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "img",
+          {
+            src: reelCover || media,
+            alt: "",
+            className: "h-full w-full object-cover object-center"
+          }
+        ) })
+      ] })
     ] }),
     type === "story" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-3", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(StoryCreationStickers, { stickers: storyStickers, setStickers: setStoryStickers }),
@@ -43854,7 +45755,7 @@ function EditProfileScreen({ onBack }) {
       )
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col items-center gap-2", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => setAvatarModalOpen(true), className: "rounded-full", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: username, src: avatar, size: 100 }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => setAvatarModalOpen(true), className: "rounded-full", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: username, src: avatar, size: 100 }) }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(
         "button",
         {
@@ -44036,7 +45937,10 @@ function AuthScreen(props) {
     clearStaleApiConfig();
     void (async () => {
       await ensureApiRuntimeConfig();
-      setApiReady(await probeHealth());
+      const base = getApiBaseUrl();
+      const healthy = await probeHealth();
+      logApi("auth-screen-health", { base, healthy, native: isNativeCapacitorShell() });
+      setApiReady(healthy);
     })();
   }, []);
   const clearOtpRefs = () => {
@@ -44447,12 +46351,16 @@ function AuthScreen(props) {
           }
         )
       ] }),
-      !apiReady && /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-destructive text-sm text-center leading-relaxed", children: [
+      !apiReady && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-destructive text-sm text-center leading-relaxed", children: isNativeCapacitorShell() ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+        "لا يمكن الوصول إلى الخادم (",
+        getApiBaseUrl() || "reyweet.vercel.app",
+        "). تحقق من الإنترنت أو أعد تثبيت التطبيق من Codemagic."
+      ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
         "الخادم غير متصل. شغّل على جهازك:",
         " ",
         /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "font-mono text-xs", children: "npm run backend:dev" }),
         " ثم حدّث الصفحة (F5)."
-      ] }),
+      ] }) }),
       error && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-destructive text-sm text-center", children: error }),
       info && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-muted-foreground text-sm text-center leading-relaxed", children: info }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -44559,7 +46467,7 @@ function NotificationsPanel({
                   },
                   className: "-m-1 flex w-full items-center gap-3 rounded-xl p-1 text-start hover:bg-secondary/60",
                   children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: from?.username || "?", src: from?.avatar }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: from?.username || "?", src: from?.avatar }),
                     /* @__PURE__ */ jsxRuntimeExports.jsx(Icon2, { size: 18, className: iconClass }),
                     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1 text-sm", children: [
                       /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "font-semibold", children: [
@@ -44946,19 +46854,28 @@ function App() {
     setRestorePostContext(null);
     if (next !== "chat") resetChatNavigation();
   }, [resetChatNavigation]);
-  const [storyFullscreen, setStoryFullscreen2] = reactExports.useState(false);
+  const [storyFullscreen, setStoryFullscreen] = reactExports.useState(false);
   const settingsImmersive = modal === "settings";
   reactExports.useEffect(() => {
     const onStoryFullscreen = (e) => {
-      const open = Boolean(e.detail?.open);
-      setStoryFullscreen2(open);
+      const detail = e.detail;
+      const open = typeof detail?.locks === "number" ? detail.locks > 0 : Boolean(detail?.open);
+      setStoryFullscreen(open);
     };
     window.addEventListener(STORY_FULLSCREEN_EVENT, onStoryFullscreen);
     return () => {
       window.removeEventListener(STORY_FULLSCREEN_EVENT, onStoryFullscreen);
-      setStoryFullscreen2(false);
+      setStoryFullscreen(false);
     };
   }, []);
+  reactExports.useEffect(() => {
+    if (!storyFullscreen) return;
+    const t2 = window.setTimeout(() => {
+      const stillOpen = document.documentElement.classList.contains("retweet-story-open");
+      if (!stillOpen) setStoryFullscreen(false);
+    }, 380);
+    return () => window.clearTimeout(t2);
+  }, [storyFullscreen]);
   const navActiveIndex = tabToNavIndex(tab);
   const onNavSelectIndex = reactExports.useCallback(
     (index) => {
@@ -45485,11 +47402,12 @@ function App() {
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "div",
     {
-      className: "relative mx-auto flex w-full max-w-md flex-col overflow-x-hidden overscroll-none bg-background supports-[height:100dvh] " + (immersiveOverlay || settingsImmersive ? "h-dvh max-h-dvh overflow-hidden pt-0" : "h-dvh max-h-dvh overflow-hidden pt-[env(safe-area-inset-top,0px)]"),
+      className: "retweet-no-select-pane select-none relative mx-auto flex w-full max-w-md flex-col overflow-x-hidden overscroll-none bg-background supports-[height:100dvh] " + (immersiveOverlay || settingsImmersive ? "h-dvh max-h-dvh overflow-hidden pt-0" : "h-dvh max-h-dvh overflow-hidden pt-[env(safe-area-inset-top,0px)]"),
       style: {
         [NAV_FLOAT_INSET_CSS_VAR]: NAV_FLOAT_INSET_DEFAULT,
         [NAV_SCROLL_PADDING_CSS_VAR]: NAV_SCROLL_PADDING_DEFAULT
       },
+      ...nativeNoSelectCaptureHandlers,
       children: [
         guestToast && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed left-3 right-3 top-[max(0.75rem,env(safe-area-inset-top,0px))] z-[500] mx-auto max-w-md rounded-2xl border border-border bg-card px-4 py-3 text-start text-sm shadow-lg", children: "سجّل الدخول أو أنشئ حساباً لاستخدام هذه الميزة (إعجاب، رسائل، متابعة…)." }),
         switchFailToast && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed left-3 right-3 top-[max(0.75rem,env(safe-area-inset-top,0px))] z-[501] mx-auto max-w-md rounded-2xl border border-destructive/40 bg-card px-4 py-3 text-start text-sm text-destructive shadow-lg", children: switchFailToast }),
@@ -45572,7 +47490,7 @@ function App() {
                     onSingleTap: () => onNavSelectIndex(4),
                     onDoubleTap: handleProfileNavDoubleTap,
                     children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-                      Avatar,
+                      Avatar$1,
                       {
                         name: currentUser.username,
                         src: currentUser.avatar,
@@ -45853,6 +47771,7 @@ function WebAppRoot() {
   const [bootState, setBootState] = reactExports.useState(null);
   const [apiMissing, setApiMissing] = reactExports.useState(false);
   reactExports.useEffect(() => {
+    installNativeTextSelectionGuard();
     warmGlobalPointerBackRouter();
     clearStaleApiConfig();
     logAuthRoute("webapp-root-mount", {
@@ -45881,7 +47800,7 @@ function WebAppRoot() {
         setApiMissing(true);
         return;
       }
-      if (!await probeHealth()) {
+      if (!isNativeCapacitorShell() && !await probeHealth()) {
         setApiMissing(true);
         return;
       }
@@ -45927,14 +47846,24 @@ function WebAppRoot() {
     };
     return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-4 bg-background px-6 text-center text-sm", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "font-semibold text-foreground", children: "تعذر الاتصال بالخادم" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-muted-foreground leading-relaxed", children: isPublicAppHost() ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-        "الموقع العلني يتصل بعنوان Retweet API مضمّناً في الإعدادات أثناء النشر. إذا كان عنواناً مؤقتاً (مثل نفق Cloudflare) وتوقف على جهازك، أو يشير لخادم غير متاح، لن يعمل الموقع حتى يصبح هذا العنوان يستجيب لـ",
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-muted-foreground leading-relaxed", children: isVpsProductionHost() ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+        "تأكد أن خدمة ",
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "font-mono text-xs", children: "retweet-api" }),
+        " تعمل على السيرفر، ثم جرّب فتح",
         " ",
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "font-mono text-xs", children: "/health" }),
-        ". الحل: شغّل الخادم والنفق على الجهاز الذي يغذّي نفس العنوان، أو استضف الـ API على عنوان ثابت وحدّث",
+        /* @__PURE__ */ jsxRuntimeExports.jsx("a", { href: "http://109.199.111.29/app/", className: "text-primary underline", children: "http://109.199.111.29/app/" }),
         " ",
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "font-mono text-xs", children: "RETWEET_PUBLIC_API_URL" }),
-        " ثم أعد نشر الموقع."
+        "مباشرة."
+      ] }) : isNativeCapacitorShell() ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+        "تأكد من اتصال الإنترنت. التطبيق يتصل عبر",
+        " ",
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "font-mono text-xs", children: "reyweet.vercel.app" }),
+        ". إن استمر الخطأ، أعد تثبيت IPA بعد بناء جديد من Codemagic."
+      ] }) : isPublicAppHost() ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+        "افتح التطبيق من السيرفر مباشرة:",
+        " ",
+        /* @__PURE__ */ jsxRuntimeExports.jsx("a", { href: "http://109.199.111.29/app/", className: "text-primary underline", children: "http://109.199.111.29/app/" }),
+        ". رابط Vercel يوجّه تلقائياً — إن بقيت هنا فعّل التحويل أو امسح الكاش."
       ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
         "على كمبيوترك (حيث قاعدة البيانات) شغّل واتركه مفتوحاً:",
         " ",
@@ -45953,7 +47882,14 @@ function WebAppRoot() {
       /* @__PURE__ */ jsxRuntimeExports.jsx("a", { href: "https://reyweet.vercel.app", className: "text-primary underline", children: "فتح الموقع في Safari" })
     ] });
   }
-  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "relative mx-auto min-h-dvh w-full max-w-md overflow-x-hidden bg-background text-start supports-[height:100dvh]:min-h-dvh", children: /* @__PURE__ */ jsxRuntimeExports.jsx(AppProvider, { initialState: bootState ?? void 0, children: /* @__PURE__ */ jsxRuntimeExports.jsx(App, {}) }) });
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "div",
+    {
+      className: "relative mx-auto min-h-dvh w-full max-w-md overflow-x-hidden bg-background text-start supports-[height:100dvh]:min-h-dvh",
+      ...nativeNoSelectCaptureHandlers,
+      children: /* @__PURE__ */ jsxRuntimeExports.jsx(AppProvider, { initialState: bootState ?? void 0, children: /* @__PURE__ */ jsxRuntimeExports.jsx(App, {}) })
+    }
+  );
 }
 function Index() {
   return /* @__PURE__ */ jsxRuntimeExports.jsx(WebAppRoot, {});
