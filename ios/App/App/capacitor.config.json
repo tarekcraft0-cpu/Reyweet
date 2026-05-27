@@ -1,10 +1,6 @@
 {
-  "appId": "com.reyweet.app",
-  "appName": "Reyweet",
-  "webDir": "public",
-  "server": {
-    "url": "https://reyweet.vercel.app/app/",
-    "cleartext": false
-  },
-  "packageClassList": []
+	"appId": "com.reyweet.app",
+	"appName": "Reyweet",
+	"webDir": "public",
+	"packageClassList": []
 }

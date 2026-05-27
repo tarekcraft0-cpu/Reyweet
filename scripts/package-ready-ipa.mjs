@@ -14,6 +14,7 @@ import {
   springboardIconBuffers,
   syncXcodeAssetCatalog,
 } from "./lib/ios-icon-buffers.mjs";
+import { fixCapacitorBundledHtml } from "./lib/fix-capacitor-html.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const webAppUrl = `${VERCEL_SITE_URL}/app/`;
@@ -32,7 +33,7 @@ const baseIpa =
   process.env.COPY_IPA_PATH?.trim() ||
   (fs.existsSync(defaultBase) ? defaultBase : fallbackBase);
 /** مخرجات IPA داخل مشروع iOS (Capacitor) — ليس خارج المستودع */
-const outIpa = path.join(iosBuildDir, "Reyweet-ready.ipa");
+const outIpa = process.env.OUT_IPA_PATH?.trim() || path.join(iosBuildDir, "Reyweet-ready.ipa");
 const codemagicArchive = path.join(iosBuildDir, "codemagic-base.ipa");
 const outDownloads = path.join(root, "landing", "public", "downloads", "retweet.ipa");
 const iosAppPublic = path.join(root, "ios", "App", "App", "public");
@@ -64,8 +65,19 @@ run("node scripts/write-public-web-config.mjs");
 console.log("→ مزامنة شعار التطبيق (iOS + PWA)…");
 run("node scripts/sync-ios-app-icon.mjs");
 
-console.log("→ بناء SPA…");
-run("npm run build:spa");
+console.log("→ بناء SPA (Capacitor — مسارات ./assets)…");
+run(
+  "node scripts/generate-pwa-icons.mjs && node scripts/generate-custom-sticker-manifest.mjs && npx vite build --config vite.spa.config.ts",
+  {
+    env: {
+      ...process.env,
+      CAPACITOR_NATIVE: "1",
+      RETWEET_PUBLIC_API_URL: apiUrl,
+      VITE_API_URL: apiUrl,
+      VITE_API_URL_MOBILE: apiUrl,
+    },
+  },
+);
 
 const spaDist = path.join(root, "spa-dist");
 const indexPath = path.join(spaDist, "index.html");
@@ -75,7 +87,8 @@ if (fs.existsSync(indexPath)) {
   html = html.replace(/<script>window\.__RETWEET[^<]*<\/script>\s*/g, "");
   html = html.replace("</head>", `${tag}\n</head>`);
   fs.writeFileSync(indexPath, html, "utf8");
-  console.log("  ✓ spa-dist/index.html (API + native shell)");
+  fixCapacitorBundledHtml(indexPath);
+  console.log("  ✓ spa-dist/index.html (API + native shell + ./assets)");
 }
 
 const icons = await springboardIconBuffers(root);
@@ -84,10 +97,6 @@ const capConfig = {
   appId,
   appName,
   webDir: "public",
-  server: {
-    url: webAppUrl,
-    cleartext: false,
-  },
   packageClassList: [],
 };
 
@@ -211,10 +220,8 @@ const mb = (fs.statSync(outIpa).size / (1024 * 1024)).toFixed(1);
 console.log(`\n✓ IPA جاهز (${mb} MB):`);
 console.log(`    ${outIpa}`);
 console.log(`    ${outDownloads}`);
-console.log(`\n  WebView → ${webAppUrl}`);
-console.log(`  API     → ${apiUrl || "من الموقع عند التشغيل"}`);
+console.log(`\n  Bundled UI + API → ${apiUrl}`);
 console.log("\n  وقّعه عبر تطبيق بلس / Sideloadly ثم ثبّت.\n");
-console.log("  على PC: npm run stack:reyweet (يجب أن يبقى شغالاً أثناء استخدام التطبيق)\n");
 }
 
 main().catch((e) => {

@@ -48,7 +48,7 @@ export function WebAppRoot() {
           setApiMissing(true);
           return;
         }
-        if (!(await probeHealth())) {
+        if (!isNativeCapacitorShell() && !(await probeHealth())) {
           setApiMissing(true);
           return;
         }

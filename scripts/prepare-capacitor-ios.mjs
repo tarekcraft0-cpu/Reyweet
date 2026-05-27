@@ -14,6 +14,7 @@ import {
   resolveMobileApiUrl,
   VERCEL_SITE_URL,
 } from "./lib/read-public-api-url.mjs";
+import { fixCapacitorBundledHtml } from "./lib/fix-capacitor-html.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const webAppUrl = (
@@ -52,25 +53,30 @@ function injectNativeShellIndex(indexPath) {
     html = html.replace("</head>", `${tag}\n</head>`);
   }
   fs.writeFileSync(indexPath, html, "utf8");
+  fixCapacitorBundledHtml(indexPath);
   console.log(`  ✓ ${path.relative(root, indexPath)} (native → ${apiUrl})`);
 }
 
 console.log("\n══ Retweet iOS — Capacitor (نسخة الموقع) ══\n");
-console.log(`  WebView:  ${webAppUrl}/`);
+console.log(`  وضع:     bundled (محلي داخل IPA)`);
 console.log(`  API:      ${apiUrl}\n`);
 
 process.env.RETWEET_PUBLIC_API_URL = apiUrl;
 run("node scripts/write-public-web-config.mjs", { env: process.env });
 
 console.log("→ بناء SPA (نفس بناء الموقع)…");
-run("npm run build:spa", {
-  env: {
-    ...process.env,
-    RETWEET_PUBLIC_API_URL: apiUrl,
-    VITE_API_URL: apiUrl,
-    VITE_API_URL_MOBILE: apiUrl,
+run(
+  "node scripts/generate-pwa-icons.mjs && node scripts/generate-custom-sticker-manifest.mjs && npx vite build --config vite.spa.config.ts",
+  {
+    env: {
+      ...process.env,
+      CAPACITOR_NATIVE: "1",
+      RETWEET_PUBLIC_API_URL: apiUrl,
+      VITE_API_URL: apiUrl,
+      VITE_API_URL_MOBILE: apiUrl,
+    },
   },
-});
+);
 
 const spaDist = path.join(root, "spa-dist");
 injectNativeShellIndex(path.join(spaDist, "index.html"));
@@ -86,7 +92,21 @@ fs.writeFileSync(
   "utf8",
 );
 
-const serverUrl = `${webAppUrl.replace(/\/+$/, "")}/`;
+const capConfigTs = [
+  "import { CapacitorConfig } from '@capacitor/cli';",
+  "",
+  "const config: CapacitorConfig = {",
+  `  appId: ${JSON.stringify(appId)},`,
+  "  appName: 'Reyweet',",
+  "  webDir: 'dist',",
+  "};",
+  "",
+  "export default config;",
+  "",
+].join("\n");
+fs.writeFileSync(path.join(root, "capacitor.config.ts"), capConfigTs, "utf8");
+console.log("  ✓ capacitor.config.ts (bundled — بدون server.url)");
+
 const distDir = path.join(root, "dist");
 if (fs.existsSync(spaDist)) {
   fs.rmSync(distDir, { recursive: true, force: true });
@@ -99,25 +119,6 @@ if (fs.existsSync(spaDist)) {
   injectNativeShellIndex(path.join(distDir, "index.html"));
   console.log("  ✓ dist/ (from spa-dist + web-auth-config)");
 }
-
-const capConfigTs = [
-  "import { CapacitorConfig } from '@capacitor/cli';",
-  "",
-  "const config: CapacitorConfig = {",
-  `  appId: ${JSON.stringify(appId)},`,
-  "  appName: 'Reyweet',",
-  "  webDir: 'dist',",
-  "  server: {",
-  `    url: ${JSON.stringify(serverUrl)},`,
-  `    cleartext: ${cleartext},`,
-  "  },",
-  "};",
-  "",
-  "export default config;",
-  "",
-].join("\n");
-fs.writeFileSync(path.join(root, "capacitor.config.ts"), capConfigTs, "utf8");
-console.log("  ✓ capacitor.config.ts");
 
 const iosDir = path.join(root, "ios");
 const forceRegen = process.env.CAPACITOR_FORCE_IOS_REGEN === "1";
@@ -147,7 +148,6 @@ if (fs.existsSync(iosCapJson)) {
     appId,
     appName: "Reyweet",
     webDir: "public",
-    server: { url: serverUrl, cleartext },
     packageClassList: [],
   };
   fs.writeFileSync(iosCapJson, JSON.stringify(capJson, null, 2) + "\n", "utf8");
@@ -159,6 +159,7 @@ const configJson = {
   apiUrl,
   siteUrl: VERCEL_SITE_URL,
   bundleId: appId,
+  bundled: true,
   builtAt: new Date().toISOString(),
 };
 fs.writeFileSync(

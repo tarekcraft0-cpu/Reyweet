@@ -88,10 +88,13 @@ export default defineConfig(({ mode }) => {
         defaults.supabaseKey
       ).trim();
 
+  const capacitorNative = process.env.CAPACITOR_NATIVE === "1";
+
   return {
     root: path.resolve(rootDir, "spa"),
     envDir: rootDir,
-    base: "/app/",
+    /** Capacitor يحمّل من capacitor://localhost — مسارات نسبية ./assets */
+    base: capacitorNative ? "./" : "/app/",
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
@@ -116,6 +119,9 @@ export default defineConfig(({ mode }) => {
       "import.meta.env.VITE_SUPABASE_ANON_KEY": JSON.stringify(supabaseKey),
       /** في التطوير: فارغ = نفس الأصل + بروكسي Vite */
       "import.meta.env.VITE_API_URL": JSON.stringify(mode === "development" ? "" : apiUrl),
+      "import.meta.env.VITE_API_URL_MOBILE": JSON.stringify(
+        mode === "development" ? "" : apiUrl,
+      ),
     },
     build: {
       outDir: path.resolve(rootDir, "spa-dist"),

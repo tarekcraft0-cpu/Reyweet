@@ -53,6 +53,7 @@ export function resolveApiUrlForWebView(webAppUrl: string, fallbackApiUrl: strin
 /** مسار فحص صحة الخادم — يفضّل /health عبر بروكسي Vite عند التطوير. */
 export function resolveHealthCheckUrl(): string {
   if (typeof window === "undefined") return "/health";
+  if (isNativeCapacitorShell()) return `${VERCEL_SITE_URL}/health`;
   if (isVpsProductionHost() && onAppPath()) return "/health";
   if (isPublicAppHost() && !isVpsProductionHost() && onAppPath()) return "/health";
   const injected = trimUrl(
@@ -331,14 +332,12 @@ export async function ensureApiRuntimeConfig(): Promise<string> {
     return resolvedMode === "relative" ? "" : resolvedAbsoluteUrl;
   }
 
-  /** iOS/Android — HTTPS Vercel فقط (ATS يحظر HTTP VPS) */
+  /** iOS/Android — HTTPS Vercel (API مطلق — لا يعتمد على server.url) */
   if (isNativeCapacitorShell()) {
-    if (await probeUrl(VERCEL_SITE_URL)) {
-      resolvedMode = "absolute";
-      resolvedAbsoluteUrl = VERCEL_SITE_URL;
-      persistAbsolute(VERCEL_SITE_URL);
-      return VERCEL_SITE_URL;
-    }
+    resolvedMode = "absolute";
+    resolvedAbsoluteUrl = VERCEL_SITE_URL;
+    persistAbsolute(VERCEL_SITE_URL);
+    return VERCEL_SITE_URL;
   }
 
   /** VPS — نفس الأصل: API + WebSocket + SSE مباشرة عبر nginx بدون بروكسي */
