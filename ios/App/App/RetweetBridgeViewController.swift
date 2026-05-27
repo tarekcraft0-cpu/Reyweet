@@ -85,11 +85,9 @@ class RetweetBridgeViewController: CAPBridgeViewController, WKUIDelegate, WKNavi
     }
 
     private func applyGlobalTextMenuGuards() {
+        // UITextView only — UITextField has no isSelectable API in UIKit.
         if #available(iOS 13.0, *) {
             UITextView.appearance().isSelectable = false
-        }
-        if #available(iOS 16.0, *) {
-            UITextField.appearance().isSelectable = false
         }
 
         if menuHideObserver == nil {

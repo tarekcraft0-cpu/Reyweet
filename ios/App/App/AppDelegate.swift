@@ -7,11 +7,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        // UITextView only — UITextField has no isSelectable API in UIKit.
         if #available(iOS 13.0, *) {
             UITextView.appearance().isSelectable = false
-        }
-        if #available(iOS 16.0, *) {
-            UITextField.appearance().isSelectable = false
         }
         NotificationCenter.default.addObserver(
             forName: UIMenuController.willShowMenuNotification,
