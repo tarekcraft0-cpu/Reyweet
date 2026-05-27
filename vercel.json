@@ -1,8 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "installCommand": "",
-  "buildCommand": "",
+  "installCommand": "npm install --legacy-peer-deps",
+  "buildCommand": "npm run vercel:build",
   "outputDirectory": "_vercel_site",
   "rewrites": [
     { "source": "/health", "destination": "http://109.199.111.29/health" },

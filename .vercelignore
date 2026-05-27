@@ -1,12 +1,8 @@
 node_modules
 .git
 backend
-src
-spa
-landing
 dist
 spa-dist
-public
 ios
 android
 capacitor.config.ts

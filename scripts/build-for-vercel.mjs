@@ -38,6 +38,12 @@ delete process.env.RETWEET_SAME_ORIGIN;
 
 execSync("node scripts/write-public-web-config.mjs", { cwd: root, stdio: "inherit" });
 
+try {
+  execSync("npm install --prefix landing --legacy-peer-deps", { cwd: root, stdio: "inherit" });
+} catch {
+  execSync("npm install --prefix landing", { cwd: root, stdio: "inherit" });
+}
+
 execSync("npm run build:spa", { cwd: root, stdio: "inherit" });
 execSync("npm run build --prefix landing", { cwd: root, stdio: "inherit" });
 execSync("node scripts/prepare-vercel-static.mjs", {
