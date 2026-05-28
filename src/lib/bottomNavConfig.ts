@@ -24,8 +24,8 @@ export const BOTTOM_NAV_INDICATOR_SIZE = BOTTOM_NAV_INDICATOR_WIDTH;
 /** مسافة اختيارية لآخر عنصر عند التمرير — لا تُقصّ منطقة المحتوى */
 export const NAV_SCROLL_PADDING_CSS_VAR = "--retweet-nav-scroll-padding";
 export const NAV_SCROLL_PADDING_DEFAULT =
-  "calc(4.75rem + max(12px, env(safe-area-inset-bottom, 0px)))";
+  "calc(4.75rem + max(12px, var(--sab)))";
 
 export const NAV_FLOAT_INSET_CSS_VAR = "--retweet-nav-float-inset";
 export const NAV_FLOAT_INSET_DEFAULT =
-  "calc(3.5rem + max(12px, env(safe-area-inset-bottom, 0px)))";
+  "calc(3.5rem + max(12px, var(--sab)))";

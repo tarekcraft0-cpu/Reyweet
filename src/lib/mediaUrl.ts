@@ -5,6 +5,7 @@ import {
   isPrivateApiUrl,
   isPublicAppHost,
   isTunnelPublicHost,
+  isVpsProductionHost,
   PRODUCTION_VPS_HOST,
 } from "./apiUrlPolicy";
 
@@ -41,7 +42,16 @@ function coerceMediaBaseForHttpsPage(base: string): string {
   return window.location.origin.replace(/\/$/, "");
 }
 
+/** منشأ الصفحة الحالية — الأفضل لعرض /media/ عبر بروكسي Vercel (HTTPS) */
+function pageOriginForMedia(): string {
+  if (typeof window === "undefined") return "";
+  return window.location.origin.replace(/\/$/, "");
+}
+
 function getMediaResolveBase(): string {
+  if (typeof window !== "undefined" && isPublicAppHost() && !isVpsProductionHost()) {
+    return pageOriginForMedia();
+  }
   const fromApi = getApiBaseUrl() || peekApiBaseUrl();
   if (fromApi?.trim()) return coerceMediaBaseForHttpsPage(fromApi.trim());
   if (typeof window !== "undefined") {
@@ -50,7 +60,15 @@ function getMediaResolveBase(): string {
     if (injected && !isPrivateApiUrl(injected))
       return coerceMediaBaseForHttpsPage(injected);
   }
-  return "";
+  return pageOriginForMedia();
+}
+
+function resolveServerMediaPath(pathnameOnly: string, search: string): string {
+  const origin = pageOriginForMedia();
+  if (origin) return `${origin}${pathnameOnly}${search}`;
+  const base = getMediaResolveBase().replace(/\/$/, "");
+  if (base) return `${base}${pathnameOnly}${search}`;
+  return `${pathnameOnly}${search}`;
 }
 
 /** يحوّل روابط قديمة (نفق/localhost) إلى مسار /media/ ثم يضيف عنوان API الحالي */
@@ -77,11 +95,9 @@ export function normalizeMediaRef(src: string | undefined | null): string {
   }
 
   if (path.startsWith("/media/")) {
-    const base = getMediaResolveBase().replace(/\/$/, "");
     const search = path.includes("?") ? path.slice(path.indexOf("?")) : "";
     const pathnameOnly = path.split("?")[0] ?? path;
-    if (base) return `${base}${pathnameOnly}${search}`;
-    return `${pathnameOnly}${search}`;
+    return resolveServerMediaPath(pathnameOnly, search);
   }
 
   /** روابط مطلقة: لا نُسقط كل https — ملصقات وملفات /app/ وباقي المواقع */
@@ -91,25 +107,23 @@ export function normalizeMediaRef(src: string | undefined | null): string {
       if (isPrivateApiUrl(v)) return "";
       if (isTunnelPublicHost(u.hostname) || /\.trycloudflare\.com$/i.test(u.hostname)) return "";
 
-      /** ميديا من السيرفر — عرض عبر المنشأ الحالي أو بروكسي Vercel */
+      /** ميديا من السيرفر — دائماً عبر منشأ الصفحة (يتجنّب mixed content على HTTPS) */
       if (u.pathname.startsWith("/media/")) {
-        const b = getMediaResolveBase().replace(/\/$/, "");
-        const origin =
-          typeof window !== "undefined" ? window.location.origin.replace(/\/$/, "") : "";
-        const merged = (b || origin).replace(/\/$/, "");
-        return merged ? `${merged}${u.pathname}${u.search || ""}` : `${u.pathname}${u.search || ""}`;
+        return resolveServerMediaPath(u.pathname, u.search || "");
       }
 
       /** روابط مخزَّنة تشير إلى الـ VPS مباشرة — نمرِّرها على بروكسي الصفحة */
-      if (
-        u.hostname === PRODUCTION_VPS_HOST &&
-        (u.pathname.startsWith("/stickers/") ||
-          u.pathname.startsWith("/app/") ||
-          u.pathname.startsWith("/public/"))
-      ) {
-        const origin =
-          typeof window !== "undefined" ? window.location.origin.replace(/\/$/, "") : "";
-        if (origin) return `${origin}${u.pathname}${u.search || ""}`;
+      if (u.hostname === PRODUCTION_VPS_HOST) {
+        const origin = pageOriginForMedia();
+        if (
+          origin &&
+          (u.pathname.startsWith("/media/") ||
+            u.pathname.startsWith("/stickers/") ||
+            u.pathname.startsWith("/app/") ||
+            u.pathname.startsWith("/public/"))
+        ) {
+          return `${origin}${u.pathname}${u.search || ""}`;
+        }
       }
 
       const h = u.hostname;
@@ -119,7 +133,7 @@ export function normalizeMediaRef(src: string | undefined | null): string {
         return `${u.origin}${u.pathname}${u.search || ""}`;
       /** https خارجي (صور روابط خارجية إن وُجدت) */
       if (u.protocol === "https:") return `${u.origin}${u.pathname}${u.search || ""}`;
-      /** http خارجي — يُحظر على صفحات HTTPS */
+      /** http قديم بدون /media/ — يُحظر على صفحات HTTPS */
       return "";
     } catch {
       return "";

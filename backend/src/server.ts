@@ -97,6 +97,7 @@ import {
   isDataUrl,
   processDataUrl,
   rewriteDataUrlsInValue,
+  saveAudioFile,
   saveUploadedImage,
   saveVideoFile,
 } from "./lib/mediaCompress.js";
@@ -111,6 +112,17 @@ import {
 } from "./lib/socialActions.js";
 import { getSocialRelation } from "./lib/socialGraph.js";
 import { socialListsForUser } from "./lib/socialCounts.js";
+import { createGroupRouter } from "./routes/groupRoutes.js";
+import { createModerationRouter } from "./routes/moderationRoutes.js";
+import {
+  bannedPublicProfilePayload,
+  getBanInfoForUser,
+  isBannedStatus,
+  resolveEffectiveStatus,
+} from "./moderation/banEngine.js";
+import { ensureGroupRecord } from "./groups/groupService.js";
+import type { GroupVisibility } from "../../src/lib/groupTypes.js";
+import { DEFAULT_AVATAR_DATA_URI } from "./lib/defaultAvatar.js";
 
 const DUMMY_PASSWORD_HASH =
   "$2a$10$dXJ3SW6G7P50lGmMkkmwe.20cQQubK3.HZWzG3YB1tlRy.fqvM/BG";
@@ -186,7 +198,7 @@ app.get("/auth/config", (_req, res) => {
 });
 
 function authUserPayload(user: UserRow) {
-  const av = toClientMediaRef(user.avatar) || user.username.slice(0, 2).toUpperCase();
+  const av = toClientMediaRef(user.avatar) || DEFAULT_AVATAR_DATA_URI;
   const avatar =
     av.startsWith("/media/") ? `${av}?v=${Date.parse(user.updatedAt) || 0}` : av;
   return {
@@ -198,7 +210,7 @@ function authUserPayload(user: UserRow) {
 }
 
 function publicUserPayload(user: UserRow) {
-  const av = toClientMediaRef(user.avatar) || user.username.slice(0, 2).toUpperCase();
+  const av = toClientMediaRef(user.avatar) || DEFAULT_AVATAR_DATA_URI;
   const avatar =
     av.startsWith("/media/") ? `${av}?v=${Date.parse(user.updatedAt) || 0}` : av;
   return {
@@ -385,7 +397,7 @@ app.post("/auth/register", async (req, res) => {
     displayName: displayName || undefined,
     passwordHash,
     phone: phoneNorm || undefined,
-    avatar: username.slice(0, 2).toUpperCase(),
+    avatar: DEFAULT_AVATAR_DATA_URI,
     bio: "",
     appTheme: "light",
     appLanguage: "ar",
@@ -436,6 +448,8 @@ app.post("/auth/login", async (req, res) => {
       emailHint: maskEmail(user.email),
     });
   }
+  const bannedRes = await loginBanResponse(user, res);
+  if (bannedRes) return bannedRes;
   const token = signAccessToken(user.id);
   return res.json({ token, user: authUserPayload(user) });
 });
@@ -459,6 +473,8 @@ app.post("/auth/verify-login", async (req, res) => {
   const match = await bcrypt.compare(parsed.data.code.trim(), otp.codeHash);
   if (!match) return res.status(400).json({ error: "كود التحقق غير صحيح" });
   await deleteOtpsForUser(loginOtpKey(user.id), "login");
+  const bannedRes = await loginBanResponse(user, res);
+  if (bannedRes) return bannedRes;
   const token = signAccessToken(user.id);
   return res.json({ token, user: authUserPayload(user) });
 });
@@ -536,9 +552,7 @@ app.post("/auth/google", async (req, res) => {
     const user = await updateUser(byEmail.id, {
       googleId: sub,
       avatar:
-        byEmail.avatar ||
-        picture ||
-        (name?.trim() ? name.trim().slice(0, 2).toUpperCase() : byEmail.username.slice(0, 2).toUpperCase()),
+        byEmail.avatar || picture || DEFAULT_AVATAR_DATA_URI,
     });
     const token = signAccessToken(user!.id);
     return res.json({ token, user: authUserPayload(user!) });
@@ -547,8 +561,7 @@ app.post("/auth/google", async (req, res) => {
   const rounds = Math.min(14, Math.max(10, Number(process.env.BCRYPT_ROUNDS || 12)));
   const passwordHash = await bcrypt.hash(crypto.randomBytes(32).toString("hex"), rounds);
   const username = await uniqueUsernameFromEmail(emailNorm);
-  const avatar =
-    picture || (name?.trim() ? name.trim().slice(0, 2).toUpperCase() : username.slice(0, 2).toUpperCase());
+  const avatar = picture || DEFAULT_AVATAR_DATA_URI;
   const user = await createUser({
     email: emailNorm,
     username,
@@ -661,6 +674,12 @@ app.post("/auth/complete-password-reset", async (req, res) => {
   return res.json({ ok: true });
 });
 
+const MODERATION_ALLOWED_PREFIXES = [
+  "/v1/me/moderation",
+  "/v1/me/appeal",
+  "/auth/",
+];
+
 function authMiddleware(req: Request, res: Response, next: NextFunction): void {
   const raw = req.headers.authorization || "";
   const token = raw.replace(/^Bearer\s+/i, "").trim();
@@ -671,10 +690,30 @@ function authMiddleware(req: Request, res: Response, next: NextFunction): void {
   try {
     const { sub } = verifyAccessToken(token);
     (req as Request & { userId: string }).userId = sub;
-    next();
+    const path = req.path || req.url.split("?")[0] || "";
+    const appealOk = MODERATION_ALLOWED_PREFIXES.some(p => path.startsWith(p));
+    void (async () => {
+      const status = await resolveEffectiveStatus(sub);
+      if (isBannedStatus(status) && !appealOk) {
+        const user = await getUserById(sub);
+        const banInfo = user ? await getBanInfoForUser(user) : null;
+        res.status(403).json({ error: "account_banned", banInfo });
+        return;
+      }
+      next();
+    })().catch(() => {
+      res.status(500).json({ error: "خطأ في التحقق" });
+    });
   } catch {
     res.status(401).json({ error: "unauthorized" });
   }
+}
+
+async function loginBanResponse(user: UserRow, res: Response): Promise<Response | null> {
+  const status = await resolveEffectiveStatus(user.id);
+  if (!isBannedStatus(status)) return null;
+  const banInfo = await getBanInfoForUser(user);
+  return res.status(403).json({ error: "account_banned", banInfo, banned: true });
 }
 
 app.get("/v1/app-state", authMiddleware, async (req, res) => {
@@ -758,6 +797,10 @@ app.get("/v1/users/:userId", authMiddleware, async (req, res) => {
   const row = await getUserById(userId);
   if (!row) return res.status(404).json({ error: "not found" });
   setNoStoreApi(res);
+  const status = await resolveEffectiveStatus(row.id);
+  if (status === "BANNED" || status === "TEMP_BANNED" || status === "PERMANENTLY_BANNED") {
+    return res.json({ user: bannedPublicProfilePayload(row.username), banned: true });
+  }
   return res.json({ user: await publicUserPayloadWithSocial(row) });
 });
 
@@ -955,6 +998,7 @@ const createPostSchema = z.object({
   text: z.string().max(10_000).optional(),
   image: z.string().max(2_000_000).optional(),
   video: z.string().max(2_000_000).optional(),
+  audio: z.string().max(2_000_000).optional(),
   createdAt: z.number().optional(),
 });
 
@@ -971,6 +1015,7 @@ app.post("/v1/posts", authMiddleware, async (req, res) => {
       text: parsed.data.text ?? "",
       image: parsed.data.image,
       video: parsed.data.video,
+      audio: parsed.data.audio,
       likes: [],
       reposts: [],
       comments: [],
@@ -1118,6 +1163,8 @@ const createGroupSchema = z.object({
   avatar: z.string().max(2_000_000),
   memberIds: z.array(z.string().min(1)).min(2),
   welcomeMessage: z.string().max(500).optional(),
+  description: z.string().max(500).optional(),
+  visibility: z.enum(["public", "private", "invite_only"]).optional(),
 });
 
 app.post("/v1/chats/group", authMiddleware, async (req, res) => {
@@ -1138,6 +1185,15 @@ app.post("/v1/chats/group", authMiddleware, async (req, res) => {
     return res.status(400).json({ error: "المجموعة تحتاج عضوين على الأقل غيرك" });
   }
   const inviteCode = generateInviteCode();
+  const visibility: GroupVisibility = d.visibility ?? "invite_only";
+  const memberRoles: Record<string, "owner" | "admin" | "moderator" | "member"> = {};
+  for (const id of members) {
+    memberRoles[id] = id === creatorId ? "owner" : "member";
+  }
+  const now = Date.now();
+  const memberMeta = Object.fromEntries(
+    members.map(id => [id, { joinedAt: now, addedBy: id === creatorId ? undefined : creatorId }]),
+  );
   const chat: Chat = {
     id: d.id,
     isGroup: true,
@@ -1145,12 +1201,24 @@ app.post("/v1/chats/group", authMiddleware, async (req, res) => {
     avatar,
     members,
     admins: [creatorId],
+    ownerId: creatorId,
+    createdByUserId: creatorId,
+    description: d.description?.trim(),
+    groupVisibility: visibility,
+    memberRoles,
+    memberMeta,
     messages: [],
     lastOpenAtByUser: {},
     lastReadMessageIdByUser: {},
     inviteCode,
-    isPublicGroup: false,
+    isPublicGroup: visibility === "public",
     joinRequests: [],
+    bannedUserIds: [],
+    groupSettings: {
+      visibility,
+      description: d.description?.trim(),
+      approvalRequired: visibility === "private",
+    } as Chat["groupSettings"],
   };
   await registerGroupInvite(inviteCode, chat.id, creatorId);
   const welcome =
@@ -1158,6 +1226,7 @@ app.post("/v1/chats/group", authMiddleware, async (req, res) => {
     `تم إنشاء المجموعة «${chat.name}»`;
   try {
     await shareGroupChatWithMembers(creatorId, chat, welcome);
+    await ensureGroupRecord(chat, creatorId);
     return res.status(201).json({ chat });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "فشل إنشاء المجموعة";
@@ -1181,9 +1250,21 @@ app.post("/v1/chats/group/:chatId/members", authMiddleware, async (req, res) => 
   if (!chat.admins.includes(actorId)) return res.status(403).json({ error: "غير مصرح" });
   const requested = parsed.data.memberIds.filter(id => id !== actorId);
   if (requested.length === 0) return res.json({ chat });
+  const actorRow = await getUserById(actorId);
+  const actorLabel = actorRow?.username ? `@${actorRow.username}` : "مشرف";
+  const addedIds = requested.filter(id => !chat.members.includes(id));
+  const addedRows = await Promise.all(addedIds.map(id => getUserById(id)));
+  const systemMessages = addedIds.map((targetId, idx) => ({
+    id: crypto.randomUUID(),
+    senderId: actorId,
+    type: "text" as const,
+    content: `${actorLabel} أضاف ${addedRows[idx]?.username ? `@${addedRows[idx]!.username}` : "عضو"} إلى المجموعة`,
+    createdAt: Date.now() + idx,
+  }));
   const updated: Chat = {
     ...chat,
     members: Array.from(new Set([...chat.members, ...requested])),
+    messages: [...(chat.messages || []), ...systemMessages],
   };
   try {
     const inviteMemberIds: string[] = [];
@@ -1317,10 +1398,22 @@ app.post(
       await patchGroupChatForMembers(chatId, chat.members, { joinRequests: requests });
       return res.json({ ok: true });
     }
+    const actorRow = await getUserById(actorId);
+    const targetRow = await getUserById(targetUserId);
+    const actorLabel = actorRow?.username ? `@${actorRow.username}` : "مشرف";
+    const targetLabel = targetRow?.username ? `@${targetRow.username}` : "عضو";
+    const systemMessage = {
+      id: crypto.randomUUID(),
+      senderId: actorId,
+      type: "text" as const,
+      content: `${actorLabel} أضاف ${targetLabel} إلى المجموعة`,
+      createdAt: Date.now(),
+    };
     const updated: Chat = {
       ...chat,
       members: Array.from(new Set([...chat.members, targetUserId])),
       joinRequests: requests,
+      messages: [...(chat.messages || []), systemMessage],
     };
     const inviteMemberIds = (await memberHasGroupChat(targetUserId, chatId))
       ? []
@@ -1339,10 +1432,22 @@ app.delete("/v1/chats/group/:chatId/members/:userId", authMiddleware, async (req
   if (!chat) return res.status(404).json({ error: "المجموعة غير موجودة" });
   if (!chat.admins.includes(actorId)) return res.status(403).json({ error: "غير مصرح" });
   if (targetId === actorId) return res.status(400).json({ error: "استخدم مغادرة المجموعة" });
+  const actorRow = await getUserById(actorId);
+  const targetRow = await getUserById(targetId);
+  const actorLabel = actorRow?.username ? `@${actorRow.username}` : "مشرف";
+  const targetLabel = targetRow?.username ? `@${targetRow.username}` : "عضو";
+  const systemMessage = {
+    id: crypto.randomUUID(),
+    senderId: actorId,
+    type: "text" as const,
+    content: `${actorLabel} طرد ${targetLabel} من المجموعة`,
+    createdAt: Date.now(),
+  };
   const nextMembers = chat.members.filter(id => id !== targetId);
   await patchGroupChatForMembers(chatId, chat.members, {
     removeMemberIds: [targetId],
     memberIds: undefined,
+    groupPatch: { messages: [...(chat.messages || []), systemMessage] },
   });
   let targetState = (await getSnapshot(targetId)) as { chats?: Chat[] } | null;
   if (targetState?.chats) {
@@ -1371,6 +1476,9 @@ app.post("/v1/chats/group/:chatId/leave", authMiddleware, async (req, res) => {
   }
   return res.json({ ok: true });
 });
+
+app.use(createGroupRouter(authMiddleware));
+app.use(createModerationRouter(authMiddleware));
 
 const patchProfileSchema = z.object({
   username: z.string().min(1).max(30).optional(),
@@ -1614,6 +1722,28 @@ app.post("/v1/media/upload", authMiddleware, mediaUploadMiddleware, async (req, 
         console.warn("[media/upload] video transcode failed, saving original", videoErr);
         const { url } = await saveVideoFile(tmpIn);
         return res.json({ url, kind: "video" });
+      } finally {
+        await fs.unlink(tmpIn).catch(() => undefined);
+      }
+    }
+    if (mime.startsWith("audio/")) {
+      const tmpDir = path.join(MEDIA_VIDEOS_DIR, "_tmp");
+      const fs = await import("node:fs/promises");
+      await fs.mkdir(tmpDir, { recursive: true });
+      const ext = mime.includes("wav")
+        ? "wav"
+        : mime.includes("ogg")
+          ? "ogg"
+          : mime.includes("aac")
+            ? "aac"
+            : mime.includes("m4a")
+              ? "m4a"
+              : "mp3";
+      const tmpIn = path.join(tmpDir, `${crypto.randomUUID()}.${ext}`);
+      await fs.writeFile(tmpIn, file.buffer);
+      try {
+        const { url } = await saveAudioFile(tmpIn);
+        return res.json({ url, kind: "audio" });
       } finally {
         await fs.unlink(tmpIn).catch(() => undefined);
       }

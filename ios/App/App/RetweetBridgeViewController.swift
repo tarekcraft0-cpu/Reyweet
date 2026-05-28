@@ -82,6 +82,34 @@ class RetweetBridgeViewController: CAPBridgeViewController, WKUIDelegate, WKNavi
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         applyWebViewGuards()
+        syncSafeAreaInsetsToWebView()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        syncSafeAreaInsetsToWebView()
+    }
+
+    override func viewSafeAreaInsetsDidChange() {
+        super.viewSafeAreaInsetsDidChange()
+        syncSafeAreaInsetsToWebView()
+    }
+
+    /** يمرّر safe area من UIKit إلى CSS — WKWebView لا يوفّر env() بشكل موثوق مع contentInsetAdjustmentBehavior = .never */
+    private func syncSafeAreaInsetsToWebView() {
+        guard let wv = webView else { return }
+        let i = view.safeAreaInsets
+        let js = """
+        (function(){
+          var r=document.documentElement;
+          r.style.setProperty('--retweet-safe-top','\(i.top)px');
+          r.style.setProperty('--retweet-safe-bottom','\(i.bottom)px');
+          r.style.setProperty('--retweet-safe-left','\(i.left)px');
+          r.style.setProperty('--retweet-safe-right','\(i.right)px');
+          try{window.dispatchEvent(new Event('retweet-safe-area-change'));}catch(e){}
+        })();
+        """
+        wv.evaluateJavaScript(js, completionHandler: nil)
     }
 
     private func applyGlobalTextMenuGuards() {
@@ -137,6 +165,7 @@ class RetweetBridgeViewController: CAPBridgeViewController, WKUIDelegate, WKNavi
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
         injectNoSelectScript(into: webView)
+        syncSafeAreaInsetsToWebView()
     }
 
     func webView(

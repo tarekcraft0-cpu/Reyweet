@@ -155,6 +155,16 @@ export async function assertMessageSendAccess(
     throw new ChatAccessError("أنت لست عضواً في هذه المحادثة");
   }
 
+  if (chat.isGroup && !chat.isChannel) {
+    const { assertCanSendMessage, GroupAuthError } = await import("../groups/groupService.js");
+    try {
+      assertCanSendMessage(chat, userId);
+    } catch (e) {
+      if (e instanceof GroupAuthError) throw new ChatAccessError(e.message);
+      throw e;
+    }
+  }
+
   const expectedReceiver =
     resolveReceiverId(chat, userId) ??
     (input.receiverId && !chat.isGroup && !chat.isChannel ? input.receiverId : null);

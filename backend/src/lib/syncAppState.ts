@@ -2,18 +2,17 @@ import type { AppState, Post, User } from "../../../src/lib/types.js";
 import {
   createUser,
   getUserById,
-  listPosts,
   listStories,
-  replaceLikesForPost,
   replaceStories,
   updateUser,
-  upsertPost,
+  upsertPostPreservingSocial,
   upsertMessagesBatch,
   type PostRow,
   type StoryRow,
 } from "../db/engine.js";
 import { extractMessagesFromChats } from "./chatMessages.js";
 import { normalizeUsername, validateUsernameFormat } from "./usernameRules.js";
+import { DEFAULT_AVATAR_DATA_URI } from "./defaultAvatar.js";
 
 /** مزامنة جداول users / posts / likes من لقطة التطبيق — المتابعات عبر /v1/social فقط */
 export async function syncNormalizedFromAppState(state: AppState, ownerUserId?: string): Promise<void> {
@@ -30,7 +29,7 @@ export async function syncNormalizedFromAppState(state: AppState, ownerUserId?: 
         email: u.email || `${normNew}@local.retweet`,
         username: normNew,
         passwordHash: "$2a$10$dXJ3SW6G7P50lGmMkkmwe.20cQQubK3.HZWzG3YB1tlRy.fqvM/BG",
-        avatar: u.avatar || normNew.slice(0, 2).toUpperCase(),
+        avatar: u.avatar || DEFAULT_AVATAR_DATA_URI,
         bio: u.bio || "",
         isPrivate: u.isPrivate === true,
         appTheme: state.theme === "dark" ? "dark" : "light",
@@ -60,19 +59,16 @@ export async function syncNormalizedFromAppState(state: AppState, ownerUserId?: 
       text: p.text || "",
       image: p.image,
       video: p.video,
-      likes: p.likes || [],
-      reposts: p.reposts || [],
-      comments: (p.comments || []).map(c => ({
-        id: c.id,
-        userId: c.userId,
-        text: c.text,
-        createdAt: c.createdAt,
-      })),
+      audio: p.audio,
+      // لا نأخذ likes/reposts/comments من لقطة العميل: هذه تُدار عبر endpoints اجتماعية على الخادم.
+      // يتم تجاهلها أيضاً أثناء upsert لتفادي race condition مع طلبات like/repost/comment.
+      likes: [],
+      reposts: [],
+      comments: [],
       createdAt: new Date(p.createdAt || Date.now()).toISOString(),
       updatedAt: now,
     };
-    await upsertPost(row);
-    await replaceLikesForPost(p.id, p.likes || []);
+    await upsertPostPreservingSocial(row);
   }
 
   /**
@@ -154,6 +150,7 @@ export async function buildMinimalAppState(currentUserId: string): Promise<AppSt
     text: p.text,
     image: p.image,
     video: p.video,
+    audio: p.audio,
     likes: p.likes,
     reposts: p.reposts,
     comments: [],

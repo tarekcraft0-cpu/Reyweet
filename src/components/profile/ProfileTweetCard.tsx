@@ -69,7 +69,7 @@ function ProfileTweetMedia({
   post,
   postMedia,
 }: {
-  post: Pick<Post, "image" | "video">;
+  post: Pick<Post, "image" | "video" | "audio">;
   postMedia: NormalizedPostMedia;
 }) {
   if (postMedia.hasImage && !postMedia.hasVideo) {
@@ -96,6 +96,14 @@ function ProfileTweetMedia({
             <Play size={28} fill="currentColor" className="ms-0.5" />
           </span>
         </span>
+      </div>
+    );
+  }
+
+  if (postMedia.hasAudio) {
+    return (
+      <div className="mt-2.5 rounded-2xl border border-border/50 bg-card p-3">
+        <audio src={postMedia.audioUrl} controls preload="none" className="w-full" />
       </div>
     );
   }
@@ -148,6 +156,23 @@ export function ProfileTweetCard({
     () => state.posts.find(p => p.id === post.id) ?? post,
     [state.posts, post],
   );
+  const safeLikes = Array.isArray(livePost.likes) ? livePost.likes : [];
+  const safeReposts = Array.isArray(livePost.reposts) ? livePost.reposts : [];
+  const safeComments = (Array.isArray(livePost.comments) ? livePost.comments : [])
+    .filter(
+      (c): c is { id: string; userId: string; text: string; createdAt: number } =>
+        !!c &&
+        typeof c === "object" &&
+        typeof (c as { id?: unknown }).id === "string" &&
+        typeof (c as { userId?: unknown }).userId === "string" &&
+        typeof (c as { text?: unknown }).text === "string",
+    )
+    .map(c => ({
+      id: c.id,
+      userId: c.userId,
+      text: c.text,
+      createdAt: typeof c.createdAt === "number" ? c.createdAt : Date.now(),
+    }));
   const me = currentUser!;
   const [shareOpen, setShareOpen] = useState(false);
   const [commentsOpen, setCommentsOpen] = useState(showCommentsDefault);
@@ -199,7 +224,7 @@ export function ProfileTweetCard({
             <div className="flex items-center gap-4 sm:gap-5">
               <button type="button" onClick={onLike} className={actionBtn} aria-pressed={liked}>
                 <TweetHeartIcon liked={liked} />
-                <span className={countCls(liked, "text-[var(--color-like,#ef4444)]")}>{livePost.likes.length}</span>
+                <span className={countCls(liked, "text-[var(--color-like,#ef4444)]")}>{safeLikes.length}</span>
               </button>
               <button
                 type="button"
@@ -208,11 +233,11 @@ export function ProfileTweetCard({
                 aria-expanded={commentsOpen}
               >
                 <TweetCommentIcon />
-                <span className={countCls()}>{livePost.comments.length}</span>
+                <span className={countCls()}>{safeComments.length}</span>
               </button>
               <button type="button" onClick={onRepost} className={actionBtn} aria-pressed={reposted}>
                 <TweetRepostIcon reposted={reposted} />
-                <span className={countCls(reposted, "text-primary")}>{livePost.reposts.length}</span>
+                <span className={countCls(reposted, "text-primary")}>{safeReposts.length}</span>
               </button>
             </div>
             <button type="button" onClick={() => setShareOpen(true)} className={actionBtn} aria-label="مشاركة">
@@ -226,7 +251,7 @@ export function ProfileTweetCard({
               className="mt-3 space-y-2 border-t border-border/60 pt-3 scroll-mt-24"
             >
               <h3 className="text-xs font-semibold text-muted-foreground">{t("comments")}</h3>
-              {livePost.comments.map(c => {
+              {safeComments.map(c => {
                 const u = users.find(x => x.id === c.userId);
                 return (
                   <div key={c.id} className="flex gap-2 text-sm" dir="ltr">
@@ -255,7 +280,7 @@ export function ProfileTweetCard({
                   </div>
                 );
               })}
-              {livePost.comments.length === 0 && <p className="text-xs text-muted-foreground">—</p>}
+              {safeComments.length === 0 && <p className="text-xs text-muted-foreground">—</p>}
               <form
                 onSubmit={e => {
                   e.preventDefault();

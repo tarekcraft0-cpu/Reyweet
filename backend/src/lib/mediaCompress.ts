@@ -11,6 +11,7 @@ ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 const DATA_URL_RE = /^data:([^;,]+)?(?:;[^,]*)?;base64,(.+)$/i;
 
 const VIDEO_EXT = new Set([".mp4", ".webm", ".mov", ".m4v", ".mkv"]);
+const AUDIO_EXT = new Set([".mp3", ".wav", ".ogg", ".m4a", ".aac", ".webm"]);
 
 export function isDataUrl(s: string): boolean {
   return s.startsWith("data:") && s.includes("base64,");
@@ -33,6 +34,17 @@ export async function saveVideoFile(inputPath: string): Promise<{ url: string; p
   await fs.mkdir(MEDIA_VIDEOS_DIR, { recursive: true });
   let ext = path.extname(inputPath).toLowerCase();
   if (!VIDEO_EXT.has(ext)) ext = ".mp4";
+  const outName = `${randomUUID()}${ext}`;
+  const outPath = path.join(MEDIA_VIDEOS_DIR, outName);
+  await fs.copyFile(inputPath, outPath);
+  return { url: mediaPublicUrl("videos", outName), path: outPath };
+}
+
+/** حفظ صوت بدون إعادة ترميز */
+export async function saveAudioFile(inputPath: string): Promise<{ url: string; path: string }> {
+  await fs.mkdir(MEDIA_VIDEOS_DIR, { recursive: true });
+  let ext = path.extname(inputPath).toLowerCase();
+  if (!AUDIO_EXT.has(ext)) ext = ".mp3";
   const outName = `${randomUUID()}${ext}`;
   const outPath = path.join(MEDIA_VIDEOS_DIR, outName);
   await fs.copyFile(inputPath, outPath);
@@ -157,6 +169,28 @@ export async function processDataUrl(dataUrl: string): Promise<string> {
     await fs.writeFile(tmpIn, buf);
     try {
       const { url } = await compressAndSaveVideo(tmpIn);
+      return url;
+    } finally {
+      await fs.unlink(tmpIn).catch(() => undefined);
+    }
+  }
+
+  if (mime.startsWith("audio/")) {
+    const tmpDir = path.join(MEDIA_VIDEOS_DIR, "_tmp");
+    await fs.mkdir(tmpDir, { recursive: true });
+    const ext = mime.includes("wav")
+      ? "wav"
+      : mime.includes("ogg")
+        ? "ogg"
+        : mime.includes("aac")
+          ? "aac"
+          : mime.includes("m4a")
+            ? "m4a"
+            : "mp3";
+    const tmpIn = path.join(tmpDir, `${randomUUID()}.${ext}`);
+    await fs.writeFile(tmpIn, buf);
+    try {
+      const { url } = await saveAudioFile(tmpIn);
       return url;
     } finally {
       await fs.unlink(tmpIn).catch(() => undefined);

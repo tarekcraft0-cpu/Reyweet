@@ -1,5 +1,7 @@
 export type ID = string;
 
+import type { GroupRole, GroupSettings, GroupVisibility } from "./groupTypes";
+
 /** شريحة محفوظة في الهايلايت (تبقى بعد انتهاء الستوري ٢٤ ساعة) */
 export interface HighlightSlide {
   image: string;
@@ -199,6 +201,7 @@ export interface Post {
   text: string;
   image?: string;
   video?: string;
+  audio?: string;
   likes: ID[];
   reposts: ID[];
   comments: Comment[];
@@ -286,6 +289,24 @@ export interface Chat {
   joinRequests?: { userId: ID; at: number }[];
   /** ألقاب ذاتية داخل المجموعة (معرف العضو → الاسم المعروض، حتى 30 حرفاً) */
   groupNicknames?: Record<ID, string>;
+  /** مالك المجموعة (RBAC) */
+  ownerId?: ID;
+  /** وصف المجموعة */
+  description?: string;
+  /** public | private | invite_only */
+  groupVisibility?: GroupVisibility;
+  /** أدوار الأعضاء */
+  memberRoles?: Record<ID, GroupRole>;
+  /** بيانات انضمام */
+  memberMeta?: Record<ID, { joinedAt: number; addedBy?: ID }>;
+  /** إعدادات المجموعة */
+  groupSettings?: GroupSettings;
+  /** محظورون */
+  bannedUserIds?: ID[];
+  /** كتم مؤقت (userId → unix ms) */
+  mutedUserIds?: Record<ID, number>;
+  /** مقيّدون (لا يرسلون) */
+  restrictedUserIds?: ID[];
 }
 
 export interface Sticker { id: ID; userId: ID; emoji: string; label: string; }

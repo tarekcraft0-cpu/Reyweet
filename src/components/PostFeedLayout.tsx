@@ -205,7 +205,7 @@ export function PostFeedMediaBlock({
   onOpen,
   profileInset = false,
 }: {
-  post: Pick<Post, "type" | "image" | "video" | "text">;
+  post: Pick<Post, "type" | "image" | "video" | "audio" | "text">;
   postMedia: NormalizedPostMedia;
   notesOverlay?: ReactNode;
   onOpen?: () => void;
@@ -246,6 +246,19 @@ export function PostFeedMediaBlock({
           onClick={e => e.stopPropagation()}
         />
       </PostFeedMedia>
+    );
+  }
+
+  if (postMedia.hasAudio) {
+    return (
+      <div
+        className={
+          (profileInset ? "mx-0 w-full" : "mx-4 w-[calc(100%-2rem)]") +
+          " mb-1 rounded-2xl border border-border/60 bg-card p-3"
+        }
+      >
+        <audio src={postMedia.audioUrl} controls preload="none" className="w-full" />
+      </div>
     );
   }
 

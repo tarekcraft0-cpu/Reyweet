@@ -305,6 +305,8 @@ export async function patchGroupChatForMembers(
     isPublicGroup?: boolean;
     inviteCode?: string;
     joinRequests?: Chat["joinRequests"];
+    /** حقول RBAC والإعدادات — تُدمج في النسخة الموحّدة */
+    groupPatch?: Partial<Chat>;
   },
 ): Promise<void> {
   const base =
@@ -320,17 +322,24 @@ export async function patchGroupChatForMembers(
     nextMembers = nextMembers.filter(id => !patch.removeMemberIds!.includes(id));
   }
 
+  const gp = patch.groupPatch || {};
+  let nextAdmins = gp.admins ?? base.admins;
+  if (patch.removeMemberIds?.length) {
+    nextAdmins = (nextAdmins || []).filter(id => !patch.removeMemberIds!.includes(id));
+  }
   const canonical: Chat = {
     ...base,
-    name: patch.name ?? base.name,
-    avatar: patch.avatar ?? base.avatar,
-    members: nextMembers,
-    isPublicGroup: patch.isPublicGroup ?? base.isPublicGroup,
-    inviteCode: patch.inviteCode ?? base.inviteCode,
-    joinRequests: patch.joinRequests ?? base.joinRequests,
-    admins: patch.removeMemberIds?.length
-      ? (base.admins || []).filter(id => !patch.removeMemberIds!.includes(id))
-      : base.admins,
+    ...gp,
+    name: patch.name ?? gp.name ?? base.name,
+    avatar: patch.avatar ?? gp.avatar ?? base.avatar,
+    members: gp.members?.length ? gp.members : nextMembers,
+    isPublicGroup: patch.isPublicGroup ?? gp.isPublicGroup ?? base.isPublicGroup,
+    inviteCode: patch.inviteCode ?? gp.inviteCode ?? base.inviteCode,
+    joinRequests: patch.joinRequests ?? gp.joinRequests ?? base.joinRequests,
+    admins: nextAdmins,
+    messages: gp.messages?.length
+      ? mergeMessageLists(base.messages || [], gp.messages)
+      : base.messages || [],
   };
   await syncGroupChatCanonical(canonical, members[0] || nextMembers[0] || "");
 }

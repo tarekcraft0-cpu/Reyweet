@@ -56,6 +56,7 @@ export type PostRow = {
   text: string;
   image?: string;
   video?: string;
+  audio?: string;
   likes: string[];
   reposts: string[];
   comments?: PostCommentRow[];
@@ -392,6 +393,26 @@ export async function upsertPost(row: PostRow): Promise<void> {
   return withLock("posts", async () => {
     const map = await readJson<Record<string, PostRow>>(filePaths.posts, {});
     map[row.id] = { ...row, updatedAt: new Date().toISOString() };
+    await writeJsonAtomic(filePaths.posts, map);
+  });
+}
+
+/**
+ * يكتب بيانات المنشور العامة مع الحفاظ على الحالة الاجتماعية الحالية من قاعدة الخادم
+ * (likes/reposts/comments/createdAt). هذا يمنع لقطات العميل القديمة من الكتابة فوق تفاعلات حديثة.
+ */
+export async function upsertPostPreservingSocial(row: PostRow): Promise<void> {
+  return withLock("posts", async () => {
+    const map = await readJson<Record<string, PostRow>>(filePaths.posts, {});
+    const existing = map[row.id];
+    map[row.id] = {
+      ...row,
+      likes: existing?.likes ?? row.likes ?? [],
+      reposts: existing?.reposts ?? row.reposts ?? [],
+      comments: existing?.comments ?? row.comments ?? [],
+      createdAt: existing?.createdAt || row.createdAt,
+      updatedAt: new Date().toISOString(),
+    };
     await writeJsonAtomic(filePaths.posts, map);
   });
 }

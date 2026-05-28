@@ -179,7 +179,7 @@ export function StoryViewsSheet({
             </ul>
           )}
         </div>
-        <div className="shrink-0 space-y-2 border-t border-white/10 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]">
+        <div className="shrink-0 space-y-2 border-t border-white/10 p-3 pb-[max(0.75rem,var(--sab))]">
           {onDelete && (
             <button
               type="button"

@@ -105,12 +105,14 @@
 
 /** ═══ تحسينات أداء المحادثة ═══ */
 
-/* منطقة التمرير: GPU layer مستقلة — 60fps بدون إعادة رسم الصفحة */
+/* منطقة التمرير — لا تمتد تحت شريط الكتابة (يُحجز الارتفاع عبر .chat-composer-spacer) */
 .chat-scroll-pane {
   will-change: scroll-position;
-  /* isolate: creates stacking context — يمنع الـ repaint من التسرّب للخارج */
-  isolation: isolate;
   -webkit-overflow-scrolling: touch;
+  scroll-padding-bottom: 12px;
+  overflow-x: clip;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
 }
 
 /* صفوف الرسائل — layer منفصلة لكل رسالة */
@@ -118,10 +120,74 @@
   contain: layout style;
 }
 
-/* شريط الكتابة — layer ثابتة منفصلة */
+/* نجمة خفيفة الحركة في شاشة الإنشاء */
+@keyframes create-sparkle-float {
+  0% {
+    transform: translateY(0) scale(1) rotate(0deg);
+    opacity: 0.7;
+  }
+  50% {
+    transform: translateY(-2px) scale(1.08) rotate(6deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(0) scale(1) rotate(0deg);
+    opacity: 0.7;
+  }
+}
+
+.create-sparkle-float {
+  animation: create-sparkle-float 1.6s ease-in-out infinite;
+  transform-origin: center;
+}
+
+/* شريط الكتابة — ملتصق بالكيبورد (Instagram DM) */
+.chat-composer-dock {
+  position: relative;
+  z-index: 24;
+  margin-inline: 0;
+  max-width: none;
+  width: 100%;
+  /* ترتيب ثابت: حقل الكتابة ثم زر + على اليمين (خاص / قروب) */
+  direction: ltr;
+  bottom: auto;
+  padding-bottom: var(--sab);
+  background: transparent;
+  box-shadow: none;
+  transform: translateZ(0);
+  will-change: auto;
+  pointer-events: auto;
+  touch-action: auto;
+}
+
+.chat-composer-dock .chat-composer-bar,
+.chat-composer-dock .chat-composer-bar * {
+  pointer-events: auto;
+}
+
+/* keyboard behavior is handled by natural layout flow */
+
+/* غلاف المكدس: يملأ الشاشة دون ربط بـ visualViewport */
+.chat-room-viewport {
+  position: absolute;
+  inset: 0;
+  z-index: 210;
+  margin-inline: auto;
+  max-width: 28rem;
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
+}
+
 .chat-composer-bar {
+  background: transparent;
   will-change: transform;
-  isolation: isolate;
+}
+
+/** يحجز مكان الشريط في التخطيط — الرسائل لا تمرّ تحته عند التمرير */
+.chat-composer-spacer {
+  display: none;
 }
 
 /* الأزرار في شريط الكتابة */
@@ -133,6 +199,51 @@
 /* وضع ملء الشاشة عند فتح الستوري */
 html.retweet-story-open {
   overflow: hidden;
+}
+
+/** كاميرا ملء الشاشة — منع تمرير الخلفية */
+html.retweet-camera-open,
+html.retweet-camera-open body {
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+/** safe-area للويب — على iOS يُعزَّز بقيم UIKit من RetweetBridgeViewController */
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+}
+
+/**
+ * iOS/Capacitor — دمج env(safe-area-*) مع قيم UIKit (--retweet-safe-* من Swift).
+ * يمنع أزرار/هيدر خارج حدود الشاشة (نوتش / Home indicator).
+ */
+html.retweet-native-shell {
+  --sat: max(env(safe-area-inset-top, 0px), var(--retweet-safe-top, 0px));
+  --sab: max(env(safe-area-inset-bottom, 0px), var(--retweet-safe-bottom, 0px));
+  --sal: max(env(safe-area-inset-left, 0px), var(--retweet-safe-left, 0px));
+  --sar: max(env(safe-area-inset-right, 0px), var(--retweet-safe-right, 0px));
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+html.retweet-native-shell body,
+html.retweet-native-shell #root {
+  height: 100dvh;
+  max-height: 100dvh;
+  min-height: 100dvh;
+  min-height: -webkit-fill-available;
+  box-sizing: border-box;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+html.retweet-native-shell .chat-room-stack {
+  max-height: calc(100dvh - var(--sat) - var(--sab));
 }
 
 /**
@@ -214,6 +325,28 @@ html.retweet-overscroll-lock body {
 /* مناطق أمان الريلز: محتوى مهم أعلى ~70%، هامش لأزرار التفاعل يميناً */
 .reel-safe-stage {
   --reel-safe-inline-end: 4.5rem;
+}
+
+.chat-stack-scene {
+  isolation: isolate;
+  contain: layout paint;
+}
+
+.chat-stack-scene::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  opacity: calc(var(--retweet-chat-stack-progress, 0) * 0.2);
+  background: rgba(0, 0, 0, 0.1);
+  transition: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .chat-stack-scene::after {
+    backdrop-filter: blur(calc(var(--retweet-chat-stack-progress, 0) * 5px));
+  }
 }
 
 .chat-inbox-pane {

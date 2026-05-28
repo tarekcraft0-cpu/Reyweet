@@ -51,13 +51,16 @@ function PostCardInner({
   );
   const [comment, setComment] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
+  const postLikes = Array.isArray(post.likes) ? post.likes : [];
+  const postComments = Array.isArray(post.comments) ? post.comments : [];
+  const postReposts = Array.isArray(post.reposts) ? post.reposts : [];
   const guestBlock = () => {
     if (!isGuest) return false;
     notifyGuestActionBlocked();
     return true;
   };
-  const liked = currentUser ? (post.likes ?? []).includes(currentUser.id) : false;
-  const reposted = currentUser ? (post.reposts ?? []).includes(currentUser.id) : false;
+  const liked = currentUser ? postLikes.includes(currentUser.id) : false;
+  const reposted = currentUser ? postReposts.includes(currentUser.id) : false;
   const feedNotesRaw = currentUser ? visibleMediaNotes(state, "post", post.id, currentUser.id).slice(0, 5) : [];
   const feedNotes = feedNotesRaw.filter(n => {
     const nu = userById(state, n.authorId);
@@ -176,9 +179,9 @@ function PostCardInner({
         <PostFeedActions
           liked={liked}
           reposted={reposted}
-          likeCount={post.likes.length}
-          commentCount={post.comments.length}
-          repostCount={post.reposts.length}
+          likeCount={postLikes.length}
+          commentCount={postComments.length}
+          repostCount={postReposts.length}
           onLike={() => {
             if (guestBlock()) return;
             startTransition(() => toggleLike(post.id));

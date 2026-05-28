@@ -73,7 +73,7 @@ export function NotificationBanner() {
   const preview = (active.text || "").trim() || "رسالة جديدة";
 
   return (
-    <div className="fixed top-0 left-0 right-0 z-[100] max-w-md mx-auto w-full bg-card/95 backdrop-blur-md border-b border-border shadow-lg px-2 py-2 flex items-start gap-1 supports-[padding:max(0px)]:pt-[max(0.25rem,env(safe-area-inset-top,0px))]">
+    <div className="fixed top-0 left-0 right-0 z-[100] max-w-md mx-auto w-full bg-card/95 backdrop-blur-md border-b border-border shadow-lg px-2 py-2 flex items-start gap-1 supports-[padding:max(0px)]:pt-[max(0.25rem,var(--sat))]">
       <button
         type="button"
         className="flex-1 min-w-0 flex items-start gap-2 text-start py-1 ps-1 rounded-xl hover:bg-secondary/60 active:bg-secondary/80 transition-colors"

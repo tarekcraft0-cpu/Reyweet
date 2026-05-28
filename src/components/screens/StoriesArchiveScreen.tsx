@@ -12,7 +12,7 @@ function ArchiveHeader({ title, onBack }: { title: string; onBack: () => void })
   return (
     <div
       dir="rtl"
-      className="sticky top-0 z-30 flex flex-row items-center gap-3 border-b border-border bg-background px-2 py-3 pt-[max(0.5rem,env(safe-area-inset-top,0px))]"
+      className="sticky top-0 z-30 flex flex-row items-center gap-3 border-b border-border bg-background px-2 py-3 pt-[max(0.5rem,var(--sat))]"
     >
       <SlideDismissBackButton
         navScope="local"

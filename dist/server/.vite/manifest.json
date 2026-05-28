@@ -6,39 +6,73 @@
     "isDynamicEntry": true
   },
   "C:/Users/Alsafy/Downloads/-main/...-main/src/styles.css": {
-    "file": "assets/styles-r0FepBZ1.css",
+    "file": "assets/styles-Cbs4gsVA.css",
     "src": "C:/Users/Alsafy/Downloads/-main/...-main/src/styles.css"
   },
-  "_router-LwRfq5R-.js": {
-    "file": "assets/router-LwRfq5R-.js",
+  "_index-6KSep62n.js": {
+    "file": "assets/index-6KSep62n.js",
+    "name": "index",
+    "isDynamicEntry": true,
+    "imports": [
+      "_server-DCIE6J5a.js",
+      "_worker-entry-Dy5iaLOQ.js",
+      "_router-BiCTcKb8.js"
+    ],
+    "dynamicImports": [
+      "src/lib/remotePushGate.ts",
+      "src/lib/remotePushGate.ts",
+      "src/lib/remotePushGate.ts",
+      "src/lib/remotePushGate.ts",
+      "src/lib/remotePushGate.ts",
+      "src/lib/remotePushGate.ts",
+      "node_modules/@capacitor/keyboard/dist/esm/index.js"
+    ],
+    "assets": [
+      "assets/logo-CxSayFoa.png"
+    ]
+  },
+  "_router-BiCTcKb8.js": {
+    "file": "assets/router-BiCTcKb8.js",
     "name": "router",
     "isDynamicEntry": true,
     "imports": [
-      "_server-cOnhn9i1.js"
+      "_server-DCIE6J5a.js"
     ],
     "dynamicImports": [
-      "src/routes/index.tsx?tsr-split=component"
+      "_index-6KSep62n.js"
     ],
     "assets": [
-      "assets/styles-r0FepBZ1.css"
+      "assets/styles-Cbs4gsVA.css"
     ]
   },
-  "_server-cOnhn9i1.js": {
-    "file": "assets/server-cOnhn9i1.js",
+  "_server-DCIE6J5a.js": {
+    "file": "assets/server-DCIE6J5a.js",
     "name": "server",
     "isDynamicEntry": true,
     "dynamicImports": [
       "tanstack-start-manifest:v",
-      "_router-LwRfq5R-.js",
+      "_router-BiCTcKb8.js",
       "src/start.ts",
       "%23tanstack-start-plugin-adapters"
     ]
   },
-  "_worker-entry-Bhjg5D_H.js": {
-    "file": "assets/worker-entry-Bhjg5D_H.js",
+  "_worker-entry-Dy5iaLOQ.js": {
+    "file": "assets/worker-entry-Dy5iaLOQ.js",
     "name": "worker-entry",
     "dynamicImports": [
-      "_server-cOnhn9i1.js"
+      "_server-DCIE6J5a.js"
+    ]
+  },
+  "node_modules/@capacitor/keyboard/dist/esm/index.js": {
+    "file": "assets/index-407G7XJi.js",
+    "name": "index",
+    "src": "node_modules/@capacitor/keyboard/dist/esm/index.js",
+    "isDynamicEntry": true,
+    "imports": [
+      "_index-6KSep62n.js",
+      "_server-DCIE6J5a.js",
+      "_worker-entry-Dy5iaLOQ.js",
+      "_router-BiCTcKb8.js"
     ]
   },
   "src/assets/logo.png": {
@@ -51,39 +85,17 @@
     "src": "src/lib/remotePushGate.ts",
     "isDynamicEntry": true
   },
-  "src/routes/index.tsx?tsr-split=component": {
-    "file": "assets/index-DZSD8SVg.js",
-    "name": "index",
-    "src": "src/routes/index.tsx?tsr-split=component",
-    "isDynamicEntry": true,
-    "imports": [
-      "_server-cOnhn9i1.js",
-      "_worker-entry-Bhjg5D_H.js",
-      "_router-LwRfq5R-.js"
-    ],
-    "dynamicImports": [
-      "src/lib/remotePushGate.ts",
-      "src/lib/remotePushGate.ts",
-      "src/lib/remotePushGate.ts",
-      "src/lib/remotePushGate.ts",
-      "src/lib/remotePushGate.ts",
-      "src/lib/remotePushGate.ts"
-    ],
-    "assets": [
-      "assets/logo-CxSayFoa.png"
-    ]
-  },
   "src/start.ts": {
-    "file": "assets/start-9fDPFm7S.js",
+    "file": "assets/start-CpZnrPJE.js",
     "name": "start",
     "src": "src/start.ts",
     "isDynamicEntry": true,
     "imports": [
-      "_worker-entry-Bhjg5D_H.js"
+      "_worker-entry-Dy5iaLOQ.js"
     ]
   },
   "tanstack-start-manifest:v": {
-    "file": "assets/_tanstack-start-manifest_v-hCZFMPbZ.js",
+    "file": "assets/_tanstack-start-manifest_v-3tTbWCv8.js",
     "name": "_tanstack-start-manifest_v",
     "src": "tanstack-start-manifest:v",
     "isDynamicEntry": true
@@ -94,7 +106,7 @@
     "src": "virtual:cloudflare/worker-entry",
     "isEntry": true,
     "imports": [
-      "_worker-entry-Bhjg5D_H.js"
+      "_worker-entry-Dy5iaLOQ.js"
     ]
   }
 }

@@ -15,6 +15,18 @@ import { MainTabStack } from "./MainTabStack";
 // import { StoryViewer } from "./StoryViewer";
 import { QURAN_CHANNEL_ID, useApp, userById } from "@/lib/store";
 import { STORY_FULLSCREEN_EVENT } from "@/lib/storyChrome";
+import {
+  notifyStoryPickerClose,
+  notifyStoryPickerOpen,
+  resetMediaChromeOverlays,
+  STORY_GALLERY_OPEN_EVENT,
+} from "@/lib/camera/cameraEvents";
+import { notifyGuestActionBlocked } from "@/lib/guestBlocked";
+import { StoryGalleryPicker } from "./story/StoryGalleryPicker";
+import { InstagramCamera } from "./camera/InstagramCamera";
+import { CameraCaptureShareScreen } from "./camera/CameraCaptureShareScreen";
+import type { CameraComposeDraft } from "./chat/ChatCameraComposeModal";
+import { REPORT_SHEET_OPEN_EVENT } from "@/lib/reportSheetChrome";
 import { AppErrorBoundary } from "./AppErrorBoundary";
 import {
   ChatTabPanel,
@@ -28,7 +40,7 @@ import { logAuthRoute } from "@/lib/authRouteDebug";
 import { isGuestUserId } from "@/lib/guestUser";
 import { PROFILE_RETURN_POST_KEY, type ProfileReturnContext } from "@/lib/types";
 import { useT } from "@/lib/i18n";
-import { Home, Search, Plus, Menu, ChevronDown, ChevronRight, Heart, Lock, Footprints, EyeOff, ArrowRight } from "lucide-react";
+import { Home, Search, Camera, Plus, Menu, ChevronDown, ChevronRight, Heart, Lock, Footprints, EyeOff, ArrowRight } from "lucide-react";
 import { BottomNavSheet } from "./BottomNavSheet";
 import { useBottomNavDragContext } from "@/lib/bottomNavDragContext";
 import { NAV_HIDE_PROGRESS_CSS_VAR } from "@/hooks/useBottomNavSheet";
@@ -41,7 +53,6 @@ import {
   NAV_SCROLL_PADDING_CSS_VAR,
   NAV_SCROLL_PADDING_DEFAULT,
 } from "@/lib/bottomNavConfig";
-import { InstagramReelsIcon } from "./icons/InstagramReelsIcon";
 import { DirectMessagesNavIcon } from "./icons/DirectMessagesNavIcon";
 import { VerifiedMarkForUser } from "./VerifiedBadge";
 
@@ -51,7 +62,8 @@ const NAV_MSG_ICON = "pointer-events-none h-[26px] w-[26px] shrink-0 text-white"
 import { HomeScreen } from "./screens/HomeScreen";
 import { SearchScreen } from "./screens/SearchScreen";
 import { ReelsScreen } from "./screens/ReelsScreen";
-import { ChatScreen, CHAT_DISMISS_PULL_CSS_VAR, CHAT_STACK_PROGRESS_VAR } from "./screens/ChatScreen";
+import { ChatScreen, CHAT_DISMISS_PULL_CSS_VAR } from "./screens/ChatScreen";
+import { CHAT_STACK_PROGRESS_VAR } from "@/lib/chatStackGestureEngine";
 
 import { ProfileScreen } from "./screens/ProfileScreen";
 import { SettingsScreen } from "./screens/SettingsScreen";
@@ -75,6 +87,10 @@ import {
 } from "@/lib/accountSessions";
 import { useNavDoubleTap } from "@/hooks/useNavDoubleTap";
 import logo from "@/assets/logo.png";
+import { BanScreen } from "./moderation/BanScreen";
+import { apiGetMyModerationStatus } from "@/lib/moderationApi";
+import type { BanInfo } from "@/lib/moderationBanTypes";
+import { AccountRestoredScreen } from "./moderation/AccountRestoredScreen";
 
 type Tab = "home" | "search" | "reels" | "chat" | "profile";
 type Modal = null | "settings" | "create" | "edit" | "switcher" | "addAccount" | "notifications" | "visitors";
@@ -92,8 +108,12 @@ export function App() {
     isGuest,
     exitGuestBrowseMode,
     joinGroupByInviteCode,
+    logout,
   } = useApp();
   const t = useT();
+  const [banInfo, setBanInfo] = useState<BanInfo | null>(null);
+  const [appealPending, setAppealPending] = useState(false);
+  const [restoredAppealId, setRestoredAppealId] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("home");
   const [modal, setModal] = useState<Modal>(null);
   const [createInitial, setCreateInitial] = useState<CreateScreenInitial | null>(null);
@@ -116,6 +136,13 @@ export function App() {
   /** سحب خروج المحادثة نشط — التقدّم في NAV_HIDE_PROGRESS_CSS_VAR (بدون setState كل إطار) */
   const [chatExitNavActive, setChatExitNavActive] = useState(false);
   const [postDetailOpen, setPostDetailOpen] = useState(false);
+  const [reportSheetOpen, setReportSheetOpen] = useState(false);
+  const [reelsCommentsOpen, setReelsCommentsOpen] = useState(false);
+  const [chatCreateSheetOpen, setChatCreateSheetOpen] = useState(false);
+  const [cameraFullscreenOpen, setCameraFullscreenOpen] = useState(false);
+  const [storyGalleryOpen, setStoryGalleryOpen] = useState(false);
+  const [storyInstagramCameraOpen, setStoryInstagramCameraOpen] = useState(false);
+  const [storyCameraDraft, setStoryCameraDraft] = useState<CameraComposeDraft | null>(null);
   const [showWelcome, setShowWelcome] = useState(false);
   /** إعادة فتح منشور/تعليقات بعد الرجوع من بروفايل (لا يُفوَّض لحدث لأن الشاشة كانت مُزالة من الشجرة) */
   const [restorePostContext, setRestorePostContext] = useState<ProfileReturnContext | null>(null);
@@ -130,6 +157,74 @@ export function App() {
       window.removeEventListener("retweet-post-detail-open", onOpen);
       window.removeEventListener("retweet-post-detail-close", onClose);
     };
+  }, []);
+
+  useEffect(() => {
+    const onCamOpen = () => setCameraFullscreenOpen(true);
+    const onCamClose = () => setCameraFullscreenOpen(false);
+    window.addEventListener("retweet-camera-open", onCamOpen);
+    window.addEventListener("retweet-camera-close", onCamClose);
+    return () => {
+      window.removeEventListener("retweet-camera-open", onCamOpen);
+      window.removeEventListener("retweet-camera-close", onCamClose);
+    };
+  }, []);
+
+  useEffect(() => {
+    resetMediaChromeOverlays();
+  }, []);
+
+  const closeStoryGallery = useCallback(() => {
+    setStoryGalleryOpen(false);
+    notifyStoryPickerClose();
+  }, []);
+
+  const openStoryGallery = useCallback(() => {
+    if (isGuest) {
+      notifyGuestActionBlocked();
+      return;
+    }
+    setStoryGalleryOpen(true);
+    notifyStoryPickerOpen();
+  }, [isGuest]);
+
+  useEffect(() => {
+    const onRequest = () => openStoryGallery();
+    window.addEventListener(STORY_GALLERY_OPEN_EVENT, onRequest);
+    return () => window.removeEventListener(STORY_GALLERY_OPEN_EVENT, onRequest);
+  }, [openStoryGallery]);
+
+  useEffect(() => {
+    const onGoReels = () => setTab("reels");
+    window.addEventListener("retweet-go-reels", onGoReels);
+    return () => window.removeEventListener("retweet-go-reels", onGoReels);
+  }, []);
+
+  useEffect(() => {
+    const onReportSheet = (e: Event) => {
+      const open = (e as CustomEvent<{ open?: boolean }>).detail?.open;
+      setReportSheetOpen(!!open);
+    };
+    window.addEventListener(REPORT_SHEET_OPEN_EVENT, onReportSheet);
+    return () => window.removeEventListener(REPORT_SHEET_OPEN_EVENT, onReportSheet);
+  }, []);
+
+  useEffect(() => {
+    const onReelsComments = (e: Event) => {
+      const open = (e as CustomEvent<{ open?: boolean }>).detail?.open;
+      setReelsCommentsOpen(!!open);
+    };
+    window.addEventListener("retweet-reels-comments-open", onReelsComments);
+    return () => window.removeEventListener("retweet-reels-comments-open", onReelsComments);
+  }, []);
+
+  useEffect(() => {
+    const onChatCreateSheet = (e: Event) => {
+      const open = (e as CustomEvent<{ open?: boolean }>).detail?.open;
+      setChatCreateSheetOpen(!!open);
+    };
+    window.addEventListener("retweet-chat-create-sheet", onChatCreateSheet);
+    return () => window.removeEventListener("retweet-chat-create-sheet", onChatCreateSheet);
   }, []);
 
   useEffect(() => {
@@ -253,6 +348,44 @@ export function App() {
     if (!peerId || peerId === currentUser.id) return;
     void switchAccount(peerId);
   }, [isGuest, accountSwitching, currentUser, switchAccount]);
+
+  useEffect(() => {
+    if (!currentUser || isGuest || !apiBackendEnabled()) {
+      setBanInfo(null);
+      setAppealPending(false);
+      setRestoredAppealId(null);
+      return;
+    }
+    void apiGetMyModerationStatus().then(r => {
+      if (!r.ok) {
+        setBanInfo(null);
+        setAppealPending(false);
+        setRestoredAppealId(null);
+        return;
+      }
+      setBanInfo(r.data.banInfo ?? null);
+      setAppealPending(
+        !!r.data.activeAppeal &&
+          (r.data.activeAppeal.status === "pending" || r.data.activeAppeal.status === "under_review"),
+      );
+      const approvedId = r.data.latestAppeal?.status === "approved" ? r.data.latestAppeal.id : null;
+      if (approvedId) {
+        const shownKey = `retweet_restored_shown_${currentUser.id}_${approvedId}`;
+        const alreadyShown = localStorage.getItem(shownKey) === "1";
+        setRestoredAppealId(alreadyShown ? null : approvedId);
+      } else {
+        setRestoredAppealId(null);
+      }
+    });
+    const onMod = (e: Event) => {
+      const d = (e as CustomEvent).detail as { banInfo?: BanInfo; accountStatus?: string };
+      if (d?.banInfo) setBanInfo(d.banInfo);
+      if (d?.accountStatus === "ACTIVE") setBanInfo(null);
+      if (d?.accountStatus === "ACTIVE") setAppealPending(false);
+    };
+    window.addEventListener("retweet-account-moderation", onMod);
+    return () => window.removeEventListener("retweet-account-moderation", onMod);
+  }, [currentUser?.id, isGuest]);
 
   useEffect(() => {
     const onSwitchFail = (e: Event) => {
@@ -670,7 +803,7 @@ export function App() {
     if (!currentUser) {
       return { home: null, search: null, reels: null, chat: null, profile: null };
     }
-    const chatImmersive = tab === "chat" && (chatThreadOpen || chatHideBottomNav);
+    const chatImmersive = tab === "chat" && chatThreadOpen;
     return {
       home: (
         <HomeTabPanel
@@ -787,11 +920,43 @@ export function App() {
     return (
       <div
         key={`switch-${accountSessionKey}`}
-        className="flex min-h-dvh flex-col items-center justify-center gap-3 bg-background px-6 text-center text-sm text-muted-foreground"
+        className="flex min-h-dvh flex-col items-center justify-center bg-black px-6"
       >
-        <p className="font-medium text-foreground">جاري تبديل الحساب…</p>
-        <p className="text-xs">يتم قطع الاتصال الآمن وتحميل بيانات الحساب الجديد</p>
+        <div className="relative">
+          <div className="h-24 w-24 rounded-full border border-white/15 border-t-white/70 animate-spin" />
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <img
+              src={logo}
+              alt="Retweet"
+              className="h-14 w-14 select-none dark:invert animate-pulse"
+              draggable={false}
+            />
+          </div>
+        </div>
       </div>
+    );
+  }
+
+  if (restoredAppealId && currentUser && !isGuest) {
+    return (
+      <AccountRestoredScreen
+        onContinue={() => {
+          const shownKey = `retweet_restored_shown_${currentUser.id}_${restoredAppealId}`;
+          localStorage.setItem(shownKey, "1");
+          setRestoredAppealId(null);
+        }}
+      />
+    );
+  }
+
+  if (banInfo && !isGuest) {
+    return (
+      <BanScreen
+        banInfo={banInfo}
+        hasPendingAppeal={appealPending}
+        onAppealSubmitted={() => setAppealPending(true)}
+        onLogout={() => logout()}
+      />
     );
   }
 
@@ -800,8 +965,9 @@ export function App() {
   ).length;
   const showChatThreadChrome = tab === "chat" && chatThreadOpen;
   /** محادثة مفتوحة — إخفاء الشريط السفلي وملء الشاشة (يُحدَّث من ChatScreen عبر onThreadOpen) */
+  /** أثناء السحب التفاعلي يبقى الشريط السفلي ظاهراً ويتحرك عبر NAV_HIDE_PROGRESS */
   const chatImmersiveMode =
-    tab === "chat" && (chatThreadOpen || chatHideBottomNav) && !chatExitNavActive;
+    tab === "chat" && chatThreadOpen && !chatExitNavActive;
   const postImmersiveMode = postDetailOpen;
   const immersiveOverlay = chatImmersiveMode || postImmersiveMode;
 
@@ -819,6 +985,7 @@ export function App() {
   const hideAppHeader =
     tab === "chat" ||
     tab === "search" ||
+    tab === "reels" ||
     onProfileTab ||
     viewingOtherUserProfile ||
     storyFullscreen ||
@@ -828,7 +995,12 @@ export function App() {
     (immersiveOverlay && !chatExitNavActive) ||
     storyFullscreen ||
     !!profileOverlayUserId ||
-    settingsImmersive;
+    settingsImmersive ||
+    reportSheetOpen ||
+    reelsCommentsOpen ||
+    chatCreateSheetOpen ||
+    cameraFullscreenOpen ||
+    storyGalleryOpen;
   const showBottomNav = !hideBottomBar || chatExitNavActive;
 
   return (
@@ -838,7 +1010,7 @@ export function App() {
         "retweet-no-select-pane select-none relative mx-auto flex w-full max-w-md flex-col overflow-x-hidden overscroll-none bg-background supports-[height:100dvh] " +
         (immersiveOverlay || settingsImmersive
           ? "h-dvh max-h-dvh overflow-hidden pt-0"
-          : "h-dvh max-h-dvh overflow-hidden pt-[env(safe-area-inset-top,0px)]")
+          : "h-dvh max-h-dvh overflow-hidden pt-[var(--sat,0px)]")
       }
       style={
         {
@@ -849,12 +1021,12 @@ export function App() {
       {...nativeNoSelectCaptureHandlers}
     >
       {guestToast && (
-        <div className="fixed left-3 right-3 top-[max(0.75rem,env(safe-area-inset-top,0px))] z-[500] mx-auto max-w-md rounded-2xl border border-border bg-card px-4 py-3 text-start text-sm shadow-lg">
+        <div className="fixed left-3 right-3 top-[max(0.75rem,var(--sat,0px))] z-[500] mx-auto max-w-md rounded-2xl border border-border bg-card px-4 py-3 text-start text-sm shadow-lg">
           سجّل الدخول أو أنشئ حساباً لاستخدام هذه الميزة (إعجاب، رسائل، متابعة…).
         </div>
       )}
       {switchFailToast && (
-        <div className="fixed left-3 right-3 top-[max(0.75rem,env(safe-area-inset-top,0px))] z-[501] mx-auto max-w-md rounded-2xl border border-destructive/40 bg-card px-4 py-3 text-start text-sm text-destructive shadow-lg">
+        <div className="fixed left-3 right-3 top-[max(0.75rem,var(--sat,0px))] z-[501] mx-auto max-w-md rounded-2xl border border-destructive/40 bg-card px-4 py-3 text-start text-sm text-destructive shadow-lg">
           {switchFailToast}
         </div>
       )}
@@ -948,8 +1120,12 @@ export function App() {
             <NavBtn tabIndex={1} onClick={() => onNavSelectIndex(1)}>
               <Search className={NAV_ICON} strokeWidth={2} />
             </NavBtn>
-            <NavBtn tabIndex={2} onClick={() => onNavSelectIndex(2)}>
-              <InstagramReelsIcon className={NAV_ICON} strokeWidth={2} />
+            <NavBtn
+              tabIndex={2}
+              suppressRowSelect
+              onClick={() => setStoryInstagramCameraOpen(true)}
+            >
+              <Camera className={NAV_ICON} strokeWidth={2} />
             </NavBtn>
             <NavBtn tabIndex={3} onClick={() => onNavSelectIndex(3)}>
               <div className="relative">
@@ -1049,7 +1225,14 @@ export function App() {
 
       {modal === "settings" && (
         <AppDismissSheet
-          onClose={() => setModal(null)}
+          onClose={() => {
+            try {
+              document.documentElement.style.removeProperty(SETTINGS_DISMISS_PULL_CSS_VAR);
+            } catch {
+              /* ignore */
+            }
+            setModal(null);
+          }}
           overlayZIndex={120}
           dismissPullCssVar={SETTINGS_DISMISS_PULL_CSS_VAR}
           darkPanelChrome={state.theme === "dark"}
@@ -1180,16 +1363,48 @@ export function App() {
           </div>
         </div>
       )}
+
+      <StoryGalleryPicker
+        open={storyGalleryOpen}
+        language={state.language}
+        onClose={closeStoryGallery}
+        onOpenCamera={() => {
+          closeStoryGallery();
+          setStoryInstagramCameraOpen(true);
+        }}
+        onPickDraft={draft => {
+          closeStoryGallery();
+          setStoryCameraDraft(draft);
+        }}
+      />
+      <InstagramCamera
+        open={storyInstagramCameraOpen}
+        language={state.language}
+        onClose={() => setStoryInstagramCameraOpen(false)}
+        onCapture={cap => {
+          setStoryInstagramCameraOpen(false);
+          setStoryCameraDraft({ kind: cap.kind, dataUrl: cap.dataUrl });
+        }}
+      />
+      {storyCameraDraft && (
+        <CameraCaptureShareScreen
+          draft={storyCameraDraft}
+          language={state.language}
+          onClose={() => setStoryCameraDraft(null)}
+        />
+      )}
     </div>
   );
 }
 
 const NavBtn = memo(function NavBtn({
   tabIndex = 0,
+  suppressRowSelect = false,
   onClick,
   children,
 }: {
   tabIndex?: number;
+  suppressRowSelect?: boolean;
   onClick: () => void;
   children: React.ReactNode;
 }) {
@@ -1205,6 +1420,19 @@ const NavBtn = memo(function NavBtn({
       type="button"
       data-nav-tab-btn
       data-nav-tab-index={tabIndex}
+      data-nav-suppress-row-select={suppressRowSelect ? "true" : "false"}
+      onPointerDown={e => {
+        if (!suppressRowSelect) return;
+        e.stopPropagation();
+      }}
+      onPointerUp={e => {
+        if (!suppressRowSelect) return;
+        e.stopPropagation();
+      }}
+      onPointerCancel={e => {
+        if (!suppressRowSelect) return;
+        e.stopPropagation();
+      }}
       onClick={e => {
         e.stopPropagation();
         fire();

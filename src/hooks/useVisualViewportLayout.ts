@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { readChatKeyboardSnapshot } from "@/lib/chatKeyboardInsets";
 
 export type VisualViewportLayout = {
   /** ارتفاع المنطقة المرئية (فوق الكيبورد) */
@@ -10,31 +11,17 @@ export type VisualViewportLayout = {
 };
 
 function readVisualViewportLayout(): VisualViewportLayout {
-  if (typeof window === "undefined") {
-    return { height: 0, offsetTop: 0, keyboardInset: 0 };
-  }
-  const vv = window.visualViewport;
-  if (!vv) {
-    return {
-      height: window.innerHeight,
-      offsetTop: 0,
-      keyboardInset: 0,
-    };
-  }
-  const keyboardInset = Math.max(
-    0,
-    Math.round(window.innerHeight - vv.height - vv.offsetTop),
-  );
+  const snap = readChatKeyboardSnapshot();
   return {
-    height: Math.round(vv.height),
-    offsetTop: Math.round(vv.offsetTop),
-    keyboardInset,
+    height: snap.vvHeight,
+    offsetTop: snap.vvOffsetTop,
+    keyboardInset: snap.keyboardInset,
   };
 }
 
 /** padding سفلي للمُلحق — safe-area فقط عند إغلاق الكيبورد */
 export function chatComposerBottomPadding(keyboardOpen: boolean): string {
-  return keyboardOpen ? "0px" : "env(safe-area-inset-bottom, 0px)";
+  return keyboardOpen ? "0px" : "var(--chat-sab-effective, var(--sab))";
 }
 
 /**
@@ -56,12 +43,6 @@ export function useVisualViewportLayout(): VisualViewportLayout {
       raf = requestAnimationFrame(() => {
         raf = 0;
         const next = readVisualViewportLayout();
-
-        // كتابة CSS vars مباشرة — بدون re-render React
-        const root = document.documentElement;
-        root.style.setProperty("--vv-height", `${next.height}px`);
-        root.style.setProperty("--vv-offset-top", `${next.offsetTop}px`);
-        root.style.setProperty("--vv-keyboard-inset", `${next.keyboardInset}px`);
 
         // re-render React فقط عند تغيّر حالة الكيبورد (مفتوح/مغلق)
         const wasOpen = prevInsetRef.current > 8;

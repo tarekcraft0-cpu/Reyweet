@@ -1,19 +1,15 @@
-import { r as reactExports, a2 as getAugmentedNamespace, S as getDefaultExportFromCjs, W as jsxRuntimeExports, V as React__default, a3 as React } from "./server-cOnhn9i1.js";
+import { r as reactExports, a2 as getAugmentedNamespace, S as getDefaultExportFromCjs, W as jsxRuntimeExports, V as React__default, a3 as React } from "./server-DCIE6J5a.js";
 import require$$0 from "fs";
 import require$$1 from "url";
-import { n as notImplementedClass, a as notImplemented } from "./worker-entry-Bhjg5D_H.js";
+import { n as notImplementedClass, a as notImplemented } from "./worker-entry-Dy5iaLOQ.js";
 import require$$3 from "http";
 import require$$4 from "https";
-import { r as reactDomExports, R as ReactDOM } from "./router-LwRfq5R-.js";
+import { r as reactDomExports, R as ReactDOM } from "./router-BiCTcKb8.js";
 import require$$0$1 from "util";
 import require$$1$1 from "stream";
 import require$$1$2 from "zlib";
 import require$$0$2 from "assert";
 import require$$3$1 from "buffer";
-import "node:async_hooks";
-import "node:stream/web";
-import "node:stream";
-import "node:events";
 function _mergeNamespaces(n, m) {
   for (var i = 0; i < m.length; i++) {
     const e = m[i];
@@ -273,8 +269,8 @@ class WebPlugin {
     if (!listeners) {
       return;
     }
-    const index = listeners.indexOf(listenerFunc);
-    this.listeners[eventName].splice(index, 1);
+    const index2 = listeners.indexOf(listenerFunc);
+    this.listeners[eventName].splice(index2, 1);
     if (!this.listeners[eventName].length) {
       this.removeWindowListener(this.windowListeners[eventName]);
     }
@@ -369,8 +365,8 @@ const readBlobAsBase64 = async (blob) => new Promise((resolve, reject) => {
 const normalizeHttpHeaders = (headers = {}) => {
   const originalKeys = Object.keys(headers);
   const loweredKeys = Object.keys(headers).map((k) => k.toLocaleLowerCase());
-  const normalized = loweredKeys.reduce((acc, key, index) => {
-    acc[key] = headers[originalKeys[index]];
+  const normalized = loweredKeys.reduce((acc, key, index2) => {
+    acc[key] = headers[originalKeys[index2]];
     return acc;
   }, {});
   return normalized;
@@ -980,7 +976,14 @@ function coerceMediaBaseForHttpsPage(base) {
   }
   return window.location.origin.replace(/\/$/, "");
 }
+function pageOriginForMedia() {
+  if (typeof window === "undefined") return "";
+  return window.location.origin.replace(/\/$/, "");
+}
 function getMediaResolveBase() {
+  if (typeof window !== "undefined" && isPublicAppHost() && !isVpsProductionHost()) {
+    return pageOriginForMedia();
+  }
   const fromApi = getApiBaseUrl() || peekApiBaseUrl();
   if (fromApi?.trim()) return coerceMediaBaseForHttpsPage(fromApi.trim());
   if (typeof window !== "undefined") {
@@ -989,7 +992,14 @@ function getMediaResolveBase() {
     if (injected && !isPrivateApiUrl(injected))
       return coerceMediaBaseForHttpsPage(injected);
   }
-  return "";
+  return pageOriginForMedia();
+}
+function resolveServerMediaPath(pathnameOnly, search) {
+  const origin = pageOriginForMedia();
+  if (origin) return `${origin}${pathnameOnly}${search}`;
+  const base = getMediaResolveBase().replace(/\/$/, "");
+  if (base) return `${base}${pathnameOnly}${search}`;
+  return `${pathnameOnly}${search}`;
 }
 function normalizeMediaRef(src) {
   const v = (src ?? "").trim();
@@ -1012,11 +1022,9 @@ function normalizeMediaRef(src) {
     }
   }
   if (path.startsWith("/media/")) {
-    const base = getMediaResolveBase().replace(/\/$/, "");
     const search = path.includes("?") ? path.slice(path.indexOf("?")) : "";
     const pathnameOnly = path.split("?")[0] ?? path;
-    if (base) return `${base}${pathnameOnly}${search}`;
-    return `${pathnameOnly}${search}`;
+    return resolveServerMediaPath(pathnameOnly, search);
   }
   if (/^https?:\/\//i.test(v)) {
     try {
@@ -1024,14 +1032,13 @@ function normalizeMediaRef(src) {
       if (isPrivateApiUrl(v)) return "";
       if (isTunnelPublicHost(u.hostname) || /\.trycloudflare\.com$/i.test(u.hostname)) return "";
       if (u.pathname.startsWith("/media/")) {
-        const b = getMediaResolveBase().replace(/\/$/, "");
-        const origin = typeof window !== "undefined" ? window.location.origin.replace(/\/$/, "") : "";
-        const merged = (b || origin).replace(/\/$/, "");
-        return merged ? `${merged}${u.pathname}${u.search || ""}` : `${u.pathname}${u.search || ""}`;
+        return resolveServerMediaPath(u.pathname, u.search || "");
       }
-      if (u.hostname === PRODUCTION_VPS_HOST && (u.pathname.startsWith("/stickers/") || u.pathname.startsWith("/app/") || u.pathname.startsWith("/public/"))) {
-        const origin = typeof window !== "undefined" ? window.location.origin.replace(/\/$/, "") : "";
-        if (origin) return `${origin}${u.pathname}${u.search || ""}`;
+      if (u.hostname === PRODUCTION_VPS_HOST) {
+        const origin = pageOriginForMedia();
+        if (origin && (u.pathname.startsWith("/media/") || u.pathname.startsWith("/stickers/") || u.pathname.startsWith("/app/") || u.pathname.startsWith("/public/"))) {
+          return `${origin}${u.pathname}${u.search || ""}`;
+        }
       }
       const h = u.hostname;
       if (typeof window !== "undefined" && h === window.location.hostname)
@@ -2000,6 +2007,9 @@ async function apiLogin(identifier, password) {
   }
   if (!res.ok) {
     logApi("login-failed", { status: res.status, error: data.error });
+    if (res.status === 403 && data.error === "account_banned" && data.banInfo) {
+      return { ok: false, banned: true, banInfo: data.banInfo, error: data.error };
+    }
     return { ok: false, error: data.error || `فشل تسجيل الدخول (${res.status})` };
   }
   if (data.requiresOtp) {
@@ -10008,6 +10018,7 @@ function AppProvider({
       avatar,
       members: Array.from(/* @__PURE__ */ new Set([creatorId, ...memberIds])),
       admins: [creatorId],
+      ownerId: creatorId,
       messages: [],
       lastOpenAtByUser: {},
       lastReadMessageIdByUser: {},
@@ -11489,6 +11500,33 @@ function AppProvider({
         });
         return;
       }
+      if (event === "group:updated") {
+        const payload = data;
+        if (!payload?.chatId || !payload.patch) return;
+        setState((s) => ({
+          ...s,
+          chats: s.chats.map(
+            (c) => c.id === payload.chatId ? normalizeChatRecord({ ...c, ...payload.patch }) : c
+          )
+        }));
+        return;
+      }
+      if (event === "group:deleted") {
+        const payload = data;
+        if (!payload?.chatId) return;
+        setState((s) => ({
+          ...s,
+          chats: s.chats.filter((c) => c.id !== payload.chatId)
+        }));
+        return;
+      }
+      if (event === "account:moderation") {
+        try {
+          window.dispatchEvent(new CustomEvent("retweet-account-moderation", { detail: data }));
+        } catch {
+        }
+        return;
+      }
       if (event === "sync_hint") {
         const kind = data?.kind;
         if (kind === "chats" || kind === "feed" || kind === "story" || kind === "profile") {
@@ -11893,8 +11931,8 @@ async function bootstrapWebAppSession() {
   if (!apiBackendEnabled()) return;
   await hydrateFromApiToken();
 }
-const mergeClasses = (...classes) => classes.filter((className, index, array) => {
-  return Boolean(className) && className.trim() !== "" && array.indexOf(className) === index;
+const mergeClasses = (...classes) => classes.filter((className, index2, array) => {
+  return Boolean(className) && className.trim() !== "" && array.indexOf(className) === index2;
 }).join(" ").trim();
 const toKebabCase = (string) => string.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
 const toCamelCase = (string) => string.replace(
@@ -11969,23 +12007,23 @@ const createLucideIcon = (iconName, iconNode) => {
   Component.displayName = toPascalCase(iconName);
   return Component;
 };
-const __iconNode$1s = [
+const __iconNode$1y = [
   ["rect", { width: "20", height: "5", x: "2", y: "3", rx: "1", key: "1wp1u1" }],
   ["path", { d: "M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8", key: "1s80jp" }],
   ["path", { d: "M10 12h4", key: "a56b0p" }]
 ];
-const Archive = createLucideIcon("archive", __iconNode$1s);
-const __iconNode$1r = [
+const Archive = createLucideIcon("archive", __iconNode$1y);
+const __iconNode$1x = [
   ["path", { d: "M5 12h14", key: "1ays0h" }],
   ["path", { d: "m12 5 7 7-7 7", key: "xquz4c" }]
 ];
-const ArrowRight = createLucideIcon("arrow-right", __iconNode$1r);
-const __iconNode$1q = [
+const ArrowRight = createLucideIcon("arrow-right", __iconNode$1x);
+const __iconNode$1w = [
   ["circle", { cx: "12", cy: "12", r: "4", key: "4exip2" }],
   ["path", { d: "M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8", key: "7n84p3" }]
 ];
-const AtSign = createLucideIcon("at-sign", __iconNode$1q);
-const __iconNode$1p = [
+const AtSign = createLucideIcon("at-sign", __iconNode$1w);
+const __iconNode$1v = [
   [
     "path",
     {
@@ -11995,8 +12033,13 @@ const __iconNode$1p = [
   ],
   ["path", { d: "m9 12 2 2 4-4", key: "dzmm74" }]
 ];
-const BadgeCheck = createLucideIcon("badge-check", __iconNode$1p);
-const __iconNode$1o = [
+const BadgeCheck = createLucideIcon("badge-check", __iconNode$1v);
+const __iconNode$1u = [
+  ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
+  ["path", { d: "M4.929 4.929 19.07 19.071", key: "196cmz" }]
+];
+const Ban = createLucideIcon("ban", __iconNode$1u);
+const __iconNode$1t = [
   ["path", { d: "M10.268 21a2 2 0 0 0 3.464 0", key: "vwvbt9" }],
   [
     "path",
@@ -12008,8 +12051,8 @@ const __iconNode$1o = [
   ["path", { d: "m2 2 20 20", key: "1ooewy" }],
   ["path", { d: "M8.668 3.01A6 6 0 0 1 18 8c0 2.687.77 4.653 1.707 6.05", key: "1hqiys" }]
 ];
-const BellOff = createLucideIcon("bell-off", __iconNode$1o);
-const __iconNode$1n = [
+const BellOff = createLucideIcon("bell-off", __iconNode$1t);
+const __iconNode$1s = [
   ["path", { d: "M10.268 21a2 2 0 0 0 3.464 0", key: "vwvbt9" }],
   [
     "path",
@@ -12019,8 +12062,8 @@ const __iconNode$1n = [
     }
   ]
 ];
-const Bell = createLucideIcon("bell", __iconNode$1n);
-const __iconNode$1m = [
+const Bell = createLucideIcon("bell", __iconNode$1s);
+const __iconNode$1r = [
   ["path", { d: "M12 7v14", key: "1akyts" }],
   [
     "path",
@@ -12030,8 +12073,8 @@ const __iconNode$1m = [
     }
   ]
 ];
-const BookOpen = createLucideIcon("book-open", __iconNode$1m);
-const __iconNode$1l = [
+const BookOpen = createLucideIcon("book-open", __iconNode$1r);
+const __iconNode$1q = [
   [
     "path",
     {
@@ -12040,8 +12083,8 @@ const __iconNode$1l = [
     }
   ]
 ];
-const Bookmark = createLucideIcon("bookmark", __iconNode$1l);
-const __iconNode$1k = [
+const Bookmark = createLucideIcon("bookmark", __iconNode$1q);
+const __iconNode$1p = [
   [
     "path",
     {
@@ -12051,92 +12094,108 @@ const __iconNode$1k = [
   ],
   ["circle", { cx: "12", cy: "13", r: "3", key: "1vg3eu" }]
 ];
-const Camera = createLucideIcon("camera", __iconNode$1k);
-const __iconNode$1j = [
+const Camera = createLucideIcon("camera", __iconNode$1p);
+const __iconNode$1o = [
   ["path", { d: "M5 21v-6", key: "1hz6c0" }],
   ["path", { d: "M12 21V3", key: "1lcnhd" }],
   ["path", { d: "M19 21V9", key: "unv183" }]
 ];
-const ChartNoAxesColumn = createLucideIcon("chart-no-axes-column", __iconNode$1j);
-const __iconNode$1i = [
+const ChartNoAxesColumn = createLucideIcon("chart-no-axes-column", __iconNode$1o);
+const __iconNode$1n = [
   ["path", { d: "M18 6 7 17l-5-5", key: "116fxf" }],
   ["path", { d: "m22 10-7.5 7.5L13 16", key: "ke71qq" }]
 ];
-const CheckCheck = createLucideIcon("check-check", __iconNode$1i);
-const __iconNode$1h = [["path", { d: "M20 6 9 17l-5-5", key: "1gmf2c" }]];
-const Check = createLucideIcon("check", __iconNode$1h);
-const __iconNode$1g = [["path", { d: "m6 9 6 6 6-6", key: "qrunsl" }]];
-const ChevronDown = createLucideIcon("chevron-down", __iconNode$1g);
-const __iconNode$1f = [["path", { d: "m15 18-6-6 6-6", key: "1wnfg3" }]];
-const ChevronLeft = createLucideIcon("chevron-left", __iconNode$1f);
-const __iconNode$1e = [["path", { d: "m9 18 6-6-6-6", key: "mthhwq" }]];
-const ChevronRight = createLucideIcon("chevron-right", __iconNode$1e);
-const __iconNode$1d = [["path", { d: "m18 15-6-6-6 6", key: "153udz" }]];
-const ChevronUp = createLucideIcon("chevron-up", __iconNode$1d);
-const __iconNode$1c = [
+const CheckCheck = createLucideIcon("check-check", __iconNode$1n);
+const __iconNode$1m = [["path", { d: "M20 6 9 17l-5-5", key: "1gmf2c" }]];
+const Check = createLucideIcon("check", __iconNode$1m);
+const __iconNode$1l = [["path", { d: "m6 9 6 6 6-6", key: "qrunsl" }]];
+const ChevronDown = createLucideIcon("chevron-down", __iconNode$1l);
+const __iconNode$1k = [["path", { d: "m15 18-6-6 6-6", key: "1wnfg3" }]];
+const ChevronLeft = createLucideIcon("chevron-left", __iconNode$1k);
+const __iconNode$1j = [["path", { d: "m9 18 6-6-6-6", key: "mthhwq" }]];
+const ChevronRight = createLucideIcon("chevron-right", __iconNode$1j);
+const __iconNode$1i = [["path", { d: "m18 15-6-6-6 6", key: "153udz" }]];
+const ChevronUp = createLucideIcon("chevron-up", __iconNode$1i);
+const __iconNode$1h = [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["line", { x1: "12", x2: "12", y1: "8", y2: "12", key: "1pkeuh" }],
   ["line", { x1: "12", x2: "12.01", y1: "16", y2: "16", key: "4dfq90" }]
 ];
-const CircleAlert = createLucideIcon("circle-alert", __iconNode$1c);
-const __iconNode$1b = [
+const CircleAlert = createLucideIcon("circle-alert", __iconNode$1h);
+const __iconNode$1g = [
+  ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
+  ["path", { d: "m9 12 2 2 4-4", key: "dzmm74" }]
+];
+const CircleCheck = createLucideIcon("circle-check", __iconNode$1g);
+const __iconNode$1f = [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["path", { d: "M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3", key: "1u773s" }],
   ["path", { d: "M12 17h.01", key: "p32p05" }]
 ];
-const CircleQuestionMark = createLucideIcon("circle-question-mark", __iconNode$1b);
-const __iconNode$1a = [
+const CircleQuestionMark = createLucideIcon("circle-question-mark", __iconNode$1f);
+const __iconNode$1e = [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["circle", { cx: "12", cy: "10", r: "3", key: "ilqhr7" }],
   ["path", { d: "M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662", key: "154egf" }]
 ];
-const CircleUser = createLucideIcon("circle-user", __iconNode$1a);
-const __iconNode$19 = [
+const CircleUser = createLucideIcon("circle-user", __iconNode$1e);
+const __iconNode$1d = [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["path", { d: "m15 9-6 6", key: "1uzhvr" }],
   ["path", { d: "m9 9 6 6", key: "z0biqf" }]
 ];
-const CircleX = createLucideIcon("circle-x", __iconNode$19);
-const __iconNode$18 = [
+const CircleX = createLucideIcon("circle-x", __iconNode$1d);
+const __iconNode$1c = [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["path", { d: "M12 6v6l4 2", key: "mmk7yg" }]
 ];
-const Clock = createLucideIcon("clock", __iconNode$18);
-const __iconNode$17 = [
+const Clock = createLucideIcon("clock", __iconNode$1c);
+const __iconNode$1b = [
   ["rect", { width: "14", height: "14", x: "8", y: "8", rx: "2", ry: "2", key: "17jyea" }],
   ["path", { d: "M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2", key: "zix9uf" }]
 ];
-const Copy = createLucideIcon("copy", __iconNode$17);
-const __iconNode$16 = [
+const Copy = createLucideIcon("copy", __iconNode$1b);
+const __iconNode$1a = [
   ["rect", { width: "20", height: "14", x: "2", y: "5", rx: "2", key: "ynyp8z" }],
   ["line", { x1: "2", x2: "22", y1: "10", y2: "10", key: "1b3vmo" }]
 ];
-const CreditCard = createLucideIcon("credit-card", __iconNode$16);
-const __iconNode$15 = [
+const CreditCard = createLucideIcon("credit-card", __iconNode$1a);
+const __iconNode$19 = [
+  [
+    "path",
+    {
+      d: "M11.562 3.266a.5.5 0 0 1 .876 0L15.39 8.87a1 1 0 0 0 1.516.294L21.183 5.5a.5.5 0 0 1 .798.519l-2.834 10.246a1 1 0 0 1-.956.734H5.81a1 1 0 0 1-.957-.734L2.02 6.02a.5.5 0 0 1 .798-.519l4.276 3.664a1 1 0 0 0 1.516-.294z",
+      key: "1vdc57"
+    }
+  ],
+  ["path", { d: "M5 21h14", key: "11awu3" }]
+];
+const Crown = createLucideIcon("crown", __iconNode$19);
+const __iconNode$18 = [
   ["path", { d: "M12 15V3", key: "m9g1x1" }],
   ["path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", key: "ih7n3h" }],
   ["path", { d: "m7 10 5 5 5-5", key: "brsn70" }]
 ];
-const Download = createLucideIcon("download", __iconNode$15);
-const __iconNode$14 = [
+const Download = createLucideIcon("download", __iconNode$18);
+const __iconNode$17 = [
   ["circle", { cx: "12", cy: "12", r: "1", key: "41hilf" }],
   ["circle", { cx: "12", cy: "5", r: "1", key: "gxeob9" }],
   ["circle", { cx: "12", cy: "19", r: "1", key: "lyex9k" }]
 ];
-const EllipsisVertical = createLucideIcon("ellipsis-vertical", __iconNode$14);
-const __iconNode$13 = [
+const EllipsisVertical = createLucideIcon("ellipsis-vertical", __iconNode$17);
+const __iconNode$16 = [
   ["circle", { cx: "12", cy: "12", r: "1", key: "41hilf" }],
   ["circle", { cx: "19", cy: "12", r: "1", key: "1wjl8i" }],
   ["circle", { cx: "5", cy: "12", r: "1", key: "1pcz8c" }]
 ];
-const Ellipsis = createLucideIcon("ellipsis", __iconNode$13);
-const __iconNode$12 = [
+const Ellipsis = createLucideIcon("ellipsis", __iconNode$16);
+const __iconNode$15 = [
   ["path", { d: "M15 3h6v6", key: "1q9fwt" }],
   ["path", { d: "M10 14 21 3", key: "gplh6r" }],
   ["path", { d: "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6", key: "a6xqqp" }]
 ];
-const ExternalLink = createLucideIcon("external-link", __iconNode$12);
-const __iconNode$11 = [
+const ExternalLink = createLucideIcon("external-link", __iconNode$15);
+const __iconNode$14 = [
   [
     "path",
     {
@@ -12154,8 +12213,8 @@ const __iconNode$11 = [
   ],
   ["path", { d: "m2 2 20 20", key: "1ooewy" }]
 ];
-const EyeOff = createLucideIcon("eye-off", __iconNode$11);
-const __iconNode$10 = [
+const EyeOff = createLucideIcon("eye-off", __iconNode$14);
+const __iconNode$13 = [
   [
     "path",
     {
@@ -12165,8 +12224,8 @@ const __iconNode$10 = [
   ],
   ["circle", { cx: "12", cy: "12", r: "3", key: "1v7zrd" }]
 ];
-const Eye = createLucideIcon("eye", __iconNode$10);
-const __iconNode$$ = [
+const Eye = createLucideIcon("eye", __iconNode$13);
+const __iconNode$12 = [
   ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", key: "afitv7" }],
   ["path", { d: "M7 3v18", key: "bbkbws" }],
   ["path", { d: "M3 7.5h4", key: "zfgn84" }],
@@ -12176,8 +12235,8 @@ const __iconNode$$ = [
   ["path", { d: "M17 7.5h4", key: "myr1c1" }],
   ["path", { d: "M17 16.5h4", key: "go4c1d" }]
 ];
-const Film = createLucideIcon("film", __iconNode$$);
-const __iconNode$_ = [
+const Film = createLucideIcon("film", __iconNode$12);
+const __iconNode$11 = [
   [
     "path",
     {
@@ -12186,8 +12245,8 @@ const __iconNode$_ = [
     }
   ]
 ];
-const Flag = createLucideIcon("flag", __iconNode$_);
-const __iconNode$Z = [
+const Flag = createLucideIcon("flag", __iconNode$11);
+const __iconNode$10 = [
   [
     "path",
     {
@@ -12205,26 +12264,26 @@ const __iconNode$Z = [
   ["path", { d: "M16 17h4", key: "1dejxt" }],
   ["path", { d: "M4 13h4", key: "1bwh8b" }]
 ];
-const Footprints = createLucideIcon("footprints", __iconNode$Z);
-const __iconNode$Y = [
+const Footprints = createLucideIcon("footprints", __iconNode$10);
+const __iconNode$$ = [
   ["path", { d: "m15 17 5-5-5-5", key: "nf172w" }],
   ["path", { d: "M4 18v-2a4 4 0 0 1 4-4h12", key: "jmiej9" }]
 ];
-const Forward = createLucideIcon("forward", __iconNode$Y);
-const __iconNode$X = [
+const Forward = createLucideIcon("forward", __iconNode$$);
+const __iconNode$_ = [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["path", { d: "M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20", key: "13o1zl" }],
   ["path", { d: "M2 12h20", key: "9i4pu4" }]
 ];
-const Globe = createLucideIcon("globe", __iconNode$X);
-const __iconNode$W = [
+const Globe = createLucideIcon("globe", __iconNode$_);
+const __iconNode$Z = [
   ["line", { x1: "4", x2: "20", y1: "9", y2: "9", key: "4lhtct" }],
   ["line", { x1: "4", x2: "20", y1: "15", y2: "15", key: "vyu0kd" }],
   ["line", { x1: "10", x2: "8", y1: "3", y2: "21", key: "1ggp8o" }],
   ["line", { x1: "16", x2: "14", y1: "3", y2: "21", key: "weycgp" }]
 ];
-const Hash = createLucideIcon("hash", __iconNode$W);
-const __iconNode$V = [
+const Hash = createLucideIcon("hash", __iconNode$Z);
+const __iconNode$Y = [
   [
     "path",
     {
@@ -12233,8 +12292,8 @@ const __iconNode$V = [
     }
   ]
 ];
-const Heart = createLucideIcon("heart", __iconNode$V);
-const __iconNode$U = [
+const Heart = createLucideIcon("heart", __iconNode$Y);
+const __iconNode$X = [
   ["path", { d: "M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8", key: "5wwlr5" }],
   [
     "path",
@@ -12244,24 +12303,24 @@ const __iconNode$U = [
     }
   ]
 ];
-const House = createLucideIcon("house", __iconNode$U);
-const __iconNode$T = [
+const House = createLucideIcon("house", __iconNode$X);
+const __iconNode$W = [
   ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", ry: "2", key: "1m3agn" }],
   ["circle", { cx: "9", cy: "9", r: "2", key: "af1f0g" }],
   ["path", { d: "m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21", key: "1xmnt7" }]
 ];
-const Image$1 = createLucideIcon("image", __iconNode$T);
-const __iconNode$S = [
+const Image$1 = createLucideIcon("image", __iconNode$W);
+const __iconNode$V = [
   ["path", { d: "M6 16c5 0 7-8 12-8a4 4 0 0 1 0 8c-5 0-7-8-12-8a4 4 0 1 0 0 8", key: "18ogeb" }]
 ];
-const Infinity$1 = createLucideIcon("infinity", __iconNode$S);
-const __iconNode$R = [
+const Infinity$1 = createLucideIcon("infinity", __iconNode$V);
+const __iconNode$U = [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["path", { d: "M12 16v-4", key: "1dtifu" }],
   ["path", { d: "M12 8h.01", key: "e9boi3" }]
 ];
-const Info = createLucideIcon("info", __iconNode$R);
-const __iconNode$Q = [
+const Info = createLucideIcon("info", __iconNode$U);
+const __iconNode$T = [
   [
     "path",
     {
@@ -12271,15 +12330,15 @@ const __iconNode$Q = [
   ],
   ["circle", { cx: "16.5", cy: "7.5", r: ".5", fill: "currentColor", key: "w0ekpg" }]
 ];
-const KeyRound = createLucideIcon("key-round", __iconNode$Q);
-const __iconNode$P = [
+const KeyRound = createLucideIcon("key-round", __iconNode$T);
+const __iconNode$S = [
   ["rect", { width: "7", height: "7", x: "3", y: "3", rx: "1", key: "1g98yp" }],
   ["rect", { width: "7", height: "7", x: "14", y: "3", rx: "1", key: "6d4xhi" }],
   ["rect", { width: "7", height: "7", x: "14", y: "14", rx: "1", key: "nxv5o0" }],
   ["rect", { width: "7", height: "7", x: "3", y: "14", rx: "1", key: "1bb6yr" }]
 ];
-const LayoutGrid = createLucideIcon("layout-grid", __iconNode$P);
-const __iconNode$O = [
+const LayoutGrid = createLucideIcon("layout-grid", __iconNode$S);
+const __iconNode$R = [
   ["rect", { width: "7", height: "7", x: "3", y: "3", rx: "1", key: "1g98yp" }],
   ["rect", { width: "7", height: "7", x: "3", y: "14", rx: "1", key: "1bb6yr" }],
   ["path", { d: "M14 4h7", key: "3xa0d5" }],
@@ -12287,19 +12346,19 @@ const __iconNode$O = [
   ["path", { d: "M14 15h7", key: "1mj8o2" }],
   ["path", { d: "M14 20h7", key: "11slyb" }]
 ];
-const LayoutList = createLucideIcon("layout-list", __iconNode$O);
-const __iconNode$N = [
+const LayoutList = createLucideIcon("layout-list", __iconNode$R);
+const __iconNode$Q = [
   ["path", { d: "M9 17H7A5 5 0 0 1 7 7h2", key: "8i5ue5" }],
   ["path", { d: "M15 7h2a5 5 0 1 1 0 10h-2", key: "1b9ql8" }],
   ["line", { x1: "8", x2: "16", y1: "12", y2: "12", key: "1jonct" }]
 ];
-const Link2 = createLucideIcon("link-2", __iconNode$N);
-const __iconNode$M = [
+const Link2 = createLucideIcon("link-2", __iconNode$Q);
+const __iconNode$P = [
   ["path", { d: "M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71", key: "1cjeqo" }],
   ["path", { d: "M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71", key: "19qd67" }]
 ];
-const Link = createLucideIcon("link", __iconNode$M);
-const __iconNode$L = [
+const Link = createLucideIcon("link", __iconNode$P);
+const __iconNode$O = [
   ["path", { d: "M11 5h10", key: "1cz7ny" }],
   ["path", { d: "M11 12h10", key: "1438ji" }],
   ["path", { d: "M11 19h10", key: "11t30w" }],
@@ -12307,21 +12366,21 @@ const __iconNode$L = [
   ["path", { d: "M4 9h2", key: "r1h2o0" }],
   ["path", { d: "M6.5 20H3.4c0-1 2.6-1.925 2.6-3.5a1.5 1.5 0 0 0-2.6-1.02", key: "xtkcd5" }]
 ];
-const ListOrdered = createLucideIcon("list-ordered", __iconNode$L);
-const __iconNode$K = [["path", { d: "M21 12a9 9 0 1 1-6.219-8.56", key: "13zald" }]];
-const LoaderCircle = createLucideIcon("loader-circle", __iconNode$K);
-const __iconNode$J = [
+const ListOrdered = createLucideIcon("list-ordered", __iconNode$O);
+const __iconNode$N = [["path", { d: "M21 12a9 9 0 1 1-6.219-8.56", key: "13zald" }]];
+const LoaderCircle = createLucideIcon("loader-circle", __iconNode$N);
+const __iconNode$M = [
   ["rect", { width: "18", height: "11", x: "3", y: "11", rx: "2", ry: "2", key: "1w4ew1" }],
   ["path", { d: "M7 11V7a5 5 0 0 1 10 0v4", key: "fwvmzm" }]
 ];
-const Lock = createLucideIcon("lock", __iconNode$J);
-const __iconNode$I = [
+const Lock = createLucideIcon("lock", __iconNode$M);
+const __iconNode$L = [
   ["path", { d: "m16 17 5-5-5-5", key: "1bji2h" }],
   ["path", { d: "M21 12H9", key: "dn1m92" }],
   ["path", { d: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4", key: "1uf3rs" }]
 ];
-const LogOut = createLucideIcon("log-out", __iconNode$I);
-const __iconNode$H = [
+const LogOut = createLucideIcon("log-out", __iconNode$L);
+const __iconNode$K = [
   [
     "path",
     {
@@ -12331,8 +12390,8 @@ const __iconNode$H = [
   ],
   ["circle", { cx: "12", cy: "10", r: "3", key: "ilqhr7" }]
 ];
-const MapPin = createLucideIcon("map-pin", __iconNode$H);
-const __iconNode$G = [
+const MapPin = createLucideIcon("map-pin", __iconNode$K);
+const __iconNode$J = [
   [
     "path",
     {
@@ -12343,14 +12402,14 @@ const __iconNode$G = [
   ["path", { d: "M6 14a12 12 0 0 0 2.4 7.2 2 2 0 0 0 3.2-2.4A8 8 0 0 1 10 14", key: "1853fq" }],
   ["path", { d: "M8 6v8", key: "15ugcq" }]
 ];
-const Megaphone = createLucideIcon("megaphone", __iconNode$G);
-const __iconNode$F = [
+const Megaphone = createLucideIcon("megaphone", __iconNode$J);
+const __iconNode$I = [
   ["path", { d: "M4 5h16", key: "1tepv9" }],
   ["path", { d: "M4 12h16", key: "1lakjw" }],
   ["path", { d: "M4 19h16", key: "1djgab" }]
 ];
-const Menu = createLucideIcon("menu", __iconNode$F);
-const __iconNode$E = [
+const Menu = createLucideIcon("menu", __iconNode$I);
+const __iconNode$H = [
   [
     "path",
     {
@@ -12361,8 +12420,20 @@ const __iconNode$E = [
   ["path", { d: "M8 12h8", key: "1wcyev" }],
   ["path", { d: "M12 8v8", key: "napkw2" }]
 ];
-const MessageCirclePlus = createLucideIcon("message-circle-plus", __iconNode$E);
-const __iconNode$D = [
+const MessageCirclePlus = createLucideIcon("message-circle-plus", __iconNode$H);
+const __iconNode$G = [
+  [
+    "path",
+    {
+      d: "M2.992 16.342a2 2 0 0 1 .094 1.167l-1.065 3.29a1 1 0 0 0 1.236 1.168l3.413-.998a2 2 0 0 1 1.099.092 10 10 0 1 0-4.777-4.719",
+      key: "1sd12s"
+    }
+  ],
+  ["path", { d: "M12 8v4", key: "1got3b" }],
+  ["path", { d: "M12 16h.01", key: "1drbdi" }]
+];
+const MessageCircleWarning = createLucideIcon("message-circle-warning", __iconNode$G);
+const __iconNode$F = [
   [
     "path",
     {
@@ -12371,8 +12442,8 @@ const __iconNode$D = [
     }
   ]
 ];
-const MessageCircle = createLucideIcon("message-circle", __iconNode$D);
-const __iconNode$C = [
+const MessageCircle = createLucideIcon("message-circle", __iconNode$F);
+const __iconNode$E = [
   [
     "path",
     {
@@ -12381,8 +12452,8 @@ const __iconNode$C = [
     }
   ]
 ];
-const MessageSquare = createLucideIcon("message-square", __iconNode$C);
-const __iconNode$B = [
+const MessageSquare = createLucideIcon("message-square", __iconNode$E);
+const __iconNode$D = [
   ["path", { d: "M12 19v3", key: "npa21l" }],
   ["path", { d: "M15 9.34V5a3 3 0 0 0-5.68-1.33", key: "1gzdoj" }],
   ["path", { d: "M16.95 16.95A7 7 0 0 1 5 12v-2", key: "cqa7eg" }],
@@ -12390,14 +12461,14 @@ const __iconNode$B = [
   ["path", { d: "m2 2 20 20", key: "1ooewy" }],
   ["path", { d: "M9 9v3a3 3 0 0 0 5.12 2.12", key: "r2i35w" }]
 ];
-const MicOff = createLucideIcon("mic-off", __iconNode$B);
-const __iconNode$A = [
+const MicOff = createLucideIcon("mic-off", __iconNode$D);
+const __iconNode$C = [
   ["path", { d: "M12 19v3", key: "npa21l" }],
   ["path", { d: "M19 10v2a7 7 0 0 1-14 0v-2", key: "1vc78b" }],
   ["rect", { x: "9", y: "2", width: "6", height: "13", rx: "3", key: "s6n7sd" }]
 ];
-const Mic = createLucideIcon("mic", __iconNode$A);
-const __iconNode$z = [
+const Mic = createLucideIcon("mic", __iconNode$C);
+const __iconNode$B = [
   [
     "path",
     {
@@ -12406,38 +12477,24 @@ const __iconNode$z = [
     }
   ]
 ];
-const Moon = createLucideIcon("moon", __iconNode$z);
-const __iconNode$y = [
+const Moon = createLucideIcon("moon", __iconNode$B);
+const __iconNode$A = [
   ["circle", { cx: "8", cy: "18", r: "4", key: "1fc0mg" }],
   ["path", { d: "M12 18V2l7 4", key: "g04rme" }]
 ];
-const Music2 = createLucideIcon("music-2", __iconNode$y);
-const __iconNode$x = [
+const Music2 = createLucideIcon("music-2", __iconNode$A);
+const __iconNode$z = [
   ["path", { d: "M9 18V5l12-2v13", key: "1jmyc2" }],
   ["circle", { cx: "6", cy: "18", r: "3", key: "fqmcym" }],
   ["circle", { cx: "18", cy: "16", r: "3", key: "1hluhg" }]
 ];
-const Music = createLucideIcon("music", __iconNode$x);
-const __iconNode$w = [
-  [
-    "path",
-    {
-      d: "M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z",
-      key: "e79jfc"
-    }
-  ],
-  ["circle", { cx: "13.5", cy: "6.5", r: ".5", fill: "currentColor", key: "1okk4w" }],
-  ["circle", { cx: "17.5", cy: "10.5", r: ".5", fill: "currentColor", key: "f64h9f" }],
-  ["circle", { cx: "6.5", cy: "12.5", r: ".5", fill: "currentColor", key: "qy21gx" }],
-  ["circle", { cx: "8.5", cy: "7.5", r: ".5", fill: "currentColor", key: "fotxhn" }]
-];
-const Palette = createLucideIcon("palette", __iconNode$w);
-const __iconNode$v = [
+const Music = createLucideIcon("music", __iconNode$z);
+const __iconNode$y = [
   ["rect", { x: "14", y: "3", width: "5", height: "18", rx: "1", key: "kaeet6" }],
   ["rect", { x: "5", y: "3", width: "5", height: "18", rx: "1", key: "1wsw3u" }]
 ];
-const Pause = createLucideIcon("pause", __iconNode$v);
-const __iconNode$u = [
+const Pause = createLucideIcon("pause", __iconNode$y);
+const __iconNode$x = [
   ["path", { d: "M13 21h8", key: "1jsn5i" }],
   [
     "path",
@@ -12447,8 +12504,8 @@ const __iconNode$u = [
     }
   ]
 ];
-const PenLine = createLucideIcon("pen-line", __iconNode$u);
-const __iconNode$t = [
+const PenLine = createLucideIcon("pen-line", __iconNode$x);
+const __iconNode$w = [
   [
     "path",
     {
@@ -12457,8 +12514,8 @@ const __iconNode$t = [
     }
   ]
 ];
-const Phone = createLucideIcon("phone", __iconNode$t);
-const __iconNode$s = [
+const Phone = createLucideIcon("phone", __iconNode$w);
+const __iconNode$v = [
   ["path", { d: "M12 17v5", key: "bb1du9" }],
   [
     "path",
@@ -12468,8 +12525,8 @@ const __iconNode$s = [
     }
   ]
 ];
-const Pin = createLucideIcon("pin", __iconNode$s);
-const __iconNode$r = [
+const Pin = createLucideIcon("pin", __iconNode$v);
+const __iconNode$u = [
   [
     "path",
     {
@@ -12478,13 +12535,13 @@ const __iconNode$r = [
     }
   ]
 ];
-const Play = createLucideIcon("play", __iconNode$r);
-const __iconNode$q = [
+const Play = createLucideIcon("play", __iconNode$u);
+const __iconNode$t = [
   ["path", { d: "M5 12h14", key: "1ays0h" }],
   ["path", { d: "M12 5v14", key: "s699le" }]
 ];
-const Plus = createLucideIcon("plus", __iconNode$q);
-const __iconNode$p = [
+const Plus = createLucideIcon("plus", __iconNode$t);
+const __iconNode$s = [
   ["rect", { width: "5", height: "5", x: "3", y: "3", rx: "1", key: "1tu5fj" }],
   ["rect", { width: "5", height: "5", x: "16", y: "3", rx: "1", key: "1v8r4q" }],
   ["rect", { width: "5", height: "5", x: "3", y: "16", rx: "1", key: "1x03jg" }],
@@ -12498,25 +12555,25 @@ const __iconNode$p = [
   ["path", { d: "M21 12v.01", key: "1lwtk9" }],
   ["path", { d: "M12 21v-1", key: "1880an" }]
 ];
-const QrCode = createLucideIcon("qr-code", __iconNode$p);
-const __iconNode$o = [
+const QrCode = createLucideIcon("qr-code", __iconNode$s);
+const __iconNode$r = [
   ["path", { d: "m2 9 3-3 3 3", key: "1ltn5i" }],
   ["path", { d: "M13 18H7a2 2 0 0 1-2-2V6", key: "1r6tfw" }],
   ["path", { d: "m22 15-3 3-3-3", key: "4rnwn2" }],
   ["path", { d: "M11 6h6a2 2 0 0 1 2 2v10", key: "2f72bc" }]
 ];
-const Repeat2 = createLucideIcon("repeat-2", __iconNode$o);
-const __iconNode$n = [
+const Repeat2 = createLucideIcon("repeat-2", __iconNode$r);
+const __iconNode$q = [
   ["path", { d: "M20 18v-2a4 4 0 0 0-4-4H4", key: "5vmcpk" }],
   ["path", { d: "m9 17-5-5 5-5", key: "nvlc11" }]
 ];
-const Reply = createLucideIcon("reply", __iconNode$n);
-const __iconNode$m = [
+const Reply = createLucideIcon("reply", __iconNode$q);
+const __iconNode$p = [
   ["path", { d: "m21 21-4.34-4.34", key: "14j7rj" }],
   ["circle", { cx: "11", cy: "11", r: "8", key: "4ej97u" }]
 ];
-const Search = createLucideIcon("search", __iconNode$m);
-const __iconNode$l = [
+const Search = createLucideIcon("search", __iconNode$p);
+const __iconNode$o = [
   [
     "path",
     {
@@ -12526,8 +12583,8 @@ const __iconNode$l = [
   ],
   ["path", { d: "m21.854 2.147-10.94 10.939", key: "12cjpa" }]
 ];
-const Send = createLucideIcon("send", __iconNode$l);
-const __iconNode$k = [
+const Send = createLucideIcon("send", __iconNode$o);
+const __iconNode$n = [
   [
     "path",
     {
@@ -12537,16 +12594,27 @@ const __iconNode$k = [
   ],
   ["circle", { cx: "12", cy: "12", r: "3", key: "1v7zrd" }]
 ];
-const Settings = createLucideIcon("settings", __iconNode$k);
-const __iconNode$j = [
+const Settings = createLucideIcon("settings", __iconNode$n);
+const __iconNode$m = [
   ["circle", { cx: "18", cy: "5", r: "3", key: "gq8acd" }],
   ["circle", { cx: "6", cy: "12", r: "3", key: "w7nqdw" }],
   ["circle", { cx: "18", cy: "19", r: "3", key: "1xt0gg" }],
   ["line", { x1: "8.59", x2: "15.42", y1: "13.51", y2: "17.49", key: "47mynk" }],
   ["line", { x1: "15.41", x2: "8.59", y1: "6.51", y2: "10.49", key: "1n3mei" }]
 ];
-const Share2 = createLucideIcon("share-2", __iconNode$j);
-const __iconNode$i = [
+const Share2 = createLucideIcon("share-2", __iconNode$m);
+const __iconNode$l = [
+  [
+    "path",
+    {
+      d: "M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z",
+      key: "oel41y"
+    }
+  ],
+  ["path", { d: "m9 12 2 2 4-4", key: "dzmm74" }]
+];
+const ShieldCheck = createLucideIcon("shield-check", __iconNode$l);
+const __iconNode$k = [
   [
     "path",
     {
@@ -12555,8 +12623,8 @@ const __iconNode$i = [
     }
   ]
 ];
-const Shield = createLucideIcon("shield", __iconNode$i);
-const __iconNode$h = [
+const Shield = createLucideIcon("shield", __iconNode$k);
+const __iconNode$j = [
   ["path", { d: "M10 5H3", key: "1qgfaw" }],
   ["path", { d: "M12 19H3", key: "yhmn1j" }],
   ["path", { d: "M14 3v4", key: "1sua03" }],
@@ -12567,15 +12635,15 @@ const __iconNode$h = [
   ["path", { d: "M8 10v4", key: "tgpxqk" }],
   ["path", { d: "M8 12H3", key: "a7s4jb" }]
 ];
-const SlidersHorizontal = createLucideIcon("sliders-horizontal", __iconNode$h);
-const __iconNode$g = [
+const SlidersHorizontal = createLucideIcon("sliders-horizontal", __iconNode$j);
+const __iconNode$i = [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["path", { d: "M8 14s1.5 2 4 2 4-2 4-2", key: "1y1vjs" }],
   ["line", { x1: "9", x2: "9.01", y1: "9", y2: "9", key: "yxxnd0" }],
   ["line", { x1: "15", x2: "15.01", y1: "9", y2: "9", key: "1p4y9e" }]
 ];
-const Smile = createLucideIcon("smile", __iconNode$g);
-const __iconNode$f = [
+const Smile = createLucideIcon("smile", __iconNode$i);
+const __iconNode$h = [
   [
     "path",
     {
@@ -12587,12 +12655,12 @@ const __iconNode$f = [
   ["path", { d: "M22 4h-4", key: "gwowj6" }],
   ["circle", { cx: "4", cy: "20", r: "2", key: "6kqj1y" }]
 ];
-const Sparkles = createLucideIcon("sparkles", __iconNode$f);
-const __iconNode$e = [
+const Sparkles = createLucideIcon("sparkles", __iconNode$h);
+const __iconNode$g = [
   ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", key: "afitv7" }]
 ];
-const Square = createLucideIcon("square", __iconNode$e);
-const __iconNode$d = [
+const Square = createLucideIcon("square", __iconNode$g);
+const __iconNode$f = [
   [
     "path",
     {
@@ -12601,8 +12669,8 @@ const __iconNode$d = [
     }
   ]
 ];
-const Star = createLucideIcon("star", __iconNode$d);
-const __iconNode$c = [
+const Star = createLucideIcon("star", __iconNode$f);
+const __iconNode$e = [
   [
     "path",
     {
@@ -12615,8 +12683,8 @@ const __iconNode$c = [
   ["path", { d: "M16 13h.01", key: "wip0gl" }],
   ["path", { d: "M10 16s.8 1 2 1c1.3 0 2-1 2-1", key: "1vvgv3" }]
 ];
-const Sticker = createLucideIcon("sticker", __iconNode$c);
-const __iconNode$b = [
+const Sticker = createLucideIcon("sticker", __iconNode$e);
+const __iconNode$d = [
   [
     "path",
     {
@@ -12626,8 +12694,8 @@ const __iconNode$b = [
   ],
   ["path", { d: "M15 3v5a1 1 0 0 0 1 1h5", key: "6s6qgf" }]
 ];
-const StickyNote = createLucideIcon("sticky-note", __iconNode$b);
-const __iconNode$a = [
+const StickyNote = createLucideIcon("sticky-note", __iconNode$d);
+const __iconNode$c = [
   ["circle", { cx: "12", cy: "12", r: "4", key: "4exip2" }],
   ["path", { d: "M12 2v2", key: "tus03m" }],
   ["path", { d: "M12 20v2", key: "1lh1kg" }],
@@ -12638,33 +12706,45 @@ const __iconNode$a = [
   ["path", { d: "m6.34 17.66-1.41 1.41", key: "1m8zz5" }],
   ["path", { d: "m19.07 4.93-1.41 1.41", key: "1shlcs" }]
 ];
-const Sun = createLucideIcon("sun", __iconNode$a);
-const __iconNode$9 = [
+const Sun = createLucideIcon("sun", __iconNode$c);
+const __iconNode$b = [
   ["path", { d: "M10 11v6", key: "nco0om" }],
   ["path", { d: "M14 11v6", key: "outv1u" }],
   ["path", { d: "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6", key: "miytrc" }],
   ["path", { d: "M3 6h18", key: "d0wm0j" }],
   ["path", { d: "M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2", key: "e791ji" }]
 ];
-const Trash2 = createLucideIcon("trash-2", __iconNode$9);
-const __iconNode$8 = [
+const Trash2 = createLucideIcon("trash-2", __iconNode$b);
+const __iconNode$a = [
   ["path", { d: "M12 4v16", key: "1654pz" }],
   ["path", { d: "M4 7V5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2", key: "e0r10z" }],
   ["path", { d: "M9 20h6", key: "s66wpe" }]
 ];
-const Type = createLucideIcon("type", __iconNode$8);
-const __iconNode$7 = [
+const Type = createLucideIcon("type", __iconNode$a);
+const __iconNode$9 = [
   ["path", { d: "M9 14 4 9l5-5", key: "102s5s" }],
   ["path", { d: "M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11", key: "f3b9sd" }]
 ];
-const Undo2 = createLucideIcon("undo-2", __iconNode$7);
-const __iconNode$6 = [
+const Undo2 = createLucideIcon("undo-2", __iconNode$9);
+const __iconNode$8 = [
   ["path", { d: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2", key: "1yyitq" }],
   ["circle", { cx: "9", cy: "7", r: "4", key: "nufk8" }],
   ["line", { x1: "19", x2: "19", y1: "8", y2: "14", key: "1bvyxn" }],
   ["line", { x1: "22", x2: "16", y1: "11", y2: "11", key: "1shjgl" }]
 ];
-const UserPlus = createLucideIcon("user-plus", __iconNode$6);
+const UserPlus = createLucideIcon("user-plus", __iconNode$8);
+const __iconNode$7 = [
+  ["path", { d: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2", key: "1yyitq" }],
+  ["circle", { cx: "9", cy: "7", r: "4", key: "nufk8" }],
+  ["line", { x1: "17", x2: "22", y1: "8", y2: "13", key: "3nzzx3" }],
+  ["line", { x1: "22", x2: "17", y1: "8", y2: "13", key: "1swrse" }]
+];
+const UserX = createLucideIcon("user-x", __iconNode$7);
+const __iconNode$6 = [
+  ["path", { d: "M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2", key: "975kel" }],
+  ["circle", { cx: "12", cy: "7", r: "4", key: "17ys0d" }]
+];
+const User = createLucideIcon("user", __iconNode$6);
 const __iconNode$5 = [
   ["path", { d: "M18 21a8 8 0 0 0-16 0", key: "3ypg7q" }],
   ["circle", { cx: "10", cy: "8", r: "5", key: "o932ke" }],
@@ -12950,16 +13030,16 @@ const createParseClassName = (config) => {
     let modifierStart = 0;
     let postfixModifierPosition;
     const len = className.length;
-    for (let index = 0; index < len; index++) {
-      const currentCharacter = className[index];
+    for (let index2 = 0; index2 < len; index2++) {
+      const currentCharacter = className[index2];
       if (bracketDepth === 0 && parenDepth === 0) {
         if (currentCharacter === MODIFIER_SEPARATOR) {
-          modifiers.push(className.slice(modifierStart, index));
-          modifierStart = index + 1;
+          modifiers.push(className.slice(modifierStart, index2));
+          modifierStart = index2 + 1;
           continue;
         }
         if (currentCharacter === "/") {
-          postfixModifierPosition = index;
+          postfixModifierPosition = index2;
           continue;
         }
       }
@@ -13003,8 +13083,8 @@ const createParseClassName = (config) => {
 };
 const createSortModifiers = (config) => {
   const modifierWeights = /* @__PURE__ */ new Map();
-  config.orderSensitiveModifiers.forEach((mod, index) => {
-    modifierWeights.set(mod, 1e6 + index);
+  config.orderSensitiveModifiers.forEach((mod, index2) => {
+    modifierWeights.set(mod, 1e6 + index2);
   });
   return (modifiers) => {
     const result = [];
@@ -13060,8 +13140,8 @@ const mergeClassList = (classList, configUtils) => {
   const classGroupsInConflict = [];
   const classNames = classList.trim().split(SPLIT_CLASSES_REGEX);
   let result = "";
-  for (let index = classNames.length - 1; index >= 0; index -= 1) {
-    const originalClassName = classNames[index];
+  for (let index2 = classNames.length - 1; index2 >= 0; index2 -= 1) {
+    const originalClassName = classNames[index2];
     const {
       isExternal,
       modifiers,
@@ -13115,12 +13195,12 @@ const mergeClassList = (classList, configUtils) => {
   return result;
 };
 const twJoin = (...classLists) => {
-  let index = 0;
+  let index2 = 0;
   let argument;
   let resolvedValue;
   let string = "";
-  while (index < classLists.length) {
-    if (argument = classLists[index++]) {
+  while (index2 < classLists.length) {
+    if (argument = classLists[index2++]) {
       if (resolvedValue = toValue(argument)) {
         string && (string += " ");
         string += resolvedValue;
@@ -16788,7 +16868,7 @@ function RtlScreenHeader({
     "div",
     {
       dir: "rtl",
-      className: "flex shrink-0 flex-row items-center gap-3 border-b border-border bg-background px-3 py-2.5 pt-[max(0.5rem,env(safe-area-inset-top,0px))] " + className,
+      className: "flex shrink-0 flex-row items-center gap-3 border-b border-border bg-background px-3 py-2.5 pt-[max(0.5rem,var(--sat))] " + className,
       children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           SlideDismissBackButton,
@@ -17028,9 +17108,9 @@ function MainTabStack({
     setAnimating(false);
   }, [activeTab]);
   const displayIndex = dragIndex != null ? clamp$2(dragIndex, 0, TAB_COUNT - 1) : settledIndex;
-  const markNeighborVisited = reactExports.useCallback((index) => {
-    const lo = Math.floor(index);
-    const hi = Math.ceil(index);
+  const markNeighborVisited = reactExports.useCallback((index2) => {
+    const lo = Math.floor(index2);
+    const hi = Math.ceil(index2);
     setVisited((prev) => {
       const next = new Set(prev);
       next.add(indexToTab(lo));
@@ -17180,6 +17260,18 @@ function lockStoryFullscreen() {
 function openStoryViewer(userId, storyId) {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent(OPEN_STORY_EVENT, { detail: { userId, storyId } }));
+}
+const REPORT_SHEET_OPEN_EVENT = "retweet-report-sheet-open";
+function setReportSheetOpen(open) {
+  if (typeof document !== "undefined") {
+    document.documentElement.classList.toggle("retweet-report-open", open);
+  }
+  try {
+    window.dispatchEvent(
+      new CustomEvent(REPORT_SHEET_OPEN_EVENT, { detail: { open } })
+    );
+  } catch {
+  }
 }
 function describeUiError(error) {
   if (!error?.message) {
@@ -17494,6 +17586,7 @@ const dict = {
     preferences: "التفضيلات",
     support: "الدعم",
     addMembers: "اختر الأعضاء (٢ على الأقل)",
+    groupPickTwoHint: "اختر عضوين على الأقل لإنشاء المجموعة",
     groupName: "اسم المجموعة",
     channelName: "اسم القناة",
     typing: "يكتب...",
@@ -17540,9 +17633,18 @@ const dict = {
     groupTheme: "السمات والملصقات",
     groupInviteLink: "رابط الدعوة",
     groupPeople: "الأعضاء",
+    groupYou: "أنت",
+    groupInvited: "منضمون",
+    groupRequireJoinApproval: "يتطلب الموافقة للانضمام",
+    groupFollow: "متابعة",
+    groupFollowing: "متابَع",
+    groupAdmin: "مشرف",
+    groupPendingJoin: "طلبات انضمام",
     groupNicknames: "الألقاب",
     groupPrivacySafety: "الخصوصية والأمان",
-    groupCreateNew: "إنشاء مجموعة جديدة",
+    groupThemeDefault: "الوضع الافتراضي",
+    groupSomethingNotWorking: "حدث خطأ ما",
+    groupCreateNew: "إنشاء محادثة جماعية جديدة",
     groupSharedMedia: "الوسائط المشتركة",
     chatRowLongPressHint: "اضغط مطولاً على المحادثة للخيارات (تثبيت، كتم، حذف)",
     settingsActivity: "الإعدادات والنشاط",
@@ -17654,6 +17756,7 @@ const dict = {
     preferences: "Preferences",
     support: "Support",
     addMembers: "Pick members (min 2)",
+    groupPickTwoHint: "Select at least 2 people to create a group",
     groupName: "Group name",
     channelName: "Channel name",
     typing: "typing...",
@@ -17700,8 +17803,17 @@ const dict = {
     groupTheme: "Theme & stickers",
     groupInviteLink: "Invite link",
     groupPeople: "People",
+    groupYou: "You",
+    groupInvited: "Invited",
+    groupRequireJoinApproval: "Require approval to join",
+    groupFollow: "Follow",
+    groupFollowing: "Following",
+    groupAdmin: "Admin",
+    groupPendingJoin: "Join requests",
     groupNicknames: "Nicknames",
     groupPrivacySafety: "Privacy & safety",
+    groupThemeDefault: "Default",
+    groupSomethingNotWorking: "Something isn't working",
     groupCreateNew: "Create a new group chat",
     groupSharedMedia: "Shared media",
     chatRowLongPressHint: "Long-press the chat row for options (pin, mute, delete)",
@@ -17906,7 +18018,15 @@ function Avatar$1({ name = "?", src, size = 40, className, ring, ringSeen }) {
   const initials = name.slice(0, 2).toUpperCase();
   const [imgFailed, setImgFailed] = reactExports.useState(false);
   const [videoFailed, setVideoFailed] = reactExports.useState(false);
-  const resolvedSrc = reactExports.useMemo(() => resolveMediaUrl(src), [src]);
+  const resolvedSrc = reactExports.useMemo(() => {
+    const resolved = resolveMediaUrl(src);
+    if (resolved) return resolved;
+    const raw = src?.trim() || "";
+    if (raw.startsWith("/media/") && typeof window !== "undefined") {
+      return `${window.location.origin.replace(/\/$/, "")}${raw}`;
+    }
+    return resolved;
+  }, [src]);
   const isVideoAvatar = !!(resolvedSrc && isVideoMediaRef(resolvedSrc));
   reactExports.useEffect(() => {
     setImgFailed(false);
@@ -17961,13 +18081,7 @@ function Avatar$1({ name = "?", src, size = 40, className, ring, ringSeen }) {
     }
   );
   if (ring) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx(
-      "div",
-      {
-        className: "inline-block " + (ringSeen ? "story-ring-seen" : "story-ring-brand"),
-        children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "bg-background rounded-full p-[2px]", children: inner })
-      }
-    );
+    return ringSeen ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "story-ring-seen inline-block", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "bg-background rounded-full p-[2px]", children: inner }) }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "story-ring-live-outer", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "story-ring-live-inner", children: inner }) });
   }
   return inner;
 }
@@ -19254,7 +19368,7 @@ function PostDetail({ post: postProp, onBack, onOpenProfile, onOpenChat, profile
       "header",
       {
         dir: "rtl",
-        className: "shrink-0 z-20 border-b border-border bg-background/95 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/80 pt-[max(0.75rem,env(safe-area-inset-top,0px))]",
+        className: "shrink-0 z-20 border-b border-border bg-background/95 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/80 pt-[max(0.75rem,var(--sat))]",
         children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between gap-2 px-3 pb-1 sm:hidden", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -19452,7 +19566,7 @@ function PostDetail({ post: postProp, onBack, onOpenProfile, onOpenChat, profile
           e.preventDefault();
           submitComment();
         },
-        className: "flex shrink-0 gap-2 border-t border-border bg-background px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]",
+        className: "flex shrink-0 gap-2 border-t border-border bg-background px-4 py-3 pb-[max(0.75rem,var(--sab))]",
         children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(
             "input",
@@ -19628,7 +19742,7 @@ function StoryViewsSheet({
               ]
             }
           ) }, vu.id)) }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "shrink-0 space-y-2 border-t border-white/10 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "shrink-0 space-y-2 border-t border-white/10 p-3 pb-[max(0.75rem,var(--sab))]", children: [
             onDelete && /* @__PURE__ */ jsxRuntimeExports.jsxs(
               "button",
               {
@@ -19905,7 +20019,184 @@ function SliderSticker({
     ] })
   ] });
 }
-const STORY_SEGMENT_CAP_MS = 5e3;
+const STORY_IMAGE_DURATION_MS = 5e3;
+const STORY_VIDEO_MAX_MS = 6e4;
+const STORY_VIDEO_MIN_MS = 1e3;
+function storyDurationMs(opts) {
+  if (opts.hasVideo && opts.videoDurationSec && Number.isFinite(opts.videoDurationSec)) {
+    const ms = Math.ceil(opts.videoDurationSec * 1e3);
+    return Math.max(STORY_VIDEO_MIN_MS, Math.min(STORY_VIDEO_MAX_MS, ms));
+  }
+  return STORY_IMAGE_DURATION_MS;
+}
+function useStoryPlayback({
+  storyId,
+  hasVideo,
+  videoRef,
+  paused,
+  enabled,
+  videoDurationSec,
+  onSegmentComplete
+}) {
+  const [progress, setProgress] = reactExports.useState(0);
+  const [playbackState, setPlaybackState] = reactExports.useState("idle");
+  const durationMsRef = reactExports.useRef(STORY_IMAGE_DURATION_MS);
+  const elapsedMsRef = reactExports.useRef(0);
+  const progressRef = reactExports.useRef(0);
+  const rafRef = reactExports.useRef(null);
+  const completedRef = reactExports.useRef(false);
+  const onCompleteRef = reactExports.useRef(onSegmentComplete);
+  onCompleteRef.current = onSegmentComplete;
+  const cancelRaf = reactExports.useCallback(() => {
+    if (rafRef.current != null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+  }, []);
+  const refreshDuration = reactExports.useCallback(() => {
+    durationMsRef.current = storyDurationMs({
+      hasVideo,
+      videoDurationSec: videoDurationSec ?? void 0
+    });
+  }, [hasVideo, videoDurationSec]);
+  const fireComplete = reactExports.useCallback(() => {
+    if (completedRef.current) return;
+    completedRef.current = true;
+    progressRef.current = 1;
+    setProgress(1);
+    setPlaybackState("idle");
+    onCompleteRef.current();
+  }, []);
+  const resetSegment = reactExports.useCallback(() => {
+    completedRef.current = false;
+    elapsedMsRef.current = 0;
+    progressRef.current = 0;
+    setProgress(0);
+    refreshDuration();
+    setPlaybackState(hasVideo ? "loading" : "playing");
+  }, [hasVideo, refreshDuration]);
+  reactExports.useEffect(() => {
+    resetSegment();
+  }, [storyId, resetSegment]);
+  reactExports.useEffect(() => {
+    refreshDuration();
+  }, [refreshDuration]);
+  const setVideoDurationFromMetadata = reactExports.useCallback((sec) => {
+    if (!Number.isFinite(sec) || sec <= 0) return;
+    durationMsRef.current = storyDurationMs({ hasVideo: true, videoDurationSec: sec });
+    elapsedMsRef.current = 0;
+    progressRef.current = 0;
+    completedRef.current = false;
+    setProgress(0);
+    setPlaybackState(paused ? "paused" : "playing");
+  }, [paused]);
+  reactExports.useEffect(() => {
+    if (!enabled || !hasVideo) return;
+    const v = videoRef.current;
+    if (!v) return;
+    const onWaiting = () => setPlaybackState("buffering");
+    const onPlaying = () => setPlaybackState(paused ? "paused" : "playing");
+    const onLoadedMeta = () => {
+      refreshDuration();
+      setPlaybackState(paused ? "paused" : "playing");
+    };
+    const onTimeUpdate = () => {
+      if (paused) return;
+      const d = v.duration;
+      if (!Number.isFinite(d) || d <= 0) return;
+      const p = Math.min(1, Math.max(0, v.currentTime / d));
+      progressRef.current = p;
+      setProgress(p);
+      setPlaybackState("playing");
+      if (p >= 0.995) fireComplete();
+    };
+    const onEnded = () => fireComplete();
+    v.addEventListener("waiting", onWaiting);
+    v.addEventListener("playing", onPlaying);
+    v.addEventListener("loadedmetadata", onLoadedMeta);
+    v.addEventListener("timeupdate", onTimeUpdate);
+    v.addEventListener("ended", onEnded);
+    return () => {
+      v.removeEventListener("waiting", onWaiting);
+      v.removeEventListener("playing", onPlaying);
+      v.removeEventListener("loadedmetadata", onLoadedMeta);
+      v.removeEventListener("timeupdate", onTimeUpdate);
+      v.removeEventListener("ended", onEnded);
+    };
+  }, [storyId, enabled, hasVideo, paused, videoRef, fireComplete, refreshDuration]);
+  reactExports.useEffect(() => {
+    const v = videoRef.current;
+    if (!v || !hasVideo || !enabled) return;
+    if (paused) {
+      try {
+        v.pause();
+      } catch {
+      }
+      setPlaybackState((s) => s === "buffering" ? "buffering" : "paused");
+    } else {
+      const p = v.play();
+      if (p) p.catch(() => void 0);
+      if (v.readyState >= 2) setPlaybackState("playing");
+    }
+  }, [paused, hasVideo, enabled, videoRef, storyId]);
+  reactExports.useEffect(() => {
+    if (!enabled || hasVideo) {
+      cancelRaf();
+      return;
+    }
+    if (paused) {
+      elapsedMsRef.current = progressRef.current * durationMsRef.current;
+      cancelRaf();
+      setPlaybackState("paused");
+      return;
+    }
+    setPlaybackState("playing");
+    const startAt = performance.now() - elapsedMsRef.current;
+    const tick = (now) => {
+      const dur = durationMsRef.current;
+      const elapsed = now - startAt;
+      const p = dur > 0 ? Math.min(1, elapsed / dur) : 0;
+      progressRef.current = p;
+      setProgress(p);
+      if (p >= 1) {
+        cancelRaf();
+        fireComplete();
+        return;
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return cancelRaf;
+  }, [storyId, enabled, hasVideo, paused, cancelRaf, fireComplete]);
+  return {
+    progress,
+    playbackState,
+    resetSegment,
+    setVideoDurationFromMetadata
+  };
+}
+const StoryProgressBars = reactExports.memo(function StoryProgressBars2({
+  segments: segments2,
+  activeIndex,
+  progress
+}) {
+  const pct = Math.min(100, Math.max(0, progress * 100));
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex gap-1 p-2 shrink-0", role: "progressbar", "aria-valuenow": Math.round(pct), "aria-valuemin": 0, "aria-valuemax": 100, children: segments2.map((seg, idx) => /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex-1 h-[2px] bg-white/35 rounded-full overflow-hidden", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "div",
+    {
+      className: "h-full bg-white rounded-full will-change-[width]",
+      style: {
+        width: idx < activeIndex ? "100%" : idx === activeIndex ? `${pct}%` : "0%"
+      }
+    }
+  ) }, seg.id)) });
+});
+function storyTapHaptic() {
+  try {
+    navigator.vibrate?.(8);
+  } catch {
+  }
+}
 function StoryViewer({
   userId,
   trayRing,
@@ -19940,11 +20231,7 @@ function StoryViewer({
   const snapRef = reactExports.useRef({ storiesLen: stories.length, userId, ring });
   snapRef.current = { storiesLen: stories.length, userId, ring };
   const canReplyToStories = userId === me.id || author?.allowStoryReplies !== false;
-  const [segmentMs, setSegmentMs] = reactExports.useState(STORY_SEGMENT_CAP_MS);
-  const deadlineRef = reactExports.useRef(0);
-  const advanceTimerRef = reactExports.useRef(null);
-  const holdRemainingRef = reactExports.useRef(0);
-  const isHoldingProgressRef = reactExports.useRef(false);
+  const [videoDurationSec, setVideoDurationSec] = reactExports.useState(null);
   const [middleHold, setMiddleHold] = reactExports.useState(false);
   const [topChromeVisible, setTopChromeVisible] = reactExports.useState(true);
   const videoRef = reactExports.useRef(null);
@@ -20011,12 +20298,6 @@ function StoryViewer({
     v.addEventListener("loadeddata", playWithSound, { once: true });
     return () => v.removeEventListener("loadeddata", playWithSound);
   }, [curStoryForHooks?.id, curStoryForHooks?.video, curStoryForHooks?.image]);
-  const clearAdvanceTimer = reactExports.useCallback(() => {
-    if (advanceTimerRef.current != null) {
-      window.clearTimeout(advanceTimerRef.current);
-      advanceTimerRef.current = null;
-    }
-  }, []);
   const goToNextAuthor = reactExports.useCallback(() => {
     const nextU = nextAuthorInTray(ring, userId);
     if (nextU) {
@@ -20038,14 +20319,13 @@ function StoryViewer({
     return false;
   }, [onRequestAuthor, ring, userId]);
   const goForward = reactExports.useCallback(() => {
-    clearAdvanceTimer();
     setI((prev) => {
-      const { storiesLen, userId: uid2 } = snapRef.current;
+      const { storiesLen } = snapRef.current;
       if (prev < storiesLen - 1) return prev + 1;
       goToNextAuthor();
       return prev;
     });
-  }, [goToNextAuthor, clearAdvanceTimer]);
+  }, [goToNextAuthor]);
   const goBack = reactExports.useCallback(() => {
     setI((prev) => {
       if (prev > 0) return prev - 1;
@@ -20119,37 +20399,21 @@ function StoryViewer({
       return () => clearTimeout(t);
     }
   }, [author, closeViewer]);
+  const curMediaForPlayback = curStoryForHooks ? normalizeStoryMedia(curStoryForHooks) : null;
+  const storyHasVideo = !!curMediaForPlayback?.hasVideo;
   reactExports.useEffect(() => {
-    if (!curStoryForHooks?.id) return;
-    setSegmentMs(STORY_SEGMENT_CAP_MS);
-    isHoldingProgressRef.current = false;
+    setVideoDurationSec(null);
     setMiddleHold(false);
   }, [curStoryForHooks?.id]);
-  const armAdvanceTimer = reactExports.useCallback(() => {
-    clearAdvanceTimer();
-    if (!author || stories.length === 0 || isHoldingProgressRef.current) return;
-    const ms = Math.max(0, deadlineRef.current - Date.now());
-    if (ms <= 0) {
-      goForwardRef.current();
-      return;
-    }
-    advanceTimerRef.current = window.setTimeout(() => {
-      advanceTimerRef.current = null;
-      goForwardRef.current();
-    }, ms);
-  }, [author, stories.length, clearAdvanceTimer]);
-  const pauseProgressForHold = reactExports.useCallback(() => {
-    if (isHoldingProgressRef.current) return;
-    isHoldingProgressRef.current = true;
-    holdRemainingRef.current = Math.max(0, deadlineRef.current - Date.now());
-    clearAdvanceTimer();
-  }, [clearAdvanceTimer]);
-  const resumeProgressAfterHold = reactExports.useCallback(() => {
-    if (!isHoldingProgressRef.current) return;
-    isHoldingProgressRef.current = false;
-    deadlineRef.current = Date.now() + holdRemainingRef.current;
-    armAdvanceTimer();
-  }, [armAdvanceTimer]);
+  const { progress: storyProgress, playbackState, setVideoDurationFromMetadata } = useStoryPlayback({
+    storyId: curStoryForHooks?.id ?? "",
+    hasVideo: storyHasVideo,
+    videoRef,
+    paused: middleHold || ownViewsOpen,
+    enabled: !!(author && stories.length > 0 && curStoryForHooks?.id),
+    videoDurationSec,
+    onSegmentComplete: () => goForwardRef.current()
+  });
   reactExports.useEffect(() => {
     if (!curStoryForHooks?.id || userId === me.id || isGuest) return;
     recordStoryView(curStoryForHooks.id);
@@ -20157,16 +20421,6 @@ function StoryViewer({
   reactExports.useEffect(() => {
     setOwnViewsOpen(false);
   }, [curStoryForHooks?.id, userId]);
-  reactExports.useEffect(() => {
-    if (!author || stories.length === 0) return;
-    if (ownViewsOpen) {
-      clearAdvanceTimer();
-      return;
-    }
-    deadlineRef.current = Date.now() + segmentMs;
-    armAdvanceTimer();
-    return () => clearAdvanceTimer();
-  }, [i, stories.length, author, userId, segmentMs, ownViewsOpen, armAdvanceTimer, clearAdvanceTimer]);
   reactExports.useEffect(() => {
     if (!author || stories.length === 0) return;
     const idx = Math.min(Math.max(0, i), stories.length - 1);
@@ -20425,83 +20679,75 @@ function StoryViewer({
         onPointerUp: endGestureDrag,
         onPointerCancel: endGestureDrag,
         children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs(
-            "div",
-            {
-              className: "absolute inset-x-0 top-0 z-50 flex flex-col pt-[max(0.25rem,env(safe-area-inset-top,0px))] bg-gradient-to-b from-black/75 via-black/40 to-transparent transition-opacity duration-300 " + (topChromeVisible && !ownViewsOpen ? "opacity-100" : "opacity-0 pointer-events-none"),
-              children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex gap-1 p-2 shrink-0", children: stories.map((seg, idx) => /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex-1 h-[2px] bg-white/35 rounded-full overflow-hidden", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "div",
-                  {
-                    className: "h-full bg-white rounded-full " + (idx < displayIdx ? "w-full" : idx === displayIdx ? "w-0 animate-story-seg" : "w-0"),
-                    style: idx === displayIdx ? {
-                      animationDuration: `${segmentMs / 1e3}s`,
-                      animationPlayState: middleHold || ownViewsOpen ? "paused" : "running"
-                    } : idx < displayIdx ? { width: "100%" } : void 0
-                  },
-                  idx === displayIdx ? `${seg.id}-active` : seg.id
-                ) }, seg.id)) }),
-                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex shrink-0 items-center gap-2 px-3 text-white", "data-story-interactive": true, children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: closeViewer, className: "p-2", "aria-label": "رجوع", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronLeft, { size: 24 }) }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", onClick: () => onOpenProfile?.(author.id), className: "flex items-center gap-2 flex-1 min-w-0", children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: author.username, src: author.avatar, size: 32 }),
-                    /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-sm font-semibold inline-flex items-center gap-1", children: [
-                      "@",
-                      author.username,
-                      /* @__PURE__ */ jsxRuntimeExports.jsx(VerifiedMarkForUser, { user: author, size: 16 })
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "absolute inset-x-0 top-0 z-50 flex flex-col pt-[max(0.25rem,var(--sat))] pointer-events-none", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(StoryProgressBars, { segments: stories, activeIndex: displayIdx, progress: storyProgress }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "div",
+              {
+                className: "flex flex-col bg-gradient-to-b from-black/75 via-black/40 to-transparent transition-opacity duration-300 pointer-events-auto " + (topChromeVisible && !ownViewsOpen ? "opacity-100" : "opacity-0 pointer-events-none"),
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex shrink-0 items-center gap-2 px-3 text-white", "data-story-interactive": true, children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: closeViewer, className: "p-2", "aria-label": "رجوع", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronLeft, { size: 24 }) }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", onClick: () => onOpenProfile?.(author.id), className: "flex items-center gap-2 flex-1 min-w-0", children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: author.username, src: author.avatar, size: 32 }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-sm font-semibold inline-flex items-center gap-1", children: [
+                        "@",
+                        author.username,
+                        /* @__PURE__ */ jsxRuntimeExports.jsx(VerifiedMarkForUser, { user: author, size: 16 })
+                      ] })
+                    ] }),
+                    cur.audience === "close" && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs bg-green-600 px-2 py-0.5 rounded-full", children: "مقربون" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1", children: [
+                      userId !== me.id && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                        "button",
+                        {
+                          type: "button",
+                          className: "p-2 rounded-full " + (storyLiked ? "text-red-500" : "text-white hover:bg-white/10"),
+                          onClick: (e) => {
+                            e.stopPropagation();
+                            if (isGuest) {
+                              notifyGuestActionBlocked();
+                              return;
+                            }
+                            toggleStoryLike(cur.id);
+                          },
+                          "aria-label": "إعجاب",
+                          children: /* @__PURE__ */ jsxRuntimeExports.jsx(Heart, { size: 22, className: storyLiked ? "fill-current" : "" })
+                        }
+                      ),
+                      userId === me.id && /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "p-2", onClick: () => setShowHighlightModal(true), "aria-label": "حفظ كهايلايت", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Bookmark, { size: 20 }) }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "p-2", onClick: () => setShareStoryId(cur.id), "aria-label": "مشاركة", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Share2, { size: 20 }) })
                     ] })
                   ] }),
-                  cur.audience === "close" && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs bg-green-600 px-2 py-0.5 rounded-full", children: "مقربون" }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1", children: [
-                    userId !== me.id && /* @__PURE__ */ jsxRuntimeExports.jsx(
-                      "button",
-                      {
-                        type: "button",
-                        className: "p-2 rounded-full " + (storyLiked ? "text-red-500" : "text-white hover:bg-white/10"),
-                        onClick: (e) => {
-                          e.stopPropagation();
-                          if (isGuest) {
-                            notifyGuestActionBlocked();
-                            return;
-                          }
-                          toggleStoryLike(cur.id);
-                        },
-                        "aria-label": "إعجاب",
-                        children: /* @__PURE__ */ jsxRuntimeExports.jsx(Heart, { size: 22, className: storyLiked ? "fill-current" : "" })
-                      }
-                    ),
-                    userId === me.id && /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "p-2", onClick: () => setShowHighlightModal(true), "aria-label": "حفظ كهايلايت", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Bookmark, { size: 20 }) }),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "p-2", onClick: () => setShareStoryId(cur.id), "aria-label": "مشاركة", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Share2, { size: 20 }) })
-                  ] })
-                ] }),
-                storyNotes.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex justify-center gap-3 flex-wrap px-2 py-2 shrink-0", children: storyNotes.map((n) => {
-                  const nu = userById(state, n.authorId);
-                  if (!nu) return null;
-                  if (n.authorId !== me.id && !isMutual(state, me.id, n.authorId)) return null;
-                  const canReplyNote = onOpenChat && n.authorId !== me.id;
-                  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col items-center max-w-[4.5rem]", children: [
-                    canReplyNote ? /* @__PURE__ */ jsxRuntimeExports.jsx(
-                      "button",
-                      {
-                        type: "button",
-                        title: "رد في الخاص",
-                        onClick: () => {
-                          if (isGuest) {
-                            notifyGuestActionBlocked();
-                            return;
-                          }
-                          setNoteToReply(n);
-                        },
-                        className: "text-[10px] leading-tight text-start bg-white/10 rounded-xl px-1.5 py-0.5 mb-1 line-clamp-2 text-white hover:bg-white/20 w-full",
-                        children: n.text
-                      }
-                    ) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[10px] leading-tight text-start bg-white/10 rounded-xl px-1.5 py-0.5 mb-1 line-clamp-2 text-white w-full", children: n.text }),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => onOpenProfile?.(nu.id), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: nu.username, src: nu.avatar, size: 32 }) })
-                  ] }, n.id);
-                }) })
-              ]
-            }
-          ),
+                  storyNotes.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex justify-center gap-3 flex-wrap px-2 py-2 shrink-0", children: storyNotes.map((n) => {
+                    const nu = userById(state, n.authorId);
+                    if (!nu) return null;
+                    if (n.authorId !== me.id && !isMutual(state, me.id, n.authorId)) return null;
+                    const canReplyNote = onOpenChat && n.authorId !== me.id;
+                    return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col items-center max-w-[4.5rem]", children: [
+                      canReplyNote ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+                        "button",
+                        {
+                          type: "button",
+                          title: "رد في الخاص",
+                          onClick: () => {
+                            if (isGuest) {
+                              notifyGuestActionBlocked();
+                              return;
+                            }
+                            setNoteToReply(n);
+                          },
+                          className: "text-[10px] leading-tight text-start bg-white/10 rounded-xl px-1.5 py-0.5 mb-1 line-clamp-2 text-white hover:bg-white/20 w-full",
+                          children: n.text
+                        }
+                      ) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[10px] leading-tight text-start bg-white/10 rounded-xl px-1.5 py-0.5 mb-1 line-clamp-2 text-white w-full", children: n.text }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => onOpenProfile?.(nu.id), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: nu.username, src: nu.avatar, size: 32 }) })
+                    ] }, n.id);
+                  }) })
+                ]
+              }
+            )
+          ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(
             "div",
             {
@@ -20511,6 +20757,7 @@ function StoryViewer({
                 showTopChrome();
               },
               children: [
+                (playbackState === "loading" || playbackState === "buffering") && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-sm", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-9 w-9 rounded-full border-2 border-white/30 border-t-white animate-spin", "aria-hidden": true }) }),
                 /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative z-10 flex h-full w-full max-h-full max-w-full items-center justify-center", children: [
                   storyMedia.hasVideo ? /* @__PURE__ */ jsxRuntimeExports.jsx(
                     "video",
@@ -20533,10 +20780,10 @@ function StoryViewer({
                       onLoadedMetadata: (e) => {
                         const d = e.currentTarget.duration;
                         if (Number.isFinite(d) && d > 0) {
-                          setSegmentMs(Math.min(STORY_SEGMENT_CAP_MS, Math.max(1e3, Math.ceil(d * 1e3))));
+                          setVideoDurationSec(d);
+                          setVideoDurationFromMetadata(d);
                         }
-                      },
-                      onEnded: () => goForwardRef.current()
+                      }
                     },
                     cur.id
                   ) : storyMedia.hasImage ? /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -20560,7 +20807,6 @@ function StoryViewer({
                         e.currentTarget.setPointerCapture(e.pointerId);
                       } catch {
                       }
-                      pauseProgressForHold();
                       setMiddleHold(true);
                     },
                     onPointerUp: (e) => {
@@ -20568,7 +20814,6 @@ function StoryViewer({
                         e.currentTarget.releasePointerCapture(e.pointerId);
                       } catch {
                       }
-                      resumeProgressAfterHold();
                       setMiddleHold(false);
                     },
                     onPointerCancel: (e) => {
@@ -20576,7 +20821,6 @@ function StoryViewer({
                         e.currentTarget.releasePointerCapture(e.pointerId);
                       } catch {
                       }
-                      resumeProgressAfterHold();
                       setMiddleHold(false);
                     }
                   }
@@ -20590,6 +20834,7 @@ function StoryViewer({
                     "aria-label": "الستوري السابق",
                     onClick: (e) => {
                       e.stopPropagation();
+                      storyTapHaptic();
                       goBack();
                     }
                   }
@@ -20603,6 +20848,7 @@ function StoryViewer({
                     "aria-label": "الستوري التالي",
                     onClick: (e) => {
                       e.stopPropagation();
+                      storyTapHaptic();
                       goForward();
                     }
                   }
@@ -20626,7 +20872,7 @@ function StoryViewer({
           userId === me.id && /* @__PURE__ */ jsxRuntimeExports.jsxs(
             "div",
             {
-              className: "z-[45] flex shrink-0 touch-none select-none flex-col items-center justify-center gap-0.5 border-t border-white/5 bg-gradient-to-t from-black via-black/95 to-black/40 px-4 pt-2 pb-[max(0.65rem,env(safe-area-inset-bottom,0px))]",
+              className: "z-[45] flex shrink-0 touch-none select-none flex-col items-center justify-center gap-0.5 border-t border-white/5 bg-gradient-to-t from-black via-black/95 to-black/40 px-4 pt-2 pb-[max(0.65rem,var(--sab))]",
               style: { touchAction: "none" },
               "data-story-interactive": true,
               onPointerDown: onOwnZonePointerDown,
@@ -21547,7 +21793,7 @@ function HeartBurst({ x, y }) {
 function PausedOverlay() {
   return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-black/30", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-full bg-black/50 p-5 backdrop-blur-sm", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pause, { size: 44, className: "fill-white stroke-white" }) }) });
 }
-const REEL_SLIDE_HEIGHT_FALLBACK = "calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))";
+const REEL_SLIDE_HEIGHT_FALLBACK = "calc(100dvh - var(--sat) - var(--sab))";
 const ReelSlide = reactExports.memo(function ReelSlide2({
   reelId,
   slideHeightPx,
@@ -21812,7 +22058,7 @@ function ReelsScreen({
     /* @__PURE__ */ jsxRuntimeExports.jsxs(
       "div",
       {
-        className: "pointer-events-auto absolute inset-x-0 top-0 z-40 flex items-end justify-between pb-2 pt-[env(safe-area-inset-top,0px)]",
+        className: "pointer-events-auto absolute inset-x-0 top-0 z-40 flex items-end justify-between pb-2 pt-[var(--sat)]",
         style: {
           background: "linear-gradient(to bottom, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0) 100%)",
           backdropFilter: "none"
@@ -21854,7 +22100,7 @@ function ReelsScreen({
         ]
       }
     ),
-    reelPullHint && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-x-0 top-[calc(env(safe-area-inset-top,0px)+3.5rem)] z-50 flex justify-center", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "rounded-full bg-white/20 px-4 py-1.5 text-xs font-medium backdrop-blur-md", children: "تم التحديث ✓" }) }),
+    reelPullHint && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-x-0 top-[calc(var(--sat)+3.5rem)] z-50 flex justify-center", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "rounded-full bg-white/20 px-4 py-1.5 text-xs font-medium backdrop-blur-md", children: "تم التحديث ✓" }) }),
     heartBurst && /* @__PURE__ */ jsxRuntimeExports.jsx(HeartBurst, { x: heartBurst.x, y: heartBurst.y }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs(
       "div",
@@ -21906,7 +22152,7 @@ function ReelsScreen({
                   }
                 }
               ),
-              r2.userId === me.id && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "absolute top-[calc(env(safe-area-inset-top,0px)+3.5rem)] end-4 z-30", children: [
+              r2.userId === me.id && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "absolute top-[calc(var(--sat)+3.5rem)] end-4 z-30", children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsx(
                   "button",
                   {
@@ -22092,7 +22338,7 @@ function ReelsScreen({
               backdropFilter: "blur(20px)",
               WebkitBackdropFilter: "blur(20px)",
               maxHeight: "68vh",
-              paddingBottom: "env(safe-area-inset-bottom,0px)"
+              paddingBottom: "var(--sab)"
             },
             onClick: (e) => e.stopPropagation(),
             children: [
@@ -22236,6 +22482,126 @@ function useLockPageScroll(locked) {
     };
   }, [locked]);
 }
+const NAV_HIDE_PROGRESS_CSS_VAR = "--retweet-nav-hide-progress";
+const REELS_NAV_COLLAPSE_PROGRESS_VAR = "--retweet-reels-nav-collapse-progress";
+const DEFAULT_TRAVEL_PX = 72;
+function clamp$1(n, min, max) {
+  return Math.min(max, Math.max(min, n));
+}
+function useBottomNavSheet(options) {
+  const optionsRef = reactExports.useRef(options);
+  optionsRef.current = options;
+  const navRef = reactExports.useRef(null);
+  const travelRef = reactExports.useRef(DEFAULT_TRAVEL_PX);
+  const suppressTapUntilRef = reactExports.useRef(0);
+  const shouldSuppressTap = reactExports.useCallback(() => Date.now() < suppressTapUntilRef.current, []);
+  const measureTravel = reactExports.useCallback(() => {
+    const el = navRef.current;
+    if (!el) return;
+    const h = el.offsetHeight;
+    if (h > 0) travelRef.current = h;
+  }, []);
+  const publishHideProgress = reactExports.useCallback((p) => {
+    document.documentElement.style.setProperty(NAV_HIDE_PROGRESS_CSS_VAR, String(clamp$1(p, 0, 1)));
+  }, []);
+  reactExports.useLayoutEffect(() => {
+    measureTravel();
+    publishHideProgress(0);
+  }, [measureTravel, publishHideProgress]);
+  reactExports.useLayoutEffect(() => {
+    const el = navRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => measureTravel());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [measureTravel]);
+  reactExports.useEffect(() => {
+    document.documentElement.style.setProperty(REELS_NAV_COLLAPSE_PROGRESS_VAR, "0");
+    return () => {
+      document.documentElement.style.removeProperty(NAV_HIDE_PROGRESS_CSS_VAR);
+      document.documentElement.style.removeProperty(REELS_NAV_COLLAPSE_PROGRESS_VAR);
+    };
+  }, []);
+  const travel = travelRef.current;
+  const externalDrive = !!optionsRef.current?.externalHideDrive;
+  const navStyle = externalDrive ? {
+    transform: `translate3d(0, calc(var(${NAV_HIDE_PROGRESS_CSS_VAR}, 0) * ${travel}px), 0)`,
+    transformOrigin: "50% 100%",
+    transition: "none",
+    willChange: "transform"
+  } : {
+    transform: "translate3d(0, 0, 0)",
+    transformOrigin: "50% 100%",
+    transition: "none",
+    willChange: "auto"
+  };
+  return {
+    navRef,
+    navStyle,
+    shouldSuppressTap
+  };
+}
+const CHAT_STACK_PROGRESS_VAR = "--retweet-chat-stack-progress";
+const CHAT_STACK_OPEN_FRACTION = 0.5;
+const CHAT_STACK_FLING_VX = 0.42;
+function clampStackProgress(p) {
+  return Math.max(0, Math.min(1, Number.isFinite(p) ? p : 0));
+}
+function publishChatStackCssProgress(progress) {
+  const clamped = clampStackProgress(progress);
+  if (typeof document !== "undefined") {
+    document.documentElement.style.setProperty(CHAT_STACK_PROGRESS_VAR, String(clamped));
+  }
+  return clamped;
+}
+function clearChatStackCssProgress() {
+  if (typeof document === "undefined") return;
+  document.documentElement.style.removeProperty(CHAT_STACK_PROGRESS_VAR);
+}
+function syncStackNavHideProgress(progress) {
+  if (typeof document === "undefined") return;
+  if (progress == null) {
+    document.documentElement.style.removeProperty(NAV_HIDE_PROGRESS_CSS_VAR);
+    return;
+  }
+  document.documentElement.style.setProperty(
+    NAV_HIDE_PROGRESS_CSS_VAR,
+    String(clampStackProgress(progress))
+  );
+}
+function applyOpenStackTransforms(progress, cap, layers2, animate, tapOpen = false) {
+  const { inbox, room } = chatStackOpenFromLeftTransforms(progress, cap);
+  const transition = animate ? `transform ${tapOpen ? 280 : SLIDE_DISMISS_MS}ms ${tapOpen ? "cubic-bezier(0.22, 1, 0.36, 1)" : SLIDE_DISMISS_EASE}` : "none";
+  if (layers2.inboxEl) {
+    layers2.inboxEl.style.transform = inbox;
+    layers2.inboxEl.style.transition = transition;
+  }
+  if (layers2.roomEl) {
+    layers2.roomEl.style.transform = room;
+    layers2.roomEl.style.transition = transition;
+  }
+}
+function applyCloseStackTransforms(dragTx, cap, layers2, animate) {
+  const { progress, inbox, room } = chatStackDismissTransforms(dragTx, cap);
+  const transition = animate ? `transform ${SLIDE_DISMISS_MS}ms ${SLIDE_DISMISS_EASE}` : "none";
+  if (layers2.inboxEl) {
+    layers2.inboxEl.style.transform = inbox;
+    layers2.inboxEl.style.transition = transition;
+  }
+  if (layers2.roomEl) {
+    layers2.roomEl.style.transform = room;
+    layers2.roomEl.style.transition = transition;
+  }
+  return progress;
+}
+function chatStackOpenReleaseTarget(px, cap, velocityX) {
+  const w = Math.max(260, cap);
+  if (velocityX >= CHAT_STACK_FLING_VX) return { commit: true, targetProgress: 1 };
+  if (velocityX <= -CHAT_STACK_FLING_VX) return { commit: false, targetProgress: 0 };
+  const threshold = Math.max(w * CHAT_STACK_OPEN_FRACTION, 64);
+  if (px >= threshold) return { commit: true, targetProgress: 1 };
+  return { commit: false, targetProgress: 0 };
+}
 const DEFAULT_LAYOUT_WIDTH_PX = 390;
 const MIN_LAYOUT_WIDTH_PX = 260;
 function readSafeViewportWidth() {
@@ -22310,30 +22676,145 @@ function ChatStackRoomGestureShell({
     }
   ) });
 }
-function readVisualViewportLayout() {
+let nativeKeyboardPx = 0;
+let engineRefs = 0;
+let rafLoop = 0;
+let nativeListenersReady = false;
+function readChatKeyboardSnapshot() {
   if (typeof window === "undefined") {
-    return { height: 0, offsetTop: 0, keyboardInset: 0 };
+    return { keyboardInset: 0, vvHeight: 0, vvOffsetTop: 0, open: false };
   }
   const vv = window.visualViewport;
-  if (!vv) {
-    return {
-      height: window.innerHeight,
-      offsetTop: 0,
-      keyboardInset: 0
+  const layoutH = window.innerHeight;
+  const vvHeight = vv ? Math.round(vv.height) : layoutH;
+  const vvOffsetTop = vv ? Math.round(vv.offsetTop) : 0;
+  const vvInset = Math.max(0, Math.round(layoutH - vvHeight - vvOffsetTop));
+  const keyboardInset = Math.max(vvInset, nativeKeyboardPx);
+  return {
+    keyboardInset,
+    vvHeight,
+    vvOffsetTop,
+    open: keyboardInset > 8
+  };
+}
+function lockLayoutViewportForKeyboard(open) {
+  if (typeof window === "undefined") return;
+  const vv = window.visualViewport;
+  if (open) {
+    if (vv && vv.offsetTop !== 0) {
+      try {
+        window.scrollTo(0, 0);
+      } catch {
+      }
+    }
+    if (isNativeCapacitorShell()) {
+      document.body.style.overflow = "hidden";
+      document.documentElement.style.overflow = "hidden";
+    }
+    return;
+  }
+  document.body.style.overflow = "";
+  document.documentElement.style.overflow = "";
+}
+function applyChatKeyboardCss() {
+  const snap = readChatKeyboardSnapshot();
+  const root = document.documentElement;
+  root.style.setProperty("--vv-height", `${snap.vvHeight}px`);
+  root.style.setProperty("--vv-offset-top", `${snap.vvOffsetTop}px`);
+  root.style.setProperty("--vv-keyboard-inset", `${snap.keyboardInset}px`);
+  root.style.setProperty("--chat-composer-bottom", `${snap.keyboardInset}px`);
+  root.style.setProperty("--chat-sab-effective", snap.open ? "0px" : "var(--sab)");
+  const wasOpen = root.classList.contains("retweet-chat-keyboard-open");
+  root.classList.toggle("retweet-chat-keyboard-open", snap.open);
+  if (wasOpen !== snap.open) lockLayoutViewportForKeyboard(snap.open);
+  return snap;
+}
+function scheduleRafLoop() {
+  if (rafLoop) return;
+  const tick = () => {
+    rafLoop = 0;
+    const snap = applyChatKeyboardCss();
+    if (snap.open) rafLoop = requestAnimationFrame(tick);
+  };
+  rafLoop = requestAnimationFrame(tick);
+}
+function onViewportChange() {
+  const snap = applyChatKeyboardCss();
+  if (snap.open) scheduleRafLoop();
+}
+async function ensureNativeKeyboardBridge() {
+  if (nativeListenersReady || !isNativeCapacitorShell()) return;
+  nativeListenersReady = true;
+  try {
+    const { Keyboard, KeyboardResize } = await import("./index-407G7XJi.js");
+    try {
+      await Keyboard.setResizeMode({ mode: KeyboardResize.None });
+    } catch {
+    }
+    Keyboard.addListener("keyboardWillShow", (info) => {
+      nativeKeyboardPx = Math.max(0, Math.round(info.keyboardHeight));
+      onViewportChange();
+    });
+    Keyboard.addListener("keyboardDidShow", (info) => {
+      nativeKeyboardPx = Math.max(0, Math.round(info.keyboardHeight));
+      onViewportChange();
+    });
+    Keyboard.addListener("keyboardWillHide", () => {
+      nativeKeyboardPx = 0;
+      onViewportChange();
+    });
+    Keyboard.addListener("keyboardDidHide", () => {
+      nativeKeyboardPx = 0;
+      onViewportChange();
+    });
+  } catch {
+    nativeListenersReady = false;
+  }
+}
+function mountChatKeyboardEngine() {
+  engineRefs += 1;
+  if (engineRefs > 1) {
+    return () => {
+      engineRefs = Math.max(0, engineRefs - 1);
     };
   }
-  const keyboardInset = Math.max(
-    0,
-    Math.round(window.innerHeight - vv.height - vv.offsetTop)
-  );
+  void ensureNativeKeyboardBridge();
+  applyChatKeyboardCss();
+  const vv = window.visualViewport;
+  const onSafeArea = () => onViewportChange();
+  vv?.addEventListener("resize", onViewportChange, { passive: true });
+  vv?.addEventListener("scroll", onViewportChange, { passive: true });
+  window.addEventListener("resize", onViewportChange, { passive: true });
+  window.addEventListener("orientationchange", onViewportChange, { passive: true });
+  window.addEventListener("retweet-safe-area-change", onSafeArea, { passive: true });
+  return () => {
+    engineRefs = Math.max(0, engineRefs - 1);
+    if (engineRefs > 0) return;
+    if (rafLoop) cancelAnimationFrame(rafLoop);
+    rafLoop = 0;
+    nativeKeyboardPx = 0;
+    vv?.removeEventListener("resize", onViewportChange);
+    vv?.removeEventListener("scroll", onViewportChange);
+    window.removeEventListener("resize", onViewportChange);
+    window.removeEventListener("orientationchange", onViewportChange);
+    window.removeEventListener("retweet-safe-area-change", onSafeArea);
+    const root = document.documentElement;
+    root.classList.remove("retweet-chat-keyboard-open");
+    root.style.removeProperty("--chat-composer-bottom");
+    root.style.removeProperty("--chat-sab-effective");
+    lockLayoutViewportForKeyboard(false);
+  };
+}
+function readVisualViewportLayout() {
+  const snap = readChatKeyboardSnapshot();
   return {
-    height: Math.round(vv.height),
-    offsetTop: Math.round(vv.offsetTop),
-    keyboardInset
+    height: snap.vvHeight,
+    offsetTop: snap.vvOffsetTop,
+    keyboardInset: snap.keyboardInset
   };
 }
 function chatComposerBottomPadding(keyboardOpen) {
-  return keyboardOpen ? "0px" : "env(safe-area-inset-bottom, 0px)";
+  return keyboardOpen ? "0px" : "var(--chat-sab-effective, var(--sab))";
 }
 function useVisualViewportLayout() {
   const [layout, setLayout] = reactExports.useState(readVisualViewportLayout);
@@ -22347,10 +22828,6 @@ function useVisualViewportLayout() {
       raf = requestAnimationFrame(() => {
         raf = 0;
         const next = readVisualViewportLayout();
-        const root = document.documentElement;
-        root.style.setProperty("--vv-height", `${next.height}px`);
-        root.style.setProperty("--vv-offset-top", `${next.offsetTop}px`);
-        root.style.setProperty("--vv-keyboard-inset", `${next.keyboardInset}px`);
         const wasOpen = prevInsetRef.current > 8;
         const isOpen = next.keyboardInset > 8;
         const heightDelta = Math.abs(next.height - prevHeightRef.current);
@@ -22375,6 +22852,25 @@ function useVisualViewportLayout() {
     };
   }, []);
   return layout;
+}
+function useChatKeyboardInsets(enabled) {
+  const [snap, setSnap] = reactExports.useState(readChatKeyboardSnapshot);
+  reactExports.useEffect(() => {
+    const unmountEngine = mountChatKeyboardEngine();
+    const sync = () => setSnap(readChatKeyboardSnapshot());
+    sync();
+    const vv = window.visualViewport;
+    vv?.addEventListener("resize", sync, { passive: true });
+    vv?.addEventListener("scroll", sync, { passive: true });
+    window.addEventListener("retweet-chat-keyboard-sync", sync);
+    return () => {
+      vv?.removeEventListener("resize", sync);
+      vv?.removeEventListener("scroll", sync);
+      window.removeEventListener("retweet-chat-keyboard-sync", sync);
+      unmountEngine();
+    };
+  }, [enabled]);
+  return snap;
 }
 const NATIVE_LONG_PRESS_ATTR = "data-native-long-press";
 const ALLOW_SELECT_SELECTOR = 'input, textarea, select, [contenteditable="true"], .chat-allow-select, .native-allow-select';
@@ -23407,7 +23903,7 @@ function ChatDrawComposeModal({
     {
       className: (overMessages ? "absolute inset-0 z-[85] flex min-h-0 flex-col bg-black/25 " : "fixed inset-0 z-[365] mx-auto flex min-h-0 max-w-md flex-col bg-black/30 backdrop-blur-md ") + "pointer-events-auto",
       children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex shrink-0 items-center justify-between gap-2 px-3 pb-2 pt-[max(0.75rem,env(safe-area-inset-top))]", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex shrink-0 items-center justify-between gap-2 px-3 pb-2 pt-[max(0.75rem,var(--sat))]", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onClose, className: toolBtn, "aria-label": "إغلاق", children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 20 }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "min-w-0 flex-1 text-center text-xs font-medium text-white/95 sm:text-sm", children: "رسم وكتابة" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => cycleBg(-1), className: toolBtn, "aria-label": "خلفية سابقة", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronRight, { size: 20, className: "rtl:rotate-180" }) }),
@@ -23426,7 +23922,7 @@ function ChatDrawComposeModal({
             onPointerCancel: onPointerUp
           }
         ) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "shrink-0 space-y-3 border-t border-white/10 bg-zinc-950/90 px-3 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur-md", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "shrink-0 space-y-3 border-t border-white/10 bg-zinc-950/90 px-3 pb-[max(1rem,var(--sab))] pt-3 backdrop-blur-md", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex flex-wrap items-center gap-2", children: PEN_COLORS.map((c) => /* @__PURE__ */ jsxRuntimeExports.jsx(
             "button",
             {
@@ -23538,7 +24034,7 @@ function ChatInlineMediaLightbox({ media, src, sender, senderLabel, onClose }) {
       "header",
       {
         dir: "ltr",
-        className: "flex shrink-0 items-center gap-2 border-b border-white/10 px-2 pb-2 pt-[max(10px,env(safe-area-inset-top))]",
+        className: "flex shrink-0 items-center gap-2 border-b border-white/10 px-2 pb-2 pt-[max(10px,var(--sat))]",
         children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onClose, className: "rounded-full p-2.5 text-white transition hover:bg-white/10", "aria-label": "رجوع", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronLeft, { size: 26, strokeWidth: 2.25 }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-w-0 flex-1 items-center justify-center gap-2 px-1", children: [
@@ -23588,7 +24084,7 @@ function ChatInlineMediaLightbox({ media, src, sender, senderLabel, onClose }) {
         ]
       }
     ),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex min-h-0 flex-1 items-center justify-center overflow-hidden px-1 pb-[env(safe-area-inset-bottom,0px)]", children: media === "image" ? /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src, alt: "", className: "max-h-full max-w-full object-contain" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("video", { src, controls: true, playsInline: true, autoPlay: true, className: "max-h-full max-w-full object-contain", preload: "metadata" }) })
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex min-h-0 flex-1 items-center justify-center overflow-hidden px-1 pb-[var(--sab)]", children: media === "image" ? /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src, alt: "", className: "max-h-full max-w-full object-contain" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("video", { src, controls: true, playsInline: true, autoPlay: true, className: "max-h-full max-w-full object-contain", preload: "metadata" }) })
   ] });
   return reactDomExports.createPortal(body, document.body);
 }
@@ -24542,6 +25038,993 @@ function ChatComposerReplyBar({
     }
   );
 }
+const DEFAULT_GROUP_SETTINGS = {
+  visibility: "invite_only",
+  approvalRequired: false,
+  whoCanSendMessages: "everyone",
+  whoCanAddMembers: "admins",
+  whoCanEditGroup: "admins",
+  slowModeSeconds: 0,
+  blockLinks: false,
+  antiSpam: true,
+  profanityFilter: false,
+  autoDeleteHours: 0,
+  muteMentions: false,
+  muteCalls: false
+};
+const GROUP_ROLE_PERMISSIONS = {
+  owner: [
+    "group.delete",
+    "group.transfer_ownership",
+    "group.edit_info",
+    "group.edit_settings",
+    "group.manage_invites",
+    "group.view_audit",
+    "members.add",
+    "members.remove",
+    "members.ban",
+    "members.unban",
+    "members.mute",
+    "members.restrict",
+    "members.view_list",
+    "roles.assign_admin",
+    "roles.remove_admin",
+    "roles.assign_moderator",
+    "roles.remove_moderator",
+    "roles.demote_any_admin",
+    "join_requests.approve",
+    "messages.send",
+    "messages.delete_any",
+    "messages.pin",
+    "messages.schedule"
+  ],
+  admin: [
+    "group.edit_info",
+    "group.edit_settings",
+    "group.manage_invites",
+    "members.add",
+    "members.remove",
+    "members.ban",
+    "members.mute",
+    "members.restrict",
+    "members.view_list",
+    "roles.assign_moderator",
+    "roles.remove_moderator",
+    "roles.demote_any_admin",
+    "join_requests.approve",
+    "messages.send",
+    "messages.delete_any",
+    "messages.pin",
+    "messages.schedule"
+  ],
+  moderator: [
+    "members.view_list",
+    "members.mute",
+    "members.restrict",
+    "messages.send",
+    "messages.delete_any",
+    "messages.pin"
+  ],
+  member: ["members.view_list", "messages.send"]
+};
+function roleHasPermission(role, permission) {
+  return GROUP_ROLE_PERMISSIONS[role].includes(permission);
+}
+function resolveGroupRole(chat, userId) {
+  if (!chat.members.includes(userId)) return null;
+  if (chat.ownerId === userId) return "owner";
+  const fromMap = chat.memberRoles?.[userId];
+  if (fromMap) return fromMap;
+  if ((chat.admins || []).includes(userId)) return "admin";
+  return "member";
+}
+function canGroup(chat, userId, permission) {
+  if (chat.bannedUserIds?.includes(userId)) return false;
+  const role = resolveGroupRole(chat, userId);
+  if (!role) return false;
+  return roleHasPermission(role, permission);
+}
+async function groupFetch(path, init) {
+  const token = init?.token ?? getApiToken();
+  const res = await apiFetch$1(path, { ...init, token });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) return { ok: false, error: data.error || "فشل الطلب" };
+  return { ok: true, data };
+}
+async function apiPatchGroupSettings(chatId, patch) {
+  return groupFetch(`/v1/groups/${encodeURIComponent(chatId)}/settings`, {
+    method: "PATCH",
+    body: JSON.stringify(patch)
+  });
+}
+async function apiSetGroupMemberRole(chatId, userId, role) {
+  return groupFetch(
+    `/v1/groups/${encodeURIComponent(chatId)}/members/${encodeURIComponent(userId)}/role`,
+    { method: "PATCH", body: JSON.stringify({ role }) }
+  );
+}
+const ROLE_LABEL = {
+  owner: "مالك",
+  admin: "مشرف",
+  moderator: "مراقب",
+  member: "عضو"
+};
+const ROLE_ICON = {
+  owner: Crown,
+  admin: ShieldCheck,
+  moderator: Shield,
+  member: User
+};
+function GroupRolesSheet({
+  chat,
+  onClose,
+  onChatUpdated
+}) {
+  const { state, currentUser, setState } = useApp();
+  const me = currentUser;
+  const [busy, setBusy] = reactExports.useState(null);
+  const [err, setErr] = reactExports.useState("");
+  const canAssignAdmin = canGroup(chat, me.id, "roles.assign_admin");
+  const canDemote = canGroup(chat, me.id, "roles.demote_any_admin");
+  const applyLocalRole = (userId, role) => {
+    const memberRoles = { ...chat.memberRoles || {}, [userId]: role };
+    const admins = chat.members.filter(
+      (id) => memberRoles[id] === "owner" || memberRoles[id] === "admin"
+    );
+    let ownerId = chat.ownerId;
+    if (role === "owner") ownerId = userId;
+    const next = { ...chat, memberRoles, admins, ownerId };
+    setState((s) => ({
+      ...s,
+      chats: s.chats.map((c) => c.id === chat.id ? next : c)
+    }));
+    onChatUpdated?.(next);
+  };
+  const setRole = async (userId, role) => {
+    setErr("");
+    setBusy(userId);
+    try {
+      if (apiBackendEnabled()) {
+        const res = await apiSetGroupMemberRole(chat.id, userId, role);
+        if (!res.ok) {
+          setErr(res.error);
+          return;
+        }
+        if (res.data.chat) {
+          setState((s) => ({
+            ...s,
+            chats: s.chats.map((c) => c.id === chat.id ? res.data.chat : c)
+          }));
+          onChatUpdated?.(res.data.chat);
+        }
+      } else {
+        applyLocalRole(userId, role);
+      }
+    } finally {
+      setBusy(null);
+    }
+  };
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-[220] flex flex-col justify-end bg-black/50", onClick: onClose, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "div",
+    {
+      className: "mx-auto flex max-h-[min(85vh,640px)] w-full max-w-md flex-col rounded-t-3xl bg-background animate-in slide-in-from-bottom",
+      onClick: (e) => e.stopPropagation(),
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "border-b border-border px-4 py-3", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-center font-semibold", children: "الأدوار والصلاحيات" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-center text-xs text-muted-foreground", children: "مثل Instagram — المالك يتحكم بكل شيء" })
+        ] }),
+        err && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "px-4 py-2 text-center text-sm text-destructive", children: err }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("ul", { className: "flex-1 overflow-y-auto no-scrollbar px-2 py-2", children: chat.members.map((id) => {
+          const u = userById(state, id);
+          if (!u) return null;
+          const role = resolveGroupRole(chat, id) || "member";
+          const Icon2 = ROLE_ICON[role];
+          const isMe = id === me.id;
+          const canEdit = !isMe && id !== chat.ownerId && (role === "admin" ? canDemote : canAssignAdmin || canGroup(chat, me.id, "roles.assign_moderator"));
+          return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "li",
+            {
+              className: "flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-secondary/60",
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: u.username, src: u.avatar, size: 40 }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "truncate font-medium", children: [
+                    "@",
+                    u.username
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "flex items-center gap-1 text-xs text-muted-foreground", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(Icon2, { size: 12 }),
+                    ROLE_LABEL[role]
+                  ] })
+                ] }),
+                canEdit && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                  "select",
+                  {
+                    disabled: busy === id,
+                    value: role,
+                    onChange: (e) => void setRole(id, e.target.value),
+                    className: "rounded-lg border border-border bg-card px-2 py-1 text-xs",
+                    children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "member", children: "عضو" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "moderator", children: "مراقب" }),
+                      (canAssignAdmin || canDemote) && /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "admin", children: "مشرف" })
+                    ]
+                  }
+                )
+              ]
+            },
+            id
+          );
+        }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "border-t border-border p-4 pb-[max(1rem,var(--sab))]", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            type: "button",
+            onClick: onClose,
+            className: "w-full rounded-xl bg-secondary py-2.5 text-sm font-medium",
+            children: "إغلاق"
+          }
+        ) })
+      ]
+    }
+  ) });
+}
+function GroupSettingsSheet({
+  chat,
+  onClose
+}) {
+  const { currentUser, setState } = useApp();
+  const me = currentUser;
+  const base = { ...DEFAULT_GROUP_SETTINGS, ...chat.groupSettings };
+  const [settings, setSettings] = reactExports.useState(base);
+  const [description, setDescription] = reactExports.useState(chat.description || "");
+  const [busy, setBusy] = reactExports.useState(false);
+  const [err, setErr] = reactExports.useState("");
+  const canEdit = canGroup(chat, me.id, "group.edit_settings");
+  const save = async () => {
+    if (!canEdit) return;
+    setBusy(true);
+    setErr("");
+    try {
+      if (apiBackendEnabled()) {
+        const res = await apiPatchGroupSettings(chat.id, {
+          ...settings,
+          description
+        });
+        if (!res.ok) {
+          setErr(res.error);
+          return;
+        }
+        if (res.data.chat) {
+          setState((s) => ({
+            ...s,
+            chats: s.chats.map((c) => c.id === chat.id ? res.data.chat : c)
+          }));
+        }
+      } else {
+        setState((s) => ({
+          ...s,
+          chats: s.chats.map(
+            (c) => c.id === chat.id ? {
+              ...c,
+              description,
+              groupSettings: settings,
+              groupVisibility: settings.visibility,
+              isPublicGroup: settings.visibility === "public"
+            } : c
+          )
+        }));
+      }
+      onClose();
+    } finally {
+      setBusy(false);
+    }
+  };
+  const vis = settings.visibility;
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-[220] flex flex-col justify-end bg-black/50", onClick: onClose, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "div",
+    {
+      className: "mx-auto max-h-[min(90vh,720px)] w-full max-w-md overflow-y-auto rounded-t-3xl bg-background animate-in slide-in-from-bottom",
+      onClick: (e) => e.stopPropagation(),
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sticky top-0 border-b border-border bg-background px-4 py-3", children: /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "font-semibold", children: "إعدادات المجموعة" }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4 px-4 py-4", children: [
+          !canEdit && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-muted-foreground", children: "عرض فقط — تحتاج صلاحية مشرف" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "block text-sm", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-muted-foreground", children: "الوصف" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "textarea",
+              {
+                value: description,
+                onChange: (e) => setDescription(e.target.value.slice(0, 500)),
+                disabled: !canEdit,
+                className: "mt-1 w-full rounded-xl border border-border bg-card px-3 py-2 text-sm",
+                rows: 2
+              }
+            )
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "block text-sm", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-muted-foreground", children: "نوع المجموعة" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "select",
+              {
+                value: vis,
+                disabled: !canEdit,
+                onChange: (e) => setSettings((s) => ({
+                  ...s,
+                  visibility: e.target.value
+                })),
+                className: "mt-1 w-full rounded-xl border border-border bg-card px-3 py-2",
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "public", children: "عامة — انضمام مباشر" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "private", children: "خاصة — موافقة مطلوبة" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "invite_only", children: "بالدعوة فقط" })
+                ]
+              }
+            )
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "block text-sm", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-muted-foreground", children: "من يستطيع الإرسال؟" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "select",
+              {
+                value: settings.whoCanSendMessages,
+                disabled: !canEdit,
+                onChange: (e) => setSettings((s) => ({
+                  ...s,
+                  whoCanSendMessages: e.target.value
+                })),
+                className: "mt-1 w-full rounded-xl border border-border bg-card px-3 py-2",
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "everyone", children: "الجميع" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "moderators", children: "المشرفون والمراقبون" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "admins", children: "المشرفون فقط" })
+                ]
+              }
+            )
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "flex items-center justify-between text-sm", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "وضع بطيء (ثوانٍ بين الرسائل)" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "input",
+              {
+                type: "number",
+                min: 0,
+                max: 3600,
+                disabled: !canEdit,
+                value: settings.slowModeSeconds,
+                onChange: (e) => setSettings((s) => ({
+                  ...s,
+                  slowModeSeconds: Math.max(0, Number(e.target.value) || 0)
+                })),
+                className: "w-20 rounded-lg border border-border bg-card px-2 py-1 text-end"
+              }
+            )
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "flex items-center justify-between text-sm", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "منع الروابط" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "input",
+              {
+                type: "checkbox",
+                disabled: !canEdit,
+                checked: settings.blockLinks,
+                onChange: (e) => setSettings((s) => ({ ...s, blockLinks: e.target.checked }))
+              }
+            )
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "flex items-center justify-between text-sm", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "مكافحة السبام" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "input",
+              {
+                type: "checkbox",
+                disabled: !canEdit,
+                checked: settings.antiSpam,
+                onChange: (e) => setSettings((s) => ({ ...s, antiSpam: e.target.checked }))
+              }
+            )
+          ] }),
+          err && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-destructive", children: err })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sticky bottom-0 flex gap-2 border-t border-border bg-background p-4 pb-[max(1rem,var(--sab))]", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onClose, className: "flex-1 rounded-xl bg-secondary py-2.5 text-sm", children: "إلغاء" }),
+          canEdit && /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              type: "button",
+              disabled: busy,
+              onClick: () => void save(),
+              className: "flex-1 rounded-xl bg-primary py-2.5 text-sm font-medium text-primary-foreground",
+              children: busy ? "جاري الحفظ…" : "حفظ"
+            }
+          )
+        ] })
+      ]
+    }
+  ) });
+}
+function GroupInviteQr({ chat, size = 160 }) {
+  const inviteUrl = reactExports.useMemo(() => {
+    if (typeof window === "undefined" || !chat.inviteCode) return "";
+    return `${window.location.origin}/app/?group=${encodeURIComponent(chat.inviteCode)}`;
+  }, [chat.inviteCode]);
+  if (!inviteUrl) return null;
+  const src = `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&data=${encodeURIComponent(inviteUrl)}`;
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "img",
+    {
+      src,
+      alt: "رمز QR للانضمام",
+      width: size,
+      height: size,
+      className: "mx-auto rounded-xl border border-border bg-white p-2"
+    }
+  );
+}
+const REPORT_CATEGORIES = [
+  { id: "spam", labelAr: "سبام", labelEn: "Spam" },
+  { id: "fake_account", labelAr: "حساب وهمي", labelEn: "Fake Account" },
+  { id: "impersonation", labelAr: "انتحال شخصية", labelEn: "Pretending To Be Someone", needsImpersonationFlow: true },
+  { id: "nudity", labelAr: "عري أو نشاط جنسي", labelEn: "Nudity or Sexual Activity" },
+  { id: "hate_speech", labelAr: "خطاب كراهية", labelEn: "Hate Speech" },
+  { id: "violence", labelAr: "عنف", labelEn: "Violence" },
+  { id: "harassment", labelAr: "تحرش أو تنمر", labelEn: "Harassment or Bullying" },
+  { id: "scam", labelAr: "احتيال", labelEn: "Scam or Fraud" },
+  { id: "terrorism", labelAr: "إرهاب", labelEn: "Terrorism" },
+  { id: "child_exploitation", labelAr: "استغلال أطفال", labelEn: "Child Exploitation" },
+  { id: "self_harm", labelAr: "إيذاء النفس", labelEn: "Self Harm" },
+  { id: "drugs", labelAr: "مخدرات", labelEn: "Drugs" },
+  { id: "intellectual_property", labelAr: "ملكية فكرية", labelEn: "Intellectual Property" },
+  { id: "other", labelAr: "أخرى", labelEn: "Other" }
+];
+async function modFetch(path, init) {
+  const token = init?.token ?? getApiToken();
+  const res = await apiFetch$1(path, { ...init, token });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    return {
+      ok: false,
+      error: data.error || "فشل الطلب",
+      status: res.status,
+      banInfo: data.banInfo
+    };
+  }
+  return { ok: true, data };
+}
+async function apiGetReportCategories() {
+  return modFetch(
+    "/v1/moderation/categories",
+    { method: "GET" }
+  );
+}
+async function apiSubmitReport(body) {
+  return modFetch("/v1/moderation/reports", {
+    method: "POST",
+    body: JSON.stringify(body)
+  });
+}
+async function apiGetMyModerationStatus() {
+  return modFetch("/v1/me/moderation/status", { method: "GET" });
+}
+async function apiAppealSendOtp() {
+  return modFetch("/v1/me/appeal/otp", { method: "POST" });
+}
+async function apiAppealVerifyEmail(code) {
+  return modFetch("/v1/me/appeal/verify-email", {
+    method: "POST",
+    body: JSON.stringify({ code })
+  });
+}
+async function apiSubmitAppeal(body) {
+  return modFetch("/v1/me/appeal", {
+    method: "POST",
+    body: JSON.stringify(body)
+  });
+}
+async function apiAdminModerationMe() {
+  return modFetch("/v1/admin/moderation/me", {
+    method: "GET"
+  });
+}
+async function apiAdminListReports(params) {
+  const q = new URLSearchParams();
+  if (params?.status) q.set("status", params.status);
+  if (params?.q) q.set("q", params.q);
+  const qs = q.toString();
+  return modFetch(
+    `/v1/admin/moderation/reports${qs ? `?${qs}` : ""}`,
+    { method: "GET" }
+  );
+}
+async function apiAdminReviewReport(reportId, body) {
+  return modFetch(
+    `/v1/admin/moderation/reports/${encodeURIComponent(reportId)}/review`,
+    { method: "POST", body: JSON.stringify(body) }
+  );
+}
+async function apiAdminListAppeals(status) {
+  const qs = "";
+  return modFetch(`/v1/admin/moderation/appeals${qs}`, { method: "GET" });
+}
+async function apiAdminDecideAppeal(appealId, decision, note) {
+  return modFetch(
+    `/v1/admin/moderation/appeals/${encodeURIComponent(appealId)}/decide`,
+    { method: "POST", body: JSON.stringify({ decision, note }) }
+  );
+}
+async function apiFetchBannedUserPreview(userId) {
+  return modFetch(
+    `/v1/users/${encodeURIComponent(userId)}/banned-preview`,
+    { method: "GET" }
+  );
+}
+function ReportFlow({
+  reportedUserId,
+  targetType,
+  targetId,
+  reportedUsername,
+  onClose,
+  onDone,
+  fullScreen = false,
+  contentScrollRef,
+  scrollLocked = false
+}) {
+  const [step, setStep] = reactExports.useState("category");
+  const [categories, setCategories] = reactExports.useState(REPORT_CATEGORIES);
+  const [category, setCategory] = reactExports.useState(null);
+  const [impersonationTarget, setImpersonationTarget] = reactExports.useState(null);
+  const [realUsername, setRealUsername] = reactExports.useState("");
+  const [details, setDetails] = reactExports.useState("");
+  const [busy, setBusy] = reactExports.useState(false);
+  const [err, setErr] = reactExports.useState("");
+  const [categoriesSyncing, setCategoriesSyncing] = reactExports.useState(false);
+  reactExports.useEffect(() => {
+    if (!apiBackendEnabled()) return;
+    let cancelled = false;
+    setCategoriesSyncing(true);
+    void apiGetReportCategories().then((r2) => {
+      if (cancelled) return;
+      if (r2.ok && r2.data.categories.length > 0) setCategories(r2.data.categories);
+      setCategoriesSyncing(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const submit = async () => {
+    if (!category) return;
+    setBusy(true);
+    setErr("");
+    if (apiBackendEnabled()) {
+      const res = await apiSubmitReport({
+        reportedUserId,
+        targetType,
+        targetId,
+        category,
+        evidence: {
+          text: details.trim() || void 0,
+          impersonationTarget: impersonationTarget || void 0,
+          realAccountUsername: realUsername.trim() || void 0
+        }
+      });
+      setBusy(false);
+      if (!res.ok) {
+        setErr(res.error);
+        return;
+      }
+    } else {
+      setBusy(false);
+    }
+    setStep("done");
+  };
+  const title = step === "category" ? "لماذا تبلّغ؟" : step === "impersonation_who" ? "من يتظاهر بهذا الحساب؟" : step === "impersonation_detail" ? "تفاصيل انتحال الشخصية" : step === "details" ? "تفاصيل إضافية" : "تم الإرسال";
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "div",
+    {
+      className: fullScreen ? "flex min-h-0 flex-1 flex-col bg-background" : "flex max-h-[min(92vh,720px)] flex-col rounded-t-3xl bg-background",
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex shrink-0 items-center gap-2 border-b border-border px-4 py-3", children: [
+          step !== "category" && step !== "done" && /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              type: "button",
+              onClick: () => {
+                if (step === "impersonation_who") setStep("category");
+                else if (step === "impersonation_detail") setStep("impersonation_who");
+                else if (step === "details") {
+                  setStep(category === "impersonation" ? "impersonation_detail" : "category");
+                }
+              },
+              className: "rounded-full p-2 hover:bg-secondary",
+              children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowRight, { size: 20, className: "rtl:rotate-180" })
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "flex-1 text-center text-base font-semibold pe-10", children: title }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onClose, className: "text-sm text-muted-foreground", children: "إغلاق" })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "div",
+          {
+            ref: contentScrollRef,
+            className: "min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 py-3 pb-6 " + (scrollLocked ? "overflow-hidden touch-none" : ""),
+            children: [
+              reportedUsername && /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mb-3 text-center text-sm text-muted-foreground", children: [
+                "@",
+                reportedUsername
+              ] }),
+              step === "category" && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+                categoriesSyncing && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mb-2 text-center text-xs text-muted-foreground", children: "جاري تحديث القائمة…" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("ul", { className: "space-y-0.5", role: "listbox", "aria-label": "سبب البلاغ", children: categories.map((c) => /* @__PURE__ */ jsxRuntimeExports.jsx("li", { children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "button",
+                  {
+                    type: "button",
+                    role: "option",
+                    className: "w-full rounded-xl px-3 py-3.5 text-start text-[15px] hover:bg-secondary active:bg-secondary/80",
+                    onClick: () => {
+                      setCategory(c.id);
+                      if (c.needsImpersonationFlow) setStep("impersonation_who");
+                      else setStep("details");
+                    },
+                    children: c.labelAr
+                  }
+                ) }, c.id)) })
+              ] }),
+              step === "impersonation_who" && /* @__PURE__ */ jsxRuntimeExports.jsx("ul", { className: "space-y-1", children: [
+                ["me", "أنا"],
+                ["someone_i_know", "شخص أعرفه"],
+                ["celebrity", "مشهور"],
+                ["business", "نشاط تجاري"]
+              ].map(([id, label]) => /* @__PURE__ */ jsxRuntimeExports.jsx("li", { children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  type: "button",
+                  className: "w-full rounded-xl px-3 py-3.5 text-start hover:bg-secondary",
+                  onClick: () => {
+                    setImpersonationTarget(id);
+                    setStep("impersonation_detail");
+                  },
+                  children: label
+                }
+              ) }, id)) }),
+              step === "impersonation_detail" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-3", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "block text-sm", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-muted-foreground", children: "اسم الحساب الحقيقي (اختياري)" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "input",
+                    {
+                      value: realUsername,
+                      onChange: (e) => setRealUsername(e.target.value),
+                      className: "mt-1 w-full rounded-xl border border-border bg-card px-3 py-2",
+                      placeholder: "@username"
+                    }
+                  )
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "button",
+                  {
+                    type: "button",
+                    className: "w-full rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground",
+                    onClick: () => setStep("details"),
+                    children: "التالي"
+                  }
+                )
+              ] }),
+              step === "details" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-3", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "textarea",
+                  {
+                    value: details,
+                    onChange: (e) => setDetails(e.target.value),
+                    rows: 5,
+                    className: "w-full rounded-xl border border-border bg-card px-3 py-2 text-sm",
+                    placeholder: "صف ما حدث (اختياري)…"
+                  }
+                ),
+                err && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-destructive", children: err }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "button",
+                  {
+                    type: "button",
+                    disabled: busy,
+                    onClick: () => void submit(),
+                    className: "w-full rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-50",
+                    children: busy ? "جاري الإرسال…" : "إرسال البلاغ"
+                  }
+                )
+              ] }),
+              step === "done" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col items-center py-10 text-center", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(CircleCheck, { size: 56, className: "text-[#0095f6] mb-4" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-lg font-semibold", children: "شكراً لبلاغك" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-sm text-muted-foreground max-w-xs", children: "سنراجع البلاغ. لن نُبلِغ الطرف الآخر بمن أرسل البلاغ." }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "button",
+                  {
+                    type: "button",
+                    onClick: onClose,
+                    className: "mt-8 w-full max-w-xs rounded-xl bg-secondary py-2.5 text-sm font-semibold",
+                    children: "تم"
+                  }
+                )
+              ] })
+            ]
+          }
+        )
+      ]
+    }
+  );
+}
+const DISMISS_START_PX = 10;
+const DISMISS_FLING_VY = 0.45;
+function ReportFlowSheet({
+  open,
+  onClose,
+  reportedUserId,
+  reportedUsername,
+  targetType,
+  targetId
+}) {
+  const [dismissY, setDismissY] = reactExports.useState(0);
+  const [dismissSpring, setDismissSpring] = reactExports.useState(false);
+  const [isDismissDragging, setIsDismissDragging] = reactExports.useState(false);
+  const dragRef = reactExports.useRef(null);
+  const scrollRef = reactExports.useRef(null);
+  const panelRef = reactExports.useRef(null);
+  const closeTimerRef = reactExports.useRef(null);
+  const viewportHRef = reactExports.useRef(
+    typeof window !== "undefined" ? window.innerHeight : 800
+  );
+  reactExports.useEffect(() => {
+    setReportSheetOpen(open);
+    return () => {
+      if (!open) setReportSheetOpen(false);
+    };
+  }, [open]);
+  reactExports.useEffect(() => {
+    if (!open) {
+      setDismissY(0);
+      setDismissSpring(false);
+      setIsDismissDragging(false);
+      dragRef.current = null;
+    }
+  }, [open]);
+  const finishClose = reactExports.useCallback(() => {
+    onClose();
+  }, [onClose]);
+  const snapBack = reactExports.useCallback(() => {
+    if (closeTimerRef.current != null) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+    setDismissSpring(true);
+    setDismissY(0);
+    setIsDismissDragging(false);
+    window.setTimeout(() => setDismissSpring(false), 320);
+  }, []);
+  const animateClose = reactExports.useCallback(() => {
+    const h = viewportHRef.current;
+    setDismissSpring(true);
+    setDismissY(h);
+    setIsDismissDragging(false);
+    if (closeTimerRef.current != null) window.clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = window.setTimeout(() => {
+      closeTimerRef.current = null;
+      finishClose();
+    }, 280);
+  }, [finishClose]);
+  const readScrollTop = reactExports.useCallback(() => scrollRef.current?.scrollTop ?? 0, []);
+  const beginPanelDrag = reactExports.useCallback(
+    (e) => {
+      if (e.button !== 0) return;
+      dragRef.current = {
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        lastY: e.clientY,
+        lastT: performance.now(),
+        velocity: 0,
+        startScrollTop: readScrollTop(),
+        mode: "pending"
+      };
+      setDismissSpring(false);
+    },
+    [readScrollTop]
+  );
+  const movePanelDrag = reactExports.useCallback(
+    (e) => {
+      const d = dragRef.current;
+      if (!d || e.pointerId !== d.pointerId) return;
+      const dx = e.clientX - d.startX;
+      const dy = e.clientY - d.startY;
+      const scrollTop = readScrollTop();
+      const now = performance.now();
+      const dt = Math.max(1, now - d.lastT);
+      d.velocity = (e.clientY - d.lastY) / dt;
+      d.lastY = e.clientY;
+      d.lastT = now;
+      if (d.mode === "pending") {
+        if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > DISMISS_START_PX) {
+          d.mode = "scroll";
+          return;
+        }
+        if (dy < -DISMISS_START_PX) {
+          d.mode = "scroll";
+          return;
+        }
+        if (scrollTop > 2 || d.startScrollTop > 2) {
+          if (dy > DISMISS_START_PX) d.mode = "scroll";
+          return;
+        }
+        if (dy > DISMISS_START_PX && dy >= Math.abs(dx)) {
+          d.mode = "dismiss";
+          setIsDismissDragging(true);
+          try {
+            panelRef.current?.setPointerCapture(e.pointerId);
+          } catch {
+          }
+        } else {
+          return;
+        }
+      }
+      if (d.mode === "scroll") return;
+      if (d.mode === "dismiss") {
+        e.preventDefault();
+        const el = scrollRef.current;
+        if (el) el.scrollTop = 0;
+        setDismissY(Math.max(0, dy));
+      }
+    },
+    [readScrollTop]
+  );
+  const endPanelDrag = reactExports.useCallback(
+    (e) => {
+      const d = dragRef.current;
+      dragRef.current = null;
+      try {
+        if (panelRef.current?.hasPointerCapture?.(e.pointerId)) {
+          panelRef.current.releasePointerCapture(e.pointerId);
+        }
+      } catch {
+      }
+      if (!d || e.pointerId !== d.pointerId) return;
+      if (d.mode === "dismiss") {
+        const dy = Math.max(0, e.clientY - d.startY);
+        const vh = viewportHRef.current;
+        if (dy > vh * 0.22 || d.velocity > DISMISS_FLING_VY) animateClose();
+        else snapBack();
+        return;
+      }
+      setIsDismissDragging(false);
+    },
+    [animateClose, snapBack]
+  );
+  if (!open || typeof document === "undefined") return null;
+  const dismissProgress = dismissY / Math.max(1, viewportHRef.current);
+  const backdropOpacity = Math.max(0, 0.5 * (1 - dismissProgress));
+  return reactDomExports.createPortal(
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "fixed inset-0 z-[10050]", role: "dialog", "aria-modal": true, children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "div",
+        {
+          className: "absolute inset-0 bg-black",
+          style: {
+            opacity: backdropOpacity,
+            transition: dismissSpring ? "opacity 0.28s ease-out" : "none"
+          },
+          "aria-hidden": true,
+          onClick: () => animateClose()
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "div",
+        {
+          ref: panelRef,
+          className: "absolute inset-x-0 top-0 bottom-0 mx-auto flex w-full max-w-md flex-col bg-background shadow-2xl touch-manipulation",
+          style: {
+            transform: `translate3d(0, ${dismissY}px, 0)`,
+            transition: dismissSpring ? "transform 0.32s cubic-bezier(0.22, 1, 0.36, 1)" : "none",
+            willChange: "transform",
+            paddingTop: "var(--sat, 0px)",
+            paddingBottom: "var(--sab, 0px)",
+            touchAction: isDismissDragging ? "none" : "manipulation"
+          },
+          onClick: (e) => e.stopPropagation(),
+          onPointerDown: beginPanelDrag,
+          onPointerMove: movePanelDrag,
+          onPointerUp: endPanelDrag,
+          onPointerCancel: endPanelDrag,
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "div",
+              {
+                "data-report-drag-handle": true,
+                className: "flex shrink-0 flex-col items-center border-b border-border bg-background pointer-events-none",
+                "aria-hidden": true,
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-2 h-1 w-10 shrink-0 rounded-full bg-muted" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "py-2 text-center text-[11px] font-medium text-muted-foreground", children: "اسحب للأسفل للإغلاق" })
+                ]
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex min-h-0 flex-1 flex-col overflow-hidden", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+              ReportFlow,
+              {
+                reportedUserId,
+                reportedUsername,
+                targetType,
+                targetId,
+                onClose: animateClose,
+                fullScreen: true,
+                contentScrollRef: scrollRef,
+                scrollLocked: isDismissDragging
+              }
+            ) })
+          ]
+        }
+      )
+    ] }),
+    document.body
+  );
+}
+const LIGHT_VARS = {
+  "--background": "oklch(1 0 0)",
+  "--foreground": "oklch(0.12 0 0)",
+  "--card": "oklch(0.98 0 0)",
+  "--card-foreground": "oklch(0.12 0 0)",
+  "--popover": "oklch(1 0 0)",
+  "--popover-foreground": "oklch(0.12 0 0)",
+  "--primary": "oklch(0.12 0 0)",
+  "--primary-foreground": "oklch(1 0 0)",
+  "--secondary": "oklch(0.95 0 0)",
+  "--secondary-foreground": "oklch(0.12 0 0)",
+  "--muted": "oklch(0.96 0 0)",
+  "--muted-foreground": "oklch(0.5 0 0)",
+  "--accent": "oklch(0.92 0 0)",
+  "--accent-foreground": "oklch(0.12 0 0)",
+  "--destructive": "oklch(0.6 0.22 25)",
+  "--destructive-foreground": "oklch(1 0 0)",
+  "--border": "oklch(0.9 0 0)",
+  "--input": "oklch(0.94 0 0)",
+  "--ring": "oklch(0.12 0 0)"
+};
+const DARK_VARS = {
+  "--background": "oklch(0.08 0 0)",
+  "--foreground": "oklch(0.98 0 0)",
+  "--card": "oklch(0.13 0 0)",
+  "--card-foreground": "oklch(0.98 0 0)",
+  "--popover": "oklch(0.13 0 0)",
+  "--popover-foreground": "oklch(0.98 0 0)",
+  "--primary": "oklch(0.98 0 0)",
+  "--primary-foreground": "oklch(0.08 0 0)",
+  "--secondary": "oklch(0.18 0 0)",
+  "--secondary-foreground": "oklch(0.98 0 0)",
+  "--muted": "oklch(0.17 0 0)",
+  "--muted-foreground": "oklch(0.65 0 0)",
+  "--accent": "oklch(0.22 0 0)",
+  "--accent-foreground": "oklch(0.98 0 0)",
+  "--destructive": "oklch(0.55 0.2 25)",
+  "--destructive-foreground": "oklch(0.98 0 0)",
+  "--border": "oklch(0.22 0 0)",
+  "--input": "oklch(0.18 0 0)",
+  "--ring": "oklch(0.98 0 0)"
+};
+function appThemeScopeStyle(theme) {
+  const vars = theme === "dark" ? DARK_VARS : LIGHT_VARS;
+  return {
+    ...vars,
+    backgroundColor: vars["--background"],
+    color: vars["--foreground"]
+  };
+}
+function isDefaultGroupName(name) {
+  const n = name?.trim() || "";
+  return !n || n === "مجموعة" || n.startsWith("👥");
+}
+function groupIgTitle(chat, memberUsers) {
+  if (!isDefaultGroupName(chat.name)) return chat.name.trim();
+  return memberUsers.map((u) => u.username).join(", ") || chat.name || "";
+}
 function GroupStackedAvatars({
   chat,
   memberUsers,
@@ -24550,7 +26033,7 @@ function GroupStackedAvatars({
   if (chat.avatar && !chat.avatar.startsWith("👥") && chat.avatar.length > 4) {
     return /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: chat.name || "مجموعة", src: chat.avatar, size, className: "mx-auto" });
   }
-  const slice = memberUsers.slice(0, 3);
+  const slice = memberUsers.slice(0, 2);
   if (slice.length === 0) {
     return /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: chat.name || "مجموعة", src: chat.avatar, size, className: "mx-auto" });
   }
@@ -24559,7 +26042,7 @@ function GroupStackedAvatars({
   }
   const cell = Math.round(size * 0.58);
   const overlap = Math.round(cell * 0.42);
-  const totalW = cell + overlap * (slice.length - 1);
+  const totalW = cell + overlap;
   return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "relative mx-auto", style: { width: totalW, height: size }, children: slice.map((u, i) => /* @__PURE__ */ jsxRuntimeExports.jsx(
     "div",
     {
@@ -24570,17 +26053,66 @@ function GroupStackedAvatars({
     u.id
   )) });
 }
-function sharedMediaFromMessages(messages) {
-  return messages.filter(
-    (m) => m.type === "image" && m.content.startsWith("data:") || m.type === "video" && !m.viewOnce || m.type === "shared_post"
+const headerIconBtn = "flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border bg-secondary/60 text-foreground hover:bg-secondary active:bg-secondary/80";
+function IgSubHeader({ title, onBack }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex shrink-0 items-center gap-2 border-b border-border px-3 py-3 pt-[max(0.5rem,var(--sat))]", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(SlideDismissBackButton, { navScope: "local", onDismiss: onBack, className: headerIconBtn, "aria-label": "رجوع", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowRight, { size: 22, strokeWidth: 1.75 }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "flex-1 truncate text-center text-[17px] font-semibold text-foreground", children: title }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "w-10 shrink-0", "aria-hidden": true })
+  ] });
+}
+function PeopleSubHeader({
+  title,
+  onBack,
+  onAdd,
+  showAdd
+}) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex shrink-0 items-center gap-2 border-b border-border px-3 py-2.5 pt-[max(0.5rem,var(--sat))]", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(SlideDismissBackButton, { navScope: "local", onDismiss: onBack, className: headerIconBtn, "aria-label": "رجوع", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowRight, { size: 22, strokeWidth: 1.75 }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "flex-1 truncate text-center text-[17px] font-bold text-foreground", children: title }),
+    showAdd ? /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onAdd, className: headerIconBtn, "aria-label": "إضافة عضو", children: /* @__PURE__ */ jsxRuntimeExports.jsx(UserPlus, { size: 22, strokeWidth: 1.75 }) }) : /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "w-10 shrink-0", "aria-hidden": true })
+  ] });
+}
+function IgToggle$1({
+  on: on2,
+  onToggle,
+  disabled
+}) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "button",
+    {
+      type: "button",
+      role: "switch",
+      "aria-checked": on2,
+      disabled,
+      onClick: onToggle,
+      className: "relative h-[30px] w-[50px] shrink-0 rounded-full p-0.5 transition-colors disabled:opacity-50 " + (on2 ? "bg-[#0095F6]" : "bg-muted-foreground/40"),
+      children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "span",
+        {
+          className: "block h-[26px] w-[26px] rounded-full bg-white shadow transition-transform dark:bg-zinc-100 " + (on2 ? "translate-x-[22px] rtl:-translate-x-[22px]" : "translate-x-0")
+        }
+      )
+    }
   );
 }
+function PeopleSectionLabel({ children }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "px-4 pb-1 pt-5 text-[13px] font-normal text-muted-foreground", children });
+}
+const ThemeGradientIcon = () => /* @__PURE__ */ jsxRuntimeExports.jsx(
+  "span",
+  {
+    className: "block h-9 w-9 shrink-0 rounded-full bg-gradient-to-br from-[#a855f7] via-[#ec4899] to-[#3b82f6]",
+    "aria-hidden": true
+  }
+);
 function GroupDetailsScreen({
   chat,
   messages,
   onBack,
   onOpenProfile,
-  onOpenStickers
+  onOpenStickers,
+  onCreateNewGroup
 }) {
   const {
     state,
@@ -24597,27 +26129,29 @@ function GroupDetailsScreen({
     sendMessage,
     setGroupPublic,
     respondGroupJoinRequest,
-    toggleChatMute
+    toggleChatMute,
+    toggleFollow
   } = useApp();
   const t = useT();
   const me = currentUser;
   const [name, setName] = reactExports.useState(chat.name || "");
+  const [subView, setSubView] = reactExports.useState(null);
   const [showAddMembers, setShowAddMembers] = reactExports.useState(false);
-  const [showPeople, setShowPeople] = reactExports.useState(false);
-  const [showMessageSearch, setShowMessageSearch] = reactExports.useState(false);
   const [addMemberSearch, setAddMemberSearch] = reactExports.useState("");
   const [myNickname, setMyNickname] = reactExports.useState(chat.groupNicknames?.[me.id] || "");
-  const [showNicknames, setShowNicknames] = reactExports.useState(false);
-  const [showInvite, setShowInvite] = reactExports.useState(false);
-  const [showPrivacy, setShowPrivacy] = reactExports.useState(false);
+  const [showRoles, setShowRoles] = reactExports.useState(false);
+  const [showAdvancedSettings, setShowAdvancedSettings] = reactExports.useState(false);
   const [showOptions, setShowOptions] = reactExports.useState(false);
+  const [showReport, setShowReport] = reactExports.useState(false);
   const [memberSearch, setMemberSearch] = reactExports.useState("");
   const [pickIds, setPickIds] = reactExports.useState([]);
   const [kickTarget, setKickTarget] = reactExports.useState(null);
   const [inviteBusy, setInviteBusy] = reactExports.useState(false);
-  const [editNameImage, setEditNameImage] = reactExports.useState(false);
+  const [memberMenuTarget, setMemberMenuTarget] = reactExports.useState(null);
   const avatarInputRef = reactExports.useRef(null);
   const isAdmin = chat.admins.includes(me.id);
+  const canManageRoles = canGroup(chat, me.id, "roles.assign_admin") || canGroup(chat, me.id, "roles.demote_any_admin");
+  const canEditSettings = canGroup(chat, me.id, "group.edit_settings");
   const isMuted = !!(me.mutedChatIds || []).includes(chat.id);
   const inviteUrl = typeof window !== "undefined" && chat.inviteCode ? `${window.location.origin}/app/?group=${encodeURIComponent(chat.inviteCode)}` : "";
   const memberSet = new Set(chat.members);
@@ -24625,8 +26159,15 @@ function GroupDetailsScreen({
     (u) => u.id !== me.id && !memberSet.has(u.id) && !me.blocked.includes(u.id) && !u.blocked.includes(me.id)
   );
   const memberUsers = chat.members.map((id) => userById(state, id)).filter((u) => !!u);
-  const mediaItems = reactExports.useMemo(() => sharedMediaFromMessages(messages).slice(-30).reverse(), [messages]);
-  const filteredMembers = memberUsers.filter(
+  const displayTitle = groupIgTitle(chat, memberUsers);
+  const peopleSubtitle = memberUsers.map((u) => u.username).join(", ");
+  const reportPeer = memberUsers.find((u) => u.id !== me.id);
+  const otherMembers = memberUsers.filter((u) => u.id !== me.id);
+  const requireJoinApproval = chat.isPublicGroup !== true;
+  const meRow = userById(state, me.id) || me;
+  const meDisplayName = chat.groupNicknames?.[me.id]?.trim() || meRow.displayName?.trim() || meRow.username || "?";
+  const isFollowingUser = (userId) => (me.following || []).includes(userId);
+  memberUsers.filter(
     (u) => !memberSearch.trim() || u.username.toLowerCase().includes(memberSearch.trim().toLowerCase())
   );
   const filteredAddCandidates = addCandidates.filter(
@@ -24659,14 +26200,16 @@ function GroupDetailsScreen({
       r2.readAsDataURL(f);
     })();
   };
+  const closeSub = () => setSubView(null);
+  const themeSubtitle = state.theme === "dark" ? t("darkMode") : t("groupThemeDefault");
   const actionBtn = (icon, label, onClick) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "button",
     {
       type: "button",
       onClick,
-      className: "flex min-w-[4.5rem] flex-col items-center gap-1.5 rounded-xl px-2 py-2 text-[11px] font-medium text-foreground hover:bg-secondary/80",
+      className: "flex min-w-[4.25rem] flex-1 flex-col items-center gap-2 px-1 py-1 text-[11px] font-medium text-foreground",
       children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex h-11 w-11 items-center justify-center rounded-full bg-secondary", children: icon }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex h-14 w-14 items-center justify-center rounded-full bg-secondary text-foreground", children: icon }),
         label
       ]
     }
@@ -24676,12 +26219,12 @@ function GroupDetailsScreen({
     {
       type: "button",
       onClick,
-      className: "flex w-full items-center gap-3 border-b border-border/60 px-4 py-3.5 text-start last:border-0 hover:bg-secondary/50",
+      className: "flex w-full items-center gap-3 border-b border-border/60 px-4 py-3.5 text-start last:border-0 hover:bg-secondary/50 active:bg-secondary/80",
       children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-secondary", children: icon }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex h-9 w-9 shrink-0 items-center justify-center text-foreground", children: icon }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "min-w-0 flex-1", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "block text-[15px] font-medium", children: title }),
-          subtitle ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "mt-0.5 block text-xs text-muted-foreground", children: subtitle }) : null
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "block text-[15px] font-normal text-foreground", children: title }),
+          subtitle ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "mt-0.5 block truncate text-[13px] text-muted-foreground", children: subtitle }) : null
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronRight, { size: 18, className: "shrink-0 text-muted-foreground rtl:rotate-180" })
       ]
@@ -24695,350 +26238,292 @@ function GroupDetailsScreen({
     setPickIds([]);
     setAddMemberSearch("");
     setShowAddMembers(true);
-    setShowPeople(false);
-    setShowMessageSearch(false);
   };
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
-    SlideDismissShell,
-    {
-      onDismiss: onBack,
-      variant: "inline",
-      className: "flex-1 bg-background",
-      blocked: !!kickTarget || showAddMembers,
-      children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-h-0 flex-1 flex-col", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 border-b border-border px-3 py-3", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(SlideDismissBackButton, { onDismiss: onBack, children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowRight, {}) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "flex-1 text-center text-base font-semibold pe-10", children: chat.isChannel ? t("channel") : t("group") })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-h-0 flex-1 overflow-y-auto pb-8", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "px-4 pt-6 pb-4 text-center", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "relative mx-auto mb-3", style: { width: 96, height: 96 }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(GroupStackedAvatars, { chat, memberUsers, size: 96 }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "text-xl font-bold tracking-tight", children: chat.name || t("group") }),
-              isAdmin && /* @__PURE__ */ jsxRuntimeExports.jsx(
-                "button",
-                {
-                  type: "button",
-                  className: "mt-2 text-sm font-semibold text-[#0095f6]",
-                  onClick: () => setEditNameImage((v) => !v),
-                  children: t("groupChangeNameImage")
+  const mainList = /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "px-4 pb-2 pt-2 text-center", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "relative mx-auto mb-4", style: { width: 96, height: 96 }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(GroupStackedAvatars, { chat, memberUsers, size: 96 }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "text-xl font-bold leading-snug text-foreground", children: displayTitle }),
+      isAdmin && !chat.isChannel && /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          type: "button",
+          className: "mt-2 text-sm font-semibold text-[#0095f6]",
+          onClick: () => setSubView("editName"),
+          children: t("groupChangeNameImage")
+        }
+      )
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex justify-between px-4 pb-5 pt-1", children: [
+      !chat.isChannel && actionBtn(/* @__PURE__ */ jsxRuntimeExports.jsx(UserPlus, { size: 24, strokeWidth: 1.5 }), t("groupAdd"), openAddMembers),
+      actionBtn(
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Search, { size: 24, strokeWidth: 1.5 }),
+        t("groupSearch"),
+        () => {
+          setMemberSearch("");
+          setSubView("search");
+        }
+      ),
+      actionBtn(
+        isMuted ? /* @__PURE__ */ jsxRuntimeExports.jsx(BellOff, { size: 24, strokeWidth: 1.5 }) : /* @__PURE__ */ jsxRuntimeExports.jsx(Bell, { size: 24, strokeWidth: 1.5 }),
+        t("groupMute"),
+        () => toggleChatMute(chat.id)
+      ),
+      actionBtn(
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Ellipsis, { size: 24, strokeWidth: 1.5 }),
+        t("groupOptions"),
+        () => setShowOptions(true)
+      )
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+      menuRow(/* @__PURE__ */ jsxRuntimeExports.jsx(ThemeGradientIcon, {}), t("groupTheme"), themeSubtitle, () => onOpenStickers?.()),
+      !chat.isChannel && menuRow(
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Link2, { size: 20, strokeWidth: 1.75 }),
+        t("groupInviteLink"),
+        inviteUrl || void 0,
+        () => setSubView("invite")
+      ),
+      menuRow(
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Users, { size: 20, strokeWidth: 1.75 }),
+        t("groupPeople"),
+        peopleSubtitle || void 0,
+        () => setSubView("people")
+      ),
+      menuRow(
+        /* @__PURE__ */ jsxRuntimeExports.jsx(AtSign, { size: 20, strokeWidth: 1.75 }),
+        t("groupNicknames"),
+        chat.groupNicknames?.[me.id] || void 0,
+        () => setSubView("nicknames")
+      ),
+      menuRow(
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Shield, { size: 20, strokeWidth: 1.75 }),
+        t("groupPrivacySafety"),
+        void 0,
+        () => setSubView("privacy")
+      ),
+      !chat.isChannel && menuRow(
+        /* @__PURE__ */ jsxRuntimeExports.jsx(MessageCirclePlus, { size: 20, strokeWidth: 1.75 }),
+        t("groupCreateNew"),
+        void 0,
+        () => onCreateNewGroup?.()
+      ),
+      menuRow(
+        /* @__PURE__ */ jsxRuntimeExports.jsx(MessageCircleWarning, { size: 20, strokeWidth: 1.75 }),
+        t("groupSomethingNotWorking"),
+        void 0,
+        () => {
+          if (reportPeer) setShowReport(true);
+          else alert(t("comingSoonPanel"));
+        }
+      )
+    ] })
+  ] });
+  const renderSubView = () => {
+    switch (subView) {
+      case "editName":
+        return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(IgSubHeader, { title: t("groupChangeNameImage"), onBack: closeSub }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4 px-4 py-6", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex justify-center", children: /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => avatarInputRef.current?.click(), className: "relative", children: /* @__PURE__ */ jsxRuntimeExports.jsx(GroupStackedAvatars, { chat, memberUsers, size: 88 }) }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "input",
+              {
+                value: name,
+                onChange: (e) => setName(e.target.value),
+                className: "w-full rounded-xl bg-input px-4 py-3 text-sm text-foreground outline-none",
+                placeholder: t("groupName")
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                type: "button",
+                className: "w-full rounded-xl bg-secondary py-3 text-sm font-semibold text-foreground",
+                onClick: () => avatarInputRef.current?.click(),
+                children: t("groupChangeNameImage")
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                type: "button",
+                className: "w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground",
+                onClick: () => {
+                  renameGroup(chat.id, name);
+                  closeSub();
+                },
+                children: t("save")
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "input",
+              {
+                ref: avatarInputRef,
+                type: "file",
+                accept: "image/*",
+                className: "sr-only",
+                onChange: (e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = "";
+                  if (f) uploadAvatar(f);
                 }
-              ),
-              editNameImage && isAdmin && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4 space-y-2 text-start", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "input",
-                  {
-                    value: name,
-                    onChange: (e) => setName(e.target.value),
-                    className: "w-full rounded-2xl bg-input px-4 py-2.5 text-sm outline-none",
-                    placeholder: t("groupName")
-                  }
-                ),
-                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-2", children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx(
-                    "button",
-                    {
-                      type: "button",
-                      className: "flex-1 rounded-2xl bg-secondary py-2 text-sm font-semibold",
-                      onClick: () => avatarInputRef.current?.click(),
-                      children: t("groupChangeNameImage")
-                    }
-                  ),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx(
-                    "button",
-                    {
-                      type: "button",
-                      className: "flex-1 rounded-2xl bg-primary py-2 text-sm font-semibold text-primary-foreground",
-                      onClick: () => {
-                        renameGroup(chat.id, name);
-                        setEditNameImage(false);
-                      },
-                      children: t("save")
-                    }
-                  )
-                ] }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "input",
-                  {
-                    ref: avatarInputRef,
-                    type: "file",
-                    accept: "image/*",
-                    className: "sr-only",
-                    onChange: (e) => {
-                      const f = e.target.files?.[0];
-                      e.target.value = "";
-                      if (f) uploadAvatar(f);
-                    }
-                  }
-                )
-              ] })
+              }
+            )
+          ] })
+        ] });
+      case "search":
+        return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(IgSubHeader, { title: t("groupSearch"), onBack: closeSub }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "px-4 py-3", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-3 flex items-center gap-2 rounded-xl bg-input px-3 py-2.5", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Search, { size: 18, className: "shrink-0 text-muted-foreground" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "input",
+                {
+                  value: memberSearch,
+                  onChange: (e) => setMemberSearch(e.target.value),
+                  placeholder: "ابحث في رسائل المجموعة…",
+                  className: "min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground",
+                  autoFocus: true
+                }
+              )
             ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex justify-center gap-1 border-b border-border/60 px-2 pb-4", children: [
-              !chat.isChannel && actionBtn(/* @__PURE__ */ jsxRuntimeExports.jsx(UserPlus, { size: 22 }), t("groupAdd"), openAddMembers),
-              actionBtn(/* @__PURE__ */ jsxRuntimeExports.jsx(Search, { size: 22 }), t("groupSearch"), () => {
-                setShowMessageSearch(true);
-                setShowPeople(false);
-                setMemberSearch("");
-              }),
-              actionBtn(
-                isMuted ? /* @__PURE__ */ jsxRuntimeExports.jsx(Bell, { size: 22 }) : /* @__PURE__ */ jsxRuntimeExports.jsx(BellOff, { size: 22 }),
-                t("groupMute"),
-                () => toggleChatMute(chat.id)
-              ),
-              actionBtn(/* @__PURE__ */ jsxRuntimeExports.jsx(Ellipsis, { size: 22 }), t("groupOptions"), () => setShowOptions(true))
-            ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-1", children: [
-              menuRow(/* @__PURE__ */ jsxRuntimeExports.jsx(Palette, { size: 18 }), t("groupTheme"), void 0, () => onOpenStickers?.()),
-              menuRow(
-                /* @__PURE__ */ jsxRuntimeExports.jsx(Link2, { size: 18 }),
-                t("groupInviteLink"),
-                inviteUrl ? "…" + chat.inviteCode?.slice(-6) : void 0,
-                () => setShowInvite(true)
-              ),
-              menuRow(
-                /* @__PURE__ */ jsxRuntimeExports.jsx(Users, { size: 18 }),
-                t("groupPeople"),
-                `${chat.members.length} ${t("members")}`,
-                () => setShowPeople(true)
-              ),
-              menuRow(
-                /* @__PURE__ */ jsxRuntimeExports.jsx(AtSign, { size: 18 }),
-                t("groupNicknames"),
-                chat.groupNicknames?.[me.id] || void 0,
-                () => setShowNicknames(true)
-              ),
-              menuRow(/* @__PURE__ */ jsxRuntimeExports.jsx(Shield, { size: 18 }), t("groupPrivacySafety"), void 0, () => setShowPrivacy(true))
-            ] }),
-            mediaItems.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-6 px-1", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "mb-2 px-3 text-sm font-semibold", children: t("groupSharedMedia") }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "grid grid-cols-3 gap-0.5", children: mediaItems.map((m) => {
-                const thumb = m.type === "image" ? m.content : m.type === "video" ? m.content : null;
-                return /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "div",
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-1", children: [
+              memberSearch.trim() && messageSearchHits.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "py-8 text-center text-sm text-muted-foreground", children: "لا نتائج" }),
+              messageSearchHits.map((m) => {
+                const sender = userById(state, m.senderId);
+                const label = chat.groupNicknames?.[m.senderId] || sender?.username || "?";
+                const preview = m.type === "text" ? m.content : m.shareText || `[${m.type}]`;
+                return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                  "button",
                   {
-                    className: "relative aspect-square overflow-hidden bg-muted",
-                    children: thumb && (thumb.startsWith("data:") || thumb.startsWith("http") || thumb.startsWith("/")) ? m.type === "video" ? /* @__PURE__ */ jsxRuntimeExports.jsx("video", { src: resolveMediaUrl(thumb), className: "h-full w-full object-cover", muted: true, playsInline: true }) : /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: resolveMediaUrl(thumb), alt: "", className: "h-full w-full object-cover" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-full w-full items-center justify-center bg-zinc-800 text-xs text-white/70", children: m.type === "shared_post" ? "▶" : "·" })
+                    type: "button",
+                    className: "flex w-full flex-col gap-0.5 rounded-xl bg-secondary p-3 text-start active:bg-secondary/80",
+                    onClick: () => {
+                      onBack();
+                      try {
+                        window.dispatchEvent(
+                          new CustomEvent("retweet-scroll-chat-message", {
+                            detail: { messageId: m.id }
+                          })
+                        );
+                      } catch {
+                      }
+                    },
+                    children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs font-semibold text-[#0095f6]", children: label }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "line-clamp-2 text-sm text-foreground", children: preview })
+                    ]
                   },
                   m.id
                 );
-              }) })
-            ] }),
-            showMessageSearch && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mx-4 mt-4 rounded-2xl border border-border bg-card p-3", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-2 flex items-center gap-2 rounded-xl bg-input px-3 py-2", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(Search, { size: 16, className: "shrink-0 opacity-60" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "input",
-                  {
-                    value: memberSearch,
-                    onChange: (e) => setMemberSearch(e.target.value),
-                    placeholder: "ابحث في رسائل المجموعة…",
-                    className: "min-w-0 flex-1 bg-transparent text-sm outline-none"
-                  }
-                )
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "max-h-64 space-y-1 overflow-y-auto", children: [
-                memberSearch.trim() && messageSearchHits.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "px-2 py-4 text-center text-xs text-muted-foreground", children: "لا نتائج" }),
-                messageSearchHits.map((m) => {
-                  const sender = userById(state, m.senderId);
-                  const label = chat.groupNicknames?.[m.senderId] || sender?.username || "?";
-                  const preview = m.type === "text" ? m.content : m.shareText || `[${m.type}]`;
-                  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                    "button",
-                    {
-                      type: "button",
-                      className: "flex w-full flex-col gap-0.5 rounded-2xl bg-secondary/60 p-2.5 text-start hover:bg-secondary",
-                      onClick: () => {
-                        onBack();
-                        try {
-                          window.dispatchEvent(
-                            new CustomEvent("retweet-scroll-chat-message", {
-                              detail: { messageId: m.id }
-                            })
-                          );
-                        } catch {
-                        }
-                      },
-                      children: [
-                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs font-semibold text-primary", children: label }),
-                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "line-clamp-2 text-sm text-foreground", children: preview })
-                      ]
-                    },
-                    m.id
-                  );
-                })
-              ] })
-            ] }),
-            showNicknames && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mx-4 mt-4 rounded-2xl border border-border bg-card p-3 space-y-2", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm font-semibold", children: t("groupNicknames") }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground", children: "اسمك في هذه المحادثة فقط (حتى 30 حرفاً)" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx(
-                "input",
+              })
+            ] })
+          ] })
+        ] });
+      case "people": {
+        const renderMemberRow = (u, opts) => {
+          chat.admins.includes(u.id);
+          const host = (chat.hosts || []).includes(u.id);
+          const following = isFollowingUser(u.id);
+          const showActions = opts?.showActions !== false && u.id !== me.id;
+          return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3 px-4 py-2.5", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => onOpenProfile(u.id), className: "shrink-0", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: u.username, src: u.avatar, size: 56 }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "button",
+              {
+                type: "button",
+                onClick: () => onOpenProfile(u.id),
+                className: "min-w-0 flex-1 text-start",
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "truncate text-[15px] font-semibold leading-snug text-foreground", children: u.displayName?.trim() || u.username }),
+                  opts?.subtitle ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-0.5 truncate text-[13px] text-muted-foreground", children: opts.subtitle }) : null,
+                  !opts?.subtitle && host && chat.isChannel ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-0.5 text-[13px] text-[#0095f6]", children: "مساهم" }) : null
+                ]
+              }
+            ),
+            showActions && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex shrink-0 items-center gap-2", children: [
+              isAdmin && !chat.isChannel && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
                 {
-                  value: myNickname,
-                  maxLength: 30,
-                  onChange: (e) => setMyNickname(e.target.value),
-                  className: "w-full rounded-2xl bg-input px-4 py-2.5 text-sm outline-none",
-                  placeholder: "اللقب"
+                  type: "button",
+                  "aria-label": "خيارات",
+                  onClick: () => setMemberMenuTarget({ id: u.id, username: u.username }),
+                  className: "flex h-9 w-9 items-center justify-center rounded-full text-foreground hover:bg-secondary/80",
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx(Ellipsis, { size: 22, strokeWidth: 1.75 })
                 }
               ),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-2", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "button",
-                  {
-                    type: "button",
-                    className: "flex-1 rounded-2xl bg-secondary py-2 text-sm font-semibold",
-                    onClick: () => setShowNicknames(false),
-                    children: t("cancel")
-                  }
-                ),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "button",
-                  {
-                    type: "button",
-                    className: "flex-1 rounded-2xl bg-primary py-2 text-sm font-semibold text-primary-foreground",
-                    onClick: () => {
-                      setGroupNickname(chat.id, myNickname);
-                      setShowNicknames(false);
-                    },
-                    children: t("save")
-                  }
-                )
-              ] })
-            ] }),
-            showPeople && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mx-4 mt-4 rounded-2xl border border-border bg-card p-3", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "max-h-64 space-y-1 overflow-y-auto", children: filteredMembers.map((u) => {
-              const admin = chat.admins.includes(u.id);
-              const host = (chat.hosts || []).includes(u.id);
-              return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-wrap items-center gap-2 rounded-2xl bg-secondary/60 p-2", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => onOpenProfile(u.id), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: u.username, src: u.avatar, size: 40 }) }),
-                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1 text-start text-sm", children: [
-                  "@",
-                  u.username,
-                  admin && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ms-1 text-xs text-muted-foreground", children: "(مشرف)" }),
-                  host && chat.isChannel && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ms-1 text-xs text-primary", children: "(مساهم)" })
-                ] }),
-                isAdmin && u.id !== me.id && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-                  chat.isChannel && /* @__PURE__ */ jsxRuntimeExports.jsx(
-                    "button",
-                    {
-                      type: "button",
-                      onClick: () => toggleHost(chat.id, u.id),
-                      className: "rounded-full bg-background px-2 py-1 text-xs",
-                      children: host ? t("removeHost") : t("inviteHost")
-                    }
-                  ),
-                  !chat.isChannel && /* @__PURE__ */ jsxRuntimeExports.jsx(
-                    "button",
-                    {
-                      type: "button",
-                      onClick: () => toggleGroupAdmin(chat.id, u.id),
-                      className: "rounded-full bg-background px-2 py-1 text-xs",
-                      children: admin ? "إزالة مشرف" : "تعيين مشرف"
-                    }
-                  ),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx(
-                    "button",
-                    {
-                      type: "button",
-                      onClick: () => setKickTarget({ id: u.id, username: u.username }),
-                      className: "text-xs text-destructive",
-                      children: "طرد"
-                    }
-                  )
-                ] })
-              ] }, u.id);
-            }) }) }),
-            showInvite && isAdmin && !chat.isChannel && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mx-4 mt-4 rounded-2xl border border-border bg-card p-3 space-y-2", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm font-semibold", children: t("groupInviteLink") }),
-              inviteUrl ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "break-all text-xs text-muted-foreground dir-ltr text-start", children: inviteUrl }) : /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground", children: "لا يوجد رابط بعد" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-wrap gap-2", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "button",
-                  {
-                    type: "button",
-                    disabled: !inviteUrl,
-                    className: "flex-1 rounded-xl bg-secondary py-2 text-sm font-semibold disabled:opacity-50",
-                    onClick: () => {
-                      if (!inviteUrl) return;
-                      void navigator.clipboard.writeText(inviteUrl);
-                      alert("تم نسخ الرابط");
-                    },
-                    children: "نسخ"
-                  }
-                ),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "button",
-                  {
-                    type: "button",
-                    disabled: !chat.inviteCode,
-                    className: "flex-1 rounded-xl bg-primary py-2 text-sm font-semibold text-primary-foreground disabled:opacity-50",
-                    onClick: () => {
-                      if (!chat.inviteCode) return;
-                      sendMessage(chat.id, { type: "shared_group", content: chat.inviteCode });
-                      alert("تم الإرسال في المحادثة");
-                    },
-                    children: "مشاركة"
-                  }
-                ),
-                !inviteUrl && isAdmin && /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "button",
-                  {
-                    type: "button",
-                    disabled: inviteBusy,
-                    className: "w-full rounded-xl border border-border py-2 text-sm font-semibold",
-                    onClick: () => {
-                      const token = getApiToken();
-                      if (!token || !apiBackendEnabled()) return;
-                      setInviteBusy(true);
-                      void (async () => {
-                        const { apiPatchGroup: apiPatchGroup2 } = await Promise.resolve().then(() => apiBackend);
-                        const res = await apiPatchGroup2(token, chat.id, {});
-                        setInviteBusy(false);
-                        if (res.ok && res.chat?.inviteCode) {
-                          setState((s) => ({
-                            ...s,
-                            chats: s.chats.map(
-                              (c) => c.id === chat.id ? { ...c, inviteCode: res.chat.inviteCode } : c
-                            )
-                          }));
-                          alert("تم إنشاء رابط الدعوة");
-                        } else {
-                          alert(res.error || "فشل إنشاء الرابط");
-                        }
-                      })();
-                    },
-                    children: inviteBusy ? "…" : "إنشاء رابط دعوة"
-                  }
-                ),
-                inviteUrl && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-center text-xs text-muted-foreground", children: "الرابط ثابت — شاركه لدعوة أعضاء جدد" })
-              ] })
-            ] }),
-            showPrivacy && isAdmin && !chat.isChannel && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mx-4 mt-4 rounded-2xl border border-border bg-card p-3", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "flex items-center justify-between gap-3", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm", children: "مجموعة عامة (انضمام بالرابط)" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx(
-                "input",
+              !following ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
                 {
-                  type: "checkbox",
-                  checked: chat.isPublicGroup === true,
-                  onChange: (e) => setGroupPublic(chat.id, e.target.checked),
-                  className: "h-5 w-5"
+                  type: "button",
+                  onClick: () => toggleFollow(u.id),
+                  className: "rounded-lg bg-[#0095F6] px-4 py-1.5 text-[13px] font-semibold text-white",
+                  children: t("groupFollow")
+                }
+              ) : /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  type: "button",
+                  onClick: () => toggleFollow(u.id),
+                  className: "rounded-lg border border-border bg-secondary px-3 py-1.5 text-[13px] font-semibold text-foreground",
+                  children: t("groupFollowing")
                 }
               )
-            ] }) }),
-            (chat.joinRequests || []).length > 0 && isAdmin && !chat.isChannel && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mx-4 mt-4 rounded-2xl border border-border bg-card p-3 space-y-2", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm font-semibold", children: "طلبات انضمام" }),
-              (chat.joinRequests || []).map((req) => {
-                const u = userById(state, req.userId);
-                return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2", children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: u?.username || "?", src: u?.avatar, size: 32 }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "flex-1 text-sm", children: [
-                    "@",
-                    u?.username || "?"
-                  ] }),
+            ] })
+          ] }, u.id);
+        };
+        return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            PeopleSubHeader,
+            {
+              title: t("groupPeople"),
+              onBack: closeSub,
+              showAdd: isAdmin && !chat.isChannel,
+              onAdd: openAddMembers
+            }
+          ),
+          isAdmin && !chat.isChannel && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between gap-3 border-b border-border/60 px-4 py-3.5", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[15px] text-foreground", children: t("groupRequireJoinApproval") }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              IgToggle$1,
+              {
+                on: requireJoinApproval,
+                onToggle: () => setGroupPublic(chat.id, chat.isPublicGroup === true)
+              }
+            )
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(PeopleSectionLabel, { children: t("groupYou") }),
+          renderMemberRow(
+            {
+              id: me.id,
+              username: meRow.username,
+              avatar: meRow.avatar,
+              displayName: meDisplayName
+            },
+            {
+              subtitle: isAdmin ? `${t("groupAdmin")} · ${meRow.username}` : meRow.username,
+              showActions: false
+            }
+          ),
+          (chat.joinRequests || []).length > 0 && isAdmin && !chat.isChannel && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(PeopleSectionLabel, { children: [
+              t("groupPendingJoin"),
+              " (",
+              (chat.joinRequests || []).length,
+              ")"
+            ] }),
+            (chat.joinRequests || []).map((req) => {
+              const u = userById(state, req.userId);
+              if (!u) return null;
+              return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3 px-4 py-2.5", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: u.username, src: u.avatar, size: 56 }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "min-w-0 flex-1 text-start", children: /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "truncate text-[15px] font-semibold text-foreground", children: u.username }) }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex shrink-0 gap-2", children: [
                   /* @__PURE__ */ jsxRuntimeExports.jsx(
                     "button",
                     {
                       type: "button",
-                      className: "rounded-full bg-primary px-3 py-1 text-xs text-primary-foreground",
+                      className: "rounded-lg bg-[#0095F6] px-3 py-1.5 text-[13px] font-semibold text-white",
                       onClick: () => respondGroupJoinRequest(chat.id, req.userId, "accept"),
                       children: t("accept")
                     }
@@ -25047,37 +26532,225 @@ function GroupDetailsScreen({
                     "button",
                     {
                       type: "button",
-                      className: "rounded-full bg-secondary px-3 py-1 text-xs",
+                      className: "rounded-lg border border-border px-3 py-1.5 text-[13px] font-semibold text-foreground",
                       onClick: () => respondGroupJoinRequest(chat.id, req.userId, "reject"),
                       children: t("cancel")
                     }
                   )
-                ] }, req.userId);
-              })
+                ] })
+              ] }, req.userId);
+            })
+          ] }),
+          otherMembers.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(PeopleSectionLabel, { children: [
+              t("groupInvited"),
+              " (",
+              otherMembers.length,
+              ")"
             ] }),
+            otherMembers.map(
+              (u) => renderMemberRow(u, {
+                subtitle: chat.admins.includes(u.id) ? `${t("groupAdmin")} · ${u.username}` : void 0
+              })
+            )
+          ] })
+        ] });
+      }
+      case "nicknames":
+        return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(IgSubHeader, { title: t("groupNicknames"), onBack: closeSub }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-3 px-4 py-6", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-muted-foreground", children: "اسمك في هذه المحادثة فقط (حتى 30 حرفاً)" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "input",
+              {
+                value: myNickname,
+                maxLength: 30,
+                onChange: (e) => setMyNickname(e.target.value),
+                className: "w-full rounded-xl bg-input px-4 py-3 text-sm text-foreground outline-none",
+                placeholder: "اللقب"
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                type: "button",
+                className: "w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground",
+                onClick: () => {
+                  setGroupNickname(chat.id, myNickname);
+                  closeSub();
+                },
+                children: t("save")
+              }
+            )
+          ] })
+        ] });
+      case "invite":
+        return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(IgSubHeader, { title: t("groupInviteLink"), onBack: closeSub }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4 px-4 py-6", children: [
+            inviteUrl && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex justify-center", children: /* @__PURE__ */ jsxRuntimeExports.jsx(GroupInviteQr, { chat, size: 160 }) }),
+            inviteUrl ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "break-all text-center text-sm text-muted-foreground dir-ltr", children: inviteUrl }) : /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-center text-sm text-muted-foreground", children: "لا يوجد رابط بعد" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-2", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  type: "button",
+                  disabled: !inviteUrl,
+                  className: "flex-1 rounded-xl bg-secondary py-3 text-sm font-semibold text-foreground disabled:opacity-40",
+                  onClick: () => {
+                    if (!inviteUrl) return;
+                    void navigator.clipboard.writeText(inviteUrl);
+                    alert("تم نسخ الرابط");
+                  },
+                  children: "نسخ"
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  type: "button",
+                  disabled: !chat.inviteCode,
+                  className: "flex-1 rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground disabled:opacity-40",
+                  onClick: () => {
+                    if (!chat.inviteCode) return;
+                    sendMessage(chat.id, { type: "shared_group", content: chat.inviteCode });
+                    alert("تم الإرسال في المحادثة");
+                  },
+                  children: "مشاركة"
+                }
+              )
+            ] }),
+            !inviteUrl && isAdmin && /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                type: "button",
+                disabled: inviteBusy,
+                className: "w-full rounded-xl border border-border py-3 text-sm font-semibold text-foreground",
+                onClick: () => {
+                  const token = getApiToken();
+                  if (!token || !apiBackendEnabled()) return;
+                  setInviteBusy(true);
+                  void (async () => {
+                    const { apiPatchGroup: apiPatchGroup2 } = await Promise.resolve().then(() => apiBackend);
+                    const res = await apiPatchGroup2(token, chat.id, {});
+                    setInviteBusy(false);
+                    if (res.ok && res.chat?.inviteCode) {
+                      setState((s) => ({
+                        ...s,
+                        chats: s.chats.map(
+                          (c) => c.id === chat.id ? { ...c, inviteCode: res.chat.inviteCode } : c
+                        )
+                      }));
+                      alert("تم إنشاء رابط الدعوة");
+                    } else {
+                      alert(res.error || "فشل إنشاء الرابط");
+                    }
+                  })();
+                },
+                children: inviteBusy ? "…" : "إنشاء رابط دعوة"
+              }
+            )
+          ] })
+        ] });
+      case "privacy":
+        return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(IgSubHeader, { title: t("groupPrivacySafety"), onBack: closeSub }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "px-4 py-4", children: isAdmin && !chat.isChannel ? /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "flex items-center justify-between gap-3 rounded-xl bg-card px-4 py-4 ring-1 ring-border", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm text-foreground", children: "مجموعة عامة (انضمام بالرابط)" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "input",
+              {
+                type: "checkbox",
+                checked: chat.isPublicGroup === true,
+                onChange: (e) => setGroupPublic(chat.id, e.target.checked),
+                className: "h-5 w-5"
+              }
+            )
+          ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-center text-sm text-muted-foreground py-8", children: "إعدادات الخصوصية للمشرف فقط" }) })
+        ] });
+      default:
+        return null;
+    }
+  };
+  const themeScopeStyle = appThemeScopeStyle(state.theme);
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    SlideDismissShell,
+    {
+      onDismiss: onBack,
+      variant: "inline",
+      className: "flex-1",
+      blocked: !!kickTarget || showAddMembers || showReport || !!memberMenuTarget,
+      children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "div",
+        {
+          className: "group-details-screen-root flex min-h-0 flex-1 flex-col",
+          style: themeScopeStyle,
+          "data-app-theme": state.theme,
+          children: [
+            subView == null ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "shrink-0 px-3 pt-[max(0.5rem,var(--sat))]", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SlideDismissBackButton,
+              {
+                onDismiss: onBack,
+                className: "flex h-10 w-10 items-center justify-center rounded-full bg-secondary text-foreground hover:bg-secondary/80",
+                "aria-label": "رجوع",
+                children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowRight, { size: 22, strokeWidth: 1.75 })
+              }
+            ) }) : null,
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "min-h-0 flex-1 overflow-y-auto overscroll-y-contain pb-[max(1.5rem,var(--sab))]", children: subView == null ? mainList : renderSubView() }),
             showOptions && /* @__PURE__ */ jsxRuntimeExports.jsx(
               "div",
               {
-                className: "fixed inset-0 z-[70] flex items-end justify-center bg-black/40 p-0",
+                className: "fixed inset-0 z-[70] flex items-end justify-center bg-black/60 p-0",
                 onClick: () => setShowOptions(false),
                 children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
                   "div",
                   {
-                    className: "w-full max-w-md rounded-t-3xl bg-background p-4 pb-8 animate-in slide-in-from-bottom duration-200",
+                    className: "w-full max-w-md rounded-t-3xl bg-background p-2 pb-[max(1rem,var(--sab))] animate-in slide-in-from-bottom duration-200",
                     onClick: (e) => e.stopPropagation(),
                     children: [
                       /* @__PURE__ */ jsxRuntimeExports.jsxs(
                         "button",
                         {
                           type: "button",
-                          className: "mb-2 flex w-full items-center gap-3 rounded-2xl px-3 py-3 hover:bg-secondary",
+                          className: "mb-1 flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-[15px] text-foreground hover:bg-secondary/50",
                           onClick: () => {
                             setShowOptions(false);
                             onOpenStickers?.();
                           },
                           children: [
-                            /* @__PURE__ */ jsxRuntimeExports.jsx(Smile, { size: 20 }),
+                            /* @__PURE__ */ jsxRuntimeExports.jsx(Smile, { size: 22 }),
                             t("groupTheme")
+                          ]
+                        }
+                      ),
+                      !chat.isChannel && canManageRoles && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                        "button",
+                        {
+                          type: "button",
+                          className: "flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-[15px] text-foreground hover:bg-secondary/50",
+                          onClick: () => {
+                            setShowOptions(false);
+                            setShowRoles(true);
+                          },
+                          children: [
+                            /* @__PURE__ */ jsxRuntimeExports.jsx(ShieldCheck, { size: 22 }),
+                            "الأدوار والصلاحيات"
+                          ]
+                        }
+                      ),
+                      !chat.isChannel && canEditSettings && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                        "button",
+                        {
+                          type: "button",
+                          className: "flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-[15px] text-foreground hover:bg-secondary/50",
+                          onClick: () => {
+                            setShowOptions(false);
+                            setShowAdvancedSettings(true);
+                          },
+                          children: [
+                            /* @__PURE__ */ jsxRuntimeExports.jsx(Shield, { size: 22 }),
+                            "إعدادات متقدمة"
                           ]
                         }
                       ),
@@ -25085,7 +26758,7 @@ function GroupDetailsScreen({
                         "button",
                         {
                           type: "button",
-                          className: "flex w-full items-center justify-center gap-2 rounded-2xl py-3 font-semibold text-destructive hover:bg-destructive/10",
+                          className: "mt-1 flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-[15px] font-semibold text-destructive hover:bg-destructive/10",
                           onClick: () => {
                             setShowOptions(false);
                             leaveChat(chat.id);
@@ -25102,136 +26775,214 @@ function GroupDetailsScreen({
                 )
               }
             ),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mx-4 mt-8", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-              "button",
-              {
-                type: "button",
-                onClick: () => {
-                  leaveChat(chat.id);
-                  onBack();
-                },
-                className: "flex w-full items-center justify-center gap-2 rounded-2xl bg-card py-3 font-semibold text-destructive",
-                children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx(LogOut, { size: 16 }),
-                  chat.isChannel ? t("leave") : "مغادرة المجموعة"
-                ]
-              }
-            ) })
-          ] })
-        ] }),
-        showAddMembers && isAdmin && !chat.isChannel && /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "div",
-          {
-            className: "fixed inset-0 z-[75] flex items-end justify-center bg-black/40 p-0",
-            onClick: () => setShowAddMembers(false),
-            children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            showAddMembers && isAdmin && !chat.isChannel && /* @__PURE__ */ jsxRuntimeExports.jsx(
               "div",
               {
-                className: "flex max-h-[min(85vh,640px)] w-full max-w-md flex-col rounded-t-3xl bg-background p-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] animate-in slide-in-from-bottom duration-200",
-                "data-no-dismiss-drag": true,
-                onClick: (e) => e.stopPropagation(),
-                children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mb-3 text-center text-sm font-semibold", children: t("addMembers") }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-3 flex items-center gap-2 rounded-xl bg-input px-3 py-2", children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(Search, { size: 16, className: "shrink-0 opacity-60" }),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(
-                      "input",
-                      {
-                        value: addMemberSearch,
-                        onChange: (e) => setAddMemberSearch(e.target.value),
-                        placeholder: t("searchPlaceholder"),
-                        className: "min-w-0 flex-1 bg-transparent text-sm outline-none",
-                        autoFocus: true
-                      }
-                    )
-                  ] }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-y-contain", children: [
-                    filteredAddCandidates.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "py-6 text-center text-xs text-muted-foreground", children: "لا يوجد حسابات إضافية" }),
-                    filteredAddCandidates.map((u) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                      "button",
-                      {
-                        type: "button",
-                        "data-no-dismiss-drag": true,
-                        onClick: () => setPickIds((ids) => ids.includes(u.id) ? ids.filter((x) => x !== u.id) : [...ids, u.id]),
-                        className: "flex w-full touch-manipulation items-center gap-3 rounded-2xl p-2.5 hover:bg-secondary active:bg-secondary/80",
-                        children: [
-                          /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: u.username, src: u.avatar, size: 36 }),
-                          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "flex-1 text-start text-sm", children: [
-                            "@",
-                            u.username
-                          ] }),
-                          pickIds.includes(u.id) && /* @__PURE__ */ jsxRuntimeExports.jsx(Check, { className: "shrink-0 text-primary" })
-                        ]
-                      },
-                      u.id
-                    ))
-                  ] }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-3 flex shrink-0 gap-2", children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(
-                      "button",
-                      {
-                        type: "button",
-                        className: "flex-1 rounded-2xl bg-secondary py-2.5 text-sm font-semibold",
-                        onClick: () => setShowAddMembers(false),
-                        children: t("cancel")
-                      }
-                    ),
-                    /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                      "button",
-                      {
-                        type: "button",
-                        disabled: pickIds.length === 0,
-                        className: "flex-1 rounded-2xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-50",
-                        onClick: () => {
-                          addGroupMembers(chat.id, pickIds);
-                          setShowAddMembers(false);
-                          setPickIds([]);
-                        },
-                        children: [
-                          t("groupAdd"),
-                          " (",
-                          pickIds.length,
-                          ")"
-                        ]
-                      }
-                    )
-                  ] })
-                ]
-              }
-            )
-          }
-        ),
-        kickTarget && /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "div",
-          {
-            className: "fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4",
-            onClick: () => setKickTarget(null),
-            children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "w-full max-w-sm rounded-3xl bg-background p-5 shadow-xl", onClick: (e) => e.stopPropagation(), children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-center text-lg font-bold", children: "تأكيد الطرد" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-3 text-center text-sm text-muted-foreground", children: [
-                "هل تريد طرد @",
-                kickTarget.username,
-                "؟"
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-5 flex gap-2", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "flex-1 rounded-2xl bg-secondary py-2.5 text-sm font-semibold", onClick: () => setKickTarget(null), children: t("cancel") }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "button",
+                className: "fixed inset-0 z-[75] flex items-end justify-center bg-black/60 p-0",
+                onClick: () => setShowAddMembers(false),
+                children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                  "div",
                   {
-                    type: "button",
-                    className: "flex-1 rounded-2xl bg-destructive py-2.5 text-sm font-semibold text-destructive-foreground",
-                    onClick: () => {
-                      kickMember(chat.id, kickTarget.id);
-                      setKickTarget(null);
-                    },
-                    children: "تأكيد"
+                    className: "flex max-h-[min(85vh,640px)] w-full max-w-md flex-col rounded-t-3xl bg-background p-4 pb-[max(1rem,var(--sab))] text-foreground animate-in slide-in-from-bottom duration-200",
+                    "data-no-dismiss-drag": true,
+                    onClick: (e) => e.stopPropagation(),
+                    children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mb-3 text-center text-sm font-semibold", children: t("addMembers") }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-3 flex items-center gap-2 rounded-xl bg-input px-3 py-2", children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsx(Search, { size: 16, className: "shrink-0 text-muted-foreground" }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx(
+                          "input",
+                          {
+                            value: addMemberSearch,
+                            onChange: (e) => setAddMemberSearch(e.target.value),
+                            placeholder: t("searchPlaceholder"),
+                            className: "min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none",
+                            autoFocus: true
+                          }
+                        )
+                      ] }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-y-contain", children: [
+                        filteredAddCandidates.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "py-6 text-center text-xs text-muted-foreground", children: "لا يوجد حسابات إضافية" }),
+                        filteredAddCandidates.map((u) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                          "button",
+                          {
+                            type: "button",
+                            "data-no-dismiss-drag": true,
+                            onClick: () => setPickIds((ids) => ids.includes(u.id) ? ids.filter((x) => x !== u.id) : [...ids, u.id]),
+                            className: "flex w-full touch-manipulation items-center gap-3 rounded-2xl p-2.5 hover:bg-secondary/50",
+                            children: [
+                              /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: u.username, src: u.avatar, size: 36 }),
+                              /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "flex-1 text-start text-sm", children: [
+                                "@",
+                                u.username
+                              ] }),
+                              pickIds.includes(u.id) && /* @__PURE__ */ jsxRuntimeExports.jsx(Check, { className: "shrink-0 text-primary" })
+                            ]
+                          },
+                          u.id
+                        ))
+                      ] }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-3 flex shrink-0 gap-2", children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsx(
+                          "button",
+                          {
+                            type: "button",
+                            className: "flex-1 rounded-2xl bg-secondary py-2.5 text-sm font-semibold text-foreground",
+                            onClick: () => setShowAddMembers(false),
+                            children: t("cancel")
+                          }
+                        ),
+                        /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                          "button",
+                          {
+                            type: "button",
+                            disabled: pickIds.length === 0,
+                            className: "flex-1 rounded-2xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-50",
+                            onClick: () => {
+                              addGroupMembers(chat.id, pickIds);
+                              setShowAddMembers(false);
+                              setPickIds([]);
+                            },
+                            children: [
+                              t("groupAdd"),
+                              " (",
+                              pickIds.length,
+                              ")"
+                            ]
+                          }
+                        )
+                      ] })
+                    ]
                   }
                 )
-              ] })
-            ] })
-          }
-        )
-      ]
+              }
+            ),
+            memberMenuTarget && isAdmin && /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "div",
+              {
+                className: "fixed inset-0 z-[72] flex items-end justify-center bg-black/60 p-0",
+                onClick: () => setMemberMenuTarget(null),
+                children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                  "div",
+                  {
+                    className: "w-full max-w-md rounded-t-3xl bg-background p-2 pb-[max(1rem,var(--sab))] animate-in slide-in-from-bottom duration-200",
+                    onClick: (e) => e.stopPropagation(),
+                    children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx(
+                        "button",
+                        {
+                          type: "button",
+                          className: "flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-[15px] text-foreground hover:bg-secondary/50",
+                          onClick: () => {
+                            onOpenProfile(memberMenuTarget.id);
+                            setMemberMenuTarget(null);
+                          },
+                          children: "عرض الملف الشخصي"
+                        }
+                      ),
+                      !chat.isChannel && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsx(
+                          "button",
+                          {
+                            type: "button",
+                            className: "flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-[15px] text-foreground hover:bg-secondary/50",
+                            onClick: () => {
+                              toggleGroupAdmin(chat.id, memberMenuTarget.id);
+                              setMemberMenuTarget(null);
+                            },
+                            children: chat.admins.includes(memberMenuTarget.id) ? "إزالة مشرف" : "تعيين مشرف"
+                          }
+                        ),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx(
+                          "button",
+                          {
+                            type: "button",
+                            className: "flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-[15px] font-semibold text-destructive hover:bg-destructive/10",
+                            onClick: () => {
+                              setKickTarget(memberMenuTarget);
+                              setMemberMenuTarget(null);
+                            },
+                            children: "طرد من المجموعة"
+                          }
+                        )
+                      ] }),
+                      chat.isChannel && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                        "button",
+                        {
+                          type: "button",
+                          className: "flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-[15px] text-foreground hover:bg-secondary/50",
+                          onClick: () => {
+                            toggleHost(chat.id, memberMenuTarget.id);
+                            setMemberMenuTarget(null);
+                          },
+                          children: (chat.hosts || []).includes(memberMenuTarget.id) ? t("removeHost") : t("inviteHost")
+                        }
+                      )
+                    ]
+                  }
+                )
+              }
+            ),
+            kickTarget && /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "div",
+              {
+                className: "fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4",
+                onClick: () => setKickTarget(null),
+                children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                  "div",
+                  {
+                    className: "w-full max-w-sm rounded-3xl bg-background p-5 text-foreground shadow-xl ring-1 ring-border",
+                    onClick: (e) => e.stopPropagation(),
+                    children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-center text-lg font-bold", children: "تأكيد الطرد" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-3 text-center text-sm text-muted-foreground", children: [
+                        "هل تريد طرد @",
+                        kickTarget.username,
+                        "؟"
+                      ] }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-5 flex gap-2", children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsx(
+                          "button",
+                          {
+                            type: "button",
+                            className: "flex-1 rounded-2xl bg-secondary py-2.5 text-sm font-semibold text-foreground",
+                            onClick: () => setKickTarget(null),
+                            children: t("cancel")
+                          }
+                        ),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx(
+                          "button",
+                          {
+                            type: "button",
+                            className: "flex-1 rounded-2xl bg-destructive py-2.5 text-sm font-semibold text-destructive-foreground",
+                            onClick: () => {
+                              kickMember(chat.id, kickTarget.id);
+                              setKickTarget(null);
+                            },
+                            children: "تأكيد"
+                          }
+                        )
+                      ] })
+                    ]
+                  }
+                )
+              }
+            ),
+            showReport && reportPeer && /* @__PURE__ */ jsxRuntimeExports.jsx(
+              ReportFlowSheet,
+              {
+                open: showReport,
+                onClose: () => setShowReport(false),
+                reportedUserId: reportPeer.id,
+                reportedUsername: reportPeer.username,
+                targetType: "user"
+              }
+            ),
+            showRoles && !chat.isChannel && /* @__PURE__ */ jsxRuntimeExports.jsx(GroupRolesSheet, { chat, onClose: () => setShowRoles(false) }),
+            showAdvancedSettings && !chat.isChannel && /* @__PURE__ */ jsxRuntimeExports.jsx(GroupSettingsSheet, { chat, onClose: () => setShowAdvancedSettings(false) })
+          ]
+        }
+      )
     }
   );
 }
@@ -26412,10 +28163,7 @@ function CallScreen({
 const PREVIEW_MAX = 96;
 const CHAT_DISMISS_PULL_CSS_VAR = "--retweet-chat-dismiss-pull";
 const CHAT_ROOM_HEADER_EDGE_INSET_PX = 72;
-const CHAT_STACK_PROGRESS_VAR = "--retweet-chat-stack-progress";
-const CHAT_STACK_OPEN_FRACTION = 0.5;
 const CHAT_TAP_OPEN_MS = 280;
-const CHAT_TAP_OPEN_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
 const galleryLongPressBtnProps = {
   [NATIVE_LONG_PRESS_ATTR]: "gallery",
   onContextMenu: (e) => e.preventDefault(),
@@ -26454,7 +28202,6 @@ const CHAT_BUBBLE_MAX_W = "max-w-[min(75vw,280px)]";
 const CHAT_TEXT_BUBBLE_COL = "w-max " + CHAT_BUBBLE_MAX_W + " shrink-0";
 function chatMineAccentClass(theme, isQuran, igDm = false) {
   if (igDm) return "bg-[#1B72E8] text-white";
-  if (isQuran) return "bg-emerald-700 text-white";
   if (theme === "blue") return "bg-blue-600 text-white dark:bg-blue-500";
   if (theme === "pink") return "bg-pink-600 text-white dark:bg-pink-500";
   return "bg-[#0084ff] text-white";
@@ -26471,12 +28218,9 @@ function chatBubbleFilledClass(mine, isQuran, theme = "default", igDm = false, d
     return base + "shadow-[0_1px_8px_rgba(0,0,0,0.12)]";
   }
   if (mine) {
-    return base + chatMineAccentClass(theme, false) + " shadow-sm";
+    return base + chatMineAccentClass(theme) + " shadow-sm";
   }
   return base + "bg-zinc-200 text-zinc-900 dark:bg-[#262626] dark:text-zinc-100";
-}
-function chatCameraButtonClass(theme, isQuran) {
-  return "flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full shadow-sm transition active:scale-[0.93] " + chatMineAccentClass(theme, isQuran) + (theme === "default" && !isQuran ? " hover:bg-[#0073e6]" : "");
 }
 function formatMsgContextTime(createdAt, lang) {
   try {
@@ -27154,6 +28898,8 @@ function ChatListRowWithPeek({
   const rowOpenDownRef = reactExports.useRef(null);
   const rowOpenArmedRef = reactExports.useRef(false);
   const rowOpenLastPullRef = reactExports.useRef(0);
+  const rowOpenVelocityRef = reactExports.useRef(0);
+  const rowOpenMoveSampleRef = reactExports.useRef({ x: 0, t: 0 });
   const rowPointerEndedRef = reactExports.useRef(false);
   const rowShellRef = reactExports.useRef(null);
   const chatRowOpenId = openChatIdFor(c, me.id);
@@ -27162,10 +28908,6 @@ function ChatListRowWithPeek({
     if (!el) return;
     el.classList.toggle("bg-secondary/60", pressed);
   };
-  reactExports.useEffect(() => {
-    if (peekPx > 0) onStackChromeHide?.();
-    else onStackChromeShow?.();
-  }, [peekPx, onStackChromeHide, onStackChromeShow]);
   const scrollPeekToBottom = reactExports.useCallback(() => {
     const el = peekScrollRef.current;
     if (!el) return;
@@ -27426,6 +29168,8 @@ function ChatListRowWithPeek({
       }
       rowOpenArmedRef.current = true;
       setRowPressedVisual(false);
+      rowOpenVelocityRef.current = 0;
+      rowOpenMoveSampleRef.current = { x: e.clientX, t: performance.now() };
       onStackChromeHide?.();
       try {
         e.currentTarget.setPointerCapture(e.pointerId);
@@ -27447,7 +29191,13 @@ function ChatListRowWithPeek({
     const cap = capWidth();
     const px = Math.max(0, Math.min(cap, pull));
     rowOpenLastPullRef.current = px;
-    onStackDrag?.(openChatIdFor(c, me.id), px);
+    const now = performance.now();
+    const dt = now - rowOpenMoveSampleRef.current.t;
+    if (dt > 0 && dt < 100) {
+      rowOpenVelocityRef.current = (e.clientX - rowOpenMoveSampleRef.current.x) / dt;
+    }
+    rowOpenMoveSampleRef.current = { x: e.clientX, t: now };
+    onStackDrag?.(openChatIdFor(c, me.id), px, rowOpenVelocityRef.current);
   };
   const onRowOpenPointerEnd = (e) => {
     if (rowPointerEndedRef.current) return;
@@ -27471,12 +29221,13 @@ function ChatListRowWithPeek({
       const pull = rowOpenPullPx(e);
       const px = Math.max(0, Math.min(cap, pull));
       const mode2 = Math.hypot(dx2, dy2) < 14 ? "tap" : "swipe-end";
+      const vx = rowOpenVelocityRef.current;
       if (onRowOpenCommit) {
         onRowOpenCommit(chatRowOpenId, px, mode2);
       } else if (mode2 === "tap") {
         openChatFromRowTap();
       } else {
-        onStackDragEnd?.(chatRowOpenId, px);
+        onStackDragEnd?.(chatRowOpenId, px, vx);
       }
       return;
     }
@@ -27495,10 +29246,11 @@ function ChatListRowWithPeek({
     rowOpenDownRef.current = null;
     rowOpenArmedRef.current = false;
     rowOpenLastPullRef.current = 0;
+    rowOpenVelocityRef.current = 0;
     setRowPressedVisual(false);
     if (wasArmed) {
       if (onRowOpenCommit) onRowOpenCommit(chatRowOpenId, 0, "swipe-end");
-      else onStackDragEnd?.(chatRowOpenId, 0);
+      else onStackDragEnd?.(chatRowOpenId, 0, 0);
     } else {
       onStackChromeShow?.();
     }
@@ -27834,31 +29586,33 @@ function ChatScreen({
   const stackListGestureCommitRef = reactExports.useRef(false);
   const pendingStackDragRef = reactExports.useRef(null);
   const stackDragFrameRef = reactExports.useRef(0);
+  const stackOpenVelocityRef = reactExports.useRef(0);
   const beginCloseChatThreadRef = reactExports.useRef(() => {
   });
   const [stackGestureLocked, setStackGestureLocked] = reactExports.useState(false);
   const [stackRoomDismissDragging, setStackRoomDismissDragging] = reactExports.useState(false);
-  const applyStackLayerTransforms = reactExports.useCallback((p, animate) => {
-    try {
-      let cap = stackCapRef.current;
-      if (!(cap > 0)) {
-        cap = readSafeStackCapPx(stackInboxRef.current, stackCapRef);
-        stackCapRef.current = cap;
+  const stackLayers = reactExports.useCallback(
+    () => ({
+      inboxEl: stackInboxRef.current,
+      roomEl: stackRoomRef.current
+    }),
+    []
+  );
+  const applyStackLayerTransforms = reactExports.useCallback(
+    (p, animate) => {
+      try {
+        let cap = stackCapRef.current;
+        if (!(cap > 0)) {
+          cap = readSafeStackCapPx(stackInboxRef.current, stackCapRef);
+          stackCapRef.current = cap;
+        }
+        applyOpenStackTransforms(p, cap, stackLayers(), animate, stackTapTransitionRef.current);
+      } catch (err) {
+        console.warn("[chat-stack-transform]", err);
       }
-      const { inbox, room } = chatStackOpenFromLeftTransforms(p, cap);
-      const transition = animate ? `transform ${stackTapTransitionRef.current ? CHAT_TAP_OPEN_MS : SLIDE_DISMISS_MS}ms ${stackTapTransitionRef.current ? CHAT_TAP_OPEN_EASE : SLIDE_DISMISS_EASE}` : "none";
-      if (stackInboxRef.current) {
-        stackInboxRef.current.style.transform = inbox;
-        stackInboxRef.current.style.transition = transition;
-      }
-      if (stackRoomRef.current) {
-        stackRoomRef.current.style.transform = room;
-        stackRoomRef.current.style.transition = transition;
-      }
-    } catch (err) {
-      console.warn("[chat-stack-transform]", err);
-    }
-  }, []);
+    },
+    [stackLayers]
+  );
   const applyRoomCloseDrag = reactExports.useCallback((tx, animate) => {
     try {
       let cap = stackCapRef.current;
@@ -27867,24 +29621,14 @@ function ChatScreen({
         stackCapRef.current = cap;
       }
       const clampedTx = Math.max(-cap, Math.min(0, Number.isFinite(tx) ? tx : 0));
-      const { progress, inbox, room } = chatStackDismissTransforms(clampedTx, cap);
+      const progress = applyCloseStackTransforms(clampedTx, cap, stackLayers(), animate);
       stackProgressRef.current = progress;
       if (animate) setStackProgress(progress);
       stackRoomDriveRef.current = "close";
       stackRoomDismissRef.current = true;
-      if (typeof document !== "undefined") {
-        document.documentElement.style.setProperty(CHAT_STACK_PROGRESS_VAR, String(progress));
-      }
-      const transition = animate ? `transform ${SLIDE_DISMISS_MS}ms ${SLIDE_DISMISS_EASE}` : "none";
-      if (stackInboxRef.current) {
-        stackInboxRef.current.style.transform = inbox;
-        stackInboxRef.current.style.transition = transition;
-      }
-      if (stackRoomRef.current) {
-        stackRoomRef.current.style.transform = room;
-        stackRoomRef.current.style.transition = transition;
-      }
+      publishChatStackCssProgress(progress);
       if (stackRoomDismissRef.current) {
+        syncStackNavHideProgress(progress);
         onExitNavRevealProgress?.(progress);
       }
     } catch (err) {
@@ -27892,7 +29636,7 @@ function ChatScreen({
       stackRoomDismissRef.current = false;
       stackRoomDriveRef.current = "idle";
     }
-  }, [onExitNavRevealProgress]);
+  }, [onExitNavRevealProgress, stackLayers]);
   const resetStackToInboxRest = reactExports.useCallback(
     (opts) => {
       stackProgressRef.current = 0;
@@ -27900,24 +29644,29 @@ function ChatScreen({
       setStackSpring(!!opts?.animate);
       stackRoomDriveRef.current = "idle";
       stackRoomDismissRef.current = false;
-      if (typeof document !== "undefined") {
-        document.documentElement.style.removeProperty(CHAT_STACK_PROGRESS_VAR);
-      }
+      clearChatStackCssProgress();
+      syncStackNavHideProgress(null);
+      onExitNavRevealProgress?.(null);
       applyStackLayerTransforms(0, !!opts?.animate);
     },
-    [applyStackLayerTransforms]
+    [applyStackLayerTransforms, onExitNavRevealProgress]
   );
   const publishStackProgressVisual = reactExports.useCallback(
     (p, commitState = false, animate = false) => {
-      const clamped = Math.max(0, Math.min(1, p));
+      const clamped = publishChatStackCssProgress(p);
       stackProgressRef.current = clamped;
-      if (typeof document !== "undefined") {
-        document.documentElement.style.setProperty(CHAT_STACK_PROGRESS_VAR, String(clamped));
-      }
       applyStackLayerTransforms(clamped, animate);
+      const drivingNav = stackOpenDragRef.current || !!stackDragChatId || stackRoomDismissRef.current || stackRoomDriveRef.current === "close";
+      if (drivingNav && clamped > 1e-3 && clamped < 0.999) {
+        syncStackNavHideProgress(clamped);
+        onExitNavRevealProgress?.(clamped);
+      } else if (!openChat && clamped < 0.02) {
+        syncStackNavHideProgress(null);
+        onExitNavRevealProgress?.(null);
+      }
       if (commitState) setStackProgress(clamped);
     },
-    [applyStackLayerTransforms]
+    [applyStackLayerTransforms, stackDragChatId, openChat, onExitNavRevealProgress]
   );
   const requestStackRoomScrollBottom = reactExports.useCallback(() => {
     if (typeof window === "undefined") return;
@@ -28001,10 +29750,10 @@ function ChatScreen({
     onExitNavRevealProgress?.(null);
   }, [onExitNavRevealProgress]);
   const hideStackChrome = reactExports.useCallback(() => {
-    if (stackChromeHiddenRef.current) return;
-    stackChromeHiddenRef.current = true;
-    setStackChromeHidden(true);
-  }, []);
+    const p = Math.max(stackProgressRef.current, 0.02);
+    syncStackNavHideProgress(p);
+    onExitNavRevealProgress?.(p);
+  }, [onExitNavRevealProgress]);
   const showStackChrome = reactExports.useCallback(() => {
     if (openChat || stackDragChatId || stackClosingId) return;
     releaseChatChromeAfterGesture();
@@ -28061,6 +29810,8 @@ function ChatScreen({
           document.documentElement.style.setProperty(CHAT_STACK_PROGRESS_VAR, "1");
         }
         applyStackLayerTransforms(1, false);
+        syncStackNavHideProgress(null);
+        onExitNavRevealProgress?.(null);
         releaseStackTransitionLock();
         requestStackRoomScrollBottom();
         return;
@@ -28088,6 +29839,8 @@ function ChatScreen({
           document.documentElement.style.setProperty(CHAT_STACK_PROGRESS_VAR, "1");
         }
         applyStackLayerTransforms(1, false);
+        syncStackNavHideProgress(null);
+        onExitNavRevealProgress?.(null);
         stackRoomDriveRef.current = "idle";
         releaseStackTransitionLock();
         requestStackRoomScrollBottom();
@@ -28101,6 +29854,7 @@ function ChatScreen({
       publishStackProgressVisual,
       applyStackLayerTransforms,
       onActiveChatChange,
+      onExitNavRevealProgress,
       releaseStackTransitionLock,
       requestStackRoomScrollBottom
     ]
@@ -28154,7 +29908,6 @@ function ChatScreen({
       setStackGestureLocked(true);
       setStackClosingId(null);
       setStackDragChatId(null);
-      hideStackChrome();
       stackTapTransitionRef.current = true;
       reactDomExports.flushSync(() => {
         setOpenChat(canonical);
@@ -28201,12 +29954,11 @@ function ChatScreen({
         return;
       }
       const cap = stackCapRef.current;
-      const progress = cap > 0 ? px / cap : 0;
-      if (progress >= CHAT_STACK_OPEN_FRACTION) {
-        commitStackOpen(canonical);
-      } else {
-        cancelStackDrag();
-      }
+      const vx = stackOpenVelocityRef.current;
+      stackOpenVelocityRef.current = 0;
+      const { commit } = chatStackOpenReleaseTarget(px, cap, vx);
+      if (commit) commitStackOpen(canonical);
+      else cancelStackDrag();
     },
     [commitStackOpen, cancelStackDrag, openChatDirect, resolveOpenChatId, stackDragChatId]
   );
@@ -28248,7 +30000,7 @@ function ChatScreen({
   ]);
   reactExports.useEffect(() => {
     if (openChat || stackDragChatId || stackClosingId) return;
-    if (!stackChromeHidden && !stackRoomDismissDragging && stackProgress <= 0.04) return;
+    if (!stackRoomDismissDragging && stackProgress <= 0.04) return;
     releaseChatChromeAfterGesture();
     if (stackProgress > 0.04) {
       resetStackToInboxRest();
@@ -28258,7 +30010,6 @@ function ChatScreen({
     stackDragChatId,
     stackClosingId,
     stackProgress,
-    stackChromeHidden,
     stackRoomDismissDragging,
     releaseChatChromeAfterGesture,
     resetStackToInboxRest
@@ -28269,7 +30020,7 @@ function ChatScreen({
       if (openChat || stackDragChatId || stackClosingId) return;
       const sel = document.getSelection();
       if (!sel || sel.isCollapsed) return;
-      if (!stackChromeHidden && stackProgress <= 0.04) return;
+      if (stackProgress <= 0.04) return;
       releaseChatChromeAfterGesture();
       if (stackProgress > 0.04) resetStackToInboxRest();
     };
@@ -28279,7 +30030,6 @@ function ChatScreen({
     openChat,
     stackDragChatId,
     stackClosingId,
-    stackChromeHidden,
     stackProgress,
     releaseChatChromeAfterGesture,
     resetStackToInboxRest
@@ -28340,10 +30090,11 @@ function ChatScreen({
   }, [state.chats, me.id, openChatDirect]);
   reactExports.useEffect(() => {
     const exitingChatBySwipe2 = stackRoomDismissDragging || !!stackClosingId;
-    const threadImmersive = !!(openChat || stackDragChatId || stackChromeHidden) && !exitingChatBySwipe2;
+    const fullyOpen = !!openChat && !stackDragChatId && !stackClosingId && stackProgressRef.current >= 0.98;
+    const threadImmersive = fullyOpen && !exitingChatBySwipe2;
     const hideBottomNav = threadImmersive || showCreate != null;
     if (typeof document !== "undefined") {
-      if (openChat || stackDragChatId || stackClosingId || stackChromeHidden) {
+      if (fullyOpen || stackClosingId) {
         document.documentElement.dataset.chatThreadOpen = "1";
       } else {
         delete document.documentElement.dataset.chatThreadOpen;
@@ -28351,15 +30102,20 @@ function ChatScreen({
     }
     onThreadOpen?.(threadImmersive);
     onHideBottomNav?.(hideBottomNav);
+    if (fullyOpen) {
+      syncStackNavHideProgress(null);
+      onExitNavRevealProgress?.(null);
+    }
   }, [
     openChat,
     stackDragChatId,
     stackClosingId,
-    stackChromeHidden,
+    stackProgress,
     stackRoomDismissDragging,
     showCreate,
     onThreadOpen,
-    onHideBottomNav
+    onHideBottomNav,
+    onExitNavRevealProgress
   ]);
   reactExports.useEffect(() => {
     return () => {
@@ -28443,8 +30199,9 @@ function ChatScreen({
     [stackDragChatId, resolveOpenChatId, publishStackProgressVisual, hideStackChrome]
   );
   const onStackDrag = reactExports.useCallback(
-    (chatId, px) => {
-      pendingStackDragRef.current = { chatId, px };
+    (chatId, px, vx = 0) => {
+      if (Number.isFinite(vx)) stackOpenVelocityRef.current = vx;
+      pendingStackDragRef.current = { chatId, px, vx };
       if (stackDragFrameRef.current) return;
       stackDragFrameRef.current = requestAnimationFrame(() => {
         stackDragFrameRef.current = 0;
@@ -28519,11 +30276,25 @@ function ChatScreen({
   ]);
   reactExports.useEffect(() => {
     return () => {
-      if (typeof document !== "undefined") {
-        document.documentElement.style.removeProperty(CHAT_STACK_PROGRESS_VAR);
-      }
+      clearChatStackCssProgress();
+      syncStackNavHideProgress(null);
     };
   }, []);
+  reactExports.useEffect(() => {
+    const recoverHalfOpen = () => {
+      if (openChat || stackListGestureCommitRef.current) return;
+      const p = stackProgressRef.current;
+      if (p > 0.03 && p < 0.97 && (stackOpenDragRef.current || stackDragChatId)) {
+        cancelStackDrag();
+      }
+    };
+    document.addEventListener("pointercancel", recoverHalfOpen, true);
+    window.addEventListener("blur", recoverHalfOpen);
+    return () => {
+      document.removeEventListener("pointercancel", recoverHalfOpen, true);
+      window.removeEventListener("blur", recoverHalfOpen);
+    };
+  }, [openChat, stackDragChatId, cancelStackDrag]);
   const activeStackChatId = openChat ?? stackDragChatId ?? stackClosingId ?? null;
   const stackChatRaw = activeStackChatId ? findChatByOpenId(state.chats, activeStackChatId, me.id) : null;
   const stackChat = reactExports.useMemo(
@@ -28670,11 +30441,11 @@ function ChatScreen({
   );
   const showInboxStackActive = !!(activeStackChatId && stackChat);
   const exitingChatBySwipe = stackRoomDismissDragging || stackClosingId || stackRoomDriveRef.current === "close";
-  const inboxAtRest = !openChat && !stackDragChatId && !stackChromeHidden;
-  const hideInboxTopChrome = !!openChat && !exitingChatBySwipe && stackProgress >= 0.97;
-  const showInboxComposeIcon = exitingChatBySwipe || inboxAtRest;
-  const showInboxChatTitle = exitingChatBySwipe || inboxAtRest;
-  const showInboxNotesStrip = exitingChatBySwipe || inboxAtRest;
+  const hideInboxTopChrome = !!openChat && !exitingChatBySwipe && !stackDragChatId && stackProgress >= 0.99;
+  const showInboxSubChrome = !hideInboxTopChrome || exitingChatBySwipe || !!stackDragChatId;
+  const showInboxComposeIcon = showInboxSubChrome;
+  const showInboxChatTitle = showInboxSubChrome;
+  const showInboxNotesStrip = showInboxSubChrome;
   const hideInboxChrome = hideInboxTopChrome && !showInboxNotesStrip;
   const stackDragProgress = stackChatOpenKey && (openChat === stackChatOpenKey || stackDragChatId === stackChatOpenKey || stackClosingId === stackChatOpenKey) ? stackProgress : 0;
   const stackInboxPointerEvents = (stackClosingId === stackChatOpenKey || stackDragChatId === stackChatOpenKey || stackDragProgress < 0.98) && showInboxStackActive ? "auto" : activeStackChatId && showInboxStackActive ? "none" : void 0;
@@ -28687,7 +30458,7 @@ function ChatScreen({
       className: "chat-inbox-pane relative z-[1] flex min-h-0 flex-1 flex-col overflow-hidden overscroll-none bg-background [transform:translateZ(0)]",
       style: stackInboxPointerEvents ? { pointerEvents: stackInboxPointerEvents } : void 0,
       children: [
-        !hideInboxTopChrome && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "shrink-0 px-4 pb-2 pt-[max(0.75rem,env(safe-area-inset-top,0.75rem))]", children: [
+        !hideInboxTopChrome && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "shrink-0 px-4 pb-2 pt-[max(0.75rem,max(0.75rem, var(--sat)))]", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-3 flex items-center justify-end", children: showInboxComposeIcon && /* @__PURE__ */ jsxRuntimeExports.jsx(
             "button",
             {
@@ -28919,7 +30690,7 @@ function ChatScreen({
                     {
                       type: "button",
                       onClick: () => setEditingNote(false),
-                      className: "absolute top-[max(0.75rem,env(safe-area-inset-top,0px))] end-4 rounded-full bg-black/40 p-1.5 text-white/90 backdrop-blur",
+                      className: "absolute top-[max(0.75rem,var(--sat))] end-4 rounded-full bg-black/40 p-1.5 text-white/90 backdrop-blur",
                       "aria-label": t("cancel"),
                       children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 18 })
                     }
@@ -29075,7 +30846,11 @@ function ChatScreen({
         chat: stackChat,
         messages: stackChat.messages,
         onBack: () => setShowGroupSettings(false),
-        onOpenProfile
+        onOpenProfile,
+        onCreateNewGroup: () => {
+          setShowGroupSettings(false);
+          setShowCreate("group");
+        }
       }
     );
   if (showRequests)
@@ -29108,7 +30883,7 @@ function ChatScreen({
     incomingCall && !showCall && /* @__PURE__ */ jsxRuntimeExports.jsx(
       "div",
       {
-        className: "fixed inset-x-0 z-[250] mx-auto max-w-md px-3 " + (hideInboxChrome ? "bottom-[max(0.75rem,env(safe-area-inset-bottom,0px))]" : "bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))]"),
+        className: "fixed inset-x-0 z-[250] mx-auto max-w-md px-3 " + (hideInboxChrome ? "bottom-[max(0.75rem,var(--sab))]" : "bottom-[calc(5.5rem+var(--sab))]"),
         children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3 rounded-2xl border border-border bg-card p-3 shadow-lg", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: caller?.username || "?", src: caller?.avatar, size: 44 }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1 text-start", children: [
@@ -29145,7 +30920,7 @@ function ChatScreen({
         ] })
       }
     ),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "chat-stack-scene relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background", children: [
       chatInbox,
       activeStackChatId && stackChat ? /* @__PURE__ */ jsxRuntimeExports.jsx(
         ChatStackRoomGestureShell,
@@ -29376,16 +31151,15 @@ function CreateGroup({ mode: mode2, onBack, onCreated }) {
       }
     })();
   };
+  const minGroupMembers = 2;
+  const canCreateGroup = mode2 === "group" ? selected.length >= minGroupMembers : true;
   const create = () => {
-    if (mode2 === "group" && selected.length < 2) {
-      alert("اختر شخصين على الأقل");
-      return;
-    }
+    if (mode2 === "group" && selected.length < minGroupMembers) return;
     const c = mode2 === "group" ? createGroup(name || "مجموعة", avatar, selected) : createChannel(name || "قناة", avatar, selected);
     if (c) onCreated(c.id);
   };
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(SlideDismissShell, { onDismiss: onBack, variant: "inline", className: "flex-1 bg-background", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "p-4", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 mb-4", children: [
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(SlideDismissShell, { onDismiss: onBack, variant: "inline", className: "flex-1 bg-background", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-h-0 flex-1 flex-col p-4", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-4 flex shrink-0 items-center gap-2", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(SlideDismissBackButton, { onDismiss: onBack, children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowRight, {}) }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "font-bold", children: mode2 === "group" ? t("newGroup") : t("newChannel") })
     ] }),
@@ -29396,28 +31170,52 @@ function CreateGroup({ mode: mode2, onBack, onCreated }) {
           /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "absolute inset-0 flex items-center justify-center rounded-full bg-black/40 text-xs text-white opacity-0 hover:opacity-100", children: avatarBusy ? "…" : "صورة" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("input", { type: "file", accept: "image/*", className: "sr-only", onChange: onAvatarFile, disabled: avatarBusy })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("select", { value: avatar, onChange: (e) => setAvatar(e.target.value), className: "text-sm bg-secondary rounded-xl px-3 py-1.5", children: (mode2 === "channel" ? ["📢", "📰", "📚", "🕌", "⭐", "🎙️"] : ["👥", "🎉", "🚀", "💬", "🌟", "❤️", "🔥", "🎨"]).map((e) => /* @__PURE__ */ jsxRuntimeExports.jsxs("option", { value: e, children: [
-          e,
-          " أيقونة"
-        ] }, e)) })
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "select",
+          {
+            value: avatar,
+            onChange: (e) => setAvatar(e.target.value),
+            className: "rounded-xl bg-secondary px-3 py-1.5 text-sm",
+            children: (mode2 === "channel" ? ["📢", "📰", "📚", "🕌", "⭐", "🎙️"] : ["👥", "🎉", "🚀", "💬", "🌟", "❤️", "🔥", "🎨"]).map((e) => /* @__PURE__ */ jsxRuntimeExports.jsxs("option", { value: e, children: [
+              e,
+              " أيقونة"
+            ] }, e))
+          }
+        )
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("input", { value: name, onChange: (e) => setName(e.target.value), placeholder: mode2 === "group" ? t("groupName") : t("channelName"), className: "w-full bg-input rounded-2xl px-4 py-3 outline-none" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => {
-        if (!name.trim()) return alert("اكتب اسم");
-        setStep(2);
-      }, className: "w-full bg-primary text-primary-foreground py-3 rounded-2xl font-semibold", children: t("next") })
-    ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-muted-foreground", children: mode2 === "group" ? t("addMembers") : "اختر الأعضاء (اختياري)" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "input",
+        {
+          value: name,
+          onChange: (e) => setName(e.target.value),
+          placeholder: mode2 === "group" ? t("groupName") : t("channelName"),
+          className: "w-full rounded-2xl bg-input px-4 py-3 outline-none"
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          type: "button",
+          onClick: () => {
+            if (!name.trim()) return alert("اكتب اسم");
+            setStep(2);
+          },
+          className: "w-full rounded-2xl bg-primary py-3 font-semibold text-primary-foreground",
+          children: t("next")
+        }
+      )
+    ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-h-0 flex-1 flex-col", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "shrink-0 text-sm text-muted-foreground", children: mode2 === "group" ? t("addMembers") : "اختر الأعضاء (اختياري)" }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(
         "input",
         {
           value: memberSearch,
           onChange: (e) => setMemberSearch(e.target.value),
           placeholder: "ابحث بالاسم…",
-          className: "w-full rounded-2xl bg-input px-4 py-2.5 text-sm outline-none"
+          className: "mt-2 w-full shrink-0 rounded-2xl bg-input px-4 py-2.5 text-sm outline-none"
         }
       ),
-      others.filter((u) => {
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-2 min-h-0 flex-1 space-y-0.5 overflow-y-auto overscroll-y-contain", children: others.filter((u) => {
         const q = memberSearch.trim().toLowerCase();
         if (!q) return true;
         return u.username.toLowerCase().includes(q);
@@ -29426,23 +31224,33 @@ function CreateGroup({ mode: mode2, onBack, onCreated }) {
         {
           type: "button",
           onClick: () => setSelected((s) => s.includes(u.id) ? s.filter((x) => x !== u.id) : [...s, u.id]),
-          className: "flex w-full touch-manipulation items-center gap-3 rounded-2xl p-2 hover:bg-secondary active:bg-secondary/80",
+          className: "flex w-full touch-manipulation items-center gap-3 rounded-2xl p-2.5 hover:bg-secondary active:bg-secondary/80",
           children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: u.username, src: u.avatar }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1 text-start", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: u.username, src: u.avatar, size: 44 }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1 text-start text-[15px] font-medium", children: [
               "@",
               u.username
             ] }),
-            selected.includes(u.id) && /* @__PURE__ */ jsxRuntimeExports.jsx(Check, { className: "text-primary" })
+            selected.includes(u.id) && /* @__PURE__ */ jsxRuntimeExports.jsx(Check, { className: "shrink-0 text-[#0095F6]", size: 22 })
           ]
         },
         u.id
-      )),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", onClick: create, className: "w-full bg-primary text-primary-foreground py-3 rounded-2xl font-semibold mt-3", children: [
-        t("create_"),
-        " (",
-        selected.length,
-        ")"
+      )) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "shrink-0 border-t border-border pt-3 pb-[max(0.25rem,var(--sab))]", children: [
+        mode2 === "group" && !canCreateGroup && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mb-2 text-center text-xs text-muted-foreground", children: t("groupPickTwoHint") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "button",
+          {
+            type: "button",
+            disabled: !canCreateGroup,
+            onClick: create,
+            className: "w-full rounded-2xl py-3.5 text-[15px] font-semibold transition-opacity " + (canCreateGroup ? "bg-[#0095F6] text-white active:opacity-90" : "cursor-not-allowed bg-zinc-200 text-zinc-400 dark:bg-zinc-800 dark:text-zinc-500"),
+            children: [
+              t("create_"),
+              mode2 === "group" ? ` (${selected.length})` : selected.length > 0 ? ` (${selected.length})` : ""
+            ]
+          }
+        )
       ] })
     ] })
   ] }) });
@@ -29684,21 +31492,70 @@ function ChatRoom({
   const [shareFeedOpen, setShareFeedOpen] = reactExports.useState(null);
   const messagesScrollRef = reactExports.useRef(null);
   const composerRef = reactExports.useRef(null);
+  useChatKeyboardInsets(true);
   const vv = useVisualViewportLayout();
   const keyboardOpen = vv.keyboardInset > 8;
-  const pinChatToVisualViewport = !embedInStack || keyboardOpen;
   const composerBottomPad = chatComposerBottomPadding(keyboardOpen);
+  const stickToBottomRef = reactExports.useRef(true);
+  const syncComposerDockHeight = reactExports.useCallback(() => {
+    const el = composerRef.current;
+    if (!el || typeof window === "undefined") return;
+    const rect = el.getBoundingClientRect();
+    const obstructed = Math.max(rect.height, window.innerHeight - rect.top);
+    const h = Math.ceil(obstructed) + 12;
+    if (h > 0) {
+      document.documentElement.style.setProperty("--chat-composer-h", `${h}px`);
+    }
+  }, []);
   const scrollMessagesToBottom = reactExports.useCallback(() => {
     const el = messagesScrollRef.current;
     if (!el) return;
+    syncComposerDockHeight();
     const top = Math.max(0, el.scrollHeight - el.clientHeight);
     try {
       el.scrollTo({ top, behavior: "instant" });
     } catch {
       el.scrollTop = top;
     }
-  }, []);
-  const stickToBottomRef = reactExports.useRef(true);
+  }, [syncComposerDockHeight]);
+  reactExports.useLayoutEffect(() => {
+    const el = composerRef.current;
+    if (!el) return;
+    syncComposerDockHeight();
+    const ro = new ResizeObserver(() => {
+      syncComposerDockHeight();
+      if (stickToBottomRef.current) scrollMessagesToBottom();
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [
+    chat.id,
+    keyboardOpen,
+    showStickers,
+    replyingTo,
+    mentionPick,
+    plusAttachOpen,
+    syncComposerDockHeight,
+    scrollMessagesToBottom
+  ]);
+  reactExports.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const vv2 = window.visualViewport;
+    const sync = () => {
+      syncComposerDockHeight();
+      if (stickToBottomRef.current) scrollMessagesToBottom();
+    };
+    vv2?.addEventListener("resize", sync, { passive: true });
+    vv2?.addEventListener("scroll", sync, { passive: true });
+    window.addEventListener("resize", sync, { passive: true });
+    window.addEventListener("orientationchange", sync, { passive: true });
+    return () => {
+      vv2?.removeEventListener("resize", sync);
+      vv2?.removeEventListener("scroll", sync);
+      window.removeEventListener("resize", sync);
+      window.removeEventListener("orientationchange", sync);
+    };
+  }, [syncComposerDockHeight, scrollMessagesToBottom]);
   const scrollAnchorRef = reactExports.useRef({ chatId: "", msgCount: 0 });
   const cameraCaptureRef = reactExports.useRef(null);
   const galleryMediaInputRef = reactExports.useRef(null);
@@ -29929,15 +31786,15 @@ function ChatRoom({
   }, [chat.id]);
   reactExports.useLayoutEffect(() => {
     if (!embedInStack || !forceScrollToBottom) return;
-    const onViewportChange = () => {
+    const onViewportChange2 = () => {
       if (stickToBottomRef.current) scrollMessagesToBottom();
     };
     const onScrollBottom = () => scrollMessagesToBottom();
-    onViewportChange();
-    window.addEventListener("resize", onViewportChange);
+    onViewportChange2();
+    window.addEventListener("resize", onViewportChange2);
     window.addEventListener("retweet-chat-scroll-bottom", onScrollBottom);
     return () => {
-      window.removeEventListener("resize", onViewportChange);
+      window.removeEventListener("resize", onViewportChange2);
       window.removeEventListener("retweet-chat-scroll-bottom", onScrollBottom);
     };
   }, [embedInStack, forceScrollToBottom, vv.height, vv.offsetTop, scrollMessagesToBottom]);
@@ -29957,7 +31814,13 @@ function ChatRoom({
     scrollAnchorRef.current = { chatId: chat.id, msgCount: count2 };
     if (isNewChat) stickToBottomRef.current = true;
     if (!isNewChat && !forceScrollToBottom && count2 === prev.msgCount) return;
+    stickToBottomRef.current = true;
     scrollMessagesToBottom();
+    const inner = requestAnimationFrame(() => {
+      scrollMessagesToBottom();
+      requestAnimationFrame(scrollMessagesToBottom);
+    });
+    return () => cancelAnimationFrame(inner);
   }, [chat.id, displayMessages.length, messageContext, scrollMessagesToBottom, forceScrollToBottom]);
   const onMessagesScroll = reactExports.useCallback(() => {
     const el = messagesScrollRef.current;
@@ -29976,11 +31839,19 @@ function ChatRoom({
       });
     }
   }, []);
-  reactExports.useLayoutEffect(() => {
-    if (!keyboardOpen) return;
+  const prevKeyboardOpenRef = reactExports.useRef(false);
+  reactExports.useEffect(() => {
+    const justOpened = keyboardOpen && !prevKeyboardOpenRef.current;
+    prevKeyboardOpenRef.current = keyboardOpen;
+    if (!justOpened) return;
     stickToBottomRef.current = true;
-    scrollMessagesToBottom();
-  }, [keyboardOpen, vv.keyboardInset, scrollMessagesToBottom]);
+    const scrollOnce = () => scrollMessagesToBottom();
+    scrollOnce();
+    requestAnimationFrame(() => {
+      scrollOnce();
+      requestAnimationFrame(scrollOnce);
+    });
+  }, [keyboardOpen, scrollMessagesToBottom]);
   const VANISH_PULL_NEED = 120;
   const VANISH_PULL_HIT_PX = 140;
   const isQuranChannel = chat.id === QURAN_CHANNEL_ID;
@@ -30651,7 +32522,15 @@ function ChatRoom({
       return;
     }
     window.setTimeout(() => setComposerMicCooldown(false), 480);
-  }, [readComposerBody, replyingTo, dispatchSend, clearComposer]);
+    stickToBottomRef.current = true;
+    syncComposerDockHeight();
+    scrollMessagesToBottom();
+    requestAnimationFrame(() => {
+      syncComposerDockHeight();
+      scrollMessagesToBottom();
+      requestAnimationFrame(scrollMessagesToBottom);
+    });
+  }, [readComposerBody, replyingTo, dispatchSend, clearComposer, syncComposerDockHeight, scrollMessagesToBottom]);
   const edgeSwipeBackBlocked = reactExports.useMemo(
     () => !!messageContext || !!forwardingMessage || !!cameraCompose || drawComposeOpen || !!viewOnceOverlay || !!inlineMediaViewer || !!shareFeedOpen || showStickers || recording || showPrivacyMenu,
     [
@@ -30754,7 +32633,7 @@ function ChatRoom({
       "data-chat-swipe-column": true,
       "data-chat-dismiss-rtl": "1",
       className: (embedInStack ? "relative flex h-full min-h-0 w-full flex-col overflow-hidden overscroll-none pointer-events-auto touch-manipulation " : "fixed inset-x-0 z-[200] box-border flex justify-center overflow-hidden overscroll-none pointer-events-none touch-manipulation ") + (useIgDm ? "" : "bg-background"),
-      style: pinChatToVisualViewport ? {
+      style: {
         ...embedInStack ? {
           position: "fixed",
           left: 0,
@@ -30770,7 +32649,7 @@ function ChatRoom({
         bottom: "auto",
         ...!embedInStack ? panelDismissTouchStyle : {},
         ...useIgDm && dmPalette ? igDmSurfaceStyle : {}
-      } : embedInStack && useIgDm && dmPalette ? igDmSurfaceStyle : void 0,
+      },
       ...{
         onPointerDownCapture: panelDismissDown,
         onPointerMoveCapture: panelDismissMove,
@@ -30797,7 +32676,7 @@ function ChatRoom({
                     {
                       dir: useIgDm ? dmDir : "rtl",
                       "data-chat-dismiss-handle": true,
-                      className: "relative z-40 flex shrink-0 items-center gap-2 px-3 py-3 pt-[max(0.75rem,env(safe-area-inset-top,0px))] " + (isQuranChannel ? "bg-zinc-900 text-zinc-100 border-b border-zinc-700" : useIgDm && dmPalette ? "border-b border-transparent " + dmPalette.headerTitleClass : "border-b border-border bg-background"),
+                      className: "relative z-40 flex shrink-0 items-center gap-2 px-3 py-3 pt-[max(0.75rem,var(--sat))] " + (isQuranChannel ? "bg-zinc-900 text-zinc-100 border-b border-zinc-700" : useIgDm && dmPalette ? "border-b border-transparent " + dmPalette.headerTitleClass : "border-b border-border bg-background"),
                       style: useIgDm && !isQuranChannel ? {
                         ...igDmSurfaceStyle,
                         backdropFilter: "blur(24px) saturate(1.6)",
@@ -31045,7 +32924,10 @@ function ChatRoom({
                         /* @__PURE__ */ jsxRuntimeExports.jsxs(
                           "div",
                           {
-                            className: "flex min-h-full w-full flex-col justify-end gap-2 px-3 pt-2 pb-0 " + (isQuranChannel ? "bg-zinc-950" : ""),
+                            className: "flex min-h-full w-full flex-col justify-end gap-2 px-3 pt-2 " + (isQuranChannel ? "bg-zinc-950" : ""),
+                            style: {
+                              paddingBottom: "8px"
+                            },
                             children: [
                               hasOlderMessages && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex w-full justify-center py-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[11px] text-muted-foreground opacity-60", children: "↑ مرّر للأعلى لتحميل رسائل أقدم" }) }),
                               rowsToRender.map((row) => {
@@ -31482,11 +33364,12 @@ function ChatRoom({
                       }
                     ) })
                   ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "chat-composer-spacer shrink-0", "aria-hidden": true }),
                   /* @__PURE__ */ jsxRuntimeExports.jsx(
                     "div",
                     {
                       ref: composerRef,
-                      className: "relative z-[56] shrink-0 isolate",
+                      className: "chat-composer-dock isolate",
                       style: { ["--chat-composer-bottom-pad"]: composerBottomPad },
                       children: !canPost ? /* @__PURE__ */ jsxRuntimeExports.jsx(
                         "div",
@@ -31497,13 +33380,7 @@ function ChatRoom({
                       ) : /* @__PURE__ */ jsxRuntimeExports.jsxs(
                         "div",
                         {
-                          className: isQuranChannel ? "border-t border-zinc-700 bg-zinc-900" : useIgDm && dmPalette ? "border-t border-transparent" : "border-t border-border bg-background",
-                          style: useIgDm && !isQuranChannel ? {
-                            backdropFilter: "blur(24px) saturate(1.6)",
-                            WebkitBackdropFilter: "blur(24px) saturate(1.6)",
-                            background: igDmSurfaceStyle?.backgroundColor === "#000000" || igDmSurfaceStyle?.backgroundColor === "#000" ? "rgba(0,0,0,0.75)" : "rgba(242,242,247,0.82)",
-                            borderTop: igDmSurfaceStyle?.backgroundColor === "#000000" || igDmSurfaceStyle?.backgroundColor === "#000" ? "0.5px solid rgba(255,255,255,0.10)" : "0.5px solid rgba(0,0,0,0.08)"
-                          } : void 0,
+                          className: isQuranChannel ? "border-t border-zinc-700 bg-zinc-900" : useIgDm && dmPalette ? "bg-transparent" : "border-t border-border bg-background",
                           children: [
                             replyingTo && /* @__PURE__ */ jsxRuntimeExports.jsx(
                               ChatComposerReplyBar,
@@ -31549,21 +33426,144 @@ function ChatRoom({
                                   e.preventDefault();
                                   submitTextMessage();
                                 },
-                                className: "chat-composer-bar px-3 pt-2 pb-[var(--chat-composer-bottom-pad)]",
+                                className: "chat-composer-bar px-3 pt-2 pb-2",
                                 children: [
-                                  useIgDm ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { dir: dmDir, className: "relative flex min-h-[44px] items-center gap-2", children: [
+                                  useIgDm ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { dir: dmDir, className: "relative flex min-h-[44px] items-end gap-2.5", children: [
+                                    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                                      "div",
+                                      {
+                                        dir: dmDir,
+                                        className: "flex min-h-[44px] min-w-0 flex-1 flex-nowrap items-center gap-0.5 rounded-[24px] px-2 py-1",
+                                        style: dmPalette ? {
+                                          backgroundColor: dmPalette.composerField
+                                        } : void 0,
+                                        children: [
+                                          !composerHasText && (recording ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+                                            "button",
+                                            {
+                                              type: "button",
+                                              className: "flex h-8 w-8 shrink-0 touch-manipulation items-center justify-center rounded-full text-red-500 " + (dmPalette?.composerIconClass ?? "hover:bg-white/10"),
+                                              "aria-label": t("stop"),
+                                              onClick: stopRecording,
+                                              children: /* @__PURE__ */ jsxRuntimeExports.jsx(Square, { size: 15, fill: "currentColor" })
+                                            }
+                                          ) : composerMicCooldown ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-8 w-8 shrink-0 touch-none pointer-events-none", "aria-hidden": true }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+                                            /* @__PURE__ */ jsxRuntimeExports.jsx(
+                                              "button",
+                                              {
+                                                type: "button",
+                                                className: "flex h-8 w-8 shrink-0 touch-manipulation items-center justify-center rounded-full transition " + (dmPalette?.composerIconClass ?? "text-zinc-300 hover:bg-white/10"),
+                                                style: { touchAction: "none" },
+                                                "aria-label": "تسجيل صوتي",
+                                                onClick: () => {
+                                                  if (Date.now() < blockMicUntilRef.current) return;
+                                                  void startRecording();
+                                                },
+                                                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Mic, { size: 19, strokeWidth: 2 })
+                                              }
+                                            ),
+                                            /* @__PURE__ */ jsxRuntimeExports.jsx(
+                                              "button",
+                                              {
+                                                type: "button",
+                                                ...galleryLongPressBtnProps,
+                                                className: "flex h-8 w-8 shrink-0 touch-manipulation items-center justify-center rounded-full transition " + (dmPalette?.composerIconClass ?? "text-zinc-300 hover:bg-white/10"),
+                                                "aria-label": "معرض الصور",
+                                                onClick: () => {
+                                                  setPlusAttachOpen(false);
+                                                  onGalleryButtonClick();
+                                                },
+                                                onPointerDown: (e) => {
+                                                  setPlusAttachOpen(false);
+                                                  onGalleryPointerDown(e);
+                                                },
+                                                onPointerMove: onGalleryPointerMove,
+                                                onPointerUp: clearGalleryLongPress,
+                                                onPointerCancel: clearGalleryLongPress,
+                                                onPointerLeave: clearGalleryLongPress,
+                                                onTouchStart: onGalleryTouchStart,
+                                                onTouchMove: onGalleryTouchMove,
+                                                onTouchEnd: onGalleryTouchEnd,
+                                                onTouchCancel: onGalleryTouchEnd,
+                                                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Image$1, { size: 19, strokeWidth: 2 })
+                                              }
+                                            ),
+                                            /* @__PURE__ */ jsxRuntimeExports.jsx(
+                                              "button",
+                                              {
+                                                type: "button",
+                                                className: "flex h-8 w-8 shrink-0 touch-manipulation items-center justify-center rounded-full transition " + (dmPalette?.composerIconClass ?? "text-zinc-300 hover:bg-white/10"),
+                                                "aria-label": "إيموجي وملصقات",
+                                                onClick: () => {
+                                                  setPlusAttachOpen(false);
+                                                  toggleStickerPanel();
+                                                },
+                                                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Sticker, { size: 19, strokeWidth: 2 })
+                                              }
+                                            )
+                                          ] })),
+                                          /* @__PURE__ */ jsxRuntimeExports.jsx(
+                                            MentionComposerField,
+                                            {
+                                              textareaRef: composerInputRef,
+                                              rows: 1,
+                                              dir: "auto",
+                                              value: text,
+                                              onChange: onComposerChange,
+                                              mentionVariant: "composer",
+                                              wrapperClassName: "chat-allow-select min-w-0 flex-1",
+                                              overlayClassName: "py-1.5 text-[15px] leading-5 " + (dmPalette ? dmPalette.composerTextClass : "text-white"),
+                                              onCompositionStart: () => {
+                                                composingRef.current = true;
+                                              },
+                                              onCompositionEnd: (e) => {
+                                                composingRef.current = false;
+                                                onComposerChange(e.currentTarget.value);
+                                              },
+                                              onKeyDown: (e) => {
+                                                if (e.key === "Enter" && !e.shiftKey) {
+                                                  e.preventDefault();
+                                                  submitTextMessage();
+                                                }
+                                              },
+                                              onFocus: () => {
+                                                stickToBottomRef.current = true;
+                                                requestAnimationFrame(() => scrollMessagesToBottom());
+                                              },
+                                              placeholder: t("typeMessage"),
+                                              "aria-label": t("typeMessage"),
+                                              className: "chat-allow-select no-scrollbar min-h-[20px] min-w-0 max-h-[100px] flex-1 resize-none overflow-y-hidden py-1.5 text-[15px] leading-5 whitespace-pre-wrap break-words bg-transparent outline-none " + (dmPalette ? dmPalette.composerTextClass + " " + dmPalette.composerPlaceholderClass : "text-white caret-white placeholder:text-zinc-500"),
+                                              style: { height: CHAT_COMPOSER_LINE_PX }
+                                            }
+                                          ),
+                                          composerHasText ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+                                            "button",
+                                            {
+                                              type: "button",
+                                              className: "relative z-[57] flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full shadow-[0_2px_12px_rgba(0,0,0,0.18)] transition-all duration-150 hover:opacity-90 active:scale-[0.88]",
+                                              style: {
+                                                background: "rgba(255,255,255,1)",
+                                                color: "#000"
+                                              },
+                                              "aria-label": t("send"),
+                                              onPointerUp: (e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                blockMicUntilRef.current = Date.now() + 520;
+                                                submitTextMessage();
+                                              },
+                                              children: /* @__PURE__ */ jsxRuntimeExports.jsx(Send, { size: 17, strokeWidth: 2.5, className: "pointer-events-none ltr:-rotate-12", style: { color: "#000" } })
+                                            }
+                                          ) : null
+                                        ]
+                                      }
+                                    ),
                                     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { ref: plusAttachMenuRef, className: "relative shrink-0", children: [
                                       /* @__PURE__ */ jsxRuntimeExports.jsx(
                                         "button",
                                         {
                                           type: "button",
-                                          className: "flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full shadow-sm transition-all duration-150 active:scale-[0.88] hover:opacity-90 " + (dmPalette?.iconBtnClass ?? "text-white"),
-                                          style: {
-                                            background: igDmSurfaceStyle?.backgroundColor === "#000000" || igDmSurfaceStyle?.backgroundColor === "#000" ? "rgba(255,255,255,0.14)" : "rgba(0,0,0,0.08)",
-                                            backdropFilter: "blur(10px)",
-                                            WebkitBackdropFilter: "blur(10px)",
-                                            border: igDmSurfaceStyle?.backgroundColor === "#000000" || igDmSurfaceStyle?.backgroundColor === "#000" ? "0.5px solid rgba(255,255,255,0.18)" : "0.5px solid rgba(0,0,0,0.10)"
-                                          },
+                                          className: "flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full transition active:scale-[0.88] hover:opacity-90 " + (dmPalette?.composerIconClass ?? "text-white/80 hover:bg-white/10"),
                                           "aria-label": "إرفاق",
                                           onPointerDown: (e) => e.stopPropagation(),
                                           onClick: (e) => {
@@ -31576,7 +33576,7 @@ function ChatRoom({
                                       plusAttachOpen && /* @__PURE__ */ jsxRuntimeExports.jsxs(
                                         "div",
                                         {
-                                          className: "absolute bottom-[calc(100%+12px)] start-0 z-[60] min-w-[13rem] overflow-hidden rounded-[22px] py-1.5",
+                                          className: "absolute bottom-[calc(100%+12px)] end-0 z-[60] min-w-[13rem] overflow-hidden rounded-[22px] py-1.5",
                                           style: {
                                             backdropFilter: "blur(28px) saturate(1.8)",
                                             WebkitBackdropFilter: "blur(28px) saturate(1.8)",
@@ -31691,93 +33691,25 @@ function ChatRoom({
                                           ]
                                         }
                                       )
-                                    ] }),
+                                    ] })
+                                  ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { dir: "ltr", className: "relative flex min-h-[44px] items-end gap-2.5", children: [
                                     /* @__PURE__ */ jsxRuntimeExports.jsxs(
                                       "div",
                                       {
-                                        dir: dmDir,
-                                        className: "flex min-h-[40px] min-w-0 flex-1 flex-nowrap items-center gap-0.5 rounded-[22px] px-3 py-1.5",
-                                        style: dmPalette ? {
-                                          backdropFilter: "blur(12px)",
-                                          WebkitBackdropFilter: "blur(12px)",
-                                          backgroundColor: dmPalette.composerField,
-                                          border: igDmSurfaceStyle?.backgroundColor === "#000000" || igDmSurfaceStyle?.backgroundColor === "#000" ? "0.5px solid rgba(255,255,255,0.10)" : "0.5px solid rgba(0,0,0,0.07)"
-                                        } : void 0,
+                                        className: "relative flex min-h-[44px] min-w-0 flex-1 flex-nowrap items-center gap-0.5 rounded-[24px] px-2 py-1 " + (isQuranChannel ? "bg-zinc-900" : "bg-secondary/80 dark:bg-zinc-800/90"),
                                         children: [
-                                          /* @__PURE__ */ jsxRuntimeExports.jsx(
-                                            MentionComposerField,
-                                            {
-                                              textareaRef: composerInputRef,
-                                              rows: 1,
-                                              dir: "auto",
-                                              value: text,
-                                              onChange: onComposerChange,
-                                              mentionVariant: "composer",
-                                              wrapperClassName: "chat-allow-select min-w-0 flex-1",
-                                              overlayClassName: "py-1.5 text-[15px] leading-5 " + (dmPalette ? dmPalette.composerTextClass : "text-white"),
-                                              onCompositionStart: () => {
-                                                composingRef.current = true;
-                                              },
-                                              onCompositionEnd: (e) => {
-                                                composingRef.current = false;
-                                                onComposerChange(e.currentTarget.value);
-                                              },
-                                              onKeyDown: (e) => {
-                                                if (e.key === "Enter" && !e.shiftKey) {
-                                                  e.preventDefault();
-                                                  submitTextMessage();
-                                                }
-                                              },
-                                              onFocus: () => {
-                                                stickToBottomRef.current = true;
-                                                scrollMessagesToBottom();
-                                              },
-                                              placeholder: t("typeMessage"),
-                                              "aria-label": t("typeMessage"),
-                                              className: "chat-allow-select no-scrollbar min-h-[20px] min-w-0 max-h-[100px] flex-1 resize-none overflow-y-hidden py-1.5 text-[15px] leading-5 whitespace-pre-wrap break-words bg-transparent outline-none " + (dmPalette ? dmPalette.composerTextClass + " " + dmPalette.composerPlaceholderClass : "text-white caret-white placeholder:text-zinc-500"),
-                                              style: { height: CHAT_COMPOSER_LINE_PX }
-                                            }
-                                          ),
-                                          composerHasText ? /* @__PURE__ */ jsxRuntimeExports.jsx(
-                                            "button",
-                                            {
-                                              type: "button",
-                                              className: "relative z-[57] flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full shadow-[0_2px_12px_rgba(0,0,0,0.18)] transition-all duration-150 hover:opacity-90 active:scale-[0.88]",
-                                              style: {
-                                                background: "rgba(255,255,255,1)",
-                                                color: "#000"
-                                              },
-                                              "aria-label": t("send"),
-                                              onPointerUp: (e) => {
-                                                e.preventDefault();
-                                                e.stopPropagation();
-                                                blockMicUntilRef.current = Date.now() + 520;
-                                                submitTextMessage();
-                                              },
-                                              children: /* @__PURE__ */ jsxRuntimeExports.jsx(Send, { size: 17, strokeWidth: 2.5, className: "pointer-events-none ltr:-rotate-12", style: { color: "#000" } })
-                                            }
-                                          ) : recording ? /* @__PURE__ */ jsxRuntimeExports.jsx(
-                                            "button",
-                                            {
-                                              type: "button",
-                                              className: "flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full text-red-500 " + (dmPalette?.composerIconClass ?? "hover:bg-white/10"),
-                                              "aria-label": t("stop"),
-                                              onClick: stopRecording,
-                                              children: /* @__PURE__ */ jsxRuntimeExports.jsx(Square, { size: 15, fill: "currentColor" })
-                                            }
-                                          ) : composerMicCooldown ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-9 w-9 shrink-0 touch-none pointer-events-none", "aria-hidden": true }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+                                          !composerHasText && !recording && !composerMicCooldown && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
                                             /* @__PURE__ */ jsxRuntimeExports.jsx(
                                               "button",
                                               {
                                                 type: "button",
-                                                className: "flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full transition " + (dmPalette?.composerIconClass ?? "text-zinc-300 hover:bg-white/10"),
-                                                style: { touchAction: "none" },
+                                                className: "flex h-8 w-8 shrink-0 touch-manipulation items-center justify-center rounded-full text-foreground/85 transition hover:bg-black/[0.06] dark:hover:bg-white/10 " + (isQuranChannel ? "text-zinc-200" : ""),
                                                 "aria-label": "تسجيل صوتي",
                                                 onClick: () => {
                                                   if (Date.now() < blockMicUntilRef.current) return;
                                                   void startRecording();
                                                 },
-                                                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Mic, { size: 20, strokeWidth: 2 })
+                                                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Mic, { size: 19, strokeWidth: 2, className: "pointer-events-none" })
                                               }
                                             ),
                                             /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -31785,8 +33717,9 @@ function ChatRoom({
                                               {
                                                 type: "button",
                                                 ...galleryLongPressBtnProps,
-                                                className: "flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full transition " + (dmPalette?.composerIconClass ?? "text-zinc-300 hover:bg-white/10"),
-                                                "aria-label": "معرض الصور — ضغط مطوّل لاختيار فيديو كرسالة صوتية",
+                                                className: "flex h-8 w-8 shrink-0 touch-manipulation items-center justify-center rounded-full text-foreground/85 transition hover:bg-black/[0.06] dark:hover:bg-white/10 " + (isQuranChannel ? "text-zinc-200" : ""),
+                                                style: { touchAction: "none" },
+                                                "aria-label": "معرض الصور",
                                                 onClick: () => {
                                                   setPlusAttachOpen(false);
                                                   onGalleryButtonClick();
@@ -31803,246 +33736,183 @@ function ChatRoom({
                                                 onTouchMove: onGalleryTouchMove,
                                                 onTouchEnd: onGalleryTouchEnd,
                                                 onTouchCancel: onGalleryTouchEnd,
-                                                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Image$1, { size: 20, strokeWidth: 2 })
+                                                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Image$1, { size: 19, strokeWidth: 2 })
                                               }
                                             ),
                                             /* @__PURE__ */ jsxRuntimeExports.jsx(
                                               "button",
                                               {
                                                 type: "button",
-                                                className: "flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full transition " + (dmPalette?.composerIconClass ?? "text-zinc-300 hover:bg-white/10"),
-                                                "aria-label": "إيموجي وملصقات",
+                                                className: "flex h-8 w-8 shrink-0 touch-manipulation items-center justify-center rounded-full text-foreground/85 transition hover:bg-black/[0.06] dark:hover:bg-white/10 " + (isQuranChannel ? "text-zinc-200" : ""),
+                                                "aria-label": "ملصقات",
                                                 onClick: () => {
                                                   setPlusAttachOpen(false);
                                                   toggleStickerPanel();
                                                 },
-                                                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Smile, { size: 20, strokeWidth: 2 })
+                                                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Sticker, { size: 19, strokeWidth: 2 })
                                               }
                                             )
-                                          ] })
+                                          ] }),
+                                          recording && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                                            "button",
+                                            {
+                                              type: "button",
+                                              className: "flex h-8 w-8 shrink-0 touch-manipulation items-center justify-center rounded-full text-destructive hover:bg-destructive/10",
+                                              "aria-label": t("stop"),
+                                              onClick: stopRecording,
+                                              children: /* @__PURE__ */ jsxRuntimeExports.jsx(Square, { size: 15, fill: "currentColor" })
+                                            }
+                                          ),
+                                          composerMicCooldown && !composerHasText && !recording && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-8 w-8 shrink-0 touch-none pointer-events-none", "aria-hidden": true }),
+                                          /* @__PURE__ */ jsxRuntimeExports.jsx(
+                                            MentionComposerField,
+                                            {
+                                              textareaRef: composerInputRef,
+                                              rows: 1,
+                                              dir: "auto",
+                                              value: text,
+                                              onChange: onComposerChange,
+                                              mentionVariant: isQuranChannel ? "composerQuran" : "composer",
+                                              wrapperClassName: "chat-allow-select min-w-0 flex-1",
+                                              overlayClassName: "py-1.5 text-[15px] leading-5 " + (isQuranChannel ? "text-emerald-50" : "text-zinc-900 dark:text-zinc-50"),
+                                              onCompositionStart: () => {
+                                                composingRef.current = true;
+                                              },
+                                              onCompositionEnd: (e) => {
+                                                composingRef.current = false;
+                                                onComposerChange(e.currentTarget.value);
+                                              },
+                                              onKeyDown: (e) => {
+                                                if (e.key === "Enter" && !e.shiftKey) {
+                                                  e.preventDefault();
+                                                  submitTextMessage();
+                                                }
+                                              },
+                                              onFocus: () => {
+                                                stickToBottomRef.current = true;
+                                                requestAnimationFrame(() => scrollMessagesToBottom());
+                                              },
+                                              placeholder: t("typeMessage"),
+                                              "aria-label": t("typeMessage"),
+                                              className: "chat-allow-select no-scrollbar min-h-[20px] min-w-0 max-h-[100px] flex-1 resize-none overflow-y-hidden py-1.5 text-[15px] leading-5 whitespace-pre-wrap break-words outline-none " + (isQuranChannel ? "caret-emerald-200 placeholder:text-emerald-200/55" : "caret-zinc-800 placeholder:text-zinc-500/65 dark:caret-zinc-200 dark:placeholder:text-zinc-400/60"),
+                                              style: { height: CHAT_COMPOSER_LINE_PX }
+                                            }
+                                          ),
+                                          composerHasText ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+                                            "button",
+                                            {
+                                              type: "button",
+                                              className: "relative z-[57] flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full bg-[#0084ff] text-white shadow-sm transition hover:bg-[#0073e6] active:scale-[0.97]",
+                                              "aria-label": t("send"),
+                                              onPointerUp: (e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                blockMicUntilRef.current = Date.now() + 520;
+                                                submitTextMessage();
+                                              },
+                                              children: /* @__PURE__ */ jsxRuntimeExports.jsx(Send, { size: 18, strokeWidth: 2.25, className: "pointer-events-none ltr:-rotate-12" })
+                                            }
+                                          ) : null
                                         ]
                                       }
-                                    )
-                                  ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                                    "div",
-                                    {
-                                      dir: "ltr",
-                                      className: "relative flex min-h-[46px] flex-nowrap items-center gap-1 rounded-[26px] border px-1.5 py-[5px] " + (isQuranChannel ? "border-zinc-700 bg-zinc-900" : "border-border bg-background dark:border-zinc-800"),
-                                      children: [
-                                        !composerHasText && /* @__PURE__ */ jsxRuntimeExports.jsx(
-                                          "button",
-                                          {
-                                            type: "button",
-                                            className: chatCameraButtonClass(theme, isQuranChannel),
-                                            "aria-label": "كاميرا",
-                                            onClick: () => {
-                                              setPlusAttachOpen(false);
-                                              cameraCaptureRef.current?.click();
-                                            },
-                                            children: /* @__PURE__ */ jsxRuntimeExports.jsx(Camera, { size: 18, strokeWidth: 2, className: "pointer-events-none" })
-                                          }
-                                        ),
-                                        /* @__PURE__ */ jsxRuntimeExports.jsx(
-                                          MentionComposerField,
-                                          {
-                                            textareaRef: composerInputRef,
-                                            rows: 1,
-                                            dir: "auto",
-                                            value: text,
-                                            onChange: onComposerChange,
-                                            mentionVariant: isQuranChannel ? "composerQuran" : "composer",
-                                            wrapperClassName: "chat-allow-select min-w-0 flex-1",
-                                            overlayClassName: "py-1.5 text-[15px] leading-5 " + (isQuranChannel ? "text-emerald-50" : "text-zinc-900 dark:text-zinc-50"),
-                                            onCompositionStart: () => {
-                                              composingRef.current = true;
-                                            },
-                                            onCompositionEnd: (e) => {
-                                              composingRef.current = false;
-                                              onComposerChange(e.currentTarget.value);
-                                            },
-                                            onKeyDown: (e) => {
-                                              if (e.key === "Enter" && !e.shiftKey) {
-                                                e.preventDefault();
-                                                submitTextMessage();
-                                              }
-                                            },
-                                            onFocus: () => {
-                                              stickToBottomRef.current = true;
-                                              scrollMessagesToBottom();
-                                            },
-                                            placeholder: t("typeMessage"),
-                                            "aria-label": t("typeMessage"),
-                                            className: "chat-allow-select no-scrollbar min-h-[20px] min-w-0 max-h-[100px] flex-1 resize-none overflow-y-hidden py-1.5 text-[15px] leading-5 whitespace-pre-wrap break-words outline-none " + (isQuranChannel ? "caret-emerald-200 placeholder:text-emerald-200/55" : "caret-zinc-800 placeholder:text-zinc-500/65 dark:caret-zinc-200 dark:placeholder:text-zinc-400/60"),
-                                            style: { height: CHAT_COMPOSER_LINE_PX }
-                                          }
-                                        ),
-                                        composerHasText ? /* @__PURE__ */ jsxRuntimeExports.jsx(
-                                          "button",
-                                          {
-                                            type: "button",
-                                            className: "relative z-[57] flex h-10 w-10 shrink-0 touch-manipulation items-center justify-center rounded-full bg-[#0084ff] text-white shadow-sm transition hover:bg-[#0073e6] active:scale-[0.97]",
-                                            "aria-label": t("send"),
-                                            onPointerUp: (e) => {
-                                              e.preventDefault();
-                                              e.stopPropagation();
-                                              blockMicUntilRef.current = Date.now() + 520;
-                                              submitTextMessage();
-                                            },
-                                            children: /* @__PURE__ */ jsxRuntimeExports.jsx(Send, { size: 18, strokeWidth: 2.25, className: "pointer-events-none ltr:-rotate-12" })
-                                          }
-                                        ) : recording ? /* @__PURE__ */ jsxRuntimeExports.jsx(
-                                          "button",
-                                          {
-                                            type: "button",
-                                            className: "flex h-10 w-10 shrink-0 touch-manipulation items-center justify-center rounded-full text-destructive hover:bg-destructive/10",
-                                            "aria-label": t("stop"),
-                                            onClick: stopRecording,
-                                            children: /* @__PURE__ */ jsxRuntimeExports.jsx(Square, { size: 16, fill: "currentColor" })
-                                          }
-                                        ) : composerMicCooldown ? /* @__PURE__ */ jsxRuntimeExports.jsx(
-                                          "div",
-                                          {
-                                            className: "h-10 w-10 shrink-0 touch-none pointer-events-none",
-                                            "aria-hidden": true
-                                          }
-                                        ) : /* @__PURE__ */ jsxRuntimeExports.jsx(
-                                          "button",
-                                          {
-                                            type: "button",
-                                            className: "flex h-10 w-10 shrink-0 touch-manipulation items-center justify-center rounded-full text-foreground/85 transition hover:bg-black/[0.06] dark:hover:bg-white/10 " + (isQuranChannel ? "text-zinc-200" : ""),
-                                            "aria-label": "تسجيل صوتي",
-                                            onClick: () => {
-                                              if (Date.now() < blockMicUntilRef.current) return;
-                                              void startRecording();
-                                            },
-                                            children: /* @__PURE__ */ jsxRuntimeExports.jsx(Mic, { size: 21, strokeWidth: 2, className: "pointer-events-none" })
-                                          }
-                                        ),
-                                        !composerHasText && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-                                          /* @__PURE__ */ jsxRuntimeExports.jsx(
-                                            "button",
-                                            {
-                                              type: "button",
-                                              ...galleryLongPressBtnProps,
-                                              className: "flex h-10 w-10 shrink-0 touch-manipulation items-center justify-center rounded-full text-foreground/85 transition hover:bg-black/[0.06] dark:hover:bg-white/10 " + (isQuranChannel ? "text-zinc-200" : ""),
-                                              style: { touchAction: "none" },
-                                              "aria-label": "الاستديو: ضغطة للصور والفيديو، ضغط مطوّل لمقاطع كرسالة صوتية",
-                                              onClick: () => {
-                                                setPlusAttachOpen(false);
-                                                onGalleryButtonClick();
-                                              },
-                                              onPointerDown: (e) => {
-                                                setPlusAttachOpen(false);
-                                                onGalleryPointerDown(e);
-                                              },
-                                              onPointerMove: onGalleryPointerMove,
-                                              onPointerUp: clearGalleryLongPress,
-                                              onPointerCancel: clearGalleryLongPress,
-                                              onPointerLeave: clearGalleryLongPress,
-                                              onTouchStart: onGalleryTouchStart,
-                                              onTouchMove: onGalleryTouchMove,
-                                              onTouchEnd: onGalleryTouchEnd,
-                                              onTouchCancel: onGalleryTouchEnd,
-                                              children: /* @__PURE__ */ jsxRuntimeExports.jsx(Image$1, { size: 21, strokeWidth: 2 })
-                                            }
-                                          ),
-                                          /* @__PURE__ */ jsxRuntimeExports.jsx(
-                                            "button",
-                                            {
-                                              type: "button",
-                                              className: "flex h-10 w-10 shrink-0 touch-manipulation items-center justify-center rounded-full text-foreground/85 transition hover:bg-black/[0.06] dark:hover:bg-white/10 " + (isQuranChannel ? "text-zinc-200" : ""),
-                                              "aria-label": "ملصقات",
-                                              onClick: () => {
-                                                setPlusAttachOpen(false);
-                                                toggleStickerPanel();
-                                              },
-                                              children: /* @__PURE__ */ jsxRuntimeExports.jsx(Sticker, { size: 21, strokeWidth: 2 })
-                                            }
-                                          ),
-                                          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { ref: plusAttachMenuRef, className: "relative shrink-0", children: [
-                                            /* @__PURE__ */ jsxRuntimeExports.jsx(
+                                    ),
+                                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { ref: plusAttachMenuRef, className: "relative shrink-0", children: [
+                                      /* @__PURE__ */ jsxRuntimeExports.jsx(
+                                        "button",
+                                        {
+                                          type: "button",
+                                          className: "flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full text-foreground/90 transition hover:bg-black/[0.06] dark:hover:bg-white/10 " + (isQuranChannel ? "text-zinc-200" : ""),
+                                          "aria-label": "إرفاق",
+                                          onPointerDown: (e) => e.stopPropagation(),
+                                          onClick: (e) => {
+                                            e.stopPropagation();
+                                            setPlusAttachOpen((o) => !o);
+                                          },
+                                          children: /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 19, strokeWidth: 2.25 })
+                                        }
+                                      ),
+                                      plusAttachOpen && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                                        "div",
+                                        {
+                                          className: "absolute bottom-[calc(100%+10px)] end-0 z-[60] min-w-[12rem] overflow-hidden rounded-2xl border py-1 shadow-xl " + (isQuranChannel ? "border-zinc-700 bg-zinc-900" : "border-border bg-popover"),
+                                          children: [
+                                            /* @__PURE__ */ jsxRuntimeExports.jsxs(
                                               "button",
                                               {
                                                 type: "button",
-                                                className: "flex h-10 w-10 shrink-0 touch-manipulation items-center justify-center rounded-full border text-foreground/90 transition hover:bg-black/[0.06] dark:hover:bg-white/10 " + (isQuranChannel ? "border-zinc-600/80 text-zinc-200" : "border-muted-foreground/40"),
-                                                "aria-label": "إرفاق",
-                                                onPointerDown: (e) => e.stopPropagation(),
-                                                onClick: (e) => {
-                                                  e.stopPropagation();
-                                                  setPlusAttachOpen((o) => !o);
+                                                className: "flex w-full items-center gap-3 px-4 py-3 text-start text-sm transition hover:bg-secondary " + (isQuranChannel ? "text-zinc-100" : ""),
+                                                onClick: () => {
+                                                  setPlusAttachOpen(false);
+                                                  cameraCaptureRef.current?.click();
                                                 },
-                                                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 19, strokeWidth: 2.25 })
+                                                children: [
+                                                  /* @__PURE__ */ jsxRuntimeExports.jsx(Camera, { size: 18 }),
+                                                  " ",
+                                                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: state.language === "ar" ? "كاميرا" : "Camera" })
+                                                ]
                                               }
                                             ),
-                                            plusAttachOpen && /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                                              "div",
+                                            /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                                              "button",
                                               {
-                                                className: "absolute bottom-[calc(100%+10px)] end-0 z-[60] min-w-[12rem] overflow-hidden rounded-2xl border py-1 shadow-xl " + (isQuranChannel ? "border-zinc-700 bg-zinc-900" : "border-border bg-popover"),
+                                                type: "button",
+                                                disabled: isGuest,
+                                                className: "flex w-full items-center gap-3 px-4 py-3 text-start text-sm transition hover:bg-secondary " + (isQuranChannel ? "text-zinc-100" : "") + (isGuest ? " cursor-not-allowed opacity-40" : ""),
+                                                onClick: () => {
+                                                  setPlusAttachOpen(false);
+                                                  if (isGuest) {
+                                                    notifyGuestActionBlocked();
+                                                    return;
+                                                  }
+                                                  setDrawComposeOpen(true);
+                                                },
                                                 children: [
-                                                  /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                                                    "button",
-                                                    {
-                                                      type: "button",
-                                                      disabled: isGuest,
-                                                      className: "flex w-full items-center gap-3 px-4 py-3 text-start text-sm transition hover:bg-secondary " + (isQuranChannel ? "text-zinc-100" : "") + (isGuest ? " cursor-not-allowed opacity-40" : ""),
-                                                      onClick: () => {
-                                                        setPlusAttachOpen(false);
-                                                        if (isGuest) {
-                                                          notifyGuestActionBlocked();
-                                                          return;
-                                                        }
-                                                        setDrawComposeOpen(true);
-                                                      },
-                                                      children: [
-                                                        /* @__PURE__ */ jsxRuntimeExports.jsx(PenLine, { size: 18 }),
-                                                        " ",
-                                                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "رسم وكتابة" })
-                                                      ]
-                                                    }
-                                                  ),
-                                                  /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                                                    "button",
-                                                    {
-                                                      type: "button",
-                                                      disabled: isGuest,
-                                                      className: "flex w-full items-center gap-3 px-4 py-3 text-start text-sm transition hover:bg-secondary " + (isQuranChannel ? "text-zinc-100" : "") + (isGuest ? " cursor-not-allowed opacity-40" : ""),
-                                                      onClick: openGalleryVideoVoiceStudio,
-                                                      children: [
-                                                        /* @__PURE__ */ jsxRuntimeExports.jsx(Video, { size: 18 }),
-                                                        " ",
-                                                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "استديو — مقطع كصوت" })
-                                                      ]
-                                                    }
-                                                  ),
-                                                  isDmRoom && /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                                                    "button",
-                                                    {
-                                                      type: "button",
-                                                      disabled: isGuest,
-                                                      className: "flex w-full items-center gap-3 px-4 py-3 text-start text-sm transition hover:bg-secondary " + (isQuranChannel ? "text-zinc-100" : "") + (isGuest ? " cursor-not-allowed opacity-40" : ""),
-                                                      onClick: () => {
-                                                        setPlusAttachOpen(false);
-                                                        if (isGuest) {
-                                                          notifyGuestActionBlocked();
-                                                          return;
-                                                        }
-                                                        setShowPoolInviteModal(true);
-                                                      },
-                                                      children: [
-                                                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "🎱" }),
-                                                        " ",
-                                                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "إنشاء لعبة" })
-                                                      ]
-                                                    }
-                                                  )
+                                                  /* @__PURE__ */ jsxRuntimeExports.jsx(PenLine, { size: 18 }),
+                                                  " ",
+                                                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "رسم وكتابة" })
+                                                ]
+                                              }
+                                            ),
+                                            /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                                              "button",
+                                              {
+                                                type: "button",
+                                                disabled: isGuest,
+                                                className: "flex w-full items-center gap-3 px-4 py-3 text-start text-sm transition hover:bg-secondary " + (isQuranChannel ? "text-zinc-100" : "") + (isGuest ? " cursor-not-allowed opacity-40" : ""),
+                                                onClick: openGalleryVideoVoiceStudio,
+                                                children: [
+                                                  /* @__PURE__ */ jsxRuntimeExports.jsx(Video, { size: 18 }),
+                                                  " ",
+                                                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "استديو — مقطع كصوت" })
+                                                ]
+                                              }
+                                            ),
+                                            isDmRoom && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                                              "button",
+                                              {
+                                                type: "button",
+                                                disabled: isGuest,
+                                                className: "flex w-full items-center gap-3 px-4 py-3 text-start text-sm transition hover:bg-secondary " + (isQuranChannel ? "text-zinc-100" : "") + (isGuest ? " cursor-not-allowed opacity-40" : ""),
+                                                onClick: () => {
+                                                  setPlusAttachOpen(false);
+                                                  if (isGuest) {
+                                                    notifyGuestActionBlocked();
+                                                    return;
+                                                  }
+                                                  setShowPoolInviteModal(true);
+                                                },
+                                                children: [
+                                                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "🎱" }),
+                                                  " ",
+                                                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "إنشاء لعبة" })
                                                 ]
                                               }
                                             )
-                                          ] })
-                                        ] })
-                                      ]
-                                    }
-                                  ),
+                                          ]
+                                        }
+                                      )
+                                    ] })
+                                  ] }),
                                   /* @__PURE__ */ jsxRuntimeExports.jsx(
                                     "input",
                                     {
@@ -32232,65 +34102,6 @@ const ProfileTabPanel = reactExports.memo(function ProfileTabPanel2({
   return /* @__PURE__ */ jsxRuntimeExports.jsx(TabPanelShell, { lockScroll, fullHeight: true, children: lockScroll ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 z-0 flex min-h-0 flex-col overflow-hidden", children }) : children });
 });
 const PROFILE_RETURN_POST_KEY = "retweet_return_post_context";
-const NAV_HIDE_PROGRESS_CSS_VAR = "--retweet-nav-hide-progress";
-const REELS_NAV_COLLAPSE_PROGRESS_VAR = "--retweet-reels-nav-collapse-progress";
-const DEFAULT_TRAVEL_PX = 72;
-function clamp$1(n, min, max) {
-  return Math.min(max, Math.max(min, n));
-}
-function useBottomNavSheet(options) {
-  const optionsRef = reactExports.useRef(options);
-  optionsRef.current = options;
-  const navRef = reactExports.useRef(null);
-  const travelRef = reactExports.useRef(DEFAULT_TRAVEL_PX);
-  const suppressTapUntilRef = reactExports.useRef(0);
-  const shouldSuppressTap = reactExports.useCallback(() => Date.now() < suppressTapUntilRef.current, []);
-  const measureTravel = reactExports.useCallback(() => {
-    const el = navRef.current;
-    if (!el) return;
-    const h = el.offsetHeight;
-    if (h > 0) travelRef.current = h;
-  }, []);
-  const publishHideProgress = reactExports.useCallback((p) => {
-    document.documentElement.style.setProperty(NAV_HIDE_PROGRESS_CSS_VAR, String(clamp$1(p, 0, 1)));
-  }, []);
-  reactExports.useLayoutEffect(() => {
-    measureTravel();
-    publishHideProgress(0);
-  }, [measureTravel, publishHideProgress]);
-  reactExports.useLayoutEffect(() => {
-    const el = navRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => measureTravel());
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [measureTravel]);
-  reactExports.useEffect(() => {
-    document.documentElement.style.setProperty(REELS_NAV_COLLAPSE_PROGRESS_VAR, "0");
-    return () => {
-      document.documentElement.style.removeProperty(NAV_HIDE_PROGRESS_CSS_VAR);
-      document.documentElement.style.removeProperty(REELS_NAV_COLLAPSE_PROGRESS_VAR);
-    };
-  }, []);
-  const travel = travelRef.current;
-  const externalDrive = !!optionsRef.current?.externalHideDrive;
-  const navStyle = externalDrive ? {
-    transform: `translate3d(0, calc(var(${NAV_HIDE_PROGRESS_CSS_VAR}, 0) * ${travel}px), 0)`,
-    transformOrigin: "50% 100%",
-    transition: "none",
-    willChange: "transform"
-  } : {
-    transform: "translate3d(0, 0, 0)",
-    transformOrigin: "50% 100%",
-    transition: "none",
-    willChange: "auto"
-  };
-  return {
-    navRef,
-    navStyle,
-    shouldSuppressTap
-  };
-}
 const BottomNavDragContext = reactExports.createContext({
   shouldSuppressTap: () => false
 });
@@ -32303,27 +34114,27 @@ function tabToNavIndex(tab) {
   const i = BOTTOM_NAV_TAB_ORDER.indexOf(tab);
   return i >= 0 ? i : 0;
 }
-function navIndexToTab(index) {
-  const i = Math.max(0, Math.min(BOTTOM_NAV_TAB_COUNT - 1, Math.round(index)));
+function navIndexToTab(index2) {
+  const i = Math.max(0, Math.min(BOTTOM_NAV_TAB_COUNT - 1, Math.round(index2)));
   return BOTTOM_NAV_TAB_ORDER[i];
 }
 const BOTTOM_NAV_INDICATOR_WIDTH = 56;
 const BOTTOM_NAV_INDICATOR_HEIGHT = 38;
 const NAV_SCROLL_PADDING_CSS_VAR = "--retweet-nav-scroll-padding";
-const NAV_SCROLL_PADDING_DEFAULT = "calc(4.75rem + max(12px, env(safe-area-inset-bottom, 0px)))";
+const NAV_SCROLL_PADDING_DEFAULT = "calc(4.75rem + max(12px, var(--sab)))";
 const NAV_FLOAT_INSET_CSS_VAR = "--retweet-nav-float-inset";
-const NAV_FLOAT_INSET_DEFAULT = "calc(3.5rem + max(12px, env(safe-area-inset-bottom, 0px)))";
+const NAV_FLOAT_INSET_DEFAULT = "calc(3.5rem + max(12px, var(--sab)))";
 const EASE = "cubic-bezier(0.215, 0.61, 0.355, 1)";
 const TAP_MS = 260;
-function isDragProgress(index) {
-  return Math.abs(index - Math.round(index)) > 0.02;
+function isDragProgress(index2) {
+  return Math.abs(index2 - Math.round(index2)) > 0.02;
 }
 function clamp(n, min, max) {
   return Math.min(max, Math.max(min, n));
 }
-function lerpX(anchors, index) {
+function lerpX(anchors, index2) {
   if (anchors.length === 0) return 0;
-  const i = clamp(index, 0, anchors.length - 1);
+  const i = clamp(index2, 0, anchors.length - 1);
   const lo = Math.floor(i);
   const hi = Math.min(anchors.length - 1, lo + 1);
   const t = i - lo;
@@ -32354,11 +34165,11 @@ function useNavIndicatorMotion(rowRef, pillRef, progressIndex, tabCount, isDragg
     return true;
   }, [rowRef, tabCount]);
   const applyX = reactExports.useCallback(
-    (index, animate) => {
+    (index2, animate) => {
       const pill = pillRef.current;
       if (!pill) return;
       if (!measure() && anchorsRef.current.length === 0) return;
-      const x = lerpX(anchorsRef.current, index) - BOTTOM_NAV_INDICATOR_WIDTH / 2;
+      const x = lerpX(anchorsRef.current, index2) - BOTTOM_NAV_INDICATOR_WIDTH / 2;
       pill.style.transition = animate ? `transform ${TAP_MS}ms ${EASE}, opacity 160ms ease` : "none";
       pill.style.transform = `translate3d(${x}px, -50%, 0)`;
       pill.style.opacity = "1";
@@ -32383,11 +34194,11 @@ function useNavIndicatorMotion(rowRef, pillRef, progressIndex, tabCount, isDragg
     return () => ro.disconnect();
   }, [rowRef, measure, applyX]);
   const applyDragX = reactExports.useCallback(
-    (index) => {
+    (index2) => {
       const pill = pillRef.current;
       if (!pill) return;
       if (!measure() && anchorsRef.current.length === 0) return;
-      const x = lerpX(anchorsRef.current, index) - BOTTOM_NAV_INDICATOR_WIDTH / 2;
+      const x = lerpX(anchorsRef.current, index2) - BOTTOM_NAV_INDICATOR_WIDTH / 2;
       pill.style.transition = "none";
       pill.style.transform = `translate3d(${x}px, -50%, 0)`;
       pill.style.opacity = "1";
@@ -32575,13 +34386,13 @@ function BottomNavTabRow({
             }
           }
         ),
-        items.map((child, index) => {
+        items.map((child, index2) => {
           if (!reactExports.isValidElement(child)) {
-            return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "relative z-10 flex flex-1 justify-center", children: child }, index);
+            return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "relative z-10 flex flex-1 justify-center", children: child }, index2);
           }
           const el = child;
           return reactExports.cloneElement(el, {
-            tabIndex: index,
+            tabIndex: index2,
             buttonRef: (node) => {
             }
           });
@@ -32614,7 +34425,7 @@ function BottomNavSheet({
       "aria-label": "شريط التنقل",
       className: "pointer-events-none fixed inset-x-0 bottom-0 z-[90] mx-auto flex w-full max-w-md justify-center px-4",
       style: {
-        paddingBottom: "max(12px, env(safe-area-inset-bottom, 0px))"
+        paddingBottom: "max(12px, var(--sab))"
       },
       children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { ref: navRef, "data-no-tab-swipe": true, className: IG_GLASS_PILL, style: navStyle, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
         BottomNavTabRow,
@@ -33374,6 +35185,91 @@ function AppOfficialBanner({
     }
   );
 }
+function SafetyActionSheet({
+  reportedUserId,
+  reportedUsername,
+  targetType,
+  targetId,
+  onClose,
+  onBlock,
+  onRestrict,
+  onMute,
+  isBlocked
+}) {
+  const [showReport, setShowReport] = reactExports.useState(false);
+  if (showReport) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(
+      ReportFlowSheet,
+      {
+        open: true,
+        onClose: () => {
+          setShowReport(false);
+          onClose();
+        },
+        reportedUserId,
+        reportedUsername,
+        targetType,
+        targetId
+      }
+    );
+  }
+  const row = (icon, label, onClick, danger) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "button",
+    {
+      type: "button",
+      onClick,
+      className: "flex w-full items-center gap-3 px-4 py-3.5 text-start text-[15px] hover:bg-secondary " + (danger ? "text-destructive" : ""),
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex h-9 w-9 items-center justify-center rounded-full bg-secondary", children: icon }),
+        label
+      ]
+    }
+  );
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-[10050] flex flex-col justify-end bg-black/50", onClick: onClose, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "div",
+    {
+      className: "mx-auto w-full max-w-md rounded-t-3xl bg-background animate-in slide-in-from-bottom",
+      onClick: (e) => e.stopPropagation(),
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mx-auto mt-2 h-1 w-10 rounded-full bg-muted" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "px-4 py-3 text-center text-sm font-semibold", children: reportedUsername ? `@${reportedUsername}` : "خيارات السلامة" }),
+        row(/* @__PURE__ */ jsxRuntimeExports.jsx(Flag, { size: 18 }), "إبلاغ", () => setShowReport(true)),
+        row(
+          /* @__PURE__ */ jsxRuntimeExports.jsx(UserX, { size: 18 }),
+          isBlocked ? "إلغاء الحظر" : "حظر",
+          () => {
+            onBlock?.();
+            onClose();
+          },
+          true
+        ),
+        row(/* @__PURE__ */ jsxRuntimeExports.jsx(Shield, { size: 18 }), "تقييد", () => {
+          onRestrict?.();
+          onClose();
+        }),
+        row(/* @__PURE__ */ jsxRuntimeExports.jsx(VolumeX, { size: 18 }), "كتم", () => {
+          onMute?.();
+          onClose();
+        }),
+        row(/* @__PURE__ */ jsxRuntimeExports.jsx(Ban, { size: 18 }), "إبلاغ وحظر", () => {
+          setShowReport(true);
+        }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-[max(12px,var(--sab))]" })
+      ]
+    }
+  ) });
+}
+function BannedProfileView({ username }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-h-[50vh] flex-col items-center justify-center px-6 text-center", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-4 flex h-24 w-24 items-center justify-center rounded-full bg-muted text-muted-foreground", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Ban, { size: 40 }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-lg font-bold", children: [
+      "@",
+      username
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-4 text-sm text-muted-foreground leading-relaxed", children: "تم حظر هذا الحساب." }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-xs text-muted-foreground/80", children: "This account has been banned." })
+  ] });
+}
 var server = {};
 var canPromise;
 var hasRequiredCanPromise;
@@ -33524,9 +35420,9 @@ function requireBitBuffer() {
     this.length = 0;
   }
   BitBuffer.prototype = {
-    get: function(index) {
-      const bufIndex = Math.floor(index / 8);
-      return (this.buffer[bufIndex] >>> 7 - index % 8 & 1) === 1;
+    get: function(index2) {
+      const bufIndex = Math.floor(index2 / 8);
+      return (this.buffer[bufIndex] >>> 7 - index2 % 8 & 1) === 1;
     },
     put: function(num, length) {
       for (let i = 0; i < length; i++) {
@@ -33564,9 +35460,9 @@ function requireBitMatrix() {
     this.reservedBit = new Uint8Array(size * size);
   }
   BitMatrix.prototype.set = function(row, col, value2, reserved) {
-    const index = row * this.size + col;
-    this.data[index] = value2;
-    if (reserved) this.reservedBit[index] = true;
+    const index2 = row * this.size + col;
+    this.data[index2] = value2;
+    if (reserved) this.reservedBit[index2] = true;
   };
   BitMatrix.prototype.get = function(row, col) {
     return this.data[row * this.size + col];
@@ -35143,18 +37039,18 @@ function requireQrcode() {
       maxDataSize = Math.max(maxDataSize, dataSize);
     }
     const data = new Uint8Array(totalCodewords);
-    let index = 0;
+    let index2 = 0;
     let i, r2;
     for (i = 0; i < maxDataSize; i++) {
       for (r2 = 0; r2 < ecTotalBlocks; r2++) {
         if (i < dcData[r2].length) {
-          data[index++] = dcData[r2][i];
+          data[index2++] = dcData[r2][i];
         }
       }
     }
     for (i = 0; i < ecCount; i++) {
       for (r2 = 0; r2 < ecTotalBlocks; r2++) {
-        data[index++] = ecData[r2][i];
+        data[index2++] = ecData[r2][i];
       }
     }
     return data;
@@ -38171,6 +40067,22 @@ function ProfileScreen({
   const [profileFeed, setProfileFeed] = reactExports.useState(null);
   const [showFollowers, setShowFollowers] = reactExports.useState(null);
   const [menuOpen, setMenuOpen] = reactExports.useState(false);
+  const [safetyOpen, setSafetyOpen] = reactExports.useState(false);
+  const [reportOpen, setReportOpen] = reactExports.useState(false);
+  const [profileBanned, setProfileBanned] = reactExports.useState(false);
+  reactExports.useEffect(() => {
+    if (!userId || userId === currentUser?.id || !apiBackendEnabled()) {
+      setProfileBanned(false);
+      return;
+    }
+    let cancelled = false;
+    void apiFetchBannedUserPreview(userId).then((r2) => {
+      if (!cancelled) setProfileBanned(r2.ok && r2.data.banned === true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, currentUser?.id]);
   reactExports.useEffect(() => {
     if (!menuOpen) return;
     let close = null;
@@ -38312,6 +40224,12 @@ function ProfileScreen({
     return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex min-h-full h-full items-center justify-center bg-background p-6 text-muted-foreground text-sm", children: "جاري تحميل الملف الشخصي…" });
   }
   const isMe = currentUser?.id === u.id;
+  if (!isMe && profileBanned) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-h-full flex-col bg-background", children: [
+      onBack && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "px-4 pt-3", children: /* @__PURE__ */ jsxRuntimeExports.jsx(SlideDismissBackButton, { onDismiss: onBack, children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowRight, {}) }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(BannedProfileView, { username: u.username })
+    ] });
+  }
   const canView = canViewProfile(state, currentUser?.id || null, u.id);
   const canSeePrivateContent = canViewPrivatePosts(state, currentUser?.id || null, u.id);
   const isFollowing = currentUser?.following.includes(u.id);
@@ -38323,6 +40241,82 @@ function ProfileScreen({
   const hideFollowStatsFromVisitor = !isMe && u.hideFollowListsFromOthers === true;
   const showSuggestPlus = !isMe && showSuggestAccountsEntry && canView && !isHiddenByBlock && profileSuggestions.length > 0 && !!onOpenProfile;
   const shareProfile = () => setShowShareModal(true);
+  const profileOverflowMenu = /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "button",
+      {
+        type: "button",
+        onClick: () => {
+          shareProfile();
+          setMenuOpen(false);
+        },
+        className: "w-full text-start px-3 py-2.5 hover:bg-secondary text-sm",
+        children: t("share")
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "button",
+      {
+        type: "button",
+        onClick: () => {
+          if (isGuest) {
+            notifyGuestActionBlocked();
+            setMenuOpen(false);
+            return;
+          }
+          toggleBlock(u.id);
+          setMenuOpen(false);
+          alert(isBlocked ? t("unblock") : t("blocked"));
+        },
+        className: "w-full text-start px-3 py-2.5 hover:bg-secondary text-destructive text-sm border-t border-border",
+        children: [
+          isBlocked ? t("unblock") : t("block"),
+          " @",
+          u.username
+        ]
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "button",
+      {
+        type: "button",
+        onClick: () => {
+          if (isGuest) {
+            notifyGuestActionBlocked();
+            setMenuOpen(false);
+            return;
+          }
+          setMenuOpen(false);
+          setReportOpen(true);
+        },
+        className: "flex w-full items-center gap-2 text-start px-3 py-2.5 hover:bg-secondary text-sm border-t border-border",
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Flag, { size: 16, className: "shrink-0 text-destructive", "aria-hidden": true }),
+          "إبلاغ"
+        ]
+      }
+    ),
+    u.isPrivate && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "button",
+      {
+        type: "button",
+        className: "flex w-full items-center gap-2 text-start px-3 py-2.5 hover:bg-secondary text-sm border-t border-border",
+        onClick: () => {
+          if (isGuest) {
+            notifyGuestActionBlocked();
+            setMenuOpen(false);
+            return;
+          }
+          onOpenChat?.(u.id);
+          setMenuOpen(false);
+        },
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(MessageCircle, { size: 16, className: "shrink-0 opacity-80", "aria-hidden": true }),
+          t("message")
+        ]
+      }
+    )
+  ] });
   const followLabel = isFollowing ? t("following") : pendingFollowOut ? "طلب مرسل" : showFollowBack ? t("followBack") : u.isPrivate ? "طلب متابعة" : t("follow");
   const openHighlight = (h) => {
     let slides = h.slides?.length ? [...h.slides] : [];
@@ -38388,7 +40382,7 @@ function ProfileScreen({
             onOpenVisitors && /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onOpenVisitors, className: "p-2 rounded-full hover:bg-zinc-100", "aria-label": "زوار الملف", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Footprints, { size: 21 }) }),
             onOpenSettings && /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onOpenSettings, className: "p-2 rounded-full hover:bg-zinc-100", "aria-label": t("settings"), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Menu, { size: 22 }) })
           ] }),
-          !isMe && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative z-[10002] shrink-0", children: [
+          !isMe && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative z-[10002] shrink-0 overflow-visible", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(
               "button",
               {
@@ -38406,52 +40400,13 @@ function ProfileScreen({
                 children: /* @__PURE__ */ jsxRuntimeExports.jsx(EllipsisVertical, { size: 22 })
               }
             ),
-            menuOpen && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            menuOpen && /* @__PURE__ */ jsxRuntimeExports.jsx(
               "div",
               {
                 "data-profile-menu": true,
-                className: "absolute end-0 mt-1 bg-card border border-border rounded-2xl shadow-lg z-[60] w-44 overflow-hidden",
+                className: "absolute end-0 top-full z-[10050] mt-2 w-48 overflow-hidden rounded-2xl border border-border bg-card shadow-xl",
                 onPointerDownCapture: (e) => e.stopPropagation(),
-                children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { onClick: () => {
-                    if (isGuest) {
-                      notifyGuestActionBlocked();
-                      setMenuOpen(false);
-                      return;
-                    }
-                    toggleBlock(u.id);
-                    setMenuOpen(false);
-                    alert(isBlocked ? t("unblock") : t("blocked"));
-                  }, className: "w-full text-start px-3 py-2 hover:bg-secondary text-destructive text-sm", children: [
-                    isBlocked ? t("unblock") : t("block"),
-                    " @",
-                    u.username
-                  ] }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => {
-                    shareProfile();
-                    setMenuOpen(false);
-                  }, className: "w-full text-start px-3 py-2 hover:bg-secondary text-sm", children: t("share") }),
-                  u.isPrivate && /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                    "button",
-                    {
-                      type: "button",
-                      className: "w-full flex items-center gap-2 text-start px-3 py-2 hover:bg-secondary text-sm border-t border-border",
-                      onClick: () => {
-                        if (isGuest) {
-                          notifyGuestActionBlocked();
-                          setMenuOpen(false);
-                          return;
-                        }
-                        onOpenChat?.(u.id);
-                        setMenuOpen(false);
-                      },
-                      children: [
-                        /* @__PURE__ */ jsxRuntimeExports.jsx(MessageCircle, { size: 16, className: "shrink-0 opacity-80", "aria-hidden": true }),
-                        t("message")
-                      ]
-                    }
-                  )
-                ]
+                children: profileOverflowMenu
               }
             )
           ] })
@@ -38469,7 +40424,7 @@ function ProfileScreen({
             {
               dir: "rtl",
               "data-no-dismiss-drag": true,
-              className: "relative z-[10001] shrink-0 px-4 pt-3 pb-2 flex items-center justify-between gap-2",
+              className: "relative z-[10001] shrink-0 overflow-visible px-4 pt-3 pb-2 flex items-center justify-between gap-2",
               onPointerDownCapture: (e) => {
                 const t2 = e.target;
                 if (t2 instanceof HTMLElement && t2.closest("button, a, [data-profile-menu-btn], [data-profile-back-btn]")) return;
@@ -38501,7 +40456,7 @@ function ProfileScreen({
                     /* @__PURE__ */ jsxRuntimeExports.jsx(VerifiedMarkForUser, { user: u, size: 14, className: "shrink-0" })
                   ] })
                 ] }),
-                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative z-[10002] shrink-0", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative z-[10002] shrink-0 overflow-visible", children: [
                   /* @__PURE__ */ jsxRuntimeExports.jsx(
                     "button",
                     {
@@ -38519,59 +40474,20 @@ function ProfileScreen({
                       children: /* @__PURE__ */ jsxRuntimeExports.jsx(EllipsisVertical, { size: 22 })
                     }
                   ),
-                  menuOpen && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                  menuOpen && /* @__PURE__ */ jsxRuntimeExports.jsx(
                     "div",
                     {
                       "data-profile-menu": true,
-                      className: "absolute end-0 mt-1 bg-card border border-border rounded-2xl shadow-lg z-[60] w-44 overflow-hidden",
+                      className: "absolute end-0 top-full z-[10050] mt-2 w-48 overflow-hidden rounded-2xl border border-border bg-card shadow-xl",
                       onPointerDownCapture: (e) => e.stopPropagation(),
-                      children: [
-                        /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { onClick: () => {
-                          if (isGuest) {
-                            notifyGuestActionBlocked();
-                            setMenuOpen(false);
-                            return;
-                          }
-                          toggleBlock(u.id);
-                          setMenuOpen(false);
-                          alert(isBlocked ? t("unblock") : t("blocked"));
-                        }, className: "w-full text-start px-3 py-2 hover:bg-secondary text-destructive text-sm", children: [
-                          isBlocked ? t("unblock") : t("block"),
-                          " @",
-                          u.username
-                        ] }),
-                        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => {
-                          shareProfile();
-                          setMenuOpen(false);
-                        }, className: "w-full text-start px-3 py-2 hover:bg-secondary text-sm", children: t("share") }),
-                        u.isPrivate && /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                          "button",
-                          {
-                            type: "button",
-                            className: "w-full flex items-center gap-2 text-start px-3 py-2 hover:bg-secondary text-sm border-t border-border",
-                            onClick: () => {
-                              if (isGuest) {
-                                notifyGuestActionBlocked();
-                                setMenuOpen(false);
-                                return;
-                              }
-                              onOpenChat?.(u.id);
-                              setMenuOpen(false);
-                            },
-                            children: [
-                              /* @__PURE__ */ jsxRuntimeExports.jsx(MessageCircle, { size: 16, className: "shrink-0 opacity-80", "aria-hidden": true }),
-                              t("message")
-                            ]
-                          }
-                        )
-                      ]
+                      children: profileOverflowMenu
                     }
                   )
                 ] })
               ]
             }
           ),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "px-4 pt-2" + (isOtherUserProfile ? " pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))]" : ""), children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "px-4 pt-2" + (isOtherUserProfile ? " pb-[calc(5.5rem+var(--sab))]" : ""), children: [
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-6", children: [
               profileHasStories ? /* @__PURE__ */ jsxRuntimeExports.jsx(
                 "button",
@@ -38906,6 +40822,36 @@ function ProfileScreen({
       ] })
     ] }),
     showShareModal && /* @__PURE__ */ jsxRuntimeExports.jsx(ProfileShareModal, { userId: u.id, onClose: () => setShowShareModal(false) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      ReportFlowSheet,
+      {
+        open: reportOpen && !isMe,
+        onClose: () => setReportOpen(false),
+        reportedUserId: u.id,
+        reportedUsername: u.username,
+        targetType: "user"
+      }
+    ),
+    safetyOpen && !isMe && /* @__PURE__ */ jsxRuntimeExports.jsx(
+      SafetyActionSheet,
+      {
+        reportedUserId: u.id,
+        reportedUsername: u.username,
+        targetType: "user",
+        isBlocked,
+        onClose: () => setSafetyOpen(false),
+        onBlock: () => {
+          if (isGuest) {
+            notifyGuestActionBlocked();
+            return;
+          }
+          toggleBlock(u.id);
+          alert(isBlocked ? t("unblock") : t("blocked"));
+        },
+        onRestrict: () => alert("تم تقييد الحساب محلياً"),
+        onMute: () => alert("تم كتم إشعارات هذا الحساب")
+      }
+    ),
     profileFeed && onOpenProfile && onOpenExistingChat && /* @__PURE__ */ jsxRuntimeExports.jsx(
       ProfilePostsFeedOverlay,
       {
@@ -40389,6 +42335,150 @@ function AdminVerificationPanel() {
     ] }, req.id))
   ] });
 }
+function ModerationDashboard() {
+  const [tab, setTab] = reactExports.useState("reports");
+  const [reports, setReports] = reactExports.useState([]);
+  const [appeals, setAppeals] = reactExports.useState([]);
+  const [filter, setFilter] = reactExports.useState("");
+  const [selected, setSelected] = reactExports.useState(null);
+  const [loading, setLoading] = reactExports.useState(true);
+  const [err, setErr] = reactExports.useState("");
+  const load = reactExports.useCallback(async () => {
+    setLoading(true);
+    if (tab === "reports") {
+      const r2 = await apiAdminListReports({ q: filter || void 0 });
+      setLoading(false);
+      if (!r2.ok) {
+        setErr(r2.error);
+        return;
+      }
+      setErr("");
+      setReports(r2.data.reports);
+    } else {
+      const r2 = await apiAdminListAppeals();
+      setLoading(false);
+      if (!r2.ok) {
+        setErr(r2.error);
+        return;
+      }
+      setErr("");
+      setAppeals(r2.data.appeals);
+    }
+  }, [tab, filter]);
+  reactExports.useEffect(() => {
+    void load();
+  }, [load]);
+  const review = async (action) => {
+    if (!selected) return;
+    const r2 = await apiAdminReviewReport(selected.id, {
+      action,
+      reason: "انتهاك إرشادات المجتمع",
+      guideline: selected.category,
+      durationHours: action === "temp_ban" ? 168 : void 0,
+      status: action === "ignore" ? "rejected" : "approved"
+    });
+    if (!r2.ok) alert(r2.error);
+    else {
+      setSelected(null);
+      void load();
+    }
+  };
+  const decideAppeal = async (id, decision) => {
+    const r2 = await apiAdminDecideAppeal(id, decision);
+    if (!r2.ok) alert(r2.error);
+    else {
+      alert(r2.data.messageAr);
+      void load();
+    }
+  };
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mx-4 mt-4 space-y-3 pb-24", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-lg font-bold", children: "لوحة الإشراف" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-2", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          type: "button",
+          onClick: () => setTab("reports"),
+          className: "flex-1 rounded-lg py-2 text-sm font-semibold " + (tab === "reports" ? "bg-primary text-primary-foreground" : "bg-secondary"),
+          children: "البلاغات"
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          type: "button",
+          onClick: () => setTab("appeals"),
+          className: "flex-1 rounded-lg py-2 text-sm font-semibold " + (tab === "appeals" ? "bg-primary text-primary-foreground" : "bg-secondary"),
+          children: "الطعون"
+        }
+      )
+    ] }),
+    tab === "reports" && /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "input",
+      {
+        value: filter,
+        onChange: (e) => setFilter(e.target.value),
+        placeholder: "بحث…",
+        className: "w-full rounded-xl border border-border bg-card px-3 py-2 text-sm"
+      }
+    ),
+    err && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-destructive", children: err }),
+    loading && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-muted-foreground", children: "جاري التحميل…" }),
+    tab === "reports" && reports.map((rep) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "button",
+      {
+        type: "button",
+        onClick: () => setSelected(rep),
+        className: "w-full rounded-xl border border-border bg-card p-3 text-start",
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground", children: rep.status }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "font-medium", children: rep.category }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-xs truncate", children: [
+            "مُبلَّغ: ",
+            rep.reportedUserId
+          ] })
+        ]
+      },
+      rep.id
+    )),
+    tab === "appeals" && appeals.map((a) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl border border-border bg-card p-3", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground", children: a.status }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm line-clamp-3", children: a.message }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-2 flex gap-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            type: "button",
+            onClick: () => void decideAppeal(a.id, "approve"),
+            className: "flex-1 rounded-lg bg-emerald-600 py-1.5 text-xs font-semibold text-white",
+            children: "قبول"
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            type: "button",
+            onClick: () => void decideAppeal(a.id, "reject"),
+            className: "flex-1 rounded-lg bg-destructive py-1.5 text-xs font-semibold text-white",
+            children: "رفض"
+          }
+        )
+      ] })
+    ] }, a.id)),
+    selected && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-[300] flex items-end justify-center bg-black/50 p-4", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "w-full max-w-md rounded-2xl bg-background p-4", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "font-bold", children: "مراجعة بلاغ" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-sm", children: selected.category }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground mt-1", children: selected.evidence?.text }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4 grid grid-cols-2 gap-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => void review("ignore"), className: "rounded-lg bg-secondary py-2 text-xs", children: "تجاهل" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => void review("warn"), className: "rounded-lg bg-secondary py-2 text-xs", children: "تحذير" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => void review("temp_ban"), className: "rounded-lg bg-amber-600 py-2 text-xs text-white", children: "حظر مؤقت" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => void review("perm_ban"), className: "rounded-lg bg-destructive py-2 text-xs text-white", children: "حظر نهائي" })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => setSelected(null), className: "mt-3 w-full text-sm text-muted-foreground", children: "إغلاق" })
+    ] }) })
+  ] });
+}
 const SEGMENT_MS = 8e3;
 function StoriesArchiveViewer({
   stories,
@@ -40396,14 +42486,14 @@ function StoriesArchiveViewer({
   onClose
 }) {
   const { state, currentUser, deleteStory, addHighlight } = useApp();
-  const [index, setIndex] = reactExports.useState(() => Math.min(Math.max(0, initialIndex), Math.max(0, stories.length - 1)));
+  const [index2, setIndex] = reactExports.useState(() => Math.min(Math.max(0, initialIndex), Math.max(0, stories.length - 1)));
   const [shareOpen, setShareOpen] = reactExports.useState(false);
   const [highlightOpen, setHighlightOpen] = reactExports.useState(false);
   const [highlightTitle, setHighlightTitle] = reactExports.useState("");
   const videoRef = reactExports.useRef(null);
   const timerRef = reactExports.useRef(null);
   const lang = state.language;
-  const safeIndex = stories.length > 0 ? Math.min(Math.max(0, index), stories.length - 1) : 0;
+  const safeIndex = stories.length > 0 ? Math.min(Math.max(0, index2), stories.length - 1) : 0;
   const cur = stories[safeIndex];
   reactExports.useEffect(() => {
     const releaseFullscreen = lockStoryFullscreen();
@@ -40415,8 +42505,8 @@ function StoriesArchiveViewer({
   }, []);
   reactExports.useEffect(() => {
     if (stories.length === 0) onClose();
-    else if (index >= stories.length) setIndex(Math.max(0, stories.length - 1));
-  }, [stories.length, index, onClose]);
+    else if (index2 >= stories.length) setIndex(Math.max(0, stories.length - 1));
+  }, [stories.length, index2, onClose]);
   const clearTimer = reactExports.useCallback(() => {
     if (timerRef.current != null) {
       window.clearTimeout(timerRef.current);
@@ -40478,7 +42568,7 @@ function StoriesArchiveViewer({
     setHighlightTitle("");
   };
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "fixed inset-0 z-[240] flex flex-col bg-black touch-none", dir: "rtl", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-x-0 top-0 z-50 flex gap-1 px-2 pt-[max(0.5rem,env(safe-area-inset-top,0px))]", children: stories.map((s, i) => /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-0.5 flex-1 overflow-hidden rounded-full bg-white/25", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-x-0 top-0 z-50 flex gap-1 px-2 pt-[max(0.5rem,var(--sat))]", children: stories.map((s, i) => /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-0.5 flex-1 overflow-hidden rounded-full bg-white/25", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
       "div",
       {
         className: "h-full bg-white transition-all duration-150",
@@ -40531,7 +42621,7 @@ function StoriesArchiveViewer({
         }
       )
     ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "z-50 flex shrink-0 items-center justify-around border-t border-white/10 bg-black/90 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "z-50 flex shrink-0 items-center justify-around border-t border-white/10 bg-black/90 px-4 py-3 pb-[max(0.75rem,var(--sab))]", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs(
         "button",
         {
@@ -40614,7 +42704,7 @@ function ArchiveHeader({ title, onBack }) {
     "div",
     {
       dir: "rtl",
-      className: "sticky top-0 z-30 flex flex-row items-center gap-3 border-b border-border bg-background px-2 py-3 pt-[max(0.5rem,env(safe-area-inset-top,0px))]",
+      className: "sticky top-0 z-30 flex flex-row items-center gap-3 border-b border-border bg-background px-2 py-3 pt-[max(0.5rem,var(--sat))]",
       children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           SlideDismissBackButton,
@@ -40860,7 +42950,7 @@ function SettingsHeader({
     "div",
     {
       dir: "rtl",
-      className: "sticky top-0 z-30 flex flex-row items-center gap-3 border-b border-border bg-background px-2 py-3 pt-[max(0.5rem,env(safe-area-inset-top,0px))] [padding-inline-start:max(0.5rem,env(safe-area-inset-left,0px))] [padding-inline-end:max(0.5rem,env(safe-area-inset-right,0px))]",
+      className: "sticky top-0 z-30 flex flex-row items-center gap-3 border-b border-border bg-background px-2 py-3 pt-[max(0.5rem,var(--sat))] [padding-inline-start:max(0.5rem,var(--sal))] [padding-inline-end:max(0.5rem,var(--sar))]",
       children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           SlideDismissBackButton,
@@ -40901,15 +42991,19 @@ function SettingsScreen({
   const [oldP, setOldP] = reactExports.useState("");
   const [newP, setNewP] = reactExports.useState("");
   const [isAdmin, setIsAdmin] = reactExports.useState(false);
+  const [isModerator, setIsModerator] = reactExports.useState(false);
   const blockedUsers = state.users.filter((u) => (me.blocked ?? []).includes(u.id));
   reactExports.useEffect(() => {
     void (async () => {
       const token = getApiToken();
       if (!token || !apiBackendEnabled()) {
         setIsAdmin(false);
+        setIsModerator(false);
         return;
       }
       setIsAdmin(await apiAdminMe(token));
+      const mod = await apiAdminModerationMe();
+      setIsModerator(mod.ok && mod.data.isModerator === true);
     })();
   }, [me.id]);
   const followingUsers = reactExports.useMemo(
@@ -40964,6 +43058,7 @@ function SettingsScreen({
     setNewP("");
   };
   const subTitle = (k) => {
+    if (k === "adminModeration") return "لوحة الإشراف";
     const map = {
       accountInfo: "accountInfo",
       changePwd: "changePwd",
@@ -40976,7 +43071,7 @@ function SettingsScreen({
       closeFriends: "closeFriends",
       notifications: "notificationsSettings"
     };
-    return subView ? t(map[subView]) : "";
+    return k && k in map ? t(map[k]) : "";
   };
   if (subView === "saved") {
     return /* @__PURE__ */ jsxRuntimeExports.jsx(PlaceholderPanel, { title: t("saved"), hint: t("savedHint"), onBack: () => setSubView(null) });
@@ -41001,7 +43096,7 @@ function SettingsScreen({
   }
   if (subView) {
     return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "settings-screen-root min-h-full w-full overflow-x-hidden bg-background pb-10", dir: "rtl", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsHeader, { title: subTitle(), onBack: () => setSubView(null), navScope: "local" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsHeader, { title: subTitle(subView), onBack: () => setSubView(null), navScope: "local" }),
       subView === "accountInfo" && /* @__PURE__ */ jsxRuntimeExports.jsx(AccountInfoPanel, { me, updateProfile, onSaved: () => setSubView(null) }),
       subView === "changePwd" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mx-4 mt-4 space-y-3", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -41039,6 +43134,7 @@ function SettingsScreen({
         /* @__PURE__ */ jsxRuntimeExports.jsx(VerificationBadgeColorPicker, {})
       ] }) }) : null,
       subView === "adminVerify" ? /* @__PURE__ */ jsxRuntimeExports.jsx(AppErrorBoundaryLocal, { label: "admin-verify", children: /* @__PURE__ */ jsxRuntimeExports.jsx(AdminVerificationPanel, {}) }) : null,
+      subView === "adminModeration" ? /* @__PURE__ */ jsxRuntimeExports.jsx(AppErrorBoundaryLocal, { label: "admin-moderation", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ModerationDashboard, {}) }) : null,
       subView === "closeFriends" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-2", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "px-4 pb-3 text-xs leading-relaxed text-muted-foreground", children: t("closeFriendsHint") }),
         followingUsers.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "px-4 text-sm text-muted-foreground", children: t("closeFriendsEmpty") }) : /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsCard, { children: followingUsers.map((u) => {
@@ -41098,6 +43194,15 @@ function SettingsScreen({
             label: "لوحة طلبات التوثيق",
             chevron: true,
             onClick: () => setSubView("adminVerify")
+          }
+        ) : null,
+        isModerator ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SettingsRow,
+          {
+            icon: Shield,
+            label: "لوحة الإشراف والبلاغات",
+            chevron: true,
+            onClick: () => setSubView("adminModeration")
           }
         ) : null
       ] })
@@ -41254,11 +43359,11 @@ function SettingsScreen({
   ] });
 }
 const nid = () => Math.random().toString(36).slice(2, 11);
-function nextPlacement(index) {
+function nextPlacement(index2) {
   return {
-    x: 40 + index % 4 * 7,
-    y: 26 + index % 5 * 10,
-    rotation: index % 2 === 0 ? -4 : 4
+    x: 40 + index2 % 4 * 7,
+    y: 26 + index2 % 5 * 10,
+    rotation: index2 % 2 === 0 ? -4 : 4
   };
 }
 function TrayBtn({ icon: Icon2, label, onClick }) {
@@ -42031,17 +44136,17 @@ function createContextScope(scopeName, createContextScopeDeps = []) {
   let defaultContexts = [];
   function createContext3(rootComponentName, defaultContext) {
     const BaseContext = reactExports.createContext(defaultContext);
-    const index = defaultContexts.length;
+    const index2 = defaultContexts.length;
     defaultContexts = [...defaultContexts, defaultContext];
     const Provider = (props) => {
       const { scope, children, ...context } = props;
-      const Context = scope?.[scopeName]?.[index] || BaseContext;
+      const Context = scope?.[scopeName]?.[index2] || BaseContext;
       const value2 = reactExports.useMemo(() => context, Object.values(context));
       return /* @__PURE__ */ jsxRuntimeExports.jsx(Context.Provider, { value: value2, children });
     };
     Provider.displayName = rootComponentName + "Provider";
     function useContext2(consumerName, scope) {
-      const Context = scope?.[scopeName]?.[index] || BaseContext;
+      const Context = scope?.[scopeName]?.[index2] || BaseContext;
       const context = reactExports.useContext(Context);
       if (context) return context;
       if (defaultContext !== void 0) return defaultContext;
@@ -42324,9 +44429,9 @@ var DismissableLayer = reactExports.forwardRef(
     const layers2 = Array.from(context.layers);
     const [highestLayerWithOutsidePointerEventsDisabled] = [...context.layersWithOutsidePointerEventsDisabled].slice(-1);
     const highestLayerWithOutsidePointerEventsDisabledIndex = layers2.indexOf(highestLayerWithOutsidePointerEventsDisabled);
-    const index = node ? layers2.indexOf(node) : -1;
+    const index2 = node ? layers2.indexOf(node) : -1;
     const isBodyPointerEventsDisabled = context.layersWithOutsidePointerEventsDisabled.size > 0;
-    const isPointerEventsEnabled = index >= highestLayerWithOutsidePointerEventsDisabledIndex;
+    const isPointerEventsEnabled = index2 >= highestLayerWithOutsidePointerEventsDisabledIndex;
     const pointerDownOutside = usePointerDownOutside((event) => {
       const target = event.target;
       const isPointerDownOnBranch = [...context.branches].some((branch) => branch.contains(target));
@@ -42344,7 +44449,7 @@ var DismissableLayer = reactExports.forwardRef(
       if (!event.defaultPrevented) onDismiss?.();
     }, ownerDocument);
     useEscapeKeydown((event) => {
-      const isHighestLayer = index === context.layers.size - 1;
+      const isHighestLayer = index2 === context.layers.size - 1;
       if (!isHighestLayer) return;
       onEscapeKeyDown?.(event);
       if (!event.defaultPrevented && onDismiss) {
@@ -42686,9 +44791,9 @@ function createFocusScopesStack() {
 }
 function arrayRemove(array, item) {
   const updatedArray = [...array];
-  const index = updatedArray.indexOf(item);
-  if (index !== -1) {
-    updatedArray.splice(index, 1);
+  const index2 = updatedArray.indexOf(item);
+  if (index2 !== -1) {
+    updatedArray.splice(index2, 1);
   }
   return updatedArray;
 }
@@ -45566,7 +47671,7 @@ function AvatarChangeModal({
               }
             )
           ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-3 overflow-y-auto px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-2", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-3 overflow-y-auto px-4 pb-[max(1.5rem,var(--sab))] pt-2", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(
               "input",
               {
@@ -46193,7 +48298,7 @@ function AuthScreen(props) {
     passwordResetLinkTokenRef.current = null;
     setMode("login");
   };
-  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "relative z-10 flex min-h-[100dvh] flex-col items-center justify-center overflow-y-auto no-scrollbar bg-background px-6 pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] pt-[max(1rem,env(safe-area-inset-top,0px))]", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "w-full max-w-sm", children: [
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "relative z-10 flex min-h-[100dvh] flex-col items-center justify-center overflow-y-auto no-scrollbar bg-background px-6 pb-[max(1.5rem,var(--sab))] pt-[max(1rem,var(--sat))]", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "w-full max-w-sm", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: logo, alt: "Retweet", className: "w-20 h-20 mx-auto mb-3 dark:invert" }),
     /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "text-2xl font-bold text-center mb-2 sm:text-3xl", children: "Retweet" }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-center text-muted-foreground mb-8", children: [
@@ -46576,7 +48681,7 @@ function NotificationBanner() {
   if (!visible || !active2 || active2.type !== "message") return null;
   const from = userById(state, active2.fromId);
   const preview = (active2.text || "").trim() || "رسالة جديدة";
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "fixed top-0 left-0 right-0 z-[100] max-w-md mx-auto w-full bg-card/95 backdrop-blur-md border-b border-border shadow-lg px-2 py-2 flex items-start gap-1 supports-[padding:max(0px)]:pt-[max(0.25rem,env(safe-area-inset-top,0px))]", children: [
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "fixed top-0 left-0 right-0 z-[100] max-w-md mx-auto w-full bg-card/95 backdrop-blur-md border-b border-border shadow-lg px-2 py-2 flex items-start gap-1 supports-[padding:max(0px)]:pt-[max(0.25rem,var(--sat))]", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs(
       "button",
       {
@@ -46615,7 +48720,7 @@ function AccountSwitcherSheet({ switchingAccountId, onSwitching, onClose, onAddA
     "div",
     {
       dir: "rtl",
-      className: "mx-auto flex w-full max-w-md flex-1 flex-col px-4 pb-8 pt-[max(0.75rem,env(safe-area-inset-top))]",
+      className: "mx-auto flex w-full max-w-md flex-1 flex-col px-4 pb-8 pt-[max(0.75rem,var(--sat))]",
       children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-6 flex flex-row items-center gap-3", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -46738,6 +48843,228 @@ function useNavDoubleTap(onSingle, onDouble) {
     }, DOUBLE_TAP_MS);
   }, [onSingle, onDouble]);
 }
+function AppealFlow({
+  banInfo,
+  onBack,
+  onRestored
+}) {
+  const [step, setStep] = reactExports.useState("intro");
+  const [emailHint, setEmailHint] = reactExports.useState("");
+  const [otp, setOtp] = reactExports.useState("");
+  const [phone, setPhone] = reactExports.useState("");
+  const [message, setMessage] = reactExports.useState("");
+  const [emailVerified, setEmailVerified] = reactExports.useState(false);
+  const [err, setErr] = reactExports.useState("");
+  const sendOtp = async () => {
+    setErr("");
+    const r2 = await apiAppealSendOtp();
+    if (!r2.ok) {
+      setErr(r2.error);
+      return;
+    }
+    setEmailHint(r2.data.emailHint);
+    setStep("otp");
+  };
+  const verifyOtp = async () => {
+    setErr("");
+    const r2 = await apiAppealVerifyEmail(otp);
+    if (!r2.ok) {
+      setErr(r2.error);
+      return;
+    }
+    setEmailVerified(true);
+    setStep("phone");
+  };
+  const submit = async () => {
+    if (message.trim().length < 10) {
+      setErr("اكتب رسالة الطعن (10 أحرف على الأقل)");
+      return;
+    }
+    setStep("submitting");
+    const r2 = await apiSubmitAppeal({
+      message: message.trim(),
+      phone: phone.trim() || void 0,
+      emailVerified: true
+    });
+    if (!r2.ok) {
+      setErr(r2.error);
+      setStep("message");
+      return;
+    }
+    setStep("done");
+  };
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-h-dvh flex-col bg-background", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 border-b border-border px-4 py-3", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onBack, className: "rounded-full p-2 hover:bg-secondary", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowRight, { size: 20, className: "rtl:rotate-180" }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "flex-1 text-center font-semibold", children: "طعن على الحظر" })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1 px-6 py-6 max-w-md mx-auto w-full", children: [
+      step === "intro" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-sm text-muted-foreground", children: [
+          "سنتحقق من بريدك المرتبط بـ @",
+          banInfo.username,
+          " قبل قبول الطعن."
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            type: "button",
+            onClick: () => void sendOtp(),
+            className: "w-full rounded-xl bg-primary py-3 font-semibold text-primary-foreground",
+            children: "التحقق من البريد"
+          }
+        )
+      ] }),
+      step === "otp" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-sm text-muted-foreground", children: [
+          "أدخل الرمز المرسل إلى ",
+          emailHint
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "input",
+          {
+            value: otp,
+            onChange: (e) => setOtp(e.target.value),
+            className: "w-full rounded-xl border border-border bg-card px-3 py-3 text-center text-lg tracking-widest",
+            inputMode: "numeric"
+          }
+        ),
+        err && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-destructive", children: err }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            type: "button",
+            onClick: () => void verifyOtp(),
+            className: "w-full rounded-xl bg-primary py-3 font-semibold text-primary-foreground",
+            children: "تأكيد"
+          }
+        )
+      ] }),
+      step === "phone" && emailVerified && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "block text-sm", children: [
+          "رقم الجوال (اختياري)",
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "input",
+            {
+              value: phone,
+              onChange: (e) => setPhone(e.target.value),
+              className: "mt-1 w-full rounded-xl border border-border bg-card px-3 py-2"
+            }
+          )
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            type: "button",
+            onClick: () => setStep("message"),
+            className: "w-full rounded-xl bg-primary py-3 font-semibold text-primary-foreground",
+            children: "التالي"
+          }
+        )
+      ] }),
+      step === "message" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "textarea",
+          {
+            value: message,
+            onChange: (e) => setMessage(e.target.value),
+            rows: 6,
+            className: "w-full rounded-xl border border-border bg-card px-3 py-2 text-sm",
+            placeholder: "اشرح لماذا يجب إعادة تفعيل حسابك…"
+          }
+        ),
+        err && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-destructive", children: err }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            type: "button",
+            onClick: () => void submit(),
+            className: "w-full rounded-xl bg-primary py-3 font-semibold text-primary-foreground",
+            children: "إرسال الطعن"
+          }
+        )
+      ] }),
+      step === "done" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-center py-8", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "font-semibold", children: "تم استلام طعنك" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-sm text-muted-foreground", children: "سنراجعه ونُبلغك بالنتيجة." }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onBack, className: "mt-8 text-primary text-sm font-semibold", children: "رجوع" })
+      ] })
+    ] })
+  ] });
+}
+function BanScreen({
+  banInfo,
+  onLogout
+}) {
+  const [appeal, setAppeal] = reactExports.useState(false);
+  const [restored, setRestored] = reactExports.useState(false);
+  if (restored) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-h-dvh flex-col items-center justify-center bg-background px-6 text-center", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 animate-in zoom-in", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-4xl", children: "✓" }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "text-xl font-bold", children: "تم استعادة حسابك" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-sm text-muted-foreground", children: "يمكنك الآن استخدام التطبيق بشكل طبيعي." }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          type: "button",
+          onClick: () => window.location.reload(),
+          className: "mt-8 w-full max-w-sm rounded-xl bg-primary py-3 font-semibold text-primary-foreground",
+          children: "متابعة"
+        }
+      )
+    ] });
+  }
+  if (appeal && banInfo.canAppeal) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(
+      AppealFlow,
+      {
+        banInfo,
+        onBack: () => setAppeal(false),
+        onRestored: () => setRestored(true)
+      }
+    );
+  }
+  const permanent = banInfo.permanentlyDisabled || banInfo.accountStatus === "PERMANENTLY_BANNED";
+  const bannedDate = new Date(banInfo.bannedAt).toLocaleDateString("ar");
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex min-h-dvh flex-col bg-background px-6 py-10", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center text-center", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: banInfo.username, src: banInfo.avatar, size: 88, className: "mb-4" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-lg font-bold", children: [
+      "@",
+      banInfo.username
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-6 flex h-14 w-14 items-center justify-center rounded-full bg-destructive/10 text-destructive", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Ban, { size: 28 }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "mt-4 text-xl font-bold", children: permanent ? "تم تعطيل حسابك نهائياً" : "تم حظر حسابك" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-3 text-sm text-muted-foreground leading-relaxed", children: permanent ? "Your account has been permanently disabled." : "This account has been banned." }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("dl", { className: "mt-6 w-full space-y-2 rounded-2xl border border-border bg-card p-4 text-start text-sm", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { className: "text-muted-foreground", children: "السبب" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { className: "font-medium", children: banInfo.banReason })
+      ] }),
+      banInfo.banGuideline && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { className: "text-muted-foreground", children: "إرشاد المجتمع" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: banInfo.banGuideline })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { className: "text-muted-foreground", children: "تاريخ الحظر" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: bannedDate })
+      ] }),
+      banInfo.banExpiresAt && !permanent && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { className: "text-muted-foreground", children: "ينتهي في" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: new Date(banInfo.banExpiresAt).toLocaleString("ar") })
+      ] })
+    ] }),
+    banInfo.canAppeal && !permanent && /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "button",
+      {
+        type: "button",
+        onClick: () => setAppeal(true),
+        className: "mt-6 w-full rounded-xl bg-primary py-3 font-semibold text-primary-foreground",
+        children: "طعن (Appeal)"
+      }
+    ),
+    onLogout && /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onLogout, className: "mt-3 w-full text-sm text-muted-foreground", children: "تسجيل الخروج" })
+  ] }) });
+}
 const NAV_ICON = "pointer-events-none h-6 w-6 shrink-0 text-white";
 const NAV_MSG_ICON = "pointer-events-none h-[26px] w-[26px] shrink-0 text-white";
 function App() {
@@ -46752,9 +49079,11 @@ function App() {
     updateProfile,
     isGuest,
     exitGuestBrowseMode,
-    joinGroupByInviteCode
+    joinGroupByInviteCode,
+    logout
   } = useApp();
   const t = useT();
+  const [banInfo, setBanInfo] = reactExports.useState(null);
   const [tab, setTab] = reactExports.useState("home");
   const [modal, setModal] = reactExports.useState(null);
   const [createInitial, setCreateInitial] = reactExports.useState(null);
@@ -46772,6 +49101,7 @@ function App() {
   const [chatHideBottomNav, setChatHideBottomNav] = reactExports.useState(false);
   const [chatExitNavActive, setChatExitNavActive] = reactExports.useState(false);
   const [postDetailOpen, setPostDetailOpen] = reactExports.useState(false);
+  const [reportSheetOpen, setReportSheetOpen2] = reactExports.useState(false);
   const [showWelcome, setShowWelcome] = reactExports.useState(false);
   const [restorePostContext, setRestorePostContext] = reactExports.useState(null);
   const clearRestorePostContext = reactExports.useCallback(() => setRestorePostContext(null), []);
@@ -46784,6 +49114,14 @@ function App() {
       window.removeEventListener("retweet-post-detail-open", onOpen);
       window.removeEventListener("retweet-post-detail-close", onClose);
     };
+  }, []);
+  reactExports.useEffect(() => {
+    const onReportSheet = (e) => {
+      const open = e.detail?.open;
+      setReportSheetOpen2(!!open);
+    };
+    window.addEventListener(REPORT_SHEET_OPEN_EVENT, onReportSheet);
+    return () => window.removeEventListener(REPORT_SHEET_OPEN_EVENT, onReportSheet);
   }, []);
   reactExports.useEffect(() => {
     if (typeof window === "undefined") return;
@@ -46878,8 +49216,8 @@ function App() {
   }, [storyFullscreen]);
   const navActiveIndex = tabToNavIndex(tab);
   const onNavSelectIndex = reactExports.useCallback(
-    (index) => {
-      const clamped = Math.max(0, Math.min(BOTTOM_NAV_TAB_COUNT - 1, Math.round(index)));
+    (index2) => {
+      const clamped = Math.max(0, Math.min(BOTTOM_NAV_TAB_COUNT - 1, Math.round(index2)));
       const next = navIndexToTab(clamped);
       goTab(next);
     },
@@ -46893,6 +49231,23 @@ function App() {
     if (!peerId || peerId === currentUser.id) return;
     void switchAccount(peerId);
   }, [isGuest, accountSwitching, currentUser, switchAccount]);
+  reactExports.useEffect(() => {
+    if (!currentUser || isGuest || !apiBackendEnabled()) {
+      setBanInfo(null);
+      return;
+    }
+    void apiGetMyModerationStatus().then((r2) => {
+      if (r2.ok && r2.data.banInfo) setBanInfo(r2.data.banInfo);
+      else setBanInfo(null);
+    });
+    const onMod = (e) => {
+      const d = e.detail;
+      if (d?.banInfo) setBanInfo(d.banInfo);
+      if (d?.accountStatus === "ACTIVE") setBanInfo(null);
+    };
+    window.addEventListener("retweet-account-moderation", onMod);
+    return () => window.removeEventListener("retweet-account-moderation", onMod);
+  }, [currentUser?.id, isGuest]);
   reactExports.useEffect(() => {
     const onSwitchFail = (e) => {
       const msg = e.detail?.message?.trim();
@@ -47272,7 +49627,7 @@ function App() {
     if (!currentUser) {
       return { home: null, search: null, reels: null, chat: null, profile: null };
     }
-    const chatImmersive = tab === "chat" && (chatThreadOpen || chatHideBottomNav);
+    const chatImmersive = tab === "chat" && chatThreadOpen;
     return {
       home: /* @__PURE__ */ jsxRuntimeExports.jsx(
         HomeTabPanel,
@@ -47385,11 +49740,14 @@ function App() {
       `switch-${accountSessionKey}`
     );
   }
+  if (banInfo && !isGuest) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(BanScreen, { banInfo, onLogout: () => logout() });
+  }
   const unreadNotifs = (state.notifications ?? []).filter(
     (n) => n.userId === currentUser.id && !n.read && n.type !== "message"
   ).length;
   const showChatThreadChrome = tab === "chat" && chatThreadOpen;
-  const chatImmersiveMode = tab === "chat" && (chatThreadOpen || chatHideBottomNav) && !chatExitNavActive;
+  const chatImmersiveMode = tab === "chat" && chatThreadOpen && !chatExitNavActive;
   const postImmersiveMode = postDetailOpen;
   const immersiveOverlay = chatImmersiveMode || postImmersiveMode;
   const pagerEnabled = !chatImmersiveMode && !storyFullscreen && !profileOverlayUserId && !settingsImmersive && !postDetailOpen && // إذا كان المستخدم يشاهد بروفايل شخص آخر (inline) — أوقف سحب التبويبات
@@ -47397,20 +49755,20 @@ function App() {
   const onProfileTab = tab === "profile" && !viewProfileId;
   const viewingOtherUserProfile = tab === "profile" && !!viewProfileId;
   const hideAppHeader = tab === "chat" || tab === "search" || onProfileTab || viewingOtherUserProfile || storyFullscreen || postDetailOpen || settingsImmersive;
-  const hideBottomBar = immersiveOverlay && !chatExitNavActive || storyFullscreen || !!profileOverlayUserId || settingsImmersive;
+  const hideBottomBar = immersiveOverlay && !chatExitNavActive || storyFullscreen || !!profileOverlayUserId || settingsImmersive || reportSheetOpen;
   const showBottomNav = !hideBottomBar || chatExitNavActive;
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "div",
     {
-      className: "retweet-no-select-pane select-none relative mx-auto flex w-full max-w-md flex-col overflow-x-hidden overscroll-none bg-background supports-[height:100dvh] " + (immersiveOverlay || settingsImmersive ? "h-dvh max-h-dvh overflow-hidden pt-0" : "h-dvh max-h-dvh overflow-hidden pt-[env(safe-area-inset-top,0px)]"),
+      className: "retweet-no-select-pane select-none relative mx-auto flex w-full max-w-md flex-col overflow-x-hidden overscroll-none bg-background supports-[height:100dvh] " + (immersiveOverlay || settingsImmersive ? "h-dvh max-h-dvh overflow-hidden pt-0" : "h-dvh max-h-dvh overflow-hidden pt-[var(--sat,0px)]"),
       style: {
         [NAV_FLOAT_INSET_CSS_VAR]: NAV_FLOAT_INSET_DEFAULT,
         [NAV_SCROLL_PADDING_CSS_VAR]: NAV_SCROLL_PADDING_DEFAULT
       },
       ...nativeNoSelectCaptureHandlers,
       children: [
-        guestToast && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed left-3 right-3 top-[max(0.75rem,env(safe-area-inset-top,0px))] z-[500] mx-auto max-w-md rounded-2xl border border-border bg-card px-4 py-3 text-start text-sm shadow-lg", children: "سجّل الدخول أو أنشئ حساباً لاستخدام هذه الميزة (إعجاب، رسائل، متابعة…)." }),
-        switchFailToast && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed left-3 right-3 top-[max(0.75rem,env(safe-area-inset-top,0px))] z-[501] mx-auto max-w-md rounded-2xl border border-destructive/40 bg-card px-4 py-3 text-start text-sm text-destructive shadow-lg", children: switchFailToast }),
+        guestToast && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed left-3 right-3 top-[max(0.75rem,var(--sat,0px))] z-[500] mx-auto max-w-md rounded-2xl border border-border bg-card px-4 py-3 text-start text-sm shadow-lg", children: "سجّل الدخول أو أنشئ حساباً لاستخدام هذه الميزة (إعجاب، رسائل، متابعة…)." }),
+        switchFailToast && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed left-3 right-3 top-[max(0.75rem,var(--sat,0px))] z-[501] mx-auto max-w-md rounded-2xl border border-destructive/40 bg-card px-4 py-3 text-start text-sm text-destructive shadow-lg", children: switchFailToast }),
         !storyFullscreen && !immersiveOverlay && !settingsImmersive && /* @__PURE__ */ jsxRuntimeExports.jsx(NotificationBanner, {}),
         !hideAppHeader && /* @__PURE__ */ jsxRuntimeExports.jsx(
           "header",
@@ -47894,6 +50252,11 @@ function WebAppRoot() {
 function Index() {
   return /* @__PURE__ */ jsxRuntimeExports.jsx(WebAppRoot, {});
 }
+const index = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+  __proto__: null,
+  component: Index
+}, Symbol.toStringTag, { value: "Module" }));
 export {
-  Index as component
+  index as i,
+  registerPlugin as r
 };

@@ -22,7 +22,7 @@ export function AccountSwitcherSheet({ switchingAccountId, onSwitching, onClose,
     <AppDismissSheet onClose={onClose} overlayZIndex={200} contentClassName="bg-zinc-100 dark:bg-zinc-950">
       <div
         dir="rtl"
-        className="mx-auto flex w-full max-w-md flex-1 flex-col px-4 pb-8 pt-[max(0.75rem,env(safe-area-inset-top))]"
+        className="mx-auto flex w-full max-w-md flex-1 flex-col px-4 pb-8 pt-[max(0.75rem,var(--sat))]"
       >
         <div className="mb-6 flex flex-row items-center gap-3">
           <SlideDismissBackButton

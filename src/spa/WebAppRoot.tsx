@@ -4,6 +4,7 @@ import { bootstrapWebAppSession } from "@/lib/webSessionBootstrap";
 import { AppProvider, readPersistedAppState } from "@/lib/store";
 import type { AppState } from "@/lib/types";
 import { App } from "@/components/App";
+import logo from "@/assets/logo.png";
 import { logAuthRoute } from "@/lib/authRouteDebug";
 import { clearStaleApiConfig, probeHealth } from "@/lib/apiConfig";
 import { isNativeCapacitorShell, isPublicAppHost, isVpsProductionHost } from "@/lib/apiUrlPolicy";
@@ -92,8 +93,23 @@ export function WebAppRoot() {
 
   if (!ready) {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-background text-sm text-muted-foreground">
-        جاري التحميل…
+      <div className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-background">
+        <div className="absolute inset-0 bg-gradient-to-b from-background via-background to-black/10" />
+        <div className="relative z-10 flex flex-col items-center gap-5">
+          <div className="relative">
+            <img
+              src={logo}
+              alt="Retweet"
+              className="h-20 w-20 rounded-2xl object-cover shadow-2xl ring-1 ring-white/10 animate-pulse"
+            />
+            <span className="absolute -inset-2 rounded-[1.15rem] border-2 border-primary/45 border-t-transparent animate-spin" />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-full bg-primary/90 animate-bounce [animation-delay:-0.25s]" />
+            <span className="h-2 w-2 rounded-full bg-primary/75 animate-bounce [animation-delay:-0.125s]" />
+            <span className="h-2 w-2 rounded-full bg-primary/60 animate-bounce" />
+          </div>
+        </div>
       </div>
     );
   }

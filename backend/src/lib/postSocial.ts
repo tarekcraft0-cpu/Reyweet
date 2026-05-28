@@ -51,6 +51,7 @@ function clientPostToRow(p: Post): PostRow {
     text: p.text ?? "",
     image: p.image,
     video: p.video,
+    audio: p.audio,
     likes: p.likes ?? [],
     reposts: p.reposts ?? [],
     comments: (p.comments || []).map(c => ({
@@ -139,6 +140,7 @@ function rowToClientPost(row: PostRow, comments: PostCommentRow[]): Post {
     text: row.text ?? "",
     image: row.image,
     video: row.video,
+    audio: row.audio,
     likes: row.likes ?? [],
     reposts: row.reposts ?? [],
     comments: comments.map(c => ({

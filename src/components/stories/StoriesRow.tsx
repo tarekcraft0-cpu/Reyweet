@@ -102,10 +102,23 @@ export function StoriesRow({ userIds, onOpenStory, onCreateStory }: Props) {
     const rect = myBtnRef.current?.getBoundingClientRect();
     if (hasMyStories) {
       onOpenStory({ userId: me.id, origin: rect });
-    } else {
-      onCreateStory();
+      return;
     }
+    onCreateStory();
   }, [hasMyStories, isGuest, me.id, onCreateStory, onOpenStory]);
+
+  const createNewStory = useCallback(
+    (e?: React.SyntheticEvent) => {
+      e?.stopPropagation();
+      e?.preventDefault();
+      if (isGuest) {
+        notifyGuestActionBlocked();
+        return;
+      }
+      onCreateStory();
+    },
+    [isGuest, onCreateStory],
+  );
 
   const openFriend = useCallback(
     (id: ID, origin: DOMRect) => {
@@ -146,16 +159,9 @@ export function StoriesRow({ userIds, onOpenStory, onCreateStory }: Props) {
               role="button"
               tabIndex={0}
               aria-label="إنشاء ستوري"
-              onClick={e => {
-                e.stopPropagation();
-                onCreateStory();
-              }}
+              onClick={createNewStory}
               onKeyDown={e => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onCreateStory();
-                }
+                if (e.key === "Enter" || e.key === " ") createNewStory(e);
               }}
               className="absolute -bottom-0.5 -end-0.5 z-10 flex h-5 w-5 cursor-pointer items-center justify-center rounded-full bg-primary text-xs text-primary-foreground shadow"
             >

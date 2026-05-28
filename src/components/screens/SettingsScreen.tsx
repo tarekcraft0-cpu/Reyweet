@@ -16,6 +16,8 @@ import { VerificationSubscriptionScreen } from "../verification/VerificationSubs
 import { VerificationRequestPanel } from "../verification/VerificationRequestPanel";
 import { VerificationBadgeColorPicker } from "../verification/VerificationBadgeColorPicker";
 import { AdminVerificationPanel } from "../verification/AdminVerificationPanel";
+import { ModerationDashboard } from "../admin/ModerationDashboard";
+import { apiAdminModerationMe } from "@/lib/moderationApi";
 import { AppErrorBoundary } from "../AppErrorBoundary";
 import { useT, type TKey } from "@/lib/i18n";
 
@@ -39,6 +41,7 @@ import {
   LogOut,
   MessageCircle,
   Moon,
+  Shield,
   Sun,
   UserCircle,
   Users,
@@ -57,6 +60,7 @@ type SubView =
   | "verify"
   | "subscription"
   | "adminVerify"
+  | "adminModeration"
   | "saved"
   | "archive"
   | "timeManagement"
@@ -277,7 +281,7 @@ function SettingsHeader({
   return (
     <div
       dir="rtl"
-      className="sticky top-0 z-30 flex flex-row items-center gap-3 border-b border-border bg-background px-2 py-3 pt-[max(0.5rem,env(safe-area-inset-top,0px))] [padding-inline-start:max(0.5rem,env(safe-area-inset-left,0px))] [padding-inline-end:max(0.5rem,env(safe-area-inset-right,0px))]"
+      className="sticky top-0 z-30 flex flex-row items-center gap-3 border-b border-border bg-background px-2 py-3 pt-[max(0.5rem,var(--sat))] [padding-inline-start:max(0.5rem,var(--sal))] [padding-inline-end:max(0.5rem,var(--sar))]"
     >
       <SlideDismissBackButton
         navScope={navScope}
@@ -314,12 +318,18 @@ export function SettingsScreen({
   } = useApp();
   const [resyncBusy, setResyncBusy] = useState(false);
   const [resyncMsg, setResyncMsg] = useState<string | null>(null);
+  const verifyDismissDragRef = React.useRef<{ pointerId: number | null; startY: number; dragging: boolean }>({
+    pointerId: null,
+    startY: 0,
+    dragging: false,
+  });
   const t = useT();
   const me = currentUser!;
   const [subView, setSubView] = useState<SubView>(null);
   const [oldP, setOldP] = useState("");
   const [newP, setNewP] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isModerator, setIsModerator] = useState(false);
   const blockedUsers = state.users.filter(u => (me.blocked ?? []).includes(u.id));
 
   useEffect(() => {
@@ -327,9 +337,12 @@ export function SettingsScreen({
       const token = getApiToken();
       if (!token || !apiBackendEnabled()) {
         setIsAdmin(false);
+        setIsModerator(false);
         return;
       }
       setIsAdmin(await apiAdminMe(token));
+      const mod = await apiAdminModerationMe();
+      setIsModerator(mod.ok && mod.data.isModerator === true);
     })();
   }, [me.id]);
 
@@ -392,7 +405,8 @@ export function SettingsScreen({
   };
 
   const subTitle = (k: SubView): string => {
-    const map: Record<Exclude<SubView, null>, TKey> = {
+    if (k === "adminModeration") return "لوحة الإشراف";
+    const map: Record<Exclude<SubView, null | "adminModeration">, TKey> = {
       accountInfo: "accountInfo",
       changePwd: "changePwd",
       verify: "verifyAccount",
@@ -404,7 +418,7 @@ export function SettingsScreen({
       closeFriends: "closeFriends",
       notifications: "notificationsSettings",
     };
-    return subView ? t(map[subView]) : "";
+    return k && k in map ? t(map[k as keyof typeof map]) : "";
   };
 
   if (subView === "saved") {
@@ -466,16 +480,43 @@ export function SettingsScreen({
 
         {subView === "verify" ? (
           <AppErrorBoundaryLocal label="verify-panel">
-            <>
+            <div
+              onPointerDown={e => {
+                verifyDismissDragRef.current = { pointerId: e.pointerId, startY: e.clientY, dragging: true };
+              }}
+              onPointerMove={e => {
+                const d = verifyDismissDragRef.current;
+                if (!d.dragging || d.pointerId !== e.pointerId) return;
+                const dy = e.clientY - d.startY;
+                if (dy > 120) {
+                  d.dragging = false;
+                  setSubView(null);
+                }
+              }}
+              onPointerUp={e => {
+                const d = verifyDismissDragRef.current;
+                if (d.pointerId === e.pointerId) d.dragging = false;
+              }}
+              onPointerCancel={e => {
+                const d = verifyDismissDragRef.current;
+                if (d.pointerId === e.pointerId) d.dragging = false;
+              }}
+            >
               <VerificationRequestPanel onNeedSubscription={() => setSubView("subscription")} />
               <VerificationBadgeColorPicker />
-            </>
+            </div>
           </AppErrorBoundaryLocal>
         ) : null}
 
         {subView === "adminVerify" ? (
           <AppErrorBoundaryLocal label="admin-verify">
             <AdminVerificationPanel />
+          </AppErrorBoundaryLocal>
+        ) : null}
+
+        {subView === "adminModeration" ? (
+          <AppErrorBoundaryLocal label="admin-moderation">
+            <ModerationDashboard />
           </AppErrorBoundaryLocal>
         ) : null}
 
@@ -517,7 +558,7 @@ export function SettingsScreen({
 
   return (
     <div className="settings-screen-root min-h-full w-full max-w-full overflow-x-hidden bg-background pb-10" dir="rtl">
-      <SettingsHeader title={t("settingsActivity")} onBack={onBack} />
+      <SettingsHeader title={t("settingsActivity")} onBack={onBack} navScope="local" />
 
       {/* مركز الحسابات */}
       <div dir="rtl" className="mx-4 mt-2 overflow-hidden rounded-2xl border border-border bg-card">
@@ -552,6 +593,14 @@ export function SettingsScreen({
               label="لوحة طلبات التوثيق"
               chevron
               onClick={() => setSubView("adminVerify")}
+            />
+          ) : null}
+          {isModerator ? (
+            <SettingsRow
+              icon={Shield}
+              label="لوحة الإشراف والبلاغات"
+              chevron
+              onClick={() => setSubView("adminModeration")}
             />
           ) : null}
         </div>

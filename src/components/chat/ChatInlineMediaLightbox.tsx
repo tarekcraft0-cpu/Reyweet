@@ -62,7 +62,7 @@ export function ChatInlineMediaLightbox({ media, src, sender, senderLabel, onClo
     <div className="fixed inset-0 z-[382] flex flex-col bg-black" role="dialog" aria-modal="true" aria-label="عرض الوسائط">
       <header
         dir="ltr"
-        className="flex shrink-0 items-center gap-2 border-b border-white/10 px-2 pb-2 pt-[max(10px,env(safe-area-inset-top))]"
+        className="flex shrink-0 items-center gap-2 border-b border-white/10 px-2 pb-2 pt-[max(10px,var(--sat))]"
       >
         <button type="button" onClick={onClose} className="rounded-full p-2.5 text-white transition hover:bg-white/10" aria-label="رجوع">
           <ChevronLeft size={26} strokeWidth={2.25} />
@@ -109,7 +109,7 @@ export function ChatInlineMediaLightbox({ media, src, sender, senderLabel, onClo
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden px-1 pb-[env(safe-area-inset-bottom,0px)]">
+      <div className="flex min-h-0 flex-1 items-center justify-center overflow-hidden px-1 pb-[var(--sab)]">
         {media === "image" ? (
           <img src={src} alt="" className="max-h-full max-w-full object-contain" />
         ) : (

@@ -6,14 +6,15 @@ import { useApp, userById, visibleStoryFriendsUserIds } from "@/lib/store";
 import { storyViewerTrayRing } from "@/lib/storyTray";
 import { isReelFeedPost } from "@/lib/postMedia";
 import { notifyGuestActionBlocked } from "@/lib/guestBlocked";
-import { stashPendingStoryFile } from "@/lib/storyMedia";
 import { useT } from "@/lib/i18n";
+import { requestOpenStoryGallery } from "@/lib/camera/cameraEvents";
 import { PostDetail } from "../PostDetail";
 import { StoryViewer } from "../StoryViewer";
 import { StoriesRow, type StoryOpenRequest } from "../stories/StoriesRow";
 import { ShareSheet } from "../ShareSheet";
+import { Avatar } from "../Avatar";
 import type { Post, ProfileReturnContext } from "@/lib/types";
-import { X, Trash2 } from "lucide-react";
+import { PlaySquare, X, Trash2 } from "lucide-react";
 
 interface Props {
   onOpenProfile: (id: string, ctx?: ProfileReturnContext) => void;
@@ -37,7 +38,6 @@ export function HomeScreen({
   const [focusCommentsOnOpen, setFocusCommentsOnOpen] = useState(false);
   const [commentsSheetPostId, setCommentsSheetPostId] = useState<string | null>(null);
   const [sheetCommentDraft, setSheetCommentDraft] = useState("");
-  const [showStoryCreate, setShowStoryCreate] = useState(false);
   const [feedTick, setFeedTick] = useState(0);
   const [pullHint, setPullHint] = useState(false);
   const touchRef = useRef({ y0: 0, active: false });
@@ -90,26 +90,17 @@ export function HomeScreen({
     [state.posts, commentsSheetPostId],
   );
 
-  const handleStoryCreate = () => {
+  const handleStoryCreate = useCallback(() => {
     if (isGuest) {
       notifyGuestActionBlocked();
       return;
     }
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*,video/*';
-    input.onchange = (e) => {
-      const file = (e.target as HTMLInputElement).files?.[0];
-      if (!file) return;
-      stashPendingStoryFile(file);
-      window.dispatchEvent(
-        new CustomEvent("retweet-open-create", {
-          detail: { type: "story" },
-        }),
-      );
-    };
-    input.click();
-  };
+    requestOpenStoryGallery();
+  }, [isGuest]);
+
+  const goToReelsTab = useCallback(() => {
+    window.dispatchEvent(new CustomEvent("retweet-go-reels"));
+  }, []);
 
   const tabScrollRef = useTabPanelScrollRef();
 
@@ -207,6 +198,28 @@ export function HomeScreen({
         onCreateStory={handleStoryCreate}
       />
 
+      {/* Home/Reels switcher under stories */}
+      <div className="px-3 py-2">
+        <div className="grid grid-cols-2 rounded-full border border-border bg-card p-1">
+          <button
+            type="button"
+            className="rounded-full bg-background px-3 py-1.5 text-sm font-semibold text-foreground shadow-sm"
+            aria-label="الرئيسية"
+          >
+            الرئيسية
+          </button>
+          <button
+            type="button"
+            onClick={goToReelsTab}
+            className="flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-sm font-semibold text-muted-foreground hover:bg-background/80 hover:text-foreground"
+            aria-label="ريلز"
+          >
+            <PlaySquare size={14} />
+            ريلز
+          </button>
+        </div>
+      </div>
+
       <section aria-label="الخلاصة" className="relative z-0 flex flex-col bg-background">
         <HomeFeedActionsProvider value={feedActions}>
           {feed.map(p => (
@@ -220,6 +233,29 @@ export function HomeScreen({
 
       {shareTarget && <ShareSheet target={{ kind: "post", post: shareTarget }} onClose={() => setShareTarget(null)} />}
       {commentsSheetPost && (
+        (() => {
+          const sheetComments = (Array.isArray(commentsSheetPost.comments)
+            ? commentsSheetPost.comments
+            : []
+          )
+            .filter((c): c is { id: string; userId: string; text: string; createdAt: number } => {
+              if (!c || typeof c !== "object") return false;
+              const row = c as Partial<{ id: unknown; userId: unknown; text: unknown; createdAt: unknown }>;
+              return (
+                typeof row.id === "string" &&
+                row.id.trim().length > 0 &&
+                typeof row.userId === "string" &&
+                row.userId.trim().length > 0 &&
+                typeof row.text === "string"
+              );
+            })
+            .map(c => ({
+              id: c.id,
+              userId: c.userId,
+              text: c.text,
+              createdAt: typeof c.createdAt === "number" ? c.createdAt : Date.now(),
+            }));
+          return (
         <div className="fixed inset-0 z-[60] bg-black/50 flex items-end" onClick={() => setCommentsSheetPostId(null)}>
           <div
             className="mx-auto flex w-full max-w-md flex-col rounded-t-3xl border-t border-border bg-background text-foreground shadow-2xl"
@@ -227,13 +263,13 @@ export function HomeScreen({
             onClick={e => e.stopPropagation()}
           >
             <div className="flex shrink-0 items-center justify-between border-b border-border p-3">
-              <span className="text-sm font-semibold">التعليقات ({commentsSheetPost.comments.length})</span>
+              <span className="text-sm font-semibold">التعليقات ({sheetComments.length})</span>
               <button type="button" onClick={() => setCommentsSheetPostId(null)} aria-label="إغلاق">
                 <X size={22} />
               </button>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto p-3 space-y-2">
-              {commentsSheetPost.comments.map(c => {
+              {sheetComments.map(c => {
                 const cu = userById(state, c.userId);
                 return (
                   <div key={c.id} className="relative flex gap-2 text-sm">
@@ -286,7 +322,7 @@ export function HomeScreen({
                   </div>
                 );
               })}
-              {commentsSheetPost.comments.length === 0 && (
+              {sheetComments.length === 0 && (
                 <p className="text-center text-muted-foreground text-sm py-6">لا تعليقات بعد</p>
               )}
             </div>
@@ -311,6 +347,8 @@ export function HomeScreen({
             </form>
           </div>
         </div>
+          );
+        })()
       )}
       {storyOpen && (
         <StoryViewer
@@ -339,6 +377,7 @@ export function HomeScreen({
         initialFocusComments={focusCommentsOnOpen}
       />
     )}
+
     </div>
   );
 }

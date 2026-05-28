@@ -131,6 +131,7 @@ import {
   apiPostMessage,
   apiFetchChatMessages,
   mergeChatMessages,
+  mergeChatRecord,
   userFromSearchResult,
   apiFetchUserDirectory,
   apiFetchUserById,
@@ -149,6 +150,7 @@ import {
   apiAddPostComment,
   apiRecordStoryView,
 } from "./apiBackend";
+import { apiMuteGroupMember } from "./groupApi";
 import { subscribeRealtimeEvents, USER_REGISTERED_WINDOW_EVENT } from "./realtimeEvents";
 import {
   disconnectRealtimeSocketHard,
@@ -211,6 +213,7 @@ import {
   withOfficialAppProfileFields,
 } from "./officialAppAccount";
 import { toStoredMediaRef } from "./mediaUrl";
+import { DEFAULT_AVATAR_DATA_URI } from "./defaultAvatar";
 import { isUsernameTaken, normalizeUsername, validateUsernameFormat } from "./usernameRules";
 import {
   hashPassword,
@@ -642,7 +645,7 @@ export function normalizePersistedAppState(merged: AppState): AppState {
     bio: typeof u.bio === "string" ? u.bio : "",
     note: noteActive ? u.note : "",
     noteAt: noteActive ? u.noteAt : undefined,
-    avatar: typeof u.avatar === "string" && u.avatar ? u.avatar : (u.username || "U").slice(0, 2).toUpperCase(),
+    avatar: typeof u.avatar === "string" && u.avatar ? u.avatar : DEFAULT_AVATAR_DATA_URI,
     password: typeof u.password === "string" ? u.password : "",
     followers: Array.isArray(u.followers) ? u.followers : [],
     following: Array.isArray(u.following) ? u.following : [],
@@ -753,7 +756,7 @@ function userFromApiAuth(user: ApiAuthUser): User {
     username: user.username,
     email: user.email,
     password: "",
-    avatar: user.avatar || user.username.slice(0, 2).toUpperCase(),
+    avatar: user.avatar || DEFAULT_AVATAR_DATA_URI,
   });
 }
 
@@ -1046,11 +1049,40 @@ function buildMultiAccountState(
         : { ...scoped, id: key },
     );
   };
-  if (activeCache && !opts?.serverAuthoritative) {
-    for (const c of activeCache.chats || []) absorbChat(c);
-  }
-  if (previous.currentUserId === resolvedId && !opts?.serverAuthoritative) {
-    for (const c of previous.chats || []) absorbChat(c);
+  const seedChatForMerge = (raw: Chat) => {
+    const scoped = scopeAppStateToAccount(resolvedId, {
+      ...primaryNorm,
+      chats: [normalizeChatRecord(raw)],
+    }).chats[0];
+    if (!scoped || !scoped.members.includes(resolvedId)) return;
+    const key = chatMergeKey(scoped, resolvedId);
+    const prev = chatsById.get(key);
+    chatsById.set(
+      key,
+      prev
+        ? {
+            ...prev,
+            ...scoped,
+            id: key,
+            messages: mergeChatMessages(prev.messages, scoped.messages || []),
+          }
+        : { ...scoped, id: key },
+    );
+  };
+  if (opts?.serverAuthoritative) {
+    if (activeCache) {
+      for (const c of activeCache.chats || []) seedChatForMerge(c);
+    }
+    if (previous.currentUserId === resolvedId) {
+      for (const c of previous.chats || []) seedChatForMerge(c);
+    }
+  } else {
+    if (activeCache) {
+      for (const c of activeCache.chats || []) absorbChat(c);
+    }
+    if (previous.currentUserId === resolvedId) {
+      for (const c of previous.chats || []) absorbChat(c);
+    }
   }
   for (const c of primaryNorm.chats || []) {
     if (c.members.includes(resolvedId)) absorbChat(c, { serverAuthoritative: true });
@@ -1207,7 +1239,7 @@ interface Ctx {
   joinChannel: (chatId: ID) => void;
   toggleBlock: (userId: ID) => void;
   toggleCloseFriend: (userId: ID) => void;
-  createPost: (p: { type: Post["type"]; text: string; image?: string; video?: string }) => void;
+  createPost: (p: { type: Post["type"]; text: string; image?: string; video?: string; audio?: string }) => void;
   toggleLike: (postId: ID) => void;
   toggleStoryLike: (storyId: ID) => void;
   /** تسجيل أن المستخدم الحالي شاهد ستوري شخص آخر (مرة واحدة لكل ستوري) */
@@ -1257,6 +1289,7 @@ interface Ctx {
   updateGroupAvatar: (chatId: ID, avatar: string) => void;
   toggleGroupAdmin: (chatId: ID, userId: ID) => void;
   kickMember: (chatId: ID, userId: ID) => void;
+  muteGroupMember: (chatId: ID, userId: ID, durationMinutes: number | null) => void;
   setGroupPublic: (chatId: ID, isPublic: boolean) => void;
   joinGroupByInviteCode: (
     code: string,
@@ -2752,6 +2785,7 @@ export function AppProvider({
         text: created.text,
         image: created.image,
         video: created.video,
+        audio: created.audio,
         createdAt: created.createdAt,
       });
     }
@@ -2764,11 +2798,16 @@ export function AppProvider({
     const token = getApiToken();
     const useApi = Boolean(token && apiBackendEnabled());
     let rollbackLikes: string[] | null = null;
+    let postSnapshot: Post | null = null;
+    let actorId: ID | null = null;
     setState((s) => {
       const post = s.posts.find((p) => p.id === postId);
       if (!post || !s.currentUserId || isGuestUserId(s.currentUserId)) return s;
-      rollbackLikes = [...post.likes];
-      const liked = post.likes.includes(s.currentUserId);
+      actorId = s.currentUserId;
+      const prevLikes = Array.isArray(post.likes) ? post.likes : [];
+      rollbackLikes = [...prevLikes];
+      postSnapshot = { ...post };
+      const liked = prevLikes.includes(s.currentUserId);
       return {
         ...s,
         posts: s.posts.map((p) =>
@@ -2776,15 +2815,35 @@ export function AppProvider({
             ? {
                 ...p,
                 likes: liked
-                  ? p.likes.filter((x) => x !== s.currentUserId)
-                  : [...p.likes, s.currentUserId!],
+                  ? (Array.isArray(p.likes) ? p.likes : []).filter((x) => x !== s.currentUserId)
+                  : [...(Array.isArray(p.likes) ? p.likes : []), s.currentUserId!],
               }
             : p,
         ),
       };
     });
     if (useApi && token) {
-      void apiTogglePostLike(token, postId).then(res => {
+      void (async () => {
+        let res = await apiTogglePostLike(token, postId);
+        if (!res.ok && /غير موجود|not found|missing/i.test(res.error || "") && postSnapshot) {
+          // ارفع المنشور فقط إذا كان يخص نفس المستخدم الحالي؛ وإلا سيمنع الخادم العملية.
+          if (actorId && postSnapshot.userId === actorId) {
+            await apiUpsertPost(token, {
+              id: postSnapshot.id,
+              type: postSnapshot.type,
+              text: postSnapshot.text || "",
+              image: postSnapshot.image,
+              video: postSnapshot.video,
+            audio: postSnapshot.audio,
+              createdAt: postSnapshot.createdAt || Date.now(),
+            });
+            res = await apiTogglePostLike(token, postId);
+          } else {
+            // منشور لشخص آخر: فقط أعد المحاولة، والخادم يتكفل باكتشافه من اللقطات إن كانت متاحة.
+            await new Promise(r => window.setTimeout(r, 120));
+            res = await apiTogglePostLike(token, postId);
+          }
+        }
         if (!res.ok) {
           if (rollbackLikes) {
             setState(s => ({
@@ -2800,7 +2859,7 @@ export function AppProvider({
             p.id === postId ? { ...p, likes: res.likes } : p,
           ),
         }));
-      });
+      })();
     }
   };
   const toggleStoryLike: Ctx["toggleStoryLike"] = (storyId) =>
@@ -3118,7 +3177,7 @@ export function AppProvider({
               id: uid(),
               senderId: meId,
               type: "text" as const,
-              content: `انضم ${nu?.username ? `@${nu.username}` : "عضو"} إلى المجموعة`,
+              content: `${adder?.username ? `@${adder.username}` : "مشرف"} أضاف ${nu?.username ? `@${nu.username}` : "عضو"} إلى المجموعة`,
               createdAt: Date.now(),
             };
           });
@@ -3150,7 +3209,7 @@ export function AppProvider({
             setState(s => ({
               ...s,
               chats: s.chats.map(c =>
-                c.id === chatId ? { ...c, ...res.chat!, members: res.chat!.members } : c,
+                c.id === chatId ? mergeChatRecord(c, res.chat!) : c,
               ),
             }));
             scheduleRemoteSync();
@@ -3325,6 +3384,7 @@ export function AppProvider({
       avatar,
       members: Array.from(new Set([creatorId, ...memberIds])),
       admins: [creatorId],
+      ownerId: creatorId,
       messages: [],
       lastOpenAtByUser: {},
       lastReadMessageIdByUser: {},
@@ -3334,29 +3394,38 @@ export function AppProvider({
     setState((s) => ({ ...s, chats: [...s.chats, newChat] }));
     const token = getApiToken();
     if (token && apiBackendEnabled()) {
+      groupSyncBusyRef.current = true;
       void (async () => {
-        const created = await apiCreateGroup(token, {
-          id: newChat.id,
-          name: newChat.name || "مجموعة",
-          avatar: newChat.avatar || "👥",
-          memberIds: memberIds.filter(id => id !== creatorId),
-          welcomeMessage: `مرحباً بكم في «${newChat.name || "مجموعة"}»`,
-        });
-        if (created.ok) {
-          setState(s => ({
-            ...s,
-            chats: s.chats.map(c =>
-              c.id === newChat.id
-                ? {
-                    ...c,
-                    ...created.chat,
-                    members: Array.from(new Set([...c.members, ...created.chat.members])),
-                  }
-                : c,
-            ),
-          }));
+        try {
+          const created = await apiCreateGroup(token, {
+            id: newChat.id,
+            name: newChat.name || "مجموعة",
+            avatar: newChat.avatar || "👥",
+            memberIds: memberIds.filter(id => id !== creatorId),
+            welcomeMessage: `مرحباً بكم في «${newChat.name || "مجموعة"}»`,
+          });
+          if (created.ok) {
+            setState(s => ({
+              ...s,
+              chats: s.chats.map(c =>
+                c.id === newChat.id
+                  ? {
+                      ...c,
+                      ...created.chat,
+                      members: Array.from(new Set([...c.members, ...created.chat.members])),
+                    }
+                  : c,
+              ),
+            }));
+          } else {
+            console.warn("[Retweet] createGroup API failed:", created.error);
+          }
+          scheduleRemoteSync();
+        } finally {
+          window.setTimeout(() => {
+            groupSyncBusyRef.current = false;
+          }, 1800);
         }
-        scheduleRemoteSync();
       })();
     }
     return newChat;
@@ -3604,6 +3673,20 @@ export function AppProvider({
         resolveChatForSend(snap, chatId, senderId) ?? findChatByOpenId(snap.chats, chatId, senderId);
       if (!preflight) return false;
       if (preflight.isChannel && !(preflight.hosts || []).includes(senderId)) return false;
+      if (preflight.isGroup && !preflight.isChannel) {
+        const mutedUntil = preflight.mutedUserIds?.[senderId];
+        if (mutedUntil && mutedUntil > Date.now()) return false;
+        const role =
+          preflight.memberRoles?.[senderId] ||
+          (preflight.ownerId === senderId
+            ? "owner"
+            : (preflight.admins || []).includes(senderId)
+              ? "admin"
+              : "member");
+        const whoCanSend = preflight.groupSettings?.whoCanSendMessages || "everyone";
+        if (whoCanSend === "admins" && role !== "owner" && role !== "admin") return false;
+        if (whoCanSend === "moderators" && role === "member") return false;
+      }
 
       const m: Message = {
         id: uid(),
@@ -3632,6 +3715,21 @@ export function AppProvider({
           const existing = findDmChatForPeer(s.chats, senderId, peer);
           if (existing) chat = existing;
           else if (chat.id !== canonicalId) chat = { ...chat, id: canonicalId };
+        }
+
+        if (chat.isGroup && !chat.isChannel) {
+          const mutedUntil = chat.mutedUserIds?.[senderId];
+          if (mutedUntil && mutedUntil > Date.now()) return s;
+          const role =
+            chat.memberRoles?.[senderId] ||
+            (chat.ownerId === senderId
+              ? "owner"
+              : (chat.admins || []).includes(senderId)
+                ? "admin"
+                : "member");
+          const whoCanSend = chat.groupSettings?.whoCanSendMessages || "everyone";
+          if (whoCanSend === "admins" && role !== "owner" && role !== "admin") return s;
+          if (whoCanSend === "moderators" && role === "member") return s;
         }
 
         const updatedChat: Chat = { ...chat, messages: [...(chat.messages || []), m] };
@@ -3794,13 +3892,99 @@ export function AppProvider({
               members: c.members.filter((x) => x !== userId),
               admins: c.admins.filter((x) => x !== userId),
               hosts: (c.hosts || []).filter((x) => x !== userId),
+              messages: [
+                ...(c.messages || []),
+                {
+                  id: uid(),
+                  senderId: s.currentUserId || c.ownerId || userId,
+                  type: "text",
+                  content: `${
+                    s.users.find(u => u.id === s.currentUserId)?.username
+                      ? `@${s.users.find(u => u.id === s.currentUserId)!.username}`
+                      : "مشرف"
+                  } طرد ${
+                    s.users.find(u => u.id === userId)?.username
+                      ? `@${s.users.find(u => u.id === userId)!.username}`
+                      : "عضو"
+                  } من المجموعة`,
+                  createdAt: Date.now(),
+                },
+              ],
             }
           : c,
       ),
     }));
     const token = getApiToken();
     if (token && apiBackendEnabled()) {
-      void apiKickGroupMember(token, chatId, userId).then(() => scheduleRemoteSync());
+      groupSyncBusyRef.current = true;
+      void apiKickGroupMember(token, chatId, userId)
+        .then(() => scheduleRemoteSync())
+        .finally(() => {
+          window.setTimeout(() => {
+            groupSyncBusyRef.current = false;
+          }, 2000);
+        });
+    }
+  };
+
+  const muteGroupMember: Ctx["muteGroupMember"] = (chatId, userId, durationMinutes) => {
+    const meId = stateRef.current.currentUserId;
+    if (!meId || isGuestUserId(meId)) return;
+    const now = Date.now();
+    const foreverMinutes = 5_256_000; // ~10 years
+    const effectiveMinutes = durationMinutes == null ? foreverMinutes : Math.max(1, durationMinutes);
+    const mutedUntil = now + effectiveMinutes * 60_000;
+    const meUser = stateRef.current.users.find(u => u.id === meId);
+    const targetUser = stateRef.current.users.find(u => u.id === userId);
+    const muteLabel =
+      durationMinutes == null
+        ? "للأبد"
+        : durationMinutes === 5
+          ? "5 دقائق"
+          : durationMinutes === 10
+            ? "10 دقائق"
+            : durationMinutes === 60
+              ? "ساعة"
+              : `${durationMinutes} دقيقة`;
+
+    setState(s => ({
+      ...s,
+      chats: s.chats.map(c => {
+        if (c.id !== chatId) return c;
+        const mutedMap = { ...(c.mutedUserIds || {}), [userId]: mutedUntil };
+        const systemMsg: Message = {
+          id: uid(),
+          senderId: meId,
+          type: "text",
+          content: `${meUser?.username ? `@${meUser.username}` : "مشرف"} كتم ${targetUser?.username ? `@${targetUser.username}` : "عضو"} لمدة ${muteLabel}`,
+          createdAt: now,
+        };
+        return {
+          ...c,
+          mutedUserIds: mutedMap,
+          messages: [...(c.messages || []), systemMsg],
+        };
+      }),
+    }));
+
+    const token = getApiToken();
+    if (token && apiBackendEnabled()) {
+      groupSyncBusyRef.current = true;
+      void apiMuteGroupMember(chatId, userId, Math.min(effectiveMinutes, 10080))
+        .then(r => {
+          if (r.ok && r.data.chat) {
+            setState(s => ({
+              ...s,
+              chats: s.chats.map(c => (c.id === chatId ? mergeChatRecord(c, r.data.chat!) : c)),
+            }));
+          }
+          scheduleRemoteSync();
+        })
+        .finally(() => {
+          window.setTimeout(() => {
+            groupSyncBusyRef.current = false;
+          }, 1200);
+        });
     }
   };
 
@@ -3815,7 +3999,7 @@ export function AppProvider({
         if (res.ok && res.chat) {
           setState(s => ({
             ...s,
-            chats: s.chats.map(c => (c.id === chatId ? { ...c, ...res.chat! } : c)),
+            chats: s.chats.map(c => (c.id === chatId ? mergeChatRecord(c, res.chat!) : c)),
           }));
         }
         scheduleRemoteSync();
@@ -3844,12 +4028,14 @@ export function AppProvider({
         const meId = s.currentUserId;
         const existing = s.chats.find(c => c.id === res.chat!.id);
         const merged: Chat = existing
-          ? {
-              ...existing,
+          ? mergeChatRecord(existing, {
               ...res.chat!,
               members: Array.from(new Set([...res.chat!.members, meId])),
-            }
-          : { ...res.chat!, members: Array.from(new Set([...res.chat!.members, meId])) };
+            })
+          : {
+              ...res.chat!,
+              members: Array.from(new Set([...res.chat!.members, meId])),
+            };
         const has = s.chats.some(c => c.id === merged.id);
         return {
           ...s,
@@ -3870,9 +4056,18 @@ export function AppProvider({
       chats: s.chats.map(c => {
         if (c.id !== chatId) return c;
         const requests = (c.joinRequests || []).filter(r => r.userId !== userId);
-        const members =
-          action === "accept" ? Array.from(new Set([...c.members, userId])) : c.members;
-        return { ...c, joinRequests: requests, members };
+        const members = action === "accept" ? Array.from(new Set([...c.members, userId])) : c.members;
+        if (action !== "accept") return { ...c, joinRequests: requests, members };
+        const actor = s.users.find(u => u.id === s.currentUserId);
+        const target = s.users.find(u => u.id === userId);
+        const joinMsg: Message = {
+          id: uid(),
+          senderId: s.currentUserId || c.ownerId || userId,
+          type: "text",
+          content: `${actor?.username ? `@${actor.username}` : "مشرف"} أضاف ${target?.username ? `@${target.username}` : "عضو"} إلى المجموعة`,
+          createdAt: Date.now(),
+        };
+        return { ...c, joinRequests: requests, members, messages: [...(c.messages || []), joinMsg] };
       }),
     }));
     const token = getApiToken();
@@ -3883,7 +4078,7 @@ export function AppProvider({
           if (r.ok && r.chat) {
             setState(s => ({
               ...s,
-              chats: s.chats.map(c => (c.id === chatId ? { ...c, ...r.chat! } : c)),
+              chats: s.chats.map(c => (c.id === chatId ? mergeChatRecord(c, r.chat!) : c)),
             }));
           }
           scheduleRemoteSync();
@@ -4993,6 +5188,34 @@ export function AppProvider({
         });
         return;
       }
+      if (event === "group:updated") {
+        const payload = data as { chatId?: string; patch?: Partial<Chat> };
+        if (!payload?.chatId || !payload.patch) return;
+        setState(s => ({
+          ...s,
+          chats: s.chats.map(c =>
+            c.id === payload.chatId ? normalizeChatRecord({ ...c, ...payload.patch }) : c,
+          ),
+        }));
+        return;
+      }
+      if (event === "group:deleted") {
+        const payload = data as { chatId?: string };
+        if (!payload?.chatId) return;
+        setState(s => ({
+          ...s,
+          chats: s.chats.filter(c => c.id !== payload.chatId),
+        }));
+        return;
+      }
+      if (event === "account:moderation") {
+        try {
+          window.dispatchEvent(new CustomEvent("retweet-account-moderation", { detail: data }));
+        } catch {
+          /* ignore */
+        }
+        return;
+      }
       if (event === "sync_hint") {
         const kind = (data as { kind?: string })?.kind;
         if (kind === "chats" || kind === "feed" || kind === "story" || kind === "profile") {
@@ -5174,6 +5397,7 @@ export function AppProvider({
     updateGroupAvatar,
     toggleGroupAdmin,
     kickMember,
+    muteGroupMember,
     setGroupPublic,
     joinGroupByInviteCode,
     respondGroupJoinRequest,

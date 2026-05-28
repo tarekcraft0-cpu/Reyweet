@@ -68,7 +68,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       {
         name: "viewport",
         content:
-          "width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no",
+          "width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no, interactive-widget=resizes-content",
       },
       { name: "apple-mobile-web-app-capable", content: "yes" },
       { name: "apple-mobile-web-app-status-bar-style", content: "default" },

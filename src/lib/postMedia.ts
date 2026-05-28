@@ -5,15 +5,16 @@ const POST_PLACEHOLDER_MEDIA = new Set(["🖼️", "📝", "🎬"]);
 
 /** نوع العرض الفعلي (يصحّح منشورات نصية قديمة مُوسومة كـ post) */
 export function resolvePostDisplayType(
-  post: Pick<Post, "type" | "image" | "video" | "text">,
+  post: Pick<Post, "type" | "image" | "video" | "audio" | "text">,
 ): Post["type"] {
   if (post.type === "tweet" || post.type === "reel") return post.type;
 
   const text = post.text?.trim() ?? "";
   const img = post.image?.trim() ?? "";
   const vid = post.video?.trim() ?? "";
+  const aud = post.audio?.trim() ?? "";
 
-  if (post.type === "post" && text && !vid) {
+  if (post.type === "post" && text && !vid && !aud) {
     if (!img) return "tweet";
     if (POST_PLACEHOLDER_MEDIA.has(img)) return "post";
     const media = normalizePostMedia(post);
@@ -23,7 +24,7 @@ export function resolvePostDisplayType(
   return post.type ?? "post";
 }
 
-export function isDisplayTweet(post: Pick<Post, "type" | "image" | "video" | "text">): boolean {
+export function isDisplayTweet(post: Pick<Post, "type" | "image" | "video" | "audio" | "text">): boolean {
   return resolvePostDisplayType(post) === "tweet";
 }
 
@@ -41,18 +42,18 @@ export function hasCreateAttachmentMedia(media: string, hasFile?: boolean): bool
 }
 
 /** منشور يظهر في تبويب الريلز — مقاطع فيديو فقط (لا تغريدات نصية ولا صور بدون فيديو) */
-export function isReelFeedPost(post: Pick<Post, "type" | "image" | "video" | "text">): boolean {
+export function isReelFeedPost(post: Pick<Post, "type" | "image" | "video" | "audio" | "text">): boolean {
   if (post.type === "tweet") return false;
   return normalizePostMedia(post).hasVideo;
 }
 
 /** تغريدة بدون صورة/فيديو حقيقي: نص + تفاعلات فقط.
  *  إذا رفق المستخدم صورة أو فيديو تُعرض حتى لو النوع "tweet". */
-export function postShowsFeedMedia(post: Pick<Post, "type" | "image" | "video" | "text">): boolean {
+export function postShowsFeedMedia(post: Pick<Post, "type" | "image" | "video" | "audio" | "text">): boolean {
   if (!isDisplayTweet(post)) return true;
   // تغريدة لكن فيها مرفق حقيقي → أظهره
   const media = normalizePostMedia(post);
-  return media.hasImage || media.hasVideo;
+  return media.hasImage || media.hasVideo || media.hasAudio;
 }
 
 export function isVideoMediaRef(s?: string | null): boolean {
@@ -64,9 +65,10 @@ export function isVideoMediaRef(s?: string | null): boolean {
 }
 
 /** يفصل صورة الغلاف عن رابط الفيديو (منشورات قديمة تخزّن الفيديو في image) */
-export function normalizePostMedia(post: Pick<Post, "image" | "video" | "type">) {
+export function normalizePostMedia(post: Pick<Post, "image" | "video" | "audio" | "type">) {
   let imageRaw = post.image?.trim() || "";
   let videoRaw = post.video?.trim() || "";
+  let audioRaw = post.audio?.trim() || "";
 
   if (imageRaw && isVideoMediaRef(imageRaw) && !videoRaw) {
     videoRaw = imageRaw;
@@ -76,6 +78,7 @@ export function normalizePostMedia(post: Pick<Post, "image" | "video" | "type">)
   const imageUrl =
     imageRaw && !isVideoMediaRef(imageRaw) ? resolveMediaUrl(imageRaw) : "";
   const videoUrl = videoRaw ? resolveMediaUrl(videoRaw) : "";
+  const audioUrl = audioRaw ? resolveMediaUrl(audioRaw) : "";
   const posterUrl =
     imageUrl && isRenderableMediaUrl(imageUrl) ? imageUrl : "";
 
@@ -85,6 +88,8 @@ export function normalizePostMedia(post: Pick<Post, "image" | "video" | "type">)
     posterUrl,
     hasImage: !!imageUrl && isRenderableMediaUrl(imageUrl) && !isVideoMediaRef(imageRaw),
     hasVideo: !!videoRaw && isVideoMediaRef(videoRaw) && !!videoUrl,
+    hasAudio: !!audioRaw && isRenderableMediaUrl(audioUrl),
+    audioUrl,
     emojiFallback:
       (!imageUrl && !videoUrl && imageRaw && !isRenderableMediaUrl(imageRaw)
         ? imageRaw

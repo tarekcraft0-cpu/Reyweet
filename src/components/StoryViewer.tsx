@@ -22,9 +22,17 @@ import { StoryStickerLayer } from "./story/StoryStickerLayer";
 import { VerifiedMarkForUser } from "./VerifiedBadge";
 import { normalizeStoryMedia } from "@/lib/storyMedia";
 import { lockStoryFullscreen } from "@/lib/storyChrome";
+import { useStoryPlayback } from "@/hooks/useStoryPlayback";
+import { StoryProgressBars } from "./story/StoryProgressBars";
 import { X, Send, Share2, Bookmark, ChevronLeft, Heart, ChevronUp } from "lucide-react";
 
-const STORY_SEGMENT_CAP_MS = 5000;
+function storyTapHaptic() {
+  try {
+    navigator.vibrate?.(8);
+  } catch {
+    /* ignore */
+  }
+}
 
 export function StoryViewer({
   userId,
@@ -88,11 +96,7 @@ export function StoryViewer({
 
   const canReplyToStories = userId === me.id || (author?.allowStoryReplies !== false);
 
-  const [segmentMs, setSegmentMs] = useState(STORY_SEGMENT_CAP_MS);
-  const deadlineRef = useRef(0);
-  const advanceTimerRef = useRef<number | null>(null);
-  const holdRemainingRef = useRef(0);
-  const isHoldingProgressRef = useRef(false);
+  const [videoDurationSec, setVideoDurationSec] = useState<number | null>(null);
   const [middleHold, setMiddleHold] = useState(false);
   const [topChromeVisible, setTopChromeVisible] = useState(true);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -174,13 +178,6 @@ export function StoryViewer({
     return () => v.removeEventListener("loadeddata", playWithSound);
   }, [curStoryForHooks?.id, curStoryForHooks?.video, curStoryForHooks?.image]);
 
-  const clearAdvanceTimer = useCallback(() => {
-    if (advanceTimerRef.current != null) {
-      window.clearTimeout(advanceTimerRef.current);
-      advanceTimerRef.current = null;
-    }
-  }, []);
-
   const goToNextAuthor = useCallback(() => {
     const nextU = nextAuthorInTray(ring, userId);
     if (nextU) {
@@ -204,14 +201,13 @@ export function StoryViewer({
   }, [onRequestAuthor, ring, userId]);
 
   const goForward = useCallback(() => {
-    clearAdvanceTimer();
     setI(prev => {
-      const { storiesLen, userId: uid } = snapRef.current;
+      const { storiesLen } = snapRef.current;
       if (prev < storiesLen - 1) return prev + 1;
       goToNextAuthor();
       return prev;
     });
-  }, [goToNextAuthor, clearAdvanceTimer]);
+  }, [goToNextAuthor]);
 
   const goBack = useCallback(() => {
     setI(prev => {
@@ -295,40 +291,23 @@ export function StoryViewer({
     }
   }, [author, closeViewer]);
 
+  const curMediaForPlayback = curStoryForHooks ? normalizeStoryMedia(curStoryForHooks) : null;
+  const storyHasVideo = !!curMediaForPlayback?.hasVideo;
+
   useEffect(() => {
-    if (!curStoryForHooks?.id) return;
-    setSegmentMs(STORY_SEGMENT_CAP_MS);
-    isHoldingProgressRef.current = false;
+    setVideoDurationSec(null);
     setMiddleHold(false);
   }, [curStoryForHooks?.id]);
 
-  const armAdvanceTimer = useCallback(() => {
-    clearAdvanceTimer();
-    if (!author || stories.length === 0 || isHoldingProgressRef.current) return;
-    const ms = Math.max(0, deadlineRef.current - Date.now());
-    if (ms <= 0) {
-      goForwardRef.current();
-      return;
-    }
-    advanceTimerRef.current = window.setTimeout(() => {
-      advanceTimerRef.current = null;
-      goForwardRef.current();
-    }, ms);
-  }, [author, stories.length, clearAdvanceTimer]);
-
-  const pauseProgressForHold = useCallback(() => {
-    if (isHoldingProgressRef.current) return;
-    isHoldingProgressRef.current = true;
-    holdRemainingRef.current = Math.max(0, deadlineRef.current - Date.now());
-    clearAdvanceTimer();
-  }, [clearAdvanceTimer]);
-
-  const resumeProgressAfterHold = useCallback(() => {
-    if (!isHoldingProgressRef.current) return;
-    isHoldingProgressRef.current = false;
-    deadlineRef.current = Date.now() + holdRemainingRef.current;
-    armAdvanceTimer();
-  }, [armAdvanceTimer]);
+  const { progress: storyProgress, playbackState, setVideoDurationFromMetadata } = useStoryPlayback({
+    storyId: curStoryForHooks?.id ?? "",
+    hasVideo: storyHasVideo,
+    videoRef,
+    paused: middleHold || ownViewsOpen,
+    enabled: !!(author && stories.length > 0 && curStoryForHooks?.id),
+    videoDurationSec,
+    onSegmentComplete: () => goForwardRef.current(),
+  });
 
   useEffect(() => {
     if (!curStoryForHooks?.id || userId === me.id || isGuest) return;
@@ -338,17 +317,6 @@ export function StoryViewer({
   useEffect(() => {
     setOwnViewsOpen(false);
   }, [curStoryForHooks?.id, userId]);
-
-  useEffect(() => {
-    if (!author || stories.length === 0) return;
-    if (ownViewsOpen) {
-      clearAdvanceTimer();
-      return;
-    }
-    deadlineRef.current = Date.now() + segmentMs;
-    armAdvanceTimer();
-    return () => clearAdvanceTimer();
-  }, [i, stories.length, author, userId, segmentMs, ownViewsOpen, armAdvanceTimer, clearAdvanceTimer]);
 
   useEffect(() => {
     if (!author || stories.length === 0) return;
@@ -654,36 +622,14 @@ export function StoryViewer({
         onPointerUp={endGestureDrag}
         onPointerCancel={endGestureDrag}
       >
+      <div className="absolute inset-x-0 top-0 z-50 flex flex-col pt-[max(0.25rem,var(--sat))] pointer-events-none">
+      <StoryProgressBars segments={stories} activeIndex={displayIdx} progress={storyProgress} />
       <div
         className={
-          "absolute inset-x-0 top-0 z-50 flex flex-col pt-[max(0.25rem,env(safe-area-inset-top,0px))] " +
-          "bg-gradient-to-b from-black/75 via-black/40 to-transparent transition-opacity duration-300 " +
+          "flex flex-col bg-gradient-to-b from-black/75 via-black/40 to-transparent transition-opacity duration-300 pointer-events-auto " +
           (topChromeVisible && !ownViewsOpen ? "opacity-100" : "opacity-0 pointer-events-none")
         }
       >
-      <div className="flex gap-1 p-2 shrink-0">
-        {stories.map((seg, idx) => (
-          <div key={seg.id} className="flex-1 h-[2px] bg-white/35 rounded-full overflow-hidden">
-            <div
-              key={idx === displayIdx ? `${seg.id}-active` : seg.id}
-              className={
-                "h-full bg-white rounded-full " +
-                (idx < displayIdx ? "w-full" : idx === displayIdx ? "w-0 animate-story-seg" : "w-0")
-              }
-              style={
-                idx === displayIdx
-                  ? {
-                      animationDuration: `${segmentMs / 1000}s`,
-                      animationPlayState: middleHold || ownViewsOpen ? "paused" : "running",
-                    }
-                  : idx < displayIdx
-                    ? { width: "100%" }
-                    : undefined
-              }
-            />
-          </div>
-        ))}
-      </div>
       <div className="flex shrink-0 items-center gap-2 px-3 text-white" data-story-interactive>
         <button type="button" onClick={closeViewer} className="p-2" aria-label="رجوع">
           <ChevronLeft size={24} />
@@ -766,6 +712,7 @@ export function StoryViewer({
         </div>
       )}
       </div>
+      </div>
 
       <div
         className="relative flex min-h-0 flex-1 items-center justify-center overflow-hidden text-white"
@@ -774,6 +721,11 @@ export function StoryViewer({
           showTopChrome();
         }}
       >
+        {(playbackState === "loading" || playbackState === "buffering") && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+            <div className="h-9 w-9 rounded-full border-2 border-white/30 border-t-white animate-spin" aria-hidden />
+          </div>
+        )}
         <div className="relative z-10 flex h-full w-full max-h-full max-w-full items-center justify-center">
           {storyMedia.hasVideo ? (
             <video
@@ -796,10 +748,10 @@ export function StoryViewer({
               onLoadedMetadata={e => {
                 const d = e.currentTarget.duration;
                 if (Number.isFinite(d) && d > 0) {
-                  setSegmentMs(Math.min(STORY_SEGMENT_CAP_MS, Math.max(1000, Math.ceil(d * 1000))));
+                  setVideoDurationSec(d);
+                  setVideoDurationFromMetadata(d);
                 }
               }}
-              onEnded={() => goForwardRef.current()}
             />
           ) : storyMedia.hasImage ? (
             <img
@@ -824,7 +776,6 @@ export function StoryViewer({
             } catch {
               /* ignore */
             }
-            pauseProgressForHold();
             setMiddleHold(true);
           }}
           onPointerUp={e => {
@@ -833,7 +784,6 @@ export function StoryViewer({
             } catch {
               /* ignore */
             }
-            resumeProgressAfterHold();
             setMiddleHold(false);
           }}
           onPointerCancel={e => {
@@ -842,7 +792,6 @@ export function StoryViewer({
             } catch {
               /* ignore */
             }
-            resumeProgressAfterHold();
             setMiddleHold(false);
           }}
         />
@@ -853,6 +802,7 @@ export function StoryViewer({
           aria-label="الستوري السابق"
           onClick={e => {
             e.stopPropagation();
+            storyTapHaptic();
             goBack();
           }}
         />
@@ -863,6 +813,7 @@ export function StoryViewer({
           aria-label="الستوري التالي"
           onClick={e => {
             e.stopPropagation();
+            storyTapHaptic();
             goForward();
           }}
         />
@@ -884,7 +835,7 @@ export function StoryViewer({
       )}
       {userId === me.id && (
         <div
-          className="z-[45] flex shrink-0 touch-none select-none flex-col items-center justify-center gap-0.5 border-t border-white/5 bg-gradient-to-t from-black via-black/95 to-black/40 px-4 pt-2 pb-[max(0.65rem,env(safe-area-inset-bottom,0px))]"
+          className="z-[45] flex shrink-0 touch-none select-none flex-col items-center justify-center gap-0.5 border-t border-white/5 bg-gradient-to-t from-black via-black/95 to-black/40 px-4 pt-2 pb-[max(0.65rem,var(--sab))]"
           style={{ touchAction: "none" }}
           data-story-interactive
           onPointerDown={onOwnZonePointerDown}

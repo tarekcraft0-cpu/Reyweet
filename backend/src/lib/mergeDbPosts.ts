@@ -9,6 +9,7 @@ function rowToPost(row: PostRow, prev?: Post): Post {
     text: row.text ?? "",
     image: row.image,
     video: row.video,
+    audio: row.audio,
     likes: row.likes ?? [],
     reposts: row.reposts ?? [],
     comments:

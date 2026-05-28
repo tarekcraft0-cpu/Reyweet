@@ -177,10 +177,7 @@ async function packBackend() {
 async function packSharedLib() {
   const tgz = path.join(root, "backups-local", "retweet-shared-lib.tgz");
   await mkdir(path.dirname(tgz), { recursive: true });
-  execSync(
-    `tar -czf "${tgz}" -C "${root}" src/lib/types.ts src/lib/verificationEntitlements.ts src/lib/storyVisibility.ts`,
-    { stdio: "inherit", shell: true },
-  );
+  execSync(`tar -czf "${tgz}" -C "${root}" src/lib`, { stdio: "inherit", shell: true });
   return tgz;
 }
 

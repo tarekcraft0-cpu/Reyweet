@@ -1,5 +1,6 @@
 import type { AppState } from "../../../src/lib/types.js";
 import { rewriteAppStateMediaRefs, toClientMediaRef } from "./normalizeMediaRef.js";
+import { DEFAULT_AVATAR_DATA_URI } from "./defaultAvatar.js";
 
 /** يضمن شكل الحالة متوافقاً مع الواجهة ويمنع crash عند حقول ناقصة */
 export function coerceAppStateForClient(state: AppState): AppState {
@@ -11,7 +12,7 @@ export function coerceAppStateForClient(state: AppState): AppState {
       email: u.email ?? "",
       bio: u.bio ?? "",
       avatar:
-        toClientMediaRef(u.avatar) || (u.username ?? "U").slice(0, 2).toUpperCase(),
+        toClientMediaRef(u.avatar) || DEFAULT_AVATAR_DATA_URI,
       password: "",
       followers: u.followers ?? [],
       following: u.following ?? [],

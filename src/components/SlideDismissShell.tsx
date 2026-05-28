@@ -153,7 +153,7 @@ export function RtlScreenHeader({
     <div
       dir="rtl"
       className={
-        "flex shrink-0 flex-row items-center gap-3 border-b border-border bg-background px-3 py-2.5 pt-[max(0.5rem,env(safe-area-inset-top,0px))] " +
+        "flex shrink-0 flex-row items-center gap-3 border-b border-border bg-background px-3 py-2.5 pt-[max(0.5rem,var(--sat))] " +
         className
       }
     >

@@ -19,6 +19,8 @@ import { formatFetchError, logApi, redactBody, shouldLogApi } from "./apiDebug";
 import { isGuestUserId } from "./guestUser";
 import { scopeAppStateToAccount } from "./scopeAppState";
 import { isReactNativeWebView } from "./nativeShell";
+import { isGroupMembershipSystemContent } from "./groupSystemMessages";
+import { DEFAULT_AVATAR_DATA_URI } from "./defaultAvatar";
 
 const TOKEN_KEY = "retweet_api_token";
 
@@ -263,6 +265,8 @@ export async function apiLogin(
     user?: ApiAuthUser;
     requiresOtp?: boolean;
     emailHint?: string;
+    banInfo?: import("./moderationBanTypes").BanInfo;
+    banned?: boolean;
     detail?: { url?: string; cause?: string };
   };
   if (res.status === 503 || res.status === 504) {
@@ -281,6 +285,9 @@ export async function apiLogin(
   }
   if (!res.ok) {
     logApi("login-failed", { status: res.status, error: data.error });
+    if (res.status === 403 && data.error === "account_banned" && data.banInfo) {
+      return { ok: false, banned: true, banInfo: data.banInfo, error: data.error };
+    }
     return { ok: false, error: data.error || `فشل تسجيل الدخول (${res.status})` };
   }
   if (data.requiresOtp) {
@@ -425,7 +432,7 @@ export function userFromSearchResult(row: ApiSearchUser): User {
     displayName: row.displayName?.trim() || undefined,
     email: "",
     password: "",
-    avatar: row.avatar || row.username.slice(0, 2).toUpperCase(),
+    avatar: row.avatar || DEFAULT_AVATAR_DATA_URI,
     bio: row.bio ?? "",
     isPrivate: row.isPrivate === true,
     followers: Array.isArray(row.followers) ? row.followers : [],
@@ -676,7 +683,30 @@ export function mergeChatMessages(local: Message[], remote: Message[]): Message[
   const byId = new Map<string, Message>();
   for (const m of local) byId.set(m.id, m);
   for (const m of remote) byId.set(m.id, m);
+  const remoteSystemContent = new Set(
+    remote
+      .filter(m => m.type === "text" && isGroupMembershipSystemContent(m.content))
+      .map(m => m.content.trim()),
+  );
+  for (const m of local) {
+    if (m.type !== "text" || byId.has(m.id)) continue;
+    const t = m.content.trim();
+    if (isGroupMembershipSystemContent(t) && !remoteSystemContent.has(t)) {
+      byId.set(m.id, m);
+    }
+  }
   return [...byId.values()].sort((a, b) => a.createdAt - b.createdAt);
+}
+
+/** دمج محادثة من استجابة API مع النسخة المحلية دون فقدان الرسائل */
+export function mergeChatRecord(local: Chat, server: Chat): Chat {
+  return {
+    ...local,
+    ...server,
+    members: server.members?.length ? server.members : local.members,
+    admins: server.admins?.length ? server.admins : local.admins,
+    messages: mergeChatMessages(local.messages || [], server.messages || []),
+  };
 }
 
 export async function apiPostMessage(
@@ -823,6 +853,7 @@ export async function apiUpsertPost(
     text: string;
     image?: string;
     video?: string;
+    audio?: string;
     createdAt: number;
   },
 ): Promise<{ ok: true } | { ok: false; error: string }> {

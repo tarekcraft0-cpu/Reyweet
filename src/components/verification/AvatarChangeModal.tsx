@@ -113,7 +113,7 @@ export function AvatarChangeModal({
             </button>
           </div>
 
-          <div className="space-y-3 overflow-y-auto px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] pt-2">
+          <div className="space-y-3 overflow-y-auto px-4 pb-[max(1.5rem,var(--sab))] pt-2">
             <input
               ref={staticRef}
               type="file"

@@ -22,12 +22,13 @@ import {
   MessageCircle,
   Send,
   Bookmark,
-  Volume2,
-  VolumeX,
   X,
   MoreVertical,
   Music2,
   Pause,
+  Plus,
+  SlidersHorizontal,
+  Repeat2,
 } from "lucide-react";
 import { PostOptionsMenu, CommentOptionsMenu } from "../PostOptionsMenu";
 import { VerifiedMarkForUser } from "../VerifiedBadge";
@@ -193,7 +194,7 @@ function PausedOverlay() {
    ReelSlide — حاوية شريحة واحدة
 ═══════════════════════════════════════ */
 const REEL_SLIDE_HEIGHT_FALLBACK =
-  "calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))";
+  "calc(100dvh - var(--sat) - var(--sab))";
 
 const ReelSlide = memo(function ReelSlide({
   reelId,
@@ -280,7 +281,7 @@ export function ReelsScreen({
   restoreFromProfileContext?: ProfileReturnContext | null;
   onConsumedRestoreFromProfile?: () => void;
 }) {
-  const { state, toggleLike, currentUser, addComment, isGuest, refreshFromServer } =
+  const { state, toggleLike, toggleRepost, currentUser, addComment, isGuest, refreshFromServer } =
     useApp();
   const isTabActive = useIsTabActive("reels");
   const t = useT();
@@ -307,6 +308,21 @@ export function ReelsScreen({
   const [heartBurst, setHeartBurst] = useState<{ id: string; x: number; y: number } | null>(null);
   /* Hold to Pause — يتتبع state لكل ريل نشط */
   const [holdPaused, setHoldPaused] = useState(false);
+
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("retweet-reels-comments-open", {
+        detail: { open: !!commentsFor },
+      }),
+    );
+    return () => {
+      window.dispatchEvent(
+        new CustomEvent("retweet-reels-comments-open", {
+          detail: { open: false },
+        }),
+      );
+    };
+  }, [commentsFor]);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const pullRef = useRef({ y0: 0, active: false });
@@ -528,14 +544,21 @@ export function ReelsScreen({
   return (
     <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-black text-white overscroll-none">
 
-      {/* ── Glassmorphism Top Bar (مثل Instagram) ── */}
+      {/* ── Top Bar (Instagram-like) ── */}
       <div
-        className="pointer-events-auto absolute inset-x-0 top-0 z-40 flex items-end justify-between pb-2 pt-[env(safe-area-inset-top,0px)]"
+        className="pointer-events-auto absolute inset-x-0 top-0 z-40 flex items-end justify-between pb-2 pt-[var(--sat)]"
         style={{
           background: "linear-gradient(to bottom, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0) 100%)",
           backdropFilter: "none",
         }}
       >
+        <button
+          type="button"
+          aria-label="create"
+          className="absolute start-4 bottom-2 p-1 text-white"
+        >
+          <Plus size={24} />
+        </button>
         {/* Tabs */}
         <div className="flex flex-1 items-center justify-center gap-6 px-4">
           <button
@@ -564,24 +587,18 @@ export function ReelsScreen({
           </button>
         </div>
 
-        {/* Sound toggle */}
-        {reels.length > 0 && (
-          <button
-            type="button"
-            onClick={() => { unlockSound(); setSoundOn(s => !s); }}
-            className="absolute end-4 bottom-2 rounded-full bg-black/35 p-2 backdrop-blur-sm"
-            aria-label={soundOn ? "كتم الصوت" : "تشغيل الصوت"}
-          >
-            {soundOn && effectiveSoundOn
-              ? <Volume2 size={20} />
-              : <VolumeX size={20} />}
-          </button>
-        )}
+        <button
+          type="button"
+          aria-label="reels settings"
+          className="absolute end-4 bottom-2 p-1 text-white"
+        >
+          <SlidersHorizontal size={22} />
+        </button>
       </div>
 
       {/* Pull hint */}
       {reelPullHint && (
-        <div className="absolute inset-x-0 top-[calc(env(safe-area-inset-top,0px)+3.5rem)] z-50 flex justify-center">
+        <div className="absolute inset-x-0 top-[calc(var(--sat)+3.5rem)] z-50 flex justify-center">
           <span className="rounded-full bg-white/20 px-4 py-1.5 text-xs font-medium backdrop-blur-md">
             تم التحديث ✓
           </span>
@@ -611,8 +628,13 @@ export function ReelsScreen({
         {reels.map(r => {
           const slideH = slideHeightPx > 0 ? slideHeightPx : 0;
           const u = userById(state, r.userId);
+          const friendReposterId = (r.reposts || []).find(
+            uid => uid !== me.id && me.following.includes(uid),
+          );
+          const friendReposter = friendReposterId ? userById(state, friendReposterId) : null;
           const media = normalizePostMedia(r);
           const liked = r.likes.includes(me.id);
+          const reposted = r.reposts.includes(me.id);
           const notes = visibleMediaNotes(state, "post", r.id, me.id).slice(0, 8);
           const isActive = isTabActive && activeReelId === r.id;
 
@@ -644,7 +666,7 @@ export function ReelsScreen({
 
               {/* ── خيارات الريل (صاحبه فقط) ── */}
               {r.userId === me.id && (
-                <div className="absolute top-[calc(env(safe-area-inset-top,0px)+3.5rem)] end-4 z-30">
+                <div className="absolute top-[calc(var(--sat)+3.5rem)] end-4 z-30">
                   <button
                     type="button"
                     onClick={() => setReelMenuId(reelMenuId === r.id ? null : r.id)}
@@ -698,6 +720,23 @@ export function ReelsScreen({
                   count={r.comments.length}
                 />
 
+                {/* Repost */}
+                <SideActionButton
+                  onClick={() => { if (guestBlock()) return; toggleRepost(r.id); }}
+                  label="ريبوست"
+                  icon={
+                    <Repeat2
+                      size={28}
+                      strokeWidth={1.9}
+                      className={reposted ? "text-violet-400" : "text-white"}
+                      style={{ filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.6))" }}
+                    />
+                  }
+                  count={r.reposts.length}
+                  active={reposted}
+                  activeColor="text-violet-400"
+                />
+
                 {/* Share */}
                 <SideActionButton
                   onClick={() => { if (guestBlock()) return; setSharePost(r); }}
@@ -726,6 +765,27 @@ export function ReelsScreen({
                   paddingInlineEnd: "var(--reel-safe-inline-end, 4.5rem)",
                 }}
               >
+                {friendReposter && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      onOpenProfile(friendReposter.id, { postId: r.id, tab: "reels" })
+                    }
+                    className="mb-2 inline-flex items-center rounded-full bg-black/50 p-1 backdrop-blur-sm"
+                    aria-label={`@${friendReposter.username} repost`}
+                  >
+                    <div className="relative">
+                      <Avatar
+                        name={friendReposter.username}
+                        src={friendReposter.avatar}
+                        size={30}
+                      />
+                      <span className="absolute -bottom-1 -end-1 flex h-4 w-4 items-center justify-center rounded-full bg-violet-600 ring-2 ring-black">
+                        <Repeat2 size={10} className="text-white" />
+                      </span>
+                    </div>
+                  </button>
+                )}
                 {/* Notes */}
                 {notes.length > 0 && (
                   <div className="mb-2.5 flex flex-wrap gap-1.5 max-h-14 overflow-y-auto no-scrollbar">
@@ -822,7 +882,7 @@ export function ReelsScreen({
               backdropFilter: "blur(20px)",
               WebkitBackdropFilter: "blur(20px)",
               maxHeight: "68vh",
-              paddingBottom: "env(safe-area-inset-bottom,0px)",
+              paddingBottom: "var(--sab)",
             }}
             onClick={e => e.stopPropagation()}
           >

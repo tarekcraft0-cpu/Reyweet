@@ -45,7 +45,7 @@ export function BottomNavSheet({
         aria-label="شريط التنقل"
         className="pointer-events-none fixed inset-x-0 bottom-0 z-[90] mx-auto flex w-full max-w-md justify-center px-4"
         style={{
-          paddingBottom: "max(12px, env(safe-area-inset-bottom, 0px))",
+          paddingBottom: "max(12px, var(--sab))",
         }}
       >
         <div ref={navRef} data-no-tab-swipe className={IG_GLASS_PILL} style={navStyle}>

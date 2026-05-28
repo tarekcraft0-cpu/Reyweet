@@ -38,13 +38,16 @@ export function PostDetail({ post: postProp, onBack, onOpenProfile, onOpenChat, 
   const [comment, setComment] = useState("");
   const [shareOpen, setShareOpen] = useState(false);
   const me = currentUser!;
+  const postLikes = Array.isArray(post.likes) ? post.likes : [];
+  const postReposts = Array.isArray(post.reposts) ? post.reposts : [];
+  const postComments = Array.isArray(post.comments) ? post.comments : [];
   const guestBlock = () => {
     if (!isGuest) return false;
     notifyGuestActionBlocked();
     return true;
   };
-  const liked = post.likes.includes(me.id);
-  const reposted = post.reposts.includes(me.id);
+  const liked = postLikes.includes(me.id);
+  const reposted = postReposts.includes(me.id);
   const postKindAr = post.type === "tweet" ? "التغريدة" : post.type === "reel" ? "الريلز" : "المنشور";
   const detailNotes = visibleMediaNotes(state, "post", post.id, me.id).slice(0, 8).filter(n => {
     const nu = userById(state, n.authorId);
@@ -136,7 +139,7 @@ export function PostDetail({ post: postProp, onBack, onOpenProfile, onOpenChat, 
     <div className="flex h-[100dvh] w-full max-w-md flex-col overflow-hidden bg-background shadow-2xl">
       <header
         dir="rtl"
-        className="shrink-0 z-20 border-b border-border bg-background/95 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/80 pt-[max(0.75rem,env(safe-area-inset-top,0px))]"
+        className="shrink-0 z-20 border-b border-border bg-background/95 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/80 pt-[max(0.75rem,var(--sat))]"
       >
         <div className="flex items-center justify-between gap-2 px-3 pb-1 sm:hidden">
           <SlideDismissBackButton
@@ -268,7 +271,18 @@ export function PostDetail({ post: postProp, onBack, onOpenProfile, onOpenChat, 
           )}
         </div>
       )}
-      {!post.image && !post.video && detailNotes.length > 0 && (
+      {post.audio && (
+        <div className="px-4 pt-3">
+          {isRenderableMediaUrl(post.audio) ? (
+            <audio src={resolveMediaUrl(post.audio)} controls preload="none" className="w-full" />
+          ) : (
+            <div className="rounded-xl border border-border bg-card px-3 py-2 text-sm text-muted-foreground">
+              مقطع صوتي
+            </div>
+          )}
+        </div>
+      )}
+      {!post.image && !post.video && !post.audio && detailNotes.length > 0 && (
         <div className="px-4 pb-2 flex gap-2 overflow-x-auto no-scrollbar">
           {detailNotes.map(n => {
             const nu = userById(state, n.authorId)!;
@@ -311,12 +325,12 @@ export function PostDetail({ post: postProp, onBack, onOpenProfile, onOpenChat, 
         </button>
       </div>
       <div className="px-4 pt-2 text-sm space-y-1">
-        <div><b>{post.likes.length}</b> {t("likes")} · <b>{post.reposts.length}</b> {t("reposts")} · <b>{post.comments.length}</b> {t("comments")}</div>
+        <div><b>{postLikes.length}</b> {t("likes")} · <b>{postReposts.length}</b> {t("reposts")} · <b>{postComments.length}</b> {t("comments")}</div>
       </div>
 
       <div className="px-4 pt-3 space-y-2 border-t border-border mt-3 pb-2">
         <h3 id="post-comments-anchor" className="font-semibold text-sm pt-2 scroll-mt-24 sm:scroll-mt-20">{t("comments")}</h3>
-        {post.comments.map(c => {
+        {postComments.map(c => {
           const u = userById(state, c.userId);
           return (
             <div key={c.id} className="relative flex gap-2 text-sm">
@@ -347,7 +361,7 @@ export function PostDetail({ post: postProp, onBack, onOpenProfile, onOpenChat, 
             </div>
           );
         })}
-        {post.comments.length === 0 && <p className="text-xs text-muted-foreground">—</p>}
+        {postComments.length === 0 && <p className="text-xs text-muted-foreground">—</p>}
       </div>
 
       {shareOpen && <ShareSheet target={{ kind: "post", post }} onClose={() => setShareOpen(false)} />}
@@ -365,7 +379,7 @@ export function PostDetail({ post: postProp, onBack, onOpenProfile, onOpenChat, 
           e.preventDefault();
           submitComment();
         }}
-        className="flex shrink-0 gap-2 border-t border-border bg-background px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]"
+        className="flex shrink-0 gap-2 border-t border-border bg-background px-4 py-3 pb-[max(0.75rem,var(--sab))]"
       >
         <input
           value={comment}

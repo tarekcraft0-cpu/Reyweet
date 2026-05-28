@@ -62,8 +62,25 @@ export function ProfileFeedItem({
   const t = useT();
   const me = currentUser!;
   const author = userById(state, post.userId);
-  const liked = livePost.likes.includes(me.id);
-  const reposted = livePost.reposts.includes(me.id);
+  const safeLikes = Array.isArray(livePost.likes) ? livePost.likes : [];
+  const safeReposts = Array.isArray(livePost.reposts) ? livePost.reposts : [];
+  const safeComments = (Array.isArray(livePost.comments) ? livePost.comments : [])
+    .filter(
+      (c): c is { id: string; userId: string; text: string; createdAt: number } =>
+        !!c &&
+        typeof c === "object" &&
+        typeof (c as { id?: unknown }).id === "string" &&
+        typeof (c as { userId?: unknown }).userId === "string" &&
+        typeof (c as { text?: unknown }).text === "string",
+    )
+    .map(c => ({
+      id: c.id,
+      userId: c.userId,
+      text: c.text,
+      createdAt: typeof c.createdAt === "number" ? c.createdAt : Date.now(),
+    }));
+  const liked = safeLikes.includes(me.id);
+  const reposted = safeReposts.includes(me.id);
   const postKindAr = post.type === "tweet" ? "التغريدة" : post.type === "reel" ? "الريلز" : "المنشور";
   const displayType = useMemo(
     () => resolvePostDisplayType(post),
@@ -167,9 +184,9 @@ export function ProfileFeedItem({
         <PostFeedActions
           liked={liked}
           reposted={reposted}
-          likeCount={post.likes.length}
-          commentCount={post.comments.length}
-          repostCount={post.reposts.length}
+          likeCount={safeLikes.length}
+          commentCount={safeComments.length}
+          repostCount={safeReposts.length}
           onLike={() => startTransition(() => toggleLike(post.id))}
           onComment={() => setCommentsOpen(o => !o)}
           onRepost={() => startTransition(() => toggleRepost(post.id))}
@@ -185,7 +202,7 @@ export function ProfileFeedItem({
           className="space-y-2 border-t border-border/60 px-3 pb-4 pt-3 scroll-mt-24 ms-[3.25rem] me-3"
         >
           <h3 className="text-sm font-semibold">{t("comments")}</h3>
-          {livePost.comments.map(c => {
+          {safeComments.map(c => {
             const u = userById(state, c.userId);
             return (
               <div key={c.id} className="flex gap-2 text-sm" dir="ltr">
@@ -222,7 +239,7 @@ export function ProfileFeedItem({
               </div>
             );
           })}
-          {livePost.comments.length === 0 && <p className="text-xs text-muted-foreground">—</p>}
+          {safeComments.length === 0 && <p className="text-xs text-muted-foreground">—</p>}
           <form
             onSubmit={e => {
               e.preventDefault();

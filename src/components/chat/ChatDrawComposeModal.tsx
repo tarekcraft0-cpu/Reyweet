@@ -207,7 +207,7 @@ export function ChatDrawComposeModal({
           : "fixed inset-0 z-[365] mx-auto flex min-h-0 max-w-md flex-col bg-black/30 backdrop-blur-md ") + "pointer-events-auto"
       }
     >
-      <div className="flex shrink-0 items-center justify-between gap-2 px-3 pb-2 pt-[max(0.75rem,env(safe-area-inset-top))]">
+      <div className="flex shrink-0 items-center justify-between gap-2 px-3 pb-2 pt-[max(0.75rem,var(--sat))]">
         <button type="button" onClick={onClose} className={toolBtn} aria-label="إغلاق">
           <X size={20} />
         </button>
@@ -233,7 +233,7 @@ export function ChatDrawComposeModal({
         />
       </div>
 
-      <div className="shrink-0 space-y-3 border-t border-white/10 bg-zinc-950/90 px-3 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur-md">
+      <div className="shrink-0 space-y-3 border-t border-white/10 bg-zinc-950/90 px-3 pb-[max(1rem,var(--sab))] pt-3 backdrop-blur-md">
         <div className="flex flex-wrap items-center gap-2">
           {PEN_COLORS.map(c => (
             <button

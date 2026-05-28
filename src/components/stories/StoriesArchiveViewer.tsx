@@ -115,7 +115,7 @@ export function StoriesArchiveViewer({
 
   return (
     <div className="fixed inset-0 z-[240] flex flex-col bg-black touch-none" dir="rtl">
-      <div className="absolute inset-x-0 top-0 z-50 flex gap-1 px-2 pt-[max(0.5rem,env(safe-area-inset-top,0px))]">
+      <div className="absolute inset-x-0 top-0 z-50 flex gap-1 px-2 pt-[max(0.5rem,var(--sat))]">
         {stories.map((s, i) => (
           <div key={s.id} className="h-0.5 flex-1 overflow-hidden rounded-full bg-white/25">
             <div
@@ -172,7 +172,7 @@ export function StoriesArchiveViewer({
         />
       </div>
 
-      <div className="z-50 flex shrink-0 items-center justify-around border-t border-white/10 bg-black/90 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom,0px))]">
+      <div className="z-50 flex shrink-0 items-center justify-around border-t border-white/10 bg-black/90 px-4 py-3 pb-[max(0.75rem,var(--sab))]">
         <button
           type="button"
           className="flex flex-col items-center gap-1 text-white/90 active:opacity-70"

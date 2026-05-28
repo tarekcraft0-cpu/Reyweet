@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils";
 import { resolveMediaUrl } from "@/lib/mediaUrl";
 import { isVideoMediaRef } from "@/lib/postMedia";
+import { DEFAULT_AVATAR_DATA_URI } from "@/lib/defaultAvatar";
 import { useEffect, useMemo, useState } from "react";
 
 interface Props {
@@ -27,10 +28,17 @@ function isRenderableAvatarImageUrl(src: string): boolean {
 }
 
 export function Avatar({ name = "?", src, size = 40, className, ring, ringSeen }: Props) {
-  const initials = name.slice(0, 2).toUpperCase();
   const [imgFailed, setImgFailed] = useState(false);
   const [videoFailed, setVideoFailed] = useState(false);
-  const resolvedSrc = useMemo(() => resolveMediaUrl(src), [src]);
+  const resolvedSrc = useMemo(() => {
+    const resolved = resolveMediaUrl(src);
+    if (resolved) return resolved;
+    const raw = src?.trim() || "";
+    if (raw.startsWith("/media/") && typeof window !== "undefined") {
+      return `${window.location.origin.replace(/\/$/, "")}${raw}`;
+    }
+    return resolved;
+  }, [src]);
   const isVideoAvatar = !!(resolvedSrc && isVideoMediaRef(resolvedSrc));
 
   useEffect(() => {
@@ -45,7 +53,13 @@ export function Avatar({ name = "?", src, size = 40, className, ring, ringSeen }
     isRenderableAvatarImageUrl(resolvedSrc) &&
     !imgFailed
   );
-  const showEmoji = !!(resolvedSrc && !showImg && !showVideo && resolvedSrc.length <= 4);
+  const showEmoji = !!(
+    resolvedSrc &&
+    !showImg &&
+    !showVideo &&
+    resolvedSrc.length <= 4 &&
+    /[^\p{L}\p{N}]/u.test(resolvedSrc)
+  );
 
   const inner = (
     <div
@@ -92,18 +106,27 @@ export function Avatar({ name = "?", src, size = 40, className, ring, ringSeen }
       ) : showEmoji ? (
         <span style={{ fontSize: size * 0.55 }}>{resolvedSrc}</span>
       ) : (
-        initials
+        <span className="relative block h-full w-full min-h-0 min-w-0 overflow-hidden rounded-full">
+          <img
+            src={DEFAULT_AVATAR_DATA_URI}
+            alt={name}
+            className="absolute inset-0 h-full w-full object-cover"
+            draggable={false}
+            decoding="async"
+            loading="eager"
+          />
+        </span>
       )}
     </div>
   );
   if (ring) {
-    return (
-      <div
-        className={
-          "inline-block " + (ringSeen ? "story-ring-seen" : "story-ring-brand")
-        }
-      >
+    return ringSeen ? (
+      <div className="story-ring-seen inline-block">
         <div className="bg-background rounded-full p-[2px]">{inner}</div>
+      </div>
+    ) : (
+      <div className="story-ring-live-outer">
+        <div className="story-ring-live-inner">{inner}</div>
       </div>
     );
   }

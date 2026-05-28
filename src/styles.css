@@ -174,17 +174,32 @@
   height: 0;
 }
 
-/** ستوري غير مشاهَد — لون هوية التطبيق */
-.story-ring-brand {
-  background: conic-gradient(
-    from 210deg,
-    hsl(var(--primary)),
-    #7c3aed,
-    #e1306c,
-    hsl(var(--primary))
-  );
-  padding: 2.5px;
+/** ستوري غير مشاهَد — حلقة Instagram متحركة */
+.story-ring-live-outer {
+  display: inline-block;
   border-radius: 9999px;
+  padding: 2.5px;
+  background: conic-gradient(
+    from 0deg,
+    #f09433,
+    #e6683c,
+    #dc2743,
+    #cc2366,
+    #bc1888,
+    #8a3ab9,
+    #f09433
+  );
+  animation: story-ring-spin 2.8s linear infinite;
+}
+.story-ring-live-inner {
+  border-radius: 9999px;
+  background: var(--background, #fff);
+  padding: 2px;
+}
+@keyframes story-ring-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 /** ستوري مشاهَد بالكامل — حلقة رمادية باهتة */
 .story-ring-seen {
@@ -260,6 +275,19 @@
 .settings-screen-root::-webkit-scrollbar {
   display: none;
   width: 0;
+}
+
+/** إعدادات المجموعة — نفس ثيم التطبيق (متغيرات محلية من appThemeScopeStyle) */
+.group-details-screen-root {
+  background-color: var(--background);
+  color: var(--foreground);
+  min-height: 100%;
+}
+.group-details-screen-root[data-app-theme="light"] {
+  color-scheme: light;
+}
+.group-details-screen-root[data-app-theme="dark"] {
+  color-scheme: dark;
 }
 
 @keyframes story-seg {

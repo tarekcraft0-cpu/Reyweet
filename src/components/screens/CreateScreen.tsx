@@ -6,6 +6,7 @@ import { getUserEntitlements } from "@/lib/verificationEntitlements";
 import type { StorySticker } from "@/lib/types";
 import { StoryCreationStickers } from "../story/StoryCreationStickers";
 import { isRenderableMediaUrl, resolveMediaUrl } from "@/lib/mediaUrl";
+import { apiBackendEnabled, apiUploadMedia, getApiToken } from "@/lib/apiBackend";
 import {
   resolvePostMediaForSave,
   resolveStoryMediaForSave,
@@ -22,7 +23,7 @@ import {
 } from "@/lib/reelMedia";
 import { REEL_ACCEPT_VIDEO, REEL_MAX_UPLOAD_MB } from "@/lib/reelsSpec";
 import { MentionComposerField } from "../MentionComposerField";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Clapperboard, Mic, Paperclip, PenSquare, Plus, Sparkles } from "lucide-react";
 
 export type CreateScreenInitial = {
   type?: "tweet" | "reel" | "story";
@@ -52,9 +53,21 @@ export function CreateScreen({
   const ent = getUserEntitlements(me);
   const postCharLimit = ent.postCharacterLimit;
   const storyFileRef = useRef<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const audioInputRef = useRef<HTMLInputElement>(null);
   const previewObjectUrlRef = useRef<string | null>(null);
   const reelPreviewVideoRef = useRef<HTMLVideoElement | null>(null);
   const [reelCover, setReelCover] = useState("");
+  const reelMediaReady =
+    type === "reel" &&
+    hasCreateAttachmentMedia(media, !!storyFileRef.current) &&
+    (storyFileRef.current?.type.startsWith("video/") || isVideoMediaRef(media));
+  const canPublish =
+    !publishing &&
+    (type === "tweet"
+      ? text.trim().length > 0 || hasCreateAttachmentMedia(media, !!storyFileRef.current)
+      : hasCreateAttachmentMedia(media, !!storyFileRef.current) &&
+        (storyFileRef.current?.type.startsWith("video/") || isVideoMediaRef(media)));
 
   const revokePreviewUrl = () => {
     if (previewObjectUrlRef.current) {
@@ -79,6 +92,10 @@ export function CreateScreen({
 
   useEffect(() => {
     if (type !== "story") setStoryStickers([]);
+  }, [type]);
+
+  useEffect(() => {
+    if (type === "reel") setText("");
   }, [type]);
 
   useEffect(() => () => revokePreviewUrl(), []);
@@ -120,11 +137,34 @@ export function CreateScreen({
     r.readAsDataURL(f);
   };
 
+  const onAudioFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    if (!f.type.startsWith("audio/")) {
+      alert("اختر ملف صوتي صالح");
+      return;
+    }
+    if (type !== "tweet") {
+      setType("tweet");
+      setReelCover("");
+    }
+    storyFileRef.current = f;
+    revokePreviewUrl();
+    const r = new FileReader();
+    r.onload = () => setMedia(String(r.result));
+    r.readAsDataURL(f);
+  };
+
   const submit = async () => {
     if (publishing) return;
     const pickedFile = storyFileRef.current;
     const isVideo =
       pickedFile?.type.startsWith("video/") || media.startsWith("data:video") || isVideoMediaRef(media);
+    const isAudio =
+      pickedFile?.type.startsWith("audio/") ||
+      media.startsWith("data:audio") ||
+      /\.(mp3|wav|ogg|m4a|aac)(\?|#|$)/i.test(media) ||
+      media.includes("/media/videos/");
     if (type === "story") {
       setPublishing(true);
       const uploaded = pickedFile
@@ -169,7 +209,8 @@ export function CreateScreen({
 
     const needsUpload = media.startsWith("data:") || media.startsWith("blob:");
     let videoUrl = isVideo && type !== "reel" ? media : "";
-    let imageUrl = !isVideo && type !== "reel" ? media || "" : "";
+    let imageUrl = !isVideo && !isAudio && type !== "reel" ? media || "" : "";
+    let audioUrl = isAudio && type !== "reel" ? media : "";
 
     if (type === "reel") {
       setPublishing(true);
@@ -244,6 +285,23 @@ export function CreateScreen({
         video: resolvedVideo,
         image: coverUrl && !isVideoMediaRef(coverUrl) ? coverUrl : "🎬",
       });
+    } else if (type === "tweet" && pickedFile?.type.startsWith("audio/")) {
+      setPublishing(true);
+      const token = getApiToken();
+      if (!token || !apiBackendEnabled()) {
+        setPublishing(false);
+        alert("رفع المقطع الصوتي يتطلب اتصال الخادم");
+        return;
+      }
+      const uploaded = await apiUploadMedia(token, pickedFile);
+      setPublishing(false);
+      if (!uploaded.ok) {
+        alert(uploaded.error);
+        return;
+      }
+      audioUrl = resolveMediaUrl(uploaded.url);
+      videoUrl = "";
+      imageUrl = "";
     } else if (needsUpload && media?.startsWith("data:")) {
       setPublishing(true);
       const uploaded = await resolvePostMediaForSave(media);
@@ -255,6 +313,7 @@ export function CreateScreen({
       const payload = storyPayloadFromUrl(uploaded.url);
       videoUrl = payload.video || (isVideo ? uploaded.url : "");
       imageUrl = payload.image || (!isVideo ? uploaded.url : imageUrl);
+      if (isAudio && !videoUrl) audioUrl = uploaded.url;
     }
 
     if (type === "reel") {
@@ -262,9 +321,11 @@ export function CreateScreen({
       return;
     } else if (type === "tweet") {
       createPost(
-        videoUrl
-          ? { type: "tweet", text, video: videoUrl }
-          : { type: "tweet", text, image: imageUrl || undefined },
+        audioUrl
+          ? { type: "tweet", text, audio: audioUrl }
+          : videoUrl
+            ? { type: "tweet", text, video: videoUrl }
+            : { type: "tweet", text, image: imageUrl || undefined },
       );
     }
     onBack();
@@ -273,65 +334,164 @@ export function CreateScreen({
   const mutuals = me.following.filter(id => isMutual(state, me.id, id));
 
   return (
-    <div className="p-4 space-y-4 pb-8">
-      <div className="flex items-center justify-between">
-        <SlideDismissBackButton onDismiss={onBack} disabled={publishing}>
-          <ArrowRight />
-        </SlideDismissBackButton>
-        <h2 className="font-bold">{t("create")}</h2>
-        <button
-          type="button"
-          onClick={() => void submit()}
-          disabled={publishing}
-          className="text-primary font-semibold disabled:opacity-50"
-        >
-          {publishing ? "…" : t("publish")}
-        </button>
-      </div>
+    <div className="min-h-dvh bg-black text-white">
+      <div className="mx-auto max-w-md space-y-4 px-4 pb-[max(2rem,var(--sab))] pt-[max(1rem,var(--sat))]">
+        <div className="flex items-center justify-between">
+          <SlideDismissBackButton onDismiss={onBack} disabled={publishing}>
+            <ArrowRight />
+          </SlideDismissBackButton>
+          <div className="text-center">
+            <h2 className="text-3xl font-bold">{t("create")}</h2>
+            <p className="text-sm text-white/70">حوّل فكرتك إلى محتوى مميز</p>
+          </div>
+          <div className="h-10 w-10" aria-hidden />
+        </div>
 
-      <div className="grid grid-cols-3 gap-2">
-        {(["tweet", "reel", "story"] as const).map(tp => (
-          <button
-            key={tp}
-            type="button"
-            onClick={() => setType(tp)}
-            className={
-              "py-2 rounded-2xl text-sm font-semibold " +
-              (type === tp ? "bg-primary text-primary-foreground" : "bg-secondary")
-            }
-          >
-            {tp === "tweet" ? t("tweet") : tp === "reel" ? t("reels") : t("story")}
-          </button>
-        ))}
-      </div>
-
-      {type !== "story" && (
-        <>
+        <div className="relative rounded-[22px] border border-white/35 bg-black/50 p-4 shadow-[0_0_0_1px_rgba(255,255,255,0.12),0_0_20px_rgba(255,255,255,0.08)]">
           <MentionComposerField
             value={text}
             onChange={v => setText(v.slice(0, postCharLimit))}
-            rows={5}
-            placeholder={type === "tweet" ? "بم تفكر؟" : "اكتب وصفاً للريلز (اختياري)..."}
-            wrapperClassName="rounded-2xl bg-input"
-            className="w-full rounded-2xl px-4 py-3 text-[15px] leading-relaxed outline-none resize-none"
-            overlayClassName="px-4 py-3 text-[15px] leading-relaxed"
+            rows={6}
+            placeholder={
+              type === "tweet"
+                ? "بم تفكر؟"
+                : reelMediaReady
+                  ? "اكتب وصف الريلز..."
+                  : "أضف مقطع ريلز أولاً ثم اكتب"
+            }
+            wrapperClassName="rounded-2xl"
+            className={
+              "w-full resize-none bg-transparent px-1 py-1 text-[21px] leading-8 outline-none " +
+              (type === "reel" && !reelMediaReady ? "pointer-events-none text-white/45" : "text-white")
+            }
+            overlayClassName={
+              "px-1 py-1 text-[21px] leading-8 " +
+              (type === "reel" && !reelMediaReady ? "text-white/45" : "text-white")
+            }
           />
-          <p className="mt-1 text-end text-xs text-muted-foreground">
-            {text.length}/{postCharLimit}
-          </p>
-        </>
-      )}
+          <div className="mt-2 flex items-center justify-between text-sm">
+            <span className="text-white/75">{text.length}/{postCharLimit}</span>
+            <Sparkles size={20} className="create-sparkle-float text-white/80" />
+          </div>
+        </div>
 
-      <div>
-        <label className="text-sm text-muted-foreground">
-          {type === "reel" ? "فيديو أو صورة (مطلوب للريلز)" : t("attach")}
-        </label>
-        <input
-          type="file"
-          accept={type === "reel" ? REEL_ACCEPT_VIDEO : "image/*,video/*"}
-          onChange={onFile}
-          className="mt-1 block w-full text-sm"
-        />
+        <div className="flex justify-center">
+          <button
+            type="button"
+            onClick={() => void submit()}
+            disabled={!canPublish}
+            className="inline-flex items-center gap-2 rounded-full border border-white/40 bg-black/70 px-8 py-3 text-2xl font-bold text-white shadow-[0_0_20px_rgba(255,255,255,0.12)] disabled:opacity-40"
+          >
+            {publishing ? (
+              <span className="inline-flex items-center gap-1" aria-label="جاري الرفع">
+                <span className="h-2 w-2 rounded-full bg-white/90 animate-pulse" />
+                <span
+                  className="h-2 w-2 rounded-full bg-white/90 animate-pulse"
+                  style={{ animationDelay: "0.18s" }}
+                />
+                <span
+                  className="h-2 w-2 rounded-full bg-white/90 animate-pulse"
+                  style={{ animationDelay: "0.36s" }}
+                />
+              </span>
+            ) : (
+              <>
+                <Plus size={22} />
+                انشر
+              </>
+            )}
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => setType("reel")}
+            className={
+              "rounded-3xl border p-4 text-start " +
+              (type === "reel"
+                ? "border-white/45 bg-white/[0.09]"
+                : "border-white/15 bg-white/[0.03]")
+            }
+          >
+            <Clapperboard className="mb-2 text-white" />
+            <p className="text-3xl font-bold">ريلز</p>
+            <p className="text-sm text-white/70">فيديو قصير مؤثر</p>
+          </button>
+          <button
+            type="button"
+            onClick={() => setType("tweet")}
+            className={
+              "rounded-3xl border p-4 text-start " +
+              (type === "tweet"
+                ? "border-white/45 bg-white/[0.09]"
+                : "border-white/15 bg-white/[0.03]")
+            }
+          >
+            <PenSquare className="mb-2 text-white" />
+            <p className="text-3xl font-bold">تغريدة</p>
+            <p className="text-sm text-white/70">نص قصير ومباشر</p>
+          </button>
+        </div>
+
+        <div className="rounded-3xl border border-white/15 bg-white/[0.03] p-4">
+          <div className="flex w-full items-center justify-between gap-3">
+            {type !== "reel" && (
+              <button
+                type="button"
+                onClick={() => audioInputRef.current?.click()}
+                className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-white/25 bg-white/[0.08] px-3 py-2 text-sm font-semibold text-white"
+              >
+                <Mic size={16} />
+                فويس
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="flex min-w-0 flex-1 items-center gap-3 text-start"
+            >
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-white">
+                <Paperclip />
+              </span>
+              <div>
+                <p className="text-3xl font-bold">إرفاق</p>
+                <p className="text-sm text-white/70">
+                  {type === "reel" ? "أضف مقطع فيديو للريلز" : "أضف صورة أو فيديو"}
+                </p>
+              </div>
+            </button>
+          </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={type === "reel" ? REEL_ACCEPT_VIDEO : "image/*,video/*"}
+            onChange={onFile}
+            className="sr-only"
+          />
+          <input
+            ref={audioInputRef}
+            type="file"
+            accept="audio/*"
+            onChange={onAudioFile}
+            className="sr-only"
+          />
+        </div>
+
+        <div className="rounded-3xl border border-white/15 bg-white/[0.03] p-4">
+          <div className="mb-2 flex items-center gap-2">
+            <Sparkles size={18} className="text-white/80" />
+            <p className="text-3xl font-bold">أفكار ملهمة</p>
+          </div>
+          {["شارك نصيحة سريعة مع متابعينك", "اكتب عن لحظة ألهمتك اليوم", "ما رأيك في موضوع اليوم؟"].map((idea, i) => (
+            <button key={idea} type="button" className={"flex w-full items-center gap-3 border-white/10 py-3 text-start " + (i < 2 ? "border-b" : "")}>
+              <span className="text-2xl text-white">+</span>
+              <span className="text-lg text-white/85">{idea}</span>
+            </button>
+          ))}
+        </div>
+
+        <div>
         {type === "reel" && (
           <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
             عمودي 9:16 (1080×1920) · MP4 H.264 · حتى {REEL_MAX_UPLOAD_MB} ميجا — يُعاد ترميز الفيديو على الخادم
@@ -361,6 +521,8 @@ export function CreateScreen({
           <div className="mt-2 aspect-[9/16] max-h-[min(52vh,420px)] mx-auto bg-muted rounded-2xl overflow-hidden flex items-center justify-center">
             {storyFileRef.current?.type.startsWith("video/") || isVideoMediaRef(media) ? (
               <video src={media} controls className="w-full h-full object-cover" playsInline />
+            ) : storyFileRef.current?.type.startsWith("audio/") || media.startsWith("data:audio") ? (
+              <audio src={media} controls className="w-full" />
             ) : media.startsWith("data:image") || media.startsWith("blob:") || isRenderableMediaUrl(media) ? (
               <img src={media} className="w-full h-full object-cover" alt="" />
             ) : (
@@ -494,6 +656,7 @@ export function CreateScreen({
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }

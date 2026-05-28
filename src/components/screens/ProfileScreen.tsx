@@ -22,7 +22,7 @@ import type { HighlightEntry, StoryItem, Post, ProfileGridTab, ProfileReturnCont
 import { ProfilePostsFeedOverlay } from "../profile/ProfilePostsFeedOverlay";
 import { ProfileFeedItem, sortProfilePostsNewestFirst } from "../profile/ProfileFeedItem";
 import { Avatar } from "../Avatar";
-import { LayoutList, Repeat2, ArrowRight, MoreVertical, Lock, Plus, Link as LinkIcon, Megaphone, ChevronLeft, ChevronRight, MessageCircle, MessageSquare, ChevronDown, Menu, Footprints } from "lucide-react";
+import { LayoutList, Repeat2, ArrowRight, MoreVertical, Lock, Plus, Link as LinkIcon, Megaphone, ChevronLeft, ChevronRight, MessageCircle, MessageSquare, ChevronDown, Menu, Footprints, Flag } from "lucide-react";
 import { InstagramReelsIcon } from "../icons/InstagramReelsIcon";
 import { isDisplayTweet, isReelFeedPost } from "@/lib/postMedia";
 import { resolveMediaUrl } from "@/lib/mediaUrl";
@@ -33,6 +33,10 @@ import { RSocialAvatar } from "../rsocial/RSocialAvatar";
 import { VerifiedMarkForUser } from "../VerifiedBadge";
 import { FounderOfficialBanner } from "../FounderOfficialBanner";
 import { AppOfficialBanner } from "../AppOfficialBanner";
+import { SafetyActionSheet } from "../moderation/SafetyActionSheet";
+import { ReportFlowSheet } from "../moderation/ReportFlowSheet";
+import { BannedProfileView } from "../moderation/BannedProfileView";
+import { apiFetchBannedUserPreview } from "@/lib/moderationApi";
 import { withFounderProfileFields } from "@/lib/founderAccount";
 import { userDisplayName } from "@/lib/userDisplay";
 import { ProfileShareModal } from "../ProfileShareModal";
@@ -150,6 +154,23 @@ export function ProfileScreen({
   const [profileFeed, setProfileFeed] = useState<null | { orderedIds: string[]; initialIndex: number; gridTab: ProfileGridTab; scrollToComments?: boolean }>(null);
   const [showFollowers, setShowFollowers] = useState<"followers" | "following" | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [safetyOpen, setSafetyOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [profileBanned, setProfileBanned] = useState(false);
+
+  useEffect(() => {
+    if (!userId || userId === currentUser?.id || !apiBackendEnabled()) {
+      setProfileBanned(false);
+      return;
+    }
+    let cancelled = false;
+    void apiFetchBannedUserPreview(userId).then(r => {
+      if (!cancelled) setProfileBanned(r.ok && r.data.banned === true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, currentUser?.id]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -321,6 +342,20 @@ export function ProfileScreen({
   }
 
   const isMe = currentUser?.id === u.id;
+  if (!isMe && profileBanned) {
+    return (
+      <div className="flex min-h-full flex-col bg-background">
+        {onBack && (
+          <div className="px-4 pt-3">
+            <SlideDismissBackButton onDismiss={onBack}>
+              <ArrowRight />
+            </SlideDismissBackButton>
+          </div>
+        )}
+        <BannedProfileView username={u.username} />
+      </div>
+    );
+  }
   const canView = canViewProfile(state, currentUser?.id || null, u.id);
   const canSeePrivateContent = canViewPrivatePosts(state, currentUser?.id || null, u.id);
   const isFollowing = currentUser?.following.includes(u.id);
@@ -342,6 +377,71 @@ export function ProfileScreen({
     !!onOpenProfile;
 
   const shareProfile = () => setShowShareModal(true);
+
+  const profileOverflowMenu = (
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          shareProfile();
+          setMenuOpen(false);
+        }}
+        className="w-full text-start px-3 py-2.5 hover:bg-secondary text-sm"
+      >
+        {t("share")}
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          if (isGuest) {
+            notifyGuestActionBlocked();
+            setMenuOpen(false);
+            return;
+          }
+          toggleBlock(u.id);
+          setMenuOpen(false);
+          alert(isBlocked ? t("unblock") : t("blocked"));
+        }}
+        className="w-full text-start px-3 py-2.5 hover:bg-secondary text-destructive text-sm border-t border-border"
+      >
+        {isBlocked ? t("unblock") : t("block")} @{u.username}
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          if (isGuest) {
+            notifyGuestActionBlocked();
+            setMenuOpen(false);
+            return;
+          }
+          setMenuOpen(false);
+          setReportOpen(true);
+        }}
+        className="flex w-full items-center gap-2 text-start px-3 py-2.5 hover:bg-secondary text-sm border-t border-border"
+      >
+        <Flag size={16} className="shrink-0 text-destructive" aria-hidden />
+        إبلاغ
+      </button>
+      {u.isPrivate && (
+        <button
+          type="button"
+          className="flex w-full items-center gap-2 text-start px-3 py-2.5 hover:bg-secondary text-sm border-t border-border"
+          onClick={() => {
+            if (isGuest) {
+              notifyGuestActionBlocked();
+              setMenuOpen(false);
+              return;
+            }
+            onOpenChat?.(u.id);
+            setMenuOpen(false);
+          }}
+        >
+          <MessageCircle size={16} className="shrink-0 opacity-80" aria-hidden />
+          {t("message")}
+        </button>
+      )}
+    </>
+  );
 
   const followLabel = isFollowing
     ? t("following")
@@ -446,7 +546,7 @@ export function ProfileScreen({
           </div>
         )}
         {!isMe && (
-          <div className="relative z-[10002] shrink-0">
+          <div className="relative z-[10002] shrink-0 overflow-visible">
             <button
               type="button"
               data-no-dismiss-drag
@@ -465,31 +565,10 @@ export function ProfileScreen({
             {menuOpen && (
               <div
                 data-profile-menu
-                className="absolute end-0 mt-1 bg-card border border-border rounded-2xl shadow-lg z-[60] w-44 overflow-hidden"
+                className="absolute end-0 top-full z-[10050] mt-2 w-48 overflow-hidden rounded-2xl border border-border bg-card shadow-xl"
                 onPointerDownCapture={e => e.stopPropagation()}
               >
-                <button onClick={() => { if (isGuest) { notifyGuestActionBlocked(); setMenuOpen(false); return; } toggleBlock(u.id); setMenuOpen(false); alert(isBlocked ? t("unblock") : t("blocked")); }} className="w-full text-start px-3 py-2 hover:bg-secondary text-destructive text-sm">
-                  {isBlocked ? t("unblock") : t("block")} @{u.username}
-                </button>
-                <button onClick={() => { shareProfile(); setMenuOpen(false); }} className="w-full text-start px-3 py-2 hover:bg-secondary text-sm">{t("share")}</button>
-                {u.isPrivate && (
-                  <button
-                    type="button"
-                    className="w-full flex items-center gap-2 text-start px-3 py-2 hover:bg-secondary text-sm border-t border-border"
-                    onClick={() => {
-                      if (isGuest) {
-                        notifyGuestActionBlocked();
-                        setMenuOpen(false);
-                        return;
-                      }
-                      onOpenChat?.(u.id);
-                      setMenuOpen(false);
-                    }}
-                  >
-                    <MessageCircle size={16} className="shrink-0 opacity-80" aria-hidden />
-                    {t("message")}
-                  </button>
-                )}
+                {profileOverflowMenu}
               </div>
             )}
           </div>
@@ -507,7 +586,7 @@ export function ProfileScreen({
       <div
         dir="rtl"
         data-no-dismiss-drag
-        className="relative z-[10001] shrink-0 px-4 pt-3 pb-2 flex items-center justify-between gap-2"
+        className="relative z-[10001] shrink-0 overflow-visible px-4 pt-3 pb-2 flex items-center justify-between gap-2"
         onPointerDownCapture={e => {
           const t = e.target;
           if (t instanceof HTMLElement && t.closest("button, a, [data-profile-menu-btn], [data-profile-back-btn]")) return;
@@ -539,7 +618,7 @@ export function ProfileScreen({
             <VerifiedMarkForUser user={u} size={14} className="shrink-0" />
           </div>
         </div>
-        <div className="relative z-[10002] shrink-0">
+        <div className="relative z-[10002] shrink-0 overflow-visible">
           <button
             type="button"
             data-no-dismiss-drag
@@ -558,37 +637,16 @@ export function ProfileScreen({
           {menuOpen && (
             <div
               data-profile-menu
-              className="absolute end-0 mt-1 bg-card border border-border rounded-2xl shadow-lg z-[60] w-44 overflow-hidden"
+              className="absolute end-0 top-full z-[10050] mt-2 w-48 overflow-hidden rounded-2xl border border-border bg-card shadow-xl"
               onPointerDownCapture={e => e.stopPropagation()}
             >
-              <button onClick={() => { if (isGuest) { notifyGuestActionBlocked(); setMenuOpen(false); return; } toggleBlock(u.id); setMenuOpen(false); alert(isBlocked ? t("unblock") : t("blocked")); }} className="w-full text-start px-3 py-2 hover:bg-secondary text-destructive text-sm">
-                {isBlocked ? t("unblock") : t("block")} @{u.username}
-              </button>
-              <button onClick={() => { shareProfile(); setMenuOpen(false); }} className="w-full text-start px-3 py-2 hover:bg-secondary text-sm">{t("share")}</button>
-              {u.isPrivate && (
-                <button
-                  type="button"
-                  className="w-full flex items-center gap-2 text-start px-3 py-2 hover:bg-secondary text-sm border-t border-border"
-                  onClick={() => {
-                    if (isGuest) {
-                      notifyGuestActionBlocked();
-                      setMenuOpen(false);
-                      return;
-                    }
-                    onOpenChat?.(u.id);
-                    setMenuOpen(false);
-                  }}
-                >
-                  <MessageCircle size={16} className="shrink-0 opacity-80" aria-hidden />
-                  {t("message")}
-                </button>
-              )}
+              {profileOverflowMenu}
             </div>
           )}
         </div>
       </div>
         )}
-        <div className={"px-4 pt-2" + (isOtherUserProfile ? " pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))]" : "")}>
+        <div className={"px-4 pt-2" + (isOtherUserProfile ? " pb-[calc(5.5rem+var(--sab))]" : "")}>
         <div className="flex items-center gap-6">
           {profileHasStories ? (
             <button
@@ -996,6 +1054,34 @@ export function ProfileScreen({
       )}
 
       {showShareModal && <ProfileShareModal userId={u.id} onClose={() => setShowShareModal(false)} />}
+
+      <ReportFlowSheet
+        open={reportOpen && !isMe}
+        onClose={() => setReportOpen(false)}
+        reportedUserId={u.id}
+        reportedUsername={u.username}
+        targetType="user"
+      />
+
+      {safetyOpen && !isMe && (
+        <SafetyActionSheet
+          reportedUserId={u.id}
+          reportedUsername={u.username}
+          targetType="user"
+          isBlocked={isBlocked}
+          onClose={() => setSafetyOpen(false)}
+          onBlock={() => {
+            if (isGuest) {
+              notifyGuestActionBlocked();
+              return;
+            }
+            toggleBlock(u.id);
+            alert(isBlocked ? t("unblock") : t("blocked"));
+          }}
+          onRestrict={() => alert("تم تقييد الحساب محلياً")}
+          onMute={() => alert("تم كتم إشعارات هذا الحساب")}
+        />
+      )}
 
       {profileFeed && onOpenProfile && onOpenExistingChat && (
         <ProfilePostsFeedOverlay

@@ -15,20 +15,25 @@ import {
   APP_COLUMN_MAX_PX,
   SLIDE_DISMISS_MS,
   SLIDE_DISMISS_EASE,
-  chatStackOpenFromLeftTransforms,
   isDocumentRtl,
 } from "@/hooks/useSlideDismissBack";
-import { chatStackDismissTransforms, isChatDismissSwipeDelta } from "@/lib/edgeSwipeDismiss";
+import { isChatDismissSwipeDelta } from "@/lib/edgeSwipeDismiss";
+import {
+  applyCloseStackTransforms,
+  applyOpenStackTransforms,
+  chatStackOpenReleaseTarget,
+  CHAT_STACK_OPEN_FRACTION,
+  CHAT_STACK_PROGRESS_VAR,
+  clearChatStackCssProgress,
+  publishChatStackCssProgress,
+  syncStackNavHideProgress,
+} from "@/lib/chatStackGestureEngine";
 import {
   DEFAULT_LAYOUT_WIDTH_PX,
   readSafeStackCapPx,
   readSafeViewportWidth,
 } from "@/lib/safeLayoutDimensions";
 import { ChatStackRoomGestureShell } from "../chat/ChatStackRoomGestureShell";
-import {
-  chatComposerBottomPadding,
-  useVisualViewportLayout,
-} from "@/hooks/useVisualViewportLayout";
 import { SlideDismissBackButton, SlideDismissContext, SlideDismissShell } from "../SlideDismissShell";
 import { QURAN_CHANNEL_ID, isProfileNoteActive, useApp, userById, visibleChatMessages } from "@/lib/store";
 import { notifyGuestActionBlocked } from "@/lib/guestBlocked";
@@ -38,7 +43,9 @@ import { useT } from "@/lib/i18n";
 import { Avatar } from "../Avatar";
 import { ChatDmIntroCard } from "../chat/ChatDmIntroCard";
 import { ChatStickerPicker } from "../chat/ChatStickerPicker";
-import { ChatCameraComposeModal, ViewOnceMediaOverlay, type CameraComposeDraft } from "../chat/ChatCameraComposeModal";
+import { ViewOnceMediaOverlay, type CameraComposeDraft } from "../chat/ChatCameraComposeModal";
+import { CameraCaptureShareScreen } from "../camera/CameraCaptureShareScreen";
+import { InstagramCamera } from "../camera/InstagramCamera";
 import { ChatDrawComposeModal } from "../chat/ChatDrawComposeModal";
 import { ChatDrawingCanvas } from "../chat/ChatDrawingCanvas";
 import { parseDrawingPayload } from "../chat/drawingPayload";
@@ -57,11 +64,20 @@ import { chatMergeKey, dmChatId, findChatByOpenId, openChatIdFor } from "@/lib/d
 import { ChatInlineReplyQuote } from "../chat/ChatInlineReplyQuote";
 import { ChatComposerReplyBar } from "../chat/ChatComposerReplyBar";
 import { GroupDetailsScreen } from "../chat/GroupDetailsScreen";
+import { ChatThemePickerSheet } from "../chat/ChatThemePickerSheet";
+import {
+  loadChatWallpaperForChat,
+  saveChatWallpaperForChat,
+  chatWallpaperAssetUrl,
+  chatWallpaperLabel,
+  getChatWallpaperTheme,
+  type ChatWallpaperId,
+} from "@/lib/chatWallpaperThemes";
 import { EXTENDED_REACTION_EMOJIS } from "@/lib/reactionEmojiGrid";
 import { isStickerImageContent, isStickerVideoContent } from "@/lib/stickerUtils";
 import { renderMentionHashtagNodes, createMentionRenderer } from "@/lib/renderMentionHashtagText";
 import { MentionComposerField } from "../MentionComposerField";
-import { Mic, Image as ImageIcon, Sticker, Phone, Video, MicOff, MonitorUp, X, Plus, ArrowRight, Settings as SettingsIcon, Check, Camera, Search, Square, Megaphone, Users, LogOut, AtSign, MoreVertical, ChevronLeft, Reply, Forward, Copy, Trash2, Flag, MoreHorizontal, ChevronRight, Pin, Play, Pause, Star, Bell, BellOff, Mail, Send, PenLine, SquarePen, MessageCirclePlus, Smile } from "lucide-react";
+import { Mic, Image as ImageIcon, Sticker, Phone, Video, MicOff, MonitorUp, X, Plus, ArrowRight, Settings as SettingsIcon, Check, Camera, Search, Square, Megaphone, Users, LogOut, AtSign, MoreVertical, ChevronLeft, Reply, Forward, Copy, Trash2, Flag, MoreHorizontal, ChevronRight, Pin, Play, Pause, Star, Bell, BellOff, Mail, Send, PenLine, SquarePen, MessageCirclePlus, Smile, Lock, Palette } from "lucide-react";
 import { PoolGame } from "../games/PoolGame";
 import {
   buildChatTimelineRows,
@@ -103,13 +119,11 @@ const APP_TOP_BAR_BELOW_SAFE_AREA = "3.5rem";
 export const CHAT_DISMISS_PULL_CSS_VAR = "--retweet-chat-dismiss-pull";
 /** ارتفاع شريط الرأس — يُستثنى من حافة السحب اليمنى حتى لا تغطي زر الرجوع */
 const CHAT_ROOM_HEADER_EDGE_INSET_PX = 72;
-/** 0…1 — تقدّم فتح المحادثة (سحب يسار→يمين: القائمة لليمين + الغرفة من اليسار) */
-export const CHAT_STACK_PROGRESS_VAR = "--retweet-chat-stack-progress";
-const CHAT_STACK_OPEN_FRACTION = 0.5;
+export { CHAT_STACK_PROGRESS_VAR } from "@/lib/chatStackGestureEngine";
 /** دخول المحادثة بالنقر — انزلاق مكدس تفاعلي (نفس إحساس السحب) */
 const CHAT_TAP_OPEN_MS = 280;
 const CHAT_TAP_OPEN_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
-/** ارتفاع سطر شريط الكتابة (text-[15px] + leading-5) */
+/** ارتفاع سطر شريط الكتابة (text-[16px] + leading-5) */
 /** منع تحديد iOS على زر المعرض — الضغط المطوّل يفتح فيديو كرسالة صوتية */
 const galleryLongPressBtnProps = {
   [NATIVE_LONG_PRESS_ATTR]: "gallery",
@@ -256,6 +270,19 @@ function chatForwardLabel(state: AppState, c: Chat, meId: string): string {
   const oid = c.members.find(x => x !== meId);
   const u = oid ? userById(state, oid) : null;
   return u ? "@" + u.username : "?";
+}
+
+function parseGroupSystemEvent(raw: string): { actor: string; action: string; target: string } | null {
+  const text = (raw || "").trim();
+  let m = text.match(/^@?([A-Za-z0-9_.-]+)\s+أضاف\s+@?([A-Za-z0-9_.-]+)\s+إلى المجموعة$/);
+  if (m) return { actor: m[1], action: "added", target: m[2] };
+  m = text.match(/^@?([A-Za-z0-9_.-]+)\s+طرد\s+@?([A-Za-z0-9_.-]+)\s+من المجموعة$/);
+  if (m) return { actor: m[1], action: "removed", target: m[2] };
+  m = text.match(/^@?([A-Za-z0-9_.-]+)\s+added\s+@?([A-Za-z0-9_.-]+)(?:\s+to\s+the\s+group)?$/i);
+  if (m) return { actor: m[1], action: "added", target: m[2] };
+  m = text.match(/^@?([A-Za-z0-9_.-]+)\s+removed\s+@?([A-Za-z0-9_.-]+)(?:\s+from\s+the\s+group)?$/i);
+  if (m) return { actor: m[1], action: "removed", target: m[2] };
+  return null;
 }
 
 function ForwardChatSheet({
@@ -1023,8 +1050,8 @@ function ChatListRowWithPeek({
   me: { id: string };
   onOpenChat: (id: string) => void;
   onOpenProfile: (id: string) => void;
-  onStackDrag?: (chatId: string, px: number) => void;
-  onStackDragEnd?: (chatId: string, px: number) => void;
+  onStackDrag?: (chatId: string, px: number, vx?: number) => void;
+  onStackDragEnd?: (chatId: string, px: number, vx?: number) => void;
   /** بداية سحب فتح المحادثة — إخفاء الشريط السفلي فوراً */
   onStackChromeHide?: () => void;
   /** إلغاء سحب قصير — إعادة الشريط السفلي */
@@ -1036,6 +1063,7 @@ function ChatListRowWithPeek({
   const t = useT();
   const [peekPx, setPeekPx] = useState(0);
   const [cameraDraft, setCameraDraft] = useState<CameraComposeDraft | null>(null);
+  const [instagramCameraOpen, setInstagramCameraOpen] = useState(false);
   const peekRef = useRef(0);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
@@ -1078,6 +1106,8 @@ function ChatListRowWithPeek({
   const rowOpenDownRef = useRef<{ x0: number; y0: number; pointerId: number } | null>(null);
   const rowOpenArmedRef = useRef(false);
   const rowOpenLastPullRef = useRef(0);
+  const rowOpenVelocityRef = useRef(0);
+  const rowOpenMoveSampleRef = useRef({ x: 0, t: 0 });
   const rowPointerEndedRef = useRef(false);
   const rowShellRef = useRef<HTMLDivElement>(null);
   const chatRowOpenId = openChatIdFor(c, me.id);
@@ -1087,11 +1117,6 @@ function ChatListRowWithPeek({
     if (!el) return;
     el.classList.toggle("bg-secondary/60", pressed);
   };
-
-  useEffect(() => {
-    if (peekPx > 0) onStackChromeHide?.();
-    else onStackChromeShow?.();
-  }, [peekPx, onStackChromeHide, onStackChromeShow]);
 
   const scrollPeekToBottom = useCallback(() => {
     const el = peekScrollRef.current;
@@ -1291,7 +1316,7 @@ function ChatListRowWithPeek({
         } else if (cap > 0 && px > 0) {
           onStackDragEnd?.(chatRowOpenId, 0);
         } else if (cap > 0 && px < cap * PEEK_CAMERA_TAP_FRACTION && down && Date.now() - down.downAt < 520) {
-          cameraInputRef.current?.click();
+          setInstagramCameraOpen(true);
         }
         return;
       }
@@ -1299,7 +1324,7 @@ function ChatListRowWithPeek({
       const duration = Date.now() - down.downAt;
       const distSq = (e.clientX - down.x0) ** 2 + (e.clientY - down.y0) ** 2;
       if (duration < CAMERA_TAP_MAX_DURATION_MS && distSq < 200) {
-        cameraInputRef.current?.click();
+        setInstagramCameraOpen(true);
       }
     },
     [clearCameraLongPress, onRowOpenCommit, onStackDragEnd, chatRowOpenId],
@@ -1383,6 +1408,8 @@ function ChatListRowWithPeek({
       }
       rowOpenArmedRef.current = true;
       setRowPressedVisual(false);
+      rowOpenVelocityRef.current = 0;
+      rowOpenMoveSampleRef.current = { x: e.clientX, t: performance.now() };
       onStackChromeHide?.();
       try {
         (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -1405,7 +1432,13 @@ function ChatListRowWithPeek({
     const cap = capWidth();
     const px = Math.max(0, Math.min(cap, pull));
     rowOpenLastPullRef.current = px;
-    onStackDrag?.(openChatIdFor(c, me.id), px);
+    const now = performance.now();
+    const dt = now - rowOpenMoveSampleRef.current.t;
+    if (dt > 0 && dt < 100) {
+      rowOpenVelocityRef.current = (e.clientX - rowOpenMoveSampleRef.current.x) / dt;
+    }
+    rowOpenMoveSampleRef.current = { x: e.clientX, t: now };
+    onStackDrag?.(openChatIdFor(c, me.id), px, rowOpenVelocityRef.current);
   };
 
   const onRowOpenPointerEnd = (e: React.PointerEvent) => {
@@ -1432,12 +1465,13 @@ function ChatListRowWithPeek({
       const pull = rowOpenPullPx(e);
       const px = Math.max(0, Math.min(cap, pull));
       const mode = Math.hypot(dx, dy) < 14 ? "tap" : "swipe-end";
+      const vx = rowOpenVelocityRef.current;
       if (onRowOpenCommit) {
         onRowOpenCommit(chatRowOpenId, px, mode);
       } else if (mode === "tap") {
         openChatFromRowTap();
       } else {
-        onStackDragEnd?.(chatRowOpenId, px);
+        onStackDragEnd?.(chatRowOpenId, px, vx);
       }
       return;
     }
@@ -1457,10 +1491,11 @@ function ChatListRowWithPeek({
     rowOpenDownRef.current = null;
     rowOpenArmedRef.current = false;
     rowOpenLastPullRef.current = 0;
+    rowOpenVelocityRef.current = 0;
     setRowPressedVisual(false);
     if (wasArmed) {
       if (onRowOpenCommit) onRowOpenCommit(chatRowOpenId, 0, "swipe-end");
-      else onStackDragEnd?.(chatRowOpenId, 0);
+      else onStackDragEnd?.(chatRowOpenId, 0, 0);
     } else {
       onStackChromeShow?.();
     }
@@ -1767,7 +1802,7 @@ function ChatListRowWithPeek({
                     }
                     aria-hidden
                   >
-                    <div className="px-2 pb-[max(0.5rem,env(safe-area-inset-bottom,0px))] pt-1" dir="ltr">
+                    <div className="px-2 pb-[max(0.5rem,var(--sab))] pt-1" dir="ltr">
                       <div
                         className={
                           "relative flex min-h-[44px] h-12 flex-nowrap items-center gap-1 rounded-full border px-1.5 shadow-sm " +
@@ -2049,34 +2084,26 @@ function ChatListRowWithPeek({
         </>
       )}
 
+      <InstagramCamera
+        open={instagramCameraOpen}
+        language={state.language}
+        onClose={() => setInstagramCameraOpen(false)}
+        onCapture={cap => setCameraDraft({ kind: cap.kind, dataUrl: cap.dataUrl })}
+        onFallback={() => cameraInputRef.current?.click()}
+      />
       {cameraDraft && (
-        <ChatCameraComposeModal
+        <CameraCaptureShareScreen
           draft={cameraDraft}
-          senderName={meUser?.username}
-          senderAvatar={meUser?.avatar}
-          onClose={() => setCameraDraft(null)}
-          onSend={({ type, content, viewOnce }) => {
-            const payload: Parameters<typeof sendMessage>[1] = {
-              type,
-              content,
-              ...(viewOnce ? { viewOnce: true } : {}),
-            };
-            if (c.isGroup || c.isChannel) {
-              sendMessage(c.id, payload);
-              onOpenChat(openChatIdFor(c, me.id));
-            } else if (otherId) {
-              const ch = openOrCreateChat(otherId);
-              if (!ch) {
-                if (isGuest) notifyGuestActionBlocked();
-                else window.alert("تعذّر فتح المحادثة.");
-                setCameraDraft(null);
-                return;
-              }
-              sendMessage(ch.id, payload);
-              onOpenChat(openChatIdFor(ch, me.id));
-            }
-            setCameraDraft(null);
+          language={state.language}
+          mode="chat"
+          onSendToChat={payload => {
+            sendMessage(c.id, {
+              type: payload.type,
+              content: payload.content,
+              ...(payload.shareText ? { shareText: payload.shareText } : {}),
+            });
           }}
+          onClose={() => setCameraDraft(null)}
         />
       )}
     </>
@@ -2132,6 +2159,8 @@ export function ChatScreen({
   const stackTapTransitionRef = useRef(false);
   const [stackClosingId, setStackClosingId] = useState<string | null>(null);
   const stackChromeHiddenRef = useRef(false);
+  const groupSettingsStackProgressRef = useRef(1);
+  const openChatThemePickerRef = useRef<() => void>(() => {});
   /** سحب فتح المحادثة — يُخفي الشريط السفلي فوراً (حالة React وليس ref فقط) */
   const [stackChromeHidden, setStackChromeHidden] = useState(false);
   /** سحب خروج من الغرفة المفتوحة — يمنع useLayoutEffect من إعادة ضبط المكدس أثناء الإصبع */
@@ -2146,36 +2175,64 @@ export function ChatScreen({
   const stackNavGenerationRef = useRef(0);
   /** يمنع commit مزدوج من pointerend / tap / سحب لأي صف */
   const stackListGestureCommitRef = useRef(false);
-  const pendingStackDragRef = useRef<{ chatId: string; px: number } | null>(null);
+  const pendingStackDragRef = useRef<{ chatId: string; px: number; vx: number } | null>(null);
   const stackDragFrameRef = useRef(0);
+  const stackOpenVelocityRef = useRef(0);
   const beginCloseChatThreadRef = useRef<(closingKey: string) => void>(() => {});
   const [stackGestureLocked, setStackGestureLocked] = useState(false);
   /** سحب خروج نشط — يبقي إيماءة الإغلاق مفعّلة حتى لو انخفض stackProgress أثناء السحب */
   const [stackRoomDismissDragging, setStackRoomDismissDragging] = useState(false);
 
-  const applyStackLayerTransforms = useCallback((p: number, animate: boolean) => {
+  useEffect(() => {
     try {
-      let cap = stackCapRef.current;
-      if (!(cap > 0)) {
-        cap = readSafeStackCapPx(stackInboxRef.current, stackCapRef);
-        stackCapRef.current = cap;
-      }
-      const { inbox, room } = chatStackOpenFromLeftTransforms(p, cap);
-      const transition = animate
-        ? `transform ${stackTapTransitionRef.current ? CHAT_TAP_OPEN_MS : SLIDE_DISMISS_MS}ms ${stackTapTransitionRef.current ? CHAT_TAP_OPEN_EASE : SLIDE_DISMISS_EASE}`
-        : "none";
-      if (stackInboxRef.current) {
-        stackInboxRef.current.style.transform = inbox;
-        stackInboxRef.current.style.transition = transition;
-      }
-      if (stackRoomRef.current) {
-        stackRoomRef.current.style.transform = room;
-        stackRoomRef.current.style.transition = transition;
-      }
-    } catch (err) {
-      console.warn("[chat-stack-transform]", err);
+      window.dispatchEvent(
+        new CustomEvent("retweet-chat-create-sheet", {
+          detail: { open: !!showCreate },
+        }),
+      );
+    } catch {
+      /* ignore */
     }
-  }, []);
+    return () => {
+      try {
+        window.dispatchEvent(
+          new CustomEvent("retweet-chat-create-sheet", {
+            detail: { open: false },
+          }),
+        );
+      } catch {
+        /* ignore */
+      }
+    };
+  }, [showCreate]);
+
+  useEffect(() => {
+    if (!openChat) setShowGroupSettings(false);
+  }, [openChat]);
+
+  const stackLayers = useCallback(
+    (): { inboxEl: HTMLDivElement | null; roomEl: HTMLDivElement | null } => ({
+      inboxEl: stackInboxRef.current,
+      roomEl: stackRoomRef.current,
+    }),
+    [],
+  );
+
+  const applyStackLayerTransforms = useCallback(
+    (p: number, animate: boolean) => {
+      try {
+        let cap = stackCapRef.current;
+        if (!(cap > 0)) {
+          cap = readSafeStackCapPx(stackInboxRef.current, stackCapRef);
+          stackCapRef.current = cap;
+        }
+        applyOpenStackTransforms(p, cap, stackLayers(), animate, stackTapTransitionRef.current);
+      } catch (err) {
+        console.warn("[chat-stack-transform]", err);
+      }
+    },
+    [stackLayers],
+  );
 
   /** سحب خروج المحادثة: tx سالب = يمين→يسار — الغرفة تخرج يميناً */
   const applyRoomCloseDrag = useCallback((tx: number, animate: boolean) => {
@@ -2186,26 +2243,14 @@ export function ChatScreen({
         stackCapRef.current = cap;
       }
       const clampedTx = Math.max(-cap, Math.min(0, Number.isFinite(tx) ? tx : 0));
-      const { progress, inbox, room } = chatStackDismissTransforms(clampedTx, cap);
+      const progress = applyCloseStackTransforms(clampedTx, cap, stackLayers(), animate);
       stackProgressRef.current = progress;
       if (animate) setStackProgress(progress);
       stackRoomDriveRef.current = "close";
       stackRoomDismissRef.current = true;
-      if (typeof document !== "undefined") {
-        document.documentElement.style.setProperty(CHAT_STACK_PROGRESS_VAR, String(progress));
-      }
-      const transition = animate
-        ? `transform ${SLIDE_DISMISS_MS}ms ${SLIDE_DISMISS_EASE}`
-        : "none";
-      if (stackInboxRef.current) {
-        stackInboxRef.current.style.transform = inbox;
-        stackInboxRef.current.style.transition = transition;
-      }
-      if (stackRoomRef.current) {
-        stackRoomRef.current.style.transform = room;
-        stackRoomRef.current.style.transition = transition;
-      }
+      publishChatStackCssProgress(progress);
       if (stackRoomDismissRef.current) {
+        syncStackNavHideProgress(progress);
         onExitNavRevealProgress?.(progress);
       }
     } catch (err) {
@@ -2213,7 +2258,7 @@ export function ChatScreen({
       stackRoomDismissRef.current = false;
       stackRoomDriveRef.current = "idle";
     }
-  }, [onExitNavRevealProgress]);
+  }, [onExitNavRevealProgress, stackLayers]);
 
   const resetStackToInboxRest = useCallback(
     (opts?: { animate?: boolean }) => {
@@ -2222,25 +2267,34 @@ export function ChatScreen({
       setStackSpring(!!opts?.animate);
       stackRoomDriveRef.current = "idle";
       stackRoomDismissRef.current = false;
-      if (typeof document !== "undefined") {
-        document.documentElement.style.removeProperty(CHAT_STACK_PROGRESS_VAR);
-      }
+      clearChatStackCssProgress();
+      syncStackNavHideProgress(null);
+      onExitNavRevealProgress?.(null);
       applyStackLayerTransforms(0, !!opts?.animate);
     },
-    [applyStackLayerTransforms],
+    [applyStackLayerTransforms, onExitNavRevealProgress],
   );
 
   const publishStackProgressVisual = useCallback(
     (p: number, commitState = false, animate = false) => {
-      const clamped = Math.max(0, Math.min(1, p));
+      const clamped = publishChatStackCssProgress(p);
       stackProgressRef.current = clamped;
-      if (typeof document !== "undefined") {
-        document.documentElement.style.setProperty(CHAT_STACK_PROGRESS_VAR, String(clamped));
-      }
       applyStackLayerTransforms(clamped, animate);
+      const drivingNav =
+        stackOpenDragRef.current ||
+        !!stackDragChatId ||
+        stackRoomDismissRef.current ||
+        stackRoomDriveRef.current === "close";
+      if (drivingNav && clamped > 0.001 && clamped < 0.999) {
+        syncStackNavHideProgress(clamped);
+        onExitNavRevealProgress?.(clamped);
+      } else if (!openChat && clamped < 0.02) {
+        syncStackNavHideProgress(null);
+        onExitNavRevealProgress?.(null);
+      }
       if (commitState) setStackProgress(clamped);
     },
-    [applyStackLayerTransforms],
+    [applyStackLayerTransforms, stackDragChatId, openChat, onExitNavRevealProgress],
   );
 
   const requestStackRoomScrollBottom = useCallback(() => {
@@ -2329,11 +2383,12 @@ export function ChatScreen({
     onExitNavRevealProgress?.(null);
   }, [onExitNavRevealProgress]);
 
+  /** يفعّل سحب الشريط السفلي مع الإصبع — دون إخفاء عناصر القائمة */
   const hideStackChrome = useCallback(() => {
-    if (stackChromeHiddenRef.current) return;
-    stackChromeHiddenRef.current = true;
-    setStackChromeHidden(true);
-  }, []);
+    const p = Math.max(stackProgressRef.current, 0.02);
+    syncStackNavHideProgress(p);
+    onExitNavRevealProgress?.(p);
+  }, [onExitNavRevealProgress]);
 
   const showStackChrome = useCallback(() => {
     if (openChat || stackDragChatId || stackClosingId) return;
@@ -2401,6 +2456,8 @@ export function ChatScreen({
           document.documentElement.style.setProperty(CHAT_STACK_PROGRESS_VAR, "1");
         }
         applyStackLayerTransforms(1, false);
+        syncStackNavHideProgress(null);
+        onExitNavRevealProgress?.(null);
         releaseStackTransitionLock();
         requestStackRoomScrollBottom();
         return;
@@ -2429,6 +2486,8 @@ export function ChatScreen({
           document.documentElement.style.setProperty(CHAT_STACK_PROGRESS_VAR, "1");
         }
         applyStackLayerTransforms(1, false);
+        syncStackNavHideProgress(null);
+        onExitNavRevealProgress?.(null);
         stackRoomDriveRef.current = "idle";
         releaseStackTransitionLock();
         requestStackRoomScrollBottom();
@@ -2442,6 +2501,7 @@ export function ChatScreen({
       publishStackProgressVisual,
       applyStackLayerTransforms,
       onActiveChatChange,
+      onExitNavRevealProgress,
       releaseStackTransitionLock,
       requestStackRoomScrollBottom,
     ],
@@ -2498,7 +2558,6 @@ export function ChatScreen({
       setStackGestureLocked(true);
       setStackClosingId(null);
       setStackDragChatId(null);
-      hideStackChrome();
       stackTapTransitionRef.current = true;
 
       flushSync(() => {
@@ -2550,12 +2609,11 @@ export function ChatScreen({
         return;
       }
       const cap = stackCapRef.current;
-      const progress = cap > 0 ? px / cap : 0;
-      if (progress >= CHAT_STACK_OPEN_FRACTION) {
-        commitStackOpen(canonical);
-      } else {
-        cancelStackDrag();
-      }
+      const vx = stackOpenVelocityRef.current;
+      stackOpenVelocityRef.current = 0;
+      const { commit } = chatStackOpenReleaseTarget(px, cap, vx);
+      if (commit) commitStackOpen(canonical);
+      else cancelStackDrag();
     },
     [commitStackOpen, cancelStackDrag, openChatDirect, resolveOpenChatId, stackDragChatId],
   );
@@ -2586,6 +2644,7 @@ export function ChatScreen({
   }, []);
 
   useLayoutEffect(() => {
+    if (showGroupSettings) return;
     if (
       stackOpenDragRef.current ||
       stackDragChatId ||
@@ -2601,6 +2660,7 @@ export function ChatScreen({
     }
     applyStackLayerTransforms(stackProgress, stackSpring);
   }, [
+    showGroupSettings,
     stackProgress,
     stackSpring,
     stackDragChatId,
@@ -2612,7 +2672,7 @@ export function ChatScreen({
   /** سحب/تحديد نص غير مكتمل: إعادة الشريط والنوتات إن علِق وضع الإخفاء */
   useEffect(() => {
     if (openChat || stackDragChatId || stackClosingId) return;
-    if (!stackChromeHidden && !stackRoomDismissDragging && stackProgress <= 0.04) return;
+    if (!stackRoomDismissDragging && stackProgress <= 0.04) return;
     releaseChatChromeAfterGesture();
     if (stackProgress > 0.04) {
       resetStackToInboxRest();
@@ -2622,7 +2682,6 @@ export function ChatScreen({
     stackDragChatId,
     stackClosingId,
     stackProgress,
-    stackChromeHidden,
     stackRoomDismissDragging,
     releaseChatChromeAfterGesture,
     resetStackToInboxRest,
@@ -2634,7 +2693,7 @@ export function ChatScreen({
       if (openChat || stackDragChatId || stackClosingId) return;
       const sel = document.getSelection();
       if (!sel || sel.isCollapsed) return;
-      if (!stackChromeHidden && stackProgress <= 0.04) return;
+      if (stackProgress <= 0.04) return;
       releaseChatChromeAfterGesture();
       if (stackProgress > 0.04) resetStackToInboxRest();
     };
@@ -2644,7 +2703,6 @@ export function ChatScreen({
     openChat,
     stackDragChatId,
     stackClosingId,
-    stackChromeHidden,
     stackProgress,
     releaseChatChromeAfterGesture,
     resetStackToInboxRest,
@@ -2712,11 +2770,12 @@ export function ChatScreen({
 
   useEffect(() => {
     const exitingChatBySwipe = stackRoomDismissDragging || !!stackClosingId;
-    const threadImmersive =
-      !!(openChat || stackDragChatId || stackChromeHidden) && !exitingChatBySwipe;
+    const fullyOpen =
+      !!openChat && !stackDragChatId && !stackClosingId && stackProgressRef.current >= 0.98;
+    const threadImmersive = fullyOpen && !exitingChatBySwipe;
     const hideBottomNav = threadImmersive || showCreate != null;
     if (typeof document !== "undefined") {
-      if (openChat || stackDragChatId || stackClosingId || stackChromeHidden) {
+      if (fullyOpen || stackClosingId) {
         document.documentElement.dataset.chatThreadOpen = "1";
       } else {
         delete document.documentElement.dataset.chatThreadOpen;
@@ -2724,15 +2783,20 @@ export function ChatScreen({
     }
     onThreadOpen?.(threadImmersive);
     onHideBottomNav?.(hideBottomNav);
+    if (fullyOpen) {
+      syncStackNavHideProgress(null);
+      onExitNavRevealProgress?.(null);
+    }
   }, [
     openChat,
     stackDragChatId,
     stackClosingId,
-    stackChromeHidden,
+    stackProgress,
     stackRoomDismissDragging,
     showCreate,
     onThreadOpen,
     onHideBottomNav,
+    onExitNavRevealProgress,
   ]);
 
   useEffect(() => {
@@ -2820,8 +2884,9 @@ export function ChatScreen({
   );
 
   const onStackDrag = useCallback(
-    (chatId: string, px: number) => {
-      pendingStackDragRef.current = { chatId, px };
+    (chatId: string, px: number, vx = 0) => {
+      if (Number.isFinite(vx)) stackOpenVelocityRef.current = vx;
+      pendingStackDragRef.current = { chatId, px, vx };
       if (stackDragFrameRef.current) return;
       stackDragFrameRef.current = requestAnimationFrame(() => {
         stackDragFrameRef.current = 0;
@@ -2900,11 +2965,27 @@ export function ChatScreen({
 
   useEffect(() => {
     return () => {
-      if (typeof document !== "undefined") {
-        document.documentElement.style.removeProperty(CHAT_STACK_PROGRESS_VAR);
-      }
+      clearChatStackCssProgress();
+      syncStackNavHideProgress(null);
     };
   }, []);
+
+  /** منع التعليق بنصف انتقال بعد pointercancel أو فقدان اللمس */
+  useEffect(() => {
+    const recoverHalfOpen = () => {
+      if (openChat || stackListGestureCommitRef.current) return;
+      const p = stackProgressRef.current;
+      if (p > 0.03 && p < 0.97 && (stackOpenDragRef.current || stackDragChatId)) {
+        cancelStackDrag();
+      }
+    };
+    document.addEventListener("pointercancel", recoverHalfOpen, true);
+    window.addEventListener("blur", recoverHalfOpen);
+    return () => {
+      document.removeEventListener("pointercancel", recoverHalfOpen, true);
+      window.removeEventListener("blur", recoverHalfOpen);
+    };
+  }, [openChat, stackDragChatId, cancelStackDrag]);
 
   const activeStackChatId = openChat ?? stackDragChatId ?? stackClosingId ?? null;
   const stackChatRaw = activeStackChatId ? findChatByOpenId(state.chats, activeStackChatId, me.id) : null;
@@ -2912,6 +2993,38 @@ export function ChatScreen({
     () => (stackChatRaw ? normalizeChatRecord(stackChatRaw) : null),
     [stackChatRaw],
   );
+  const restoreChatStackAfterGroupSettings = useCallback(() => {
+    if (!openChat) return;
+    const p = Math.max(
+      groupSettingsStackProgressRef.current,
+      stackProgressRef.current,
+      stackProgress,
+      0.98,
+    );
+    stackProgressRef.current = p;
+    if (stackProgress < 0.98) setStackProgress(p);
+    stackRoomDismissRef.current = false;
+    stackRoomDriveRef.current = "idle";
+    stackOpenDragRef.current = false;
+    stackTransitionLockRef.current = false;
+    stackSwipeOpeningRef.current = false;
+    releaseStackTransitionLock();
+    applyStackLayerTransforms(p, false);
+    publishChatStackCssProgress(p);
+  }, [openChat, stackProgress, applyStackLayerTransforms, releaseStackTransitionLock]);
+
+  const closeGroupSettings = useCallback(() => {
+    restoreChatStackAfterGroupSettings();
+    flushSync(() => setShowGroupSettings(false));
+    requestAnimationFrame(() => restoreChatStackAfterGroupSettings());
+  }, [restoreChatStackAfterGroupSettings]);
+
+  /** بعد إغلاق إعدادات القروب — إعادة ضبط transforms (المكدس يبقى mounted تحت الـ overlay) */
+  useLayoutEffect(() => {
+    if (showGroupSettings) return;
+    if (!openChat || !stackChat) return;
+    restoreChatStackAfterGroupSettings();
+  }, [showGroupSettings, openChat, stackChat, restoreChatStackAfterGroupSettings]);
   /** معاينة الغرفة أثناء السحب — المحادثة لا تُعتبر «مفتوحة» حتى commit */
   const stackRoomPreviewOnly = !!stackDragChatId && !openChat;
   /** يُعطّل سحب/زر الرجوع فقط أثناء فتح المحادثة — لا أثناء سحب الخروج */
@@ -3049,6 +3162,30 @@ export function ChatScreen({
     });
   }, [filteredChats, me.id, me.pinnedChatIds, state.chats]);
 
+  /**
+   * يمنع وميض "لا توجد دردشات" أثناء مزامنة الخادم:
+   * إذا كانت القائمة قد ظهرت سابقاً ثم صارت فارغة لثوانٍ قليلة،
+   * نبقي آخر نسخة مرئية بدلاً من شاشة الفراغ.
+   */
+  const [lastStableChats, setLastStableChats] = useState<Chat[]>([]);
+  const [lastStableAt, setLastStableAt] = useState(0);
+  useEffect(() => {
+    if (sortedFilteredChats.length > 0) {
+      setLastStableChats(sortedFilteredChats);
+      setLastStableAt(Date.now());
+    }
+  }, [sortedFilteredChats]);
+  useEffect(() => {
+    setLastStableChats([]);
+    setLastStableAt(0);
+  }, [me.id]);
+  const shouldHoldPreviousChats =
+    !search.trim() &&
+    sortedFilteredChats.length === 0 &&
+    lastStableChats.length > 0 &&
+    Date.now() - lastStableAt < 8000;
+  const renderedChats = shouldHoldPreviousChats ? lastStableChats : sortedFilteredChats;
+
   const stackChatOpenKey = stackChat ? openChatIdFor(stackChat, me.id) : null;
 
   const stackRoomDismissEnabled = useCallback(
@@ -3101,20 +3238,14 @@ export function ChatScreen({
     stackRoomDismissDragging ||
     stackClosingId ||
     stackRoomDriveRef.current === "close";
-  const inboxAtRest =
-    !openChat && !stackDragChatId && !stackChromeHidden;
-  /** الهيدر العلوي يختفي فقط حين تكون المحادثة مفتوحة بالكامل (لا أثناء السحب) */
+  /** يختفي شريط البحث/النوتات فقط بعد اكتمال الفتح — أثناء السحب تبقى كل العناصر mounted وتتحرك مع اللوحة */
   const hideInboxTopChrome =
-    !!openChat && !exitingChatBySwipe && stackProgress >= 0.97;
-  /** أيقونة إنشاء مجموعة/قناة (القلم): القائمة العادية + أثناء سحب الخروج فقط */
-  const showInboxComposeIcon = exitingChatBySwipe || inboxAtRest;
-  /** أيقونة الطلبات فوق العنوان: القائمة العادية + أثناء سحب الخروج فقط */
-  const showInboxRequestsIcon = exitingChatBySwipe || inboxAtRest;
-  /** عنوان «محادثات/الرسائل»: القائمة العادية + فوق النوتات أثناء سحب الخروج فقط */
-  const showInboxChatTitle = exitingChatBySwipe || inboxAtRest;
-  /** النوتات: القائمة العادية + أثناء سحب الخروج فقط */
-  const showInboxNotesStrip = exitingChatBySwipe || inboxAtRest;
-  /** للتوافق: شريط سفلي/مكالمة واردة */
+    !!openChat && !exitingChatBySwipe && !stackDragChatId && stackProgress >= 0.99;
+  const showInboxSubChrome = !hideInboxTopChrome || exitingChatBySwipe || !!stackDragChatId;
+  const showInboxComposeIcon = showInboxSubChrome;
+  const showInboxRequestsIcon = showInboxSubChrome;
+  const showInboxChatTitle = showInboxSubChrome;
+  const showInboxNotesStrip = showInboxSubChrome;
   const hideInboxChrome = hideInboxTopChrome && !showInboxNotesStrip;
   const stackDragProgress =
     stackChatOpenKey &&
@@ -3145,13 +3276,13 @@ export function ChatScreen({
     <div
       ref={stackInboxRef}
       dir={isRtl ? "rtl" : "ltr"}
-      className="chat-inbox-pane relative z-[1] flex min-h-0 flex-1 flex-col overflow-hidden overscroll-none bg-background [transform:translateZ(0)]"
+      className="chat-inbox-pane no-scrollbar relative z-[1] flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-none bg-background [transform:translateZ(0)]"
       style={stackInboxPointerEvents ? { pointerEvents: stackInboxPointerEvents } : undefined}
     >
 
       {/* Top area: Instagram Direct structure. No profile avatar here. */}
       {!hideInboxTopChrome && (
-        <div className="shrink-0 px-4 pb-2 pt-[max(0.75rem,env(safe-area-inset-top,0.75rem))]">
+        <div className="shrink-0 px-4 pb-2 pt-[max(0.75rem,max(0.75rem, var(--sat)))]">
           <div className="mb-3 flex items-center justify-end">
             {showInboxComposeIcon && (
               <button
@@ -3366,8 +3497,8 @@ export function ChatScreen({
           SECTION 4 — CONVERSATION LIST
           Each row is rendered by ChatListRowWithPeek
           ══════════════════════════════════════════════════ */}
-      <div className="chat-inbox-scroll no-scrollbar flex-1 overflow-y-auto overscroll-none">
-        {sortedFilteredChats.map(c => (
+      <div className="chat-inbox-scroll no-scrollbar">
+        {renderedChats.map(c => (
           <ChatListRowWithPeek
             key={c.id}
             chat={c}
@@ -3383,7 +3514,7 @@ export function ChatScreen({
         ))}
 
         {/* Empty state */}
-        {sortedFilteredChats.length === 0 && !search.trim() && (
+        {renderedChats.length === 0 && !search.trim() && (
           <div className="flex flex-col items-center justify-center py-16 gap-3 px-6 text-center">
             <span className="flex h-16 w-16 items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-800">
               <MessageCirclePlus size={28} className="text-zinc-400" />
@@ -3392,7 +3523,7 @@ export function ChatScreen({
             <p className="text-[13px] text-zinc-400">{isRtl ? "ابدأ محادثة جديدة" : "Start a new conversation"}</p>
           </div>
         )}
-        {sortedFilteredChats.length === 0 && !!search.trim() && (
+        {renderedChats.length === 0 && !!search.trim() && (
           <p className="py-12 text-center text-[14px] text-zinc-400">{isRtl ? "لا نتائج لـ «" + search + "»" : `No results for "${search}"`}</p>
         )}
 
@@ -3418,7 +3549,7 @@ export function ChatScreen({
             <button
               type="button"
               onClick={() => setEditingNote(false)}
-              className="absolute top-[max(0.75rem,env(safe-area-inset-top,0px))] end-4 rounded-full bg-black/40 p-1.5 text-white/90 backdrop-blur"
+              className="absolute top-[max(0.75rem,var(--sat))] end-4 rounded-full bg-black/40 p-1.5 text-white/90 backdrop-blur"
               aria-label={t("cancel")}
             >
               <X size={18} />
@@ -3566,16 +3697,6 @@ export function ChatScreen({
       />
     );
   }
-  if (activeStackChatId && stackChat && showGroupSettings && openChat && (stackChat.isGroup || stackChat.isChannel))
-    return (
-      <GroupDetailsScreen
-        chat={stackChat}
-        messages={stackChat.messages}
-        onBack={() => setShowGroupSettings(false)}
-        onOpenProfile={onOpenProfile}
-      />
-    );
-
   if (showRequests)
     return (
       <RequestsList
@@ -3609,8 +3730,8 @@ export function ChatScreen({
           className={
             "fixed inset-x-0 z-[250] mx-auto max-w-md px-3 " +
             (hideInboxChrome
-              ? "bottom-[max(0.75rem,env(safe-area-inset-bottom,0px))]"
-              : "bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))]")
+              ? "bottom-[max(0.75rem,var(--sab))]"
+              : "bottom-[calc(5.5rem+var(--sab))]")
           }
         >
           <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-3 shadow-lg">
@@ -3639,7 +3760,7 @@ export function ChatScreen({
           </div>
         </div>
       )}
-      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
+      <div className="chat-stack-scene relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
         {chatInbox}
         {activeStackChatId && stackChat ? (
           <ChatStackRoomGestureShell
@@ -3665,12 +3786,48 @@ export function ChatScreen({
                     }
                   : () => {}
               }
-              onOpenSettings={openChat ? () => setShowGroupSettings(true) : () => {}}
+              onOpenSettings={
+                openChat
+                  ? () => {
+                      groupSettingsStackProgressRef.current = Math.max(
+                        stackProgressRef.current,
+                        stackProgress,
+                        0.98,
+                      );
+                      setShowGroupSettings(true);
+                    }
+                  : () => {}
+              }
               onOpenProfile={onOpenProfile}
+              registerOpenThemePicker={open => {
+                openChatThemePickerRef.current = open;
+              }}
             />
           </ChatStackRoomGestureShell>
         ) : null}
       </div>
+      {showGroupSettings &&
+      openChat &&
+      stackChat &&
+      (stackChat.isGroup || stackChat.isChannel) ? (
+        <div className="pointer-events-auto fixed inset-0 z-[220] mx-auto flex max-w-md flex-col bg-background">
+          <GroupDetailsScreen
+            embeddedInChatStack
+            chat={stackChat}
+            messages={stackChat.messages}
+            onBack={closeGroupSettings}
+            onOpenProfile={onOpenProfile}
+            onOpenChatTheme={() => {
+              closeGroupSettings();
+              window.setTimeout(() => openChatThemePickerRef.current(), 0);
+            }}
+            onCreateNewGroup={() => {
+              closeGroupSettings();
+              setShowCreate("group");
+            }}
+          />
+        </div>
+      ) : null}
     </>
   );
 }
@@ -3874,64 +4031,124 @@ function CreateGroup({ mode, onBack, onCreated }: { mode: "group" | "channel"; o
     })();
   };
 
+  const minGroupMembers = 2;
+  const canCreateGroup = mode === "group" ? selected.length >= minGroupMembers : true;
+
   const create = () => {
-    if (mode === "group" && selected.length < 2) { alert("اختر شخصين على الأقل"); return; }
-    const c = mode === "group" ? createGroup(name || "مجموعة", avatar, selected) : createChannel(name || "قناة", avatar, selected);
+    if (mode === "group" && selected.length < minGroupMembers) return;
+    const c =
+      mode === "group"
+        ? createGroup(name || "مجموعة", avatar, selected)
+        : createChannel(name || "قناة", avatar, selected);
     if (c) onCreated(c.id);
   };
 
   return (
     <SlideDismissShell onDismiss={onBack} variant="inline" className="flex-1 bg-background">
-    <div className="p-4">
-      <div className="flex items-center gap-2 mb-4"><SlideDismissBackButton onDismiss={onBack}><ArrowRight /></SlideDismissBackButton><h2 className="font-bold">{mode === "group" ? t("newGroup") : t("newChannel")}</h2></div>
-      {step === 1 ? (
-        <div className="space-y-3">
-          <div className="flex flex-col items-center gap-2">
-            <label className="relative cursor-pointer">
-              <Avatar name={name || "مجموعة"} src={avatar} size={96} />
-              <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 text-xs text-white opacity-0 hover:opacity-100">
-                {avatarBusy ? "…" : "صورة"}
-              </span>
-              <input type="file" accept="image/*" className="sr-only" onChange={onAvatarFile} disabled={avatarBusy} />
-            </label>
-            <select value={avatar} onChange={e => setAvatar(e.target.value)} className="text-sm bg-secondary rounded-xl px-3 py-1.5">
-              {(mode === "channel" ? ["📢","📰","📚","🕌","⭐","🎙️"] : ["👥","🎉","🚀","💬","🌟","❤️","🔥","🎨"]).map(e => <option key={e} value={e}>{e} أيقونة</option>)}
-            </select>
-          </div>
-          <input value={name} onChange={e => setName(e.target.value)} placeholder={mode === "group" ? t("groupName") : t("channelName")} className="w-full bg-input rounded-2xl px-4 py-3 outline-none" />
-          <button onClick={() => { if (!name.trim()) return alert("اكتب اسم"); setStep(2); }} className="w-full bg-primary text-primary-foreground py-3 rounded-2xl font-semibold">{t("next")}</button>
+      <div className="flex min-h-0 flex-1 flex-col p-4">
+        <div className="mb-4 flex shrink-0 items-center gap-2">
+          <SlideDismissBackButton onDismiss={onBack}>
+            <ArrowRight />
+          </SlideDismissBackButton>
+          <h2 className="font-bold">{mode === "group" ? t("newGroup") : t("newChannel")}</h2>
         </div>
-      ) : (
-        <div className="space-y-2">
-          <p className="text-sm text-muted-foreground">{mode === "group" ? t("addMembers") : "اختر الأعضاء (اختياري)"}</p>
-          <input
-            value={memberSearch}
-            onChange={e => setMemberSearch(e.target.value)}
-            placeholder="ابحث بالاسم…"
-            className="w-full rounded-2xl bg-input px-4 py-2.5 text-sm outline-none"
-          />
-          {others
-            .filter(u => {
-              const q = memberSearch.trim().toLowerCase();
-              if (!q) return true;
-              return u.username.toLowerCase().includes(q);
-            })
-            .map(u => (
+        {step === 1 ? (
+          <div className="space-y-3">
+            <div className="flex flex-col items-center gap-2">
+              <label className="relative cursor-pointer">
+                <Avatar name={name || "مجموعة"} src={avatar} size={96} />
+                <span className="absolute inset-0 flex items-center justify-center rounded-full bg-black/40 text-xs text-white opacity-0 hover:opacity-100">
+                  {avatarBusy ? "…" : "صورة"}
+                </span>
+                <input type="file" accept="image/*" className="sr-only" onChange={onAvatarFile} disabled={avatarBusy} />
+              </label>
+              <select
+                value={avatar}
+                onChange={e => setAvatar(e.target.value)}
+                className="rounded-xl bg-secondary px-3 py-1.5 text-sm"
+              >
+                {(mode === "channel"
+                  ? ["📢", "📰", "📚", "🕌", "⭐", "🎙️"]
+                  : ["👥", "🎉", "🚀", "💬", "🌟", "❤️", "🔥", "🎨"]
+                ).map(e => (
+                  <option key={e} value={e}>
+                    {e} أيقونة
+                  </option>
+                ))}
+              </select>
+            </div>
+            <input
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder={mode === "group" ? t("groupName") : t("channelName")}
+              className="w-full rounded-2xl bg-input px-4 py-3 outline-none"
+            />
             <button
-              key={u.id}
               type="button"
-              onClick={() => setSelected(s => s.includes(u.id) ? s.filter(x => x !== u.id) : [...s, u.id])}
-              className="flex w-full touch-manipulation items-center gap-3 rounded-2xl p-2 hover:bg-secondary active:bg-secondary/80"
+              onClick={() => {
+                if (!name.trim()) return alert("اكتب اسم");
+                setStep(2);
+              }}
+              className="w-full rounded-2xl bg-primary py-3 font-semibold text-primary-foreground"
             >
-              <Avatar name={u.username} src={u.avatar} />
-              <div className="flex-1 text-start">@{u.username}</div>
-              {selected.includes(u.id) && <Check className="text-primary" />}
+              {t("next")}
             </button>
-          ))}
-          <button type="button" onClick={create} className="w-full bg-primary text-primary-foreground py-3 rounded-2xl font-semibold mt-3">{t("create_")} ({selected.length})</button>
-        </div>
-      )}
-    </div>
+          </div>
+        ) : (
+          <div className="flex min-h-0 flex-1 flex-col">
+            <p className="shrink-0 text-sm text-muted-foreground">
+              {mode === "group" ? t("addMembers") : "اختر الأعضاء (اختياري)"}
+            </p>
+            <input
+              value={memberSearch}
+              onChange={e => setMemberSearch(e.target.value)}
+              placeholder="ابحث بالاسم…"
+              className="mt-2 w-full shrink-0 rounded-2xl bg-input px-4 py-2.5 text-sm outline-none"
+            />
+            <div className="mt-2 min-h-0 flex-1 space-y-0.5 overflow-y-auto overscroll-y-contain">
+              {others
+                .filter(u => {
+                  const q = memberSearch.trim().toLowerCase();
+                  if (!q) return true;
+                  return u.username.toLowerCase().includes(q);
+                })
+                .map(u => (
+                  <button
+                    key={u.id}
+                    type="button"
+                    onClick={() =>
+                      setSelected(s => (s.includes(u.id) ? s.filter(x => x !== u.id) : [...s, u.id]))
+                    }
+                    className="flex w-full touch-manipulation items-center gap-3 rounded-2xl p-2.5 hover:bg-secondary active:bg-secondary/80"
+                  >
+                    <Avatar name={u.username} src={u.avatar} size={44} />
+                    <div className="flex-1 text-start text-[15px] font-medium">@{u.username}</div>
+                    {selected.includes(u.id) && <Check className="shrink-0 text-[#0095F6]" size={22} />}
+                  </button>
+                ))}
+            </div>
+            <div className="shrink-0 border-t border-border pt-3 pb-[max(0.25rem,var(--sab))]">
+              {mode === "group" && !canCreateGroup && (
+                <p className="mb-2 text-center text-xs text-muted-foreground">{t("groupPickTwoHint")}</p>
+              )}
+              <button
+                type="button"
+                disabled={!canCreateGroup}
+                onClick={create}
+                className={
+                  "w-full rounded-2xl py-3.5 text-[15px] font-semibold transition-opacity " +
+                  (canCreateGroup
+                    ? "bg-[#0095F6] text-white active:opacity-90"
+                    : "cursor-not-allowed bg-zinc-200 text-zinc-400 dark:bg-zinc-800 dark:text-zinc-500")
+                }
+              >
+                {t("create_")}
+                {mode === "group" ? ` (${selected.length})` : selected.length > 0 ? ` (${selected.length})` : ""}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
     </SlideDismissShell>
   );
 }
@@ -4016,6 +4233,7 @@ function ChatRoom({
   onCall,
   onOpenSettings,
   onOpenProfile,
+  registerOpenThemePicker,
   embedInStack = false,
   stackFullyOpen = true,
   roomDismissBlocked = false,
@@ -4028,6 +4246,7 @@ function ChatRoom({
   onCall: (video: boolean) => void;
   onOpenSettings: () => void;
   onOpenProfile: (id: string) => void;
+  registerOpenThemePicker?: (open: () => void) => void;
   embedInStack?: boolean;
   stackFullyOpen?: boolean;
   roomDismissBlocked?: boolean;
@@ -4064,6 +4283,8 @@ function ChatRoom({
   const [showStickers, setShowStickers] = useState(false);
   const [plusAttachOpen, setPlusAttachOpen] = useState(false);
   const [theme, setTheme] = useState<"default" | "blue" | "pink">("default");
+  const [showChatThemePicker, setShowChatThemePicker] = useState(false);
+  const [wallpaperId, setWallpaperId] = useState<ChatWallpaperId>("default");
   const [recording, setRecording] = useState(false);
   const [showPrivacyMenu, setShowPrivacyMenu] = useState(false);
   const [hideReadStatus, setHideReadStatus] = useState(false);
@@ -4078,6 +4299,15 @@ function ChatRoom({
   const sendChatId = useMemo(() => chatMergeKey(chat, meId), [chat, meId]);
   const chatIdRef = useRef(sendChatId);
   chatIdRef.current = sendChatId;
+
+  useEffect(() => {
+    setWallpaperId(loadChatWallpaperForChat(chat, meId));
+  }, [sendChatId, chat.id, meId]);
+
+  const openThemePicker = useCallback(() => setShowChatThemePicker(true), []);
+  useEffect(() => {
+    registerOpenThemePicker?.(openThemePicker);
+  }, [registerOpenThemePicker, openThemePicker]);
   const dispatchSendRef = useRef<(msg: Omit<Message, "id" | "senderId" | "createdAt">) => boolean>(
     () => false,
   );
@@ -4118,7 +4348,37 @@ function ChatRoom({
   const other = otherId ? userById(state, otherId) : null;
   const title = chat.isGroup || chat.isChannel ? chat.name : "@" + (other?.username || "");
   const isMember = meId ? chat.members.includes(meId) : false;
-  const canPost = !chat.isChannel || (chat.hosts || []).includes(meId);
+  const memberRole =
+    chat.memberRoles?.[meId] ||
+    (chat.ownerId === meId ? "owner" : (chat.admins || []).includes(meId) ? "admin" : "member");
+  const whoCanSend = chat.groupSettings?.whoCanSendMessages || "everyone";
+  const mutedUntil = chat.mutedUserIds?.[meId] || 0;
+  const isMutedNow = mutedUntil > Date.now();
+  const canPostByRole = chat.isGroup && !chat.isChannel
+    ? (whoCanSend === "admins"
+        ? memberRole === "owner" || memberRole === "admin"
+        : whoCanSend === "moderators"
+          ? memberRole !== "member"
+          : true)
+    : true;
+  const canPost = (!chat.isChannel || (chat.hosts || []).includes(meId)) && !isMutedNow && canPostByRole;
+  const muteRemainingMs = Math.max(0, mutedUntil - Date.now());
+  const muteRemainingText = muteRemainingMs > 0
+    ? muteRemainingMs > 86_400_000
+      ? `متبقي ${Math.ceil(muteRemainingMs / 86_400_000)} يوم`
+      : muteRemainingMs > 3_600_000
+        ? `متبقي ${Math.ceil(muteRemainingMs / 3_600_000)} ساعة`
+        : `متبقي ${Math.ceil(muteRemainingMs / 60_000)} دقيقة`
+    : "";
+  const blockedComposerReason = !canPost
+    ? isMutedNow
+      ? `أنت مكتوم في هذه المجموعة. ${muteRemainingText}`
+      : chat.isChannel
+        ? t("onlyOwner")
+        : whoCanSend === "admins"
+          ? "الكتابة مقفلة للأعضاء — فقط الأدمن يقدر يكتب."
+          : "لا تملك صلاحية الكتابة حالياً."
+    : "";
   const isGroupChat = chat.isGroup && !chat.isChannel;
   const isDmRoom = !chat.isGroup && !chat.isChannel;
   const peerIsTyping = useMemo(() => {
@@ -4220,29 +4480,87 @@ function ChatRoom({
   const [moreReactionEmoji, setMoreReactionEmoji] = useState(false);
   const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
   const [cameraCompose, setCameraCompose] = useState<CameraComposeDraft | null>(null);
+  const [instagramCameraOpen, setInstagramCameraOpen] = useState(false);
   const [drawComposeOpen, setDrawComposeOpen] = useState(false);
   const [viewOnceOverlay, setViewOnceOverlay] = useState<Message | null>(null);
   const [inlineMediaViewer, setInlineMediaViewer] = useState<Message | null>(null);
   const [shareFeedOpen, setShareFeedOpen] = useState<null | { items: ChatShareFeedItem[]; initialIndex: number }>(null);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
-  const vv = useVisualViewportLayout();
-  const keyboardOpen = vv.keyboardInset > 8;
-  /** عند فتح الكيبورد: ضبط الغرفة على visualViewport (بدون padding إضافي على المُلحق) */
-  const pinChatToVisualViewport = !embedInStack || keyboardOpen;
-  const composerBottomPad = chatComposerBottomPadding(keyboardOpen);
+  const chatHeaderRef = useRef<HTMLDivElement>(null);
+  /** Instagram: الغرفة ثابتة بارتفاع الشاشة — يتحرك شريط الكتابة فقط مع الكيبورد */
+  const composerBottomPad = "var(--sab)";
+
+  /** false عندما يمرّر المستخدم لأعلى لقراءة قديم — لا نعيده للأسفل تلقائياً عند وصول رسالة جديدة */
+  const stickToBottomRef = useRef(true);
+
+  const syncComposerDockHeight = useCallback(() => {
+    const el = composerRef.current;
+    if (!el || typeof window === "undefined") return;
+    const rect = el.getBoundingClientRect();
+    /** على iOS ارتفاع getBoundingClientRect أقل من المساحة المحجوبة فعلياً */
+    const obstructed = Math.max(rect.height, window.innerHeight - rect.top);
+    const h = Math.ceil(obstructed) + 12;
+    if (h > 0) {
+      document.documentElement.style.setProperty("--chat-composer-h", `${h}px`);
+    }
+  }, []);
+
   const scrollMessagesToBottom = useCallback(() => {
     const el = messagesScrollRef.current;
     if (!el) return;
+    syncComposerDockHeight();
     const top = Math.max(0, el.scrollHeight - el.clientHeight);
     try {
       el.scrollTo({ top, behavior: "instant" });
     } catch {
       el.scrollTop = top;
     }
-  }, []);
-  /** false عندما يمرّر المستخدم لأعلى لقراءة قديم — لا نعيده للأسفل تلقائياً عند وصول رسالة جديدة */
-  const stickToBottomRef = useRef(true);
+  }, [syncComposerDockHeight]);
+
+  const onComposerFocus = useCallback(() => {
+    stickToBottomRef.current = true;
+    try {
+      window.scrollTo(0, 0);
+    } catch {
+      /* ignore */
+    }
+    requestAnimationFrame(() => scrollMessagesToBottom());
+  }, [scrollMessagesToBottom]);
+
+  useLayoutEffect(() => {
+    const el = composerRef.current;
+    if (!el) return;
+    syncComposerDockHeight();
+    const ro = new ResizeObserver(() => {
+      syncComposerDockHeight();
+      if (stickToBottomRef.current) scrollMessagesToBottom();
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [
+    chat.id,
+    showStickers,
+    replyingTo,
+    mentionPick,
+    plusAttachOpen,
+    syncComposerDockHeight,
+    scrollMessagesToBottom,
+  ]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const sync = () => {
+      syncComposerDockHeight();
+      if (stickToBottomRef.current) scrollMessagesToBottom();
+    };
+    window.addEventListener("resize", sync, { passive: true });
+    window.addEventListener("orientationchange", sync, { passive: true });
+    return () => {
+      window.removeEventListener("resize", sync);
+      window.removeEventListener("orientationchange", sync);
+    };
+  }, [syncComposerDockHeight, scrollMessagesToBottom]);
   const scrollAnchorRef = useRef({ chatId: "", msgCount: 0 });
   const cameraCaptureRef = useRef<HTMLInputElement>(null);
   const galleryMediaInputRef = useRef<HTMLInputElement>(null);
@@ -4508,7 +4826,7 @@ function ChatRoom({
       window.removeEventListener("resize", onViewportChange);
       window.removeEventListener("retweet-chat-scroll-bottom", onScrollBottom);
     };
-  }, [embedInStack, forceScrollToBottom, vv.height, vv.offsetTop, scrollMessagesToBottom]);
+  }, [embedInStack, forceScrollToBottom, scrollMessagesToBottom]);
 
   useLayoutEffect(() => {
     if (!forceScrollToBottom) return;
@@ -4527,7 +4845,13 @@ function ChatRoom({
     scrollAnchorRef.current = { chatId: chat.id, msgCount: count };
     if (isNewChat) stickToBottomRef.current = true;
     if (!isNewChat && !forceScrollToBottom && count === prev.msgCount) return;
+    stickToBottomRef.current = true;
     scrollMessagesToBottom();
+    const inner = requestAnimationFrame(() => {
+      scrollMessagesToBottom();
+      requestAnimationFrame(scrollMessagesToBottom);
+    });
+    return () => cancelAnimationFrame(inner);
   }, [chat.id, displayMessages.length, messageContext, scrollMessagesToBottom, forceScrollToBottom]);
 
   const onMessagesScroll = useCallback(() => {
@@ -4551,12 +4875,6 @@ function ChatRoom({
     }
   }, []);
 
-  useLayoutEffect(() => {
-    if (!keyboardOpen) return;
-    stickToBottomRef.current = true;
-    scrollMessagesToBottom();
-  }, [keyboardOpen, vv.keyboardInset, scrollMessagesToBottom]);
-
   const VANISH_PULL_NEED = 120;
   /** ارتفاع النطاق من أسفل منطقة التمرير لبدء سحب الوضع المخفي */
   const VANISH_PULL_HIT_PX = 140;
@@ -4569,10 +4887,16 @@ function ChatRoom({
   );
   const dmDir = chatDmLayoutDir(state.language);
   const dmRtl = chatDmIsRtl(state.language);
-  const igDmSurfaceStyle = useMemo(
-    () => (dmPalette ? { backgroundColor: dmPalette.surface } : undefined),
-    [dmPalette],
-  );
+  const activeWallpaper = useMemo(() => getChatWallpaperTheme(wallpaperId), [wallpaperId]);
+  const chatWallpaperUrl = activeWallpaper.imagePath
+    ? chatWallpaperAssetUrl(activeWallpaper.imagePath)
+    : null;
+  const chromeOnWallpaper = !!chatWallpaperUrl && !isQuranChannel;
+  const wallpaperIconClass = "text-white/85 hover:bg-white/10 active:bg-white/15 transition-colors";
+  const igDmSurfaceStyle = useMemo(() => {
+    if (chromeOnWallpaper) return undefined;
+    return dmPalette ? { backgroundColor: dmPalette.surface } : undefined;
+  }, [dmPalette, chromeOnWallpaper]);
   const peerOnline = useMemo(() => {
     if (!useIgDm || !otherId) return false;
     const last = chat.lastOpenAtByUser?.[otherId] ?? 0;
@@ -4593,13 +4917,15 @@ function ChatRoom({
   }, [chatTimelineRows, windowedMessages]);
   const themeBg = isQuranChannel
     ? "bg-black text-white"
-    : useIgDm && dmPalette
-      ? dmPalette.headerTitleClass
-      : theme === "blue"
-        ? "bg-blue-50 dark:bg-blue-950"
-        : theme === "pink"
-          ? "bg-pink-50 dark:bg-pink-950"
-          : "bg-background";
+    : chromeOnWallpaper
+      ? "text-white"
+      : useIgDm && dmPalette
+        ? dmPalette.headerTitleClass
+        : theme === "blue"
+          ? "bg-blue-50 dark:bg-blue-950"
+          : theme === "pink"
+            ? "bg-pink-50 dark:bg-pink-950"
+            : "bg-background";
 
   const clearGalleryLongPress = useCallback(() => {
     if (galleryLpTimerRef.current) {
@@ -5323,13 +5649,22 @@ function ChatRoom({
       return;
     }
     window.setTimeout(() => setComposerMicCooldown(false), 480);
-  }, [readComposerBody, replyingTo, dispatchSend, clearComposer]);
+    stickToBottomRef.current = true;
+    syncComposerDockHeight();
+    scrollMessagesToBottom();
+    requestAnimationFrame(() => {
+      syncComposerDockHeight();
+      scrollMessagesToBottom();
+      requestAnimationFrame(scrollMessagesToBottom);
+    });
+  }, [readComposerBody, replyingTo, dispatchSend, clearComposer, syncComposerDockHeight, scrollMessagesToBottom]);
 
   const edgeSwipeBackBlocked = useMemo(
     () =>
       !!messageContext ||
       !!forwardingMessage ||
       !!cameraCompose ||
+      instagramCameraOpen ||
       drawComposeOpen ||
       !!viewOnceOverlay ||
       !!inlineMediaViewer ||
@@ -5341,6 +5676,7 @@ function ChatRoom({
       messageContext,
       forwardingMessage,
       cameraCompose,
+      instagramCameraOpen,
       drawComposeOpen,
       viewOnceOverlay,
       inlineMediaViewer,
@@ -5372,7 +5708,7 @@ function ChatRoom({
     onStackProgress,
     resetKey: `${chat.id}-${embedInStack ? "stack" : "solo"}`,
     edgeTopInsetPx: CHAT_ROOM_HEADER_EDGE_INSET_PX,
-    edgeBottomInsetPx: keyboardOpen ? 48 : 0,
+    edgeBottomInsetPx: 0,
   });
 
   const chatDismissCtx = useMemo(
@@ -5450,34 +5786,23 @@ function ChatRoom({
       data-chat-dismiss-rtl="1"
       className={
         (embedInStack
-          ? "relative flex h-full min-h-0 w-full flex-col overflow-hidden overscroll-none pointer-events-auto touch-manipulation "
+          ? "chat-room-viewport relative flex h-full min-h-0 w-full flex-col overflow-hidden overscroll-none pointer-events-auto touch-manipulation "
           : "fixed inset-x-0 z-[200] box-border flex justify-center overflow-hidden overscroll-none pointer-events-none touch-manipulation ") +
         (useIgDm ? "" : "bg-background")
       }
       style={
-        pinChatToVisualViewport
+        embedInStack
           ? {
-              ...(embedInStack
-                ? {
-                    position: "fixed",
-                    left: 0,
-                    right: 0,
-                    zIndex: 210,
-                    marginInline: "auto",
-                    maxWidth: "28rem",
-                    width: "100%",
-                  }
-                : {}),
-              top: vv.offsetTop,
-              height: vv.height,
-              maxHeight: vv.height,
-              bottom: "auto",
               ...(!embedInStack ? panelDismissTouchStyle : {}),
-              ...(useIgDm && dmPalette ? igDmSurfaceStyle : {}),
+              ...(useIgDm && dmPalette && !chromeOnWallpaper ? igDmSurfaceStyle : {}),
             }
-          : embedInStack && useIgDm && dmPalette
-            ? igDmSurfaceStyle
-            : undefined
+          : {
+              top: 0,
+              height: "100dvh",
+              maxHeight: "100dvh",
+              ...panelDismissTouchStyle,
+              ...(useIgDm && dmPalette && !chromeOnWallpaper ? igDmSurfaceStyle : {}),
+            }
       }
       {...(chatEdgeSwipeOnly
         ? {}
@@ -5490,12 +5815,26 @@ function ChatRoom({
           })}
     >
       {!embedInStack && <div {...edgeStripProps} data-chat-back-edge aria-label="سحب للرجوع من اليمين" />}
+      {chromeOnWallpaper && chatWallpaperUrl ? (
+        <>
+          <div
+            className="pointer-events-none fixed inset-0 z-[208] mx-auto w-full max-w-md bg-cover bg-center bg-no-repeat"
+            style={{ backgroundImage: `url(${chatWallpaperUrl})` }}
+            aria-hidden
+          />
+          <div
+            className="pointer-events-none fixed inset-0 z-[208] mx-auto w-full max-w-md"
+            style={{ backgroundColor: `rgba(0,0,0,${activeWallpaper.overlayOpacity ?? 0.4})` }}
+            aria-hidden
+          />
+        </>
+      ) : null}
       <SlideDismissContext.Provider value={chatDismissCtx}>
       <div
         className={
           embedInStack
-            ? "relative mx-auto h-full w-full min-w-0 max-w-md overflow-hidden overscroll-none pointer-events-auto"
-            : "relative mx-auto h-full w-full min-w-0 max-w-md overflow-hidden overscroll-none pointer-events-auto"
+            ? "relative z-[210] mx-auto h-full w-full min-w-0 max-w-md overflow-hidden overscroll-none pointer-events-auto"
+            : "relative z-[210] mx-auto h-full w-full min-w-0 max-w-md overflow-hidden overscroll-none pointer-events-auto"
         }
       >
       <div
@@ -5505,35 +5844,47 @@ function ChatRoom({
           (embedInStack ? "" : "will-change-transform ") +
           themeBg
         }
-        style={{ ...roomEnterStyle, ...igDmSurfaceStyle }}
+        style={{
+          ...roomEnterStyle,
+          ...(chromeOnWallpaper ? { background: "transparent" } : igDmSurfaceStyle),
+          ...(dmPalette && !chromeOnWallpaper
+            ? { ["--chat-surface" as string]: dmPalette.surface }
+            : {}),
+        }}
         {...chatNoSelectCaptureHandlers}
       >
       <div
+        ref={chatHeaderRef}
         dir={useIgDm ? dmDir : "rtl"}
         data-chat-dismiss-handle
         className={
-          "relative z-40 flex shrink-0 items-center gap-2 px-3 py-3 pt-[max(0.75rem,env(safe-area-inset-top,0px))] " +
+          "sticky top-0 z-[260] flex w-full shrink-0 items-center gap-2 px-3 py-3 pt-[max(0.75rem,var(--sat))] " +
           (isQuranChannel
             ? "bg-zinc-900 text-zinc-100 border-b border-zinc-700"
-            : useIgDm && dmPalette
-              ? "border-b border-transparent " + dmPalette.headerTitleClass
-              : "border-b border-border bg-background")
+            : chromeOnWallpaper
+              ? "border-b border-white/10 bg-black/40 text-white backdrop-blur-xl"
+              : useIgDm && dmPalette
+                ? "border-b border-transparent " + dmPalette.headerTitleClass
+                : "border-b border-border bg-background")
         }
         style={
-          useIgDm && !isQuranChannel
-            ? {
-                ...igDmSurfaceStyle,
-                backdropFilter: "blur(24px) saturate(1.6)",
-                WebkitBackdropFilter: "blur(24px) saturate(1.6)",
-                background:
-                  igDmSurfaceStyle?.backgroundColor === "#000000" || igDmSurfaceStyle?.backgroundColor === "#000"
-                    ? "rgba(0,0,0,0.72)"
-                    : "rgba(242,242,247,0.80)",
-                borderBottom: igDmSurfaceStyle?.backgroundColor === "#000000" || igDmSurfaceStyle?.backgroundColor === "#000"
-                  ? "0.5px solid rgba(255,255,255,0.10)"
-                  : "0.5px solid rgba(0,0,0,0.08)",
-              }
-            : undefined
+          chromeOnWallpaper
+            ? undefined
+            : useIgDm && !isQuranChannel
+              ? {
+                  ...igDmSurfaceStyle,
+                  backdropFilter: "blur(24px) saturate(1.6)",
+                  WebkitBackdropFilter: "blur(24px) saturate(1.6)",
+                  background:
+                    igDmSurfaceStyle?.backgroundColor === "#000000" || igDmSurfaceStyle?.backgroundColor === "#000"
+                      ? "rgba(0,0,0,0.72)"
+                      : "rgba(242,242,247,0.80)",
+                  borderBottom:
+                    igDmSurfaceStyle?.backgroundColor === "#000000" || igDmSurfaceStyle?.backgroundColor === "#000"
+                      ? "0.5px solid rgba(255,255,255,0.10)"
+                      : "0.5px solid rgba(0,0,0,0.08)",
+                }
+              : undefined
         }
       >
         <div className="relative z-[50] flex min-w-0 flex-1 items-center gap-1">
@@ -5544,7 +5895,11 @@ function ChatRoom({
           aria-label="رجوع"
           className={
             "relative z-[60] flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-full transition-[transform,background-color] duration-150 ease-out active:scale-[0.88] " +
-            (useIgDm && dmPalette ? dmPalette.iconBtnClass : "text-foreground hover:bg-secondary active:bg-secondary/90")
+            (chromeOnWallpaper
+              ? wallpaperIconClass
+              : useIgDm && dmPalette
+                ? dmPalette.iconBtnClass
+                : "text-foreground hover:bg-secondary active:bg-secondary/90")
           }
           onClick={e => {
             e.stopPropagation();
@@ -5713,16 +6068,22 @@ function ChatRoom({
               <SettingsIcon size={20} />
             </button>
           )}
-          {!useIgDm && !isQuranChannel && !chat.isGroup && !chat.isChannel && (
-            <select
-              value={theme}
-              onChange={e => setTheme(e.target.value as ChatVisualTheme)}
-              className="rounded-full bg-secondary px-2 py-1 text-xs"
+          {!isQuranChannel && (
+            <button
+              type="button"
+              aria-label={state.language === "en" ? "Chat theme" : "سمة المحادثة"}
+              className={
+                "flex h-10 w-10 shrink-0 touch-manipulation items-center justify-center rounded-full " +
+                (chromeOnWallpaper
+                  ? wallpaperIconClass
+                  : useIgDm && dmPalette
+                    ? dmPalette.iconBtnClass
+                    : "text-foreground hover:bg-secondary active:bg-secondary/90")
+              }
+              onClick={() => setShowChatThemePicker(true)}
             >
-              <option value="default">ثيم</option>
-              <option value="blue">أزرق</option>
-              <option value="pink">وردي</option>
-            </select>
+              <Palette size={20} strokeWidth={1.75} />
+            </button>
           )}
         </div>
       </div>
@@ -5797,20 +6158,23 @@ function ChatRoom({
         className={
           "chat-scroll-pane chat-no-select no-scrollbar relative z-10 min-h-0 flex-1 touch-pan-y overscroll-none " +
           (drawComposeOpen ? "overflow-hidden " : "overflow-y-auto ") +
-          (isQuranChannel ? "bg-zinc-950" : useIgDm ? "" : "bg-background")
+          (isQuranChannel ? "bg-zinc-950" : chromeOnWallpaper ? "bg-transparent" : useIgDm ? "" : "bg-background")
         }
         style={{
           scrollbarWidth: "none",
           msOverflowStyle: "none",
           overflowAnchor: "none",
-          ...(useIgDm && dmPalette ? igDmSurfaceStyle : {}),
+          ...(useIgDm && dmPalette && !chromeOnWallpaper ? igDmSurfaceStyle : {}),
         }}
       >
         <div
           className={
-            "flex min-h-full w-full flex-col justify-end gap-2 px-3 pt-2 pb-0 " +
-            (isQuranChannel ? "bg-zinc-950" : "")
+            "flex min-h-full w-full flex-col justify-end gap-2 px-3 pt-2 " +
+            (isQuranChannel ? "bg-zinc-950" : chromeOnWallpaper ? "bg-transparent" : "")
           }
+          style={{
+            paddingBottom: "12px",
+          }}
         >
         {hasOlderMessages && (
           <div className="flex w-full justify-center py-2">
@@ -5824,9 +6188,11 @@ function ChatRoom({
                 <span
                   className="rounded-full px-3 py-1 text-[11px] font-medium"
                   style={
-                    dmPalette
-                      ? { backgroundColor: dmPalette.dayPillBg, color: dmPalette.dayPillText }
-                      : undefined
+                    chromeOnWallpaper
+                      ? { backgroundColor: "rgba(255,255,255,0.14)", color: "rgba(255,255,255,0.85)" }
+                      : dmPalette
+                        ? { backgroundColor: dmPalette.dayPillBg, color: dmPalette.dayPillText }
+                        : undefined
                   }
                 >
                   {row.label}
@@ -5835,6 +6201,42 @@ function ChatRoom({
             );
           }
           const m = row.message;
+          const groupSystemEvent =
+            (chat.isGroup || chat.isChannel) && m.type === "text"
+              ? parseGroupSystemEvent(messageContent(m))
+              : null;
+          if (groupSystemEvent) {
+            const systemMuted =
+              chromeOnWallpaper || dmPalette ? "text-white/70" : "text-muted-foreground";
+            const systemUserBtn =
+              "font-semibold text-primary underline-offset-2 hover:underline active:opacity-80";
+            return (
+              <div key={m.id} className="flex w-full justify-center px-3 py-3">
+                <p
+                  className={
+                    "max-w-[94%] text-center text-[13px] leading-snug font-medium " +
+                    (chromeOnWallpaper || dmPalette ? "text-white/90" : "text-foreground/90")
+                  }
+                >
+                  <button
+                    type="button"
+                    className={systemUserBtn}
+                    onClick={() => openMentionProfile(groupSystemEvent.actor)}
+                  >
+                    @{groupSystemEvent.actor}
+                  </button>{" "}
+                  <span className={systemMuted}>{groupSystemEvent.action}</span>{" "}
+                  <button
+                    type="button"
+                    className={systemUserBtn}
+                    onClick={() => openMentionProfile(groupSystemEvent.target)}
+                  >
+                    @{groupSystemEvent.target}
+                  </button>
+                </p>
+              </div>
+            );
+          }
           const showPeerAvatar = row.showPeerAvatar;
           const mine = isOwnChatMessage(m.senderId, state, { directMessagePeerId: otherId });
           const senderProfile = userById(state, m.senderId);
@@ -6307,7 +6709,10 @@ function ChatRoom({
 
       <div
         ref={composerRef}
-        className="relative z-[56] shrink-0 isolate"
+        className={
+          "chat-composer-dock isolate " +
+          (chromeOnWallpaper ? "backdrop-blur-xl bg-black/30" : "")
+        }
         style={{ ["--chat-composer-bottom-pad" as string]: composerBottomPad }}
       >
       {!canPost ? (
@@ -6319,32 +6724,18 @@ function ChatRoom({
             (isQuranChannel ? "text-zinc-400 bg-zinc-900 border-zinc-700" : "text-muted-foreground bg-background")
           }
         >
-          {t("onlyOwner")}
+          <div className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-3 py-1.5 text-xs font-semibold text-foreground">
+            <Lock size={14} />
+            الكتابة مقفلة
+          </div>
+          <p className="mt-2 text-sm">{blockedComposerReason || t("onlyOwner")}</p>
         </div>
       ) : (
         <div
           className={
             isQuranChannel
               ? "border-t border-zinc-700 bg-zinc-900"
-              : useIgDm && dmPalette
-                ? "border-t border-transparent"
-                : "border-t border-border bg-background"
-          }
-          style={
-            useIgDm && !isQuranChannel
-              ? {
-                  backdropFilter: "blur(24px) saturate(1.6)",
-                  WebkitBackdropFilter: "blur(24px) saturate(1.6)",
-                  background:
-                    igDmSurfaceStyle?.backgroundColor === "#000000" || igDmSurfaceStyle?.backgroundColor === "#000"
-                      ? "rgba(0,0,0,0.75)"
-                      : "rgba(242,242,247,0.82)",
-                  borderTop:
-                    igDmSurfaceStyle?.backgroundColor === "#000000" || igDmSurfaceStyle?.backgroundColor === "#000"
-                      ? "0.5px solid rgba(255,255,255,0.10)"
-                      : "0.5px solid rgba(0,0,0,0.08)",
-                }
-              : undefined
+              : "bg-transparent"
           }
         >
           {replyingTo && (
@@ -6387,29 +6778,161 @@ function ChatRoom({
               e.preventDefault();
               submitTextMessage();
             }}
-            className="chat-composer-bar px-3 pt-2 pb-[var(--chat-composer-bottom-pad)]"
+            className="chat-composer-bar bg-transparent px-3 pt-2 pb-2"
           >
             {useIgDm ? (
-            <div dir={dmDir} className="relative flex min-h-[44px] items-center gap-2">
+            <div dir="ltr" className="relative flex min-h-[44px] items-end gap-2.5">
+              <div
+                dir="ltr"
+                className="flex min-h-[44px] min-w-0 flex-1 flex-nowrap items-center gap-0.5 rounded-[24px] px-2 py-1"
+                style={
+                  dmPalette
+                    ? {
+                        backgroundColor: chromeOnWallpaper
+                          ? "rgba(255,255,255,0.12)"
+                          : dmPalette.composerField,
+                      }
+                    : undefined
+                }
+              >
+              {!composerHasText &&
+                (recording ? (
+                  <button
+                    type="button"
+                    className={
+                      "flex h-8 w-8 shrink-0 touch-manipulation items-center justify-center rounded-full text-red-500 " +
+                      (dmPalette?.composerIconClass ?? "hover:bg-white/10")
+                    }
+                    aria-label={t("stop")}
+                    onClick={stopRecording}
+                  >
+                    <Square size={15} fill="currentColor" />
+                  </button>
+                ) : composerMicCooldown ? (
+                  <div className="h-8 w-8 shrink-0 touch-none pointer-events-none" aria-hidden />
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className={
+                        "flex h-8 w-8 shrink-0 touch-manipulation items-center justify-center rounded-full transition " +
+                        (dmPalette?.composerIconClass ?? "text-zinc-300 hover:bg-white/10")
+                      }
+                      style={{ touchAction: "none" }}
+                      aria-label="تسجيل صوتي"
+                      onClick={() => {
+                        if (Date.now() < blockMicUntilRef.current) return;
+                        void startRecording();
+                      }}
+                    >
+                      <Mic size={19} strokeWidth={2} />
+                    </button>
+                    <button
+                      type="button"
+                      {...galleryLongPressBtnProps}
+                      className={
+                        "flex h-8 w-8 shrink-0 touch-manipulation items-center justify-center rounded-full transition " +
+                        (dmPalette?.composerIconClass ?? "text-zinc-300 hover:bg-white/10")
+                      }
+                      aria-label="معرض الصور"
+                      onClick={() => {
+                        setPlusAttachOpen(false);
+                        onGalleryButtonClick();
+                      }}
+                      onPointerDown={e => {
+                        setPlusAttachOpen(false);
+                        onGalleryPointerDown(e);
+                      }}
+                      onPointerMove={onGalleryPointerMove}
+                      onPointerUp={clearGalleryLongPress}
+                      onPointerCancel={clearGalleryLongPress}
+                      onPointerLeave={clearGalleryLongPress}
+                      onTouchStart={onGalleryTouchStart}
+                      onTouchMove={onGalleryTouchMove}
+                      onTouchEnd={onGalleryTouchEnd}
+                      onTouchCancel={onGalleryTouchEnd}
+                    >
+                      <ImageIcon size={19} strokeWidth={2} />
+                    </button>
+                    <button
+                      type="button"
+                      className={
+                        "flex h-8 w-8 shrink-0 touch-manipulation items-center justify-center rounded-full transition " +
+                        (dmPalette?.composerIconClass ?? "text-zinc-300 hover:bg-white/10")
+                      }
+                      aria-label="إيموجي وملصقات"
+                      onClick={() => {
+                        setPlusAttachOpen(false);
+                        toggleStickerPanel();
+                      }}
+                    >
+                      <Sticker size={19} strokeWidth={2} />
+                    </button>
+                  </>
+                ))}
+              <MentionComposerField
+                textareaRef={composerInputRef}
+                rows={1}
+                dir="auto"
+                value={text}
+                onChange={onComposerChange}
+                mentionVariant="composer"
+                wrapperClassName="chat-allow-select min-w-0 flex-1"
+                overlayClassName={
+                  "py-1.5 text-[16px] leading-5 " +
+                  (dmPalette ? dmPalette.composerTextClass : "text-white")
+                }
+                onCompositionStart={() => {
+                  composingRef.current = true;
+                }}
+                onCompositionEnd={e => {
+                  composingRef.current = false;
+                  onComposerChange(e.currentTarget.value);
+                }}
+                onKeyDown={e => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    submitTextMessage();
+                  }
+                }}
+                onFocus={onComposerFocus}
+                placeholder={t("typeMessage")}
+                aria-label={t("typeMessage")}
+                className={
+                  "chat-allow-select no-scrollbar min-h-[20px] min-w-0 max-h-[100px] flex-1 resize-none overflow-y-hidden py-1.5 text-[16px] leading-5 whitespace-pre-wrap break-words bg-transparent outline-none " +
+                  (dmPalette
+                    ? dmPalette.composerTextClass + " " + dmPalette.composerPlaceholderClass
+                    : "text-white caret-white placeholder:text-zinc-500")
+                }
+                style={{ height: CHAT_COMPOSER_LINE_PX }}
+              />
+              {composerHasText ? (
+                <button
+                  type="button"
+                  className="relative z-[57] flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full shadow-[0_2px_12px_rgba(0,0,0,0.18)] transition-all duration-150 hover:opacity-90 active:scale-[0.88]"
+                  style={{
+                    background: "rgba(255,255,255,1)",
+                    color: "#000",
+                  }}
+                  aria-label={t("send")}
+                  onPointerUp={e => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    blockMicUntilRef.current = Date.now() + 520;
+                    submitTextMessage();
+                  }}
+                >
+                  <Send size={17} strokeWidth={2.5} className="pointer-events-none ltr:-rotate-12" style={{ color: "#000" }} />
+                </button>
+              ) : null}
+              </div>
               <div ref={plusAttachMenuRef} className="relative shrink-0">
                 <button
                   type="button"
                   className={
-                    "flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full shadow-sm transition-all duration-150 active:scale-[0.88] hover:opacity-90 " +
-                    (dmPalette?.iconBtnClass ?? "text-white")
+                    "flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full transition active:scale-[0.88] hover:opacity-90 " +
+                    (dmPalette?.composerIconClass ?? "text-white/80 hover:bg-white/10")
                   }
-                  style={{
-                    background:
-                      igDmSurfaceStyle?.backgroundColor === "#000000" || igDmSurfaceStyle?.backgroundColor === "#000"
-                        ? "rgba(255,255,255,0.14)"
-                        : "rgba(0,0,0,0.08)",
-                    backdropFilter: "blur(10px)",
-                    WebkitBackdropFilter: "blur(10px)",
-                    border:
-                      igDmSurfaceStyle?.backgroundColor === "#000000" || igDmSurfaceStyle?.backgroundColor === "#000"
-                        ? "0.5px solid rgba(255,255,255,0.18)"
-                        : "0.5px solid rgba(0,0,0,0.10)",
-                  }}
                   aria-label="إرفاق"
                   onPointerDown={e => e.stopPropagation()}
                   onClick={e => {
@@ -6421,7 +6944,7 @@ function ChatRoom({
                 </button>
                 {plusAttachOpen && (
                   <div
-                    className="absolute bottom-[calc(100%+12px)] start-0 z-[60] min-w-[13rem] overflow-hidden rounded-[22px] py-1.5"
+                    className="absolute bottom-[calc(100%+12px)] end-0 z-[60] min-w-[13rem] overflow-hidden rounded-[22px] py-1.5"
                     style={{
                       backdropFilter: "blur(28px) saturate(1.8)",
                       WebkitBackdropFilter: "blur(28px) saturate(1.8)",
@@ -6444,7 +6967,7 @@ function ChatRoom({
                       }
                       onClick={() => {
                         setPlusAttachOpen(false);
-                        cameraCaptureRef.current?.click();
+                        setInstagramCameraOpen(true);
                       }}
                     >
                       <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/15">
@@ -6545,275 +7068,40 @@ function ChatRoom({
                   </div>
                 )}
               </div>
-              <div
-                dir={dmDir}
-                className="flex min-h-[40px] min-w-0 flex-1 flex-nowrap items-center gap-0.5 rounded-[22px] px-3 py-1.5"
-                style={
-                  dmPalette
-                    ? {
-                        backdropFilter: "blur(12px)",
-                        WebkitBackdropFilter: "blur(12px)",
-                        backgroundColor: dmPalette.composerField,
-                        border:
-                          igDmSurfaceStyle?.backgroundColor === "#000000" || igDmSurfaceStyle?.backgroundColor === "#000"
-                            ? "0.5px solid rgba(255,255,255,0.10)"
-                            : "0.5px solid rgba(0,0,0,0.07)",
-                      }
-                    : undefined
-                }
-              >
-              <MentionComposerField
-                textareaRef={composerInputRef}
-                rows={1}
-                dir="auto"
-                value={text}
-                onChange={onComposerChange}
-                mentionVariant="composer"
-                wrapperClassName="chat-allow-select min-w-0 flex-1"
-                overlayClassName={
-                  "py-1.5 text-[15px] leading-5 " +
-                  (dmPalette ? dmPalette.composerTextClass : "text-white")
-                }
-                onCompositionStart={() => {
-                  composingRef.current = true;
-                }}
-                onCompositionEnd={e => {
-                  composingRef.current = false;
-                  onComposerChange(e.currentTarget.value);
-                }}
-                onKeyDown={e => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    submitTextMessage();
-                  }
-                }}
-                onFocus={() => {
-                  stickToBottomRef.current = true;
-                  scrollMessagesToBottom();
-                }}
-                placeholder={t("typeMessage")}
-                aria-label={t("typeMessage")}
-                className={
-                  "chat-allow-select no-scrollbar min-h-[20px] min-w-0 max-h-[100px] flex-1 resize-none overflow-y-hidden py-1.5 text-[15px] leading-5 whitespace-pre-wrap break-words bg-transparent outline-none " +
-                  (dmPalette
-                    ? dmPalette.composerTextClass + " " + dmPalette.composerPlaceholderClass
-                    : "text-white caret-white placeholder:text-zinc-500")
-                }
-                style={{ height: CHAT_COMPOSER_LINE_PX }}
-              />
-              {composerHasText ? (
-                <button
-                  type="button"
-                  className="relative z-[57] flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full shadow-[0_2px_12px_rgba(0,0,0,0.18)] transition-all duration-150 hover:opacity-90 active:scale-[0.88]"
-                  style={{
-                    background: "rgba(255,255,255,1)",
-                    color: "#000",
-                  }}
-                  aria-label={t("send")}
-                  onPointerUp={e => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    blockMicUntilRef.current = Date.now() + 520;
-                    submitTextMessage();
-                  }}
-                >
-                  <Send size={17} strokeWidth={2.5} className="pointer-events-none ltr:-rotate-12" style={{ color: "#000" }} />
-                </button>
-              ) : recording ? (
-                <button
-                  type="button"
-                  className={
-                    "flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full text-red-500 " +
-                    (dmPalette?.composerIconClass ?? "hover:bg-white/10")
-                  }
-                  aria-label={t("stop")}
-                  onClick={stopRecording}
-                >
-                  <Square size={15} fill="currentColor" />
-                </button>
-              ) : composerMicCooldown ? (
-                <div className="h-9 w-9 shrink-0 touch-none pointer-events-none" aria-hidden />
-              ) : (
-                <>
-                <button
-                  type="button"
-                  className={
-                    "flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full transition " +
-                    (dmPalette?.composerIconClass ?? "text-zinc-300 hover:bg-white/10")
-                  }
-                  style={{ touchAction: "none" }}
-                  aria-label="تسجيل صوتي"
-                  onClick={() => {
-                    if (Date.now() < blockMicUntilRef.current) return;
-                    void startRecording();
-                  }}
-                >
-                  <Mic size={20} strokeWidth={2} />
-                </button>
-                <button
-                  type="button"
-                  {...galleryLongPressBtnProps}
-                  className={
-                    "flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full transition " +
-                    (dmPalette?.composerIconClass ?? "text-zinc-300 hover:bg-white/10")
-                  }
-                  aria-label="معرض الصور — ضغط مطوّل لاختيار فيديو كرسالة صوتية"
-                  onClick={() => {
-                    setPlusAttachOpen(false);
-                    onGalleryButtonClick();
-                  }}
-                  onPointerDown={e => {
-                    setPlusAttachOpen(false);
-                    onGalleryPointerDown(e);
-                  }}
-                  onPointerMove={onGalleryPointerMove}
-                  onPointerUp={clearGalleryLongPress}
-                  onPointerCancel={clearGalleryLongPress}
-                  onPointerLeave={clearGalleryLongPress}
-                  onTouchStart={onGalleryTouchStart}
-                  onTouchMove={onGalleryTouchMove}
-                  onTouchEnd={onGalleryTouchEnd}
-                  onTouchCancel={onGalleryTouchEnd}
-                >
-                  <ImageIcon size={20} strokeWidth={2} />
-                </button>
-                <button
-                  type="button"
-                  className={
-                    "flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full transition " +
-                    (dmPalette?.composerIconClass ?? "text-zinc-300 hover:bg-white/10")
-                  }
-                  aria-label="إيموجي وملصقات"
-                  onClick={() => {
-                    setPlusAttachOpen(false);
-                    toggleStickerPanel();
-                  }}
-                >
-                  <Smile size={20} strokeWidth={2} />
-                </button>
-                </>
-              )}
-              </div>
             </div>
             ) : (
+            <div dir="ltr" className="relative flex min-h-[44px] items-end gap-2.5">
             <div
-              dir="ltr"
               className={
-                "relative flex min-h-[46px] flex-nowrap items-center gap-1 rounded-[26px] border px-1.5 py-[5px] " +
-                (isQuranChannel
-                  ? "border-zinc-700 bg-zinc-900"
-                  : "border-border bg-background dark:border-zinc-800")
+                "relative flex min-h-[44px] min-w-0 flex-1 flex-nowrap items-center gap-0.5 rounded-[24px] px-2 py-1 " +
+                (isQuranChannel ? "bg-zinc-900" : "bg-secondary/80 dark:bg-zinc-800/90")
               }
             >
-              {!composerHasText && (
+              {!composerHasText && !recording && !composerMicCooldown && (
+              <>
               <button
                 type="button"
-                className={chatCameraButtonClass(theme, isQuranChannel)}
-                aria-label="كاميرا"
+                className={
+                  "flex h-8 w-8 shrink-0 touch-manipulation items-center justify-center rounded-full text-foreground/85 transition hover:bg-black/[0.06] dark:hover:bg-white/10 " +
+                  (isQuranChannel ? "text-zinc-200" : "")
+                }
+                aria-label="تسجيل صوتي"
                 onClick={() => {
-                  setPlusAttachOpen(false);
-                  cameraCaptureRef.current?.click();
+                  if (Date.now() < blockMicUntilRef.current) return;
+                  void startRecording();
                 }}
               >
-                <Camera size={18} strokeWidth={2} className="pointer-events-none" />
+                <Mic size={19} strokeWidth={2} className="pointer-events-none" />
               </button>
-              )}
-              <MentionComposerField
-                textareaRef={composerInputRef}
-                rows={1}
-                dir="auto"
-                value={text}
-                onChange={onComposerChange}
-                mentionVariant={isQuranChannel ? "composerQuran" : "composer"}
-                wrapperClassName="chat-allow-select min-w-0 flex-1"
-                overlayClassName={
-                  "py-1.5 text-[15px] leading-5 " +
-                  (isQuranChannel ? "text-emerald-50" : "text-zinc-900 dark:text-zinc-50")
-                }
-                onCompositionStart={() => {
-                  composingRef.current = true;
-                }}
-                onCompositionEnd={e => {
-                  composingRef.current = false;
-                  onComposerChange(e.currentTarget.value);
-                }}
-                onKeyDown={e => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    submitTextMessage();
-                  }
-                }}
-                onFocus={() => {
-                  stickToBottomRef.current = true;
-                  scrollMessagesToBottom();
-                }}
-                placeholder={t("typeMessage")}
-                aria-label={t("typeMessage")}
-                className={
-                  "chat-allow-select no-scrollbar min-h-[20px] min-w-0 max-h-[100px] flex-1 resize-none overflow-y-hidden py-1.5 text-[15px] leading-5 whitespace-pre-wrap break-words outline-none " +
-                  (isQuranChannel
-                    ? "caret-emerald-200 placeholder:text-emerald-200/55"
-                    : "caret-zinc-800 placeholder:text-zinc-500/65 dark:caret-zinc-200 dark:placeholder:text-zinc-400/60")
-                }
-                style={{ height: CHAT_COMPOSER_LINE_PX }}
-              />
-
-              {composerHasText ? (
-                <button
-                  type="button"
-                  className="relative z-[57] flex h-10 w-10 shrink-0 touch-manipulation items-center justify-center rounded-full bg-[#0084ff] text-white shadow-sm transition hover:bg-[#0073e6] active:scale-[0.97]"
-                  aria-label={t("send")}
-                  onPointerUp={e => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    blockMicUntilRef.current = Date.now() + 520;
-                    submitTextMessage();
-                  }}
-                >
-                  <Send size={18} strokeWidth={2.25} className="pointer-events-none ltr:-rotate-12" />
-                </button>
-              ) : recording ? (
-                <button
-                  type="button"
-                  className="flex h-10 w-10 shrink-0 touch-manipulation items-center justify-center rounded-full text-destructive hover:bg-destructive/10"
-                  aria-label={t("stop")}
-                  onClick={stopRecording}
-                >
-                  <Square size={16} fill="currentColor" />
-                </button>
-              ) : composerMicCooldown ? (
-                <div
-                  className="h-10 w-10 shrink-0 touch-none pointer-events-none"
-                  aria-hidden
-                />
-              ) : (
-                <button
-                  type="button"
-                  className={
-                    "flex h-10 w-10 shrink-0 touch-manipulation items-center justify-center rounded-full text-foreground/85 transition hover:bg-black/[0.06] dark:hover:bg-white/10 " +
-                    (isQuranChannel ? "text-zinc-200" : "")
-                  }
-                  aria-label="تسجيل صوتي"
-                  onClick={() => {
-                    if (Date.now() < blockMicUntilRef.current) return;
-                    void startRecording();
-                  }}
-                >
-                  <Mic size={21} strokeWidth={2} className="pointer-events-none" />
-                </button>
-              )}
-
-              {!composerHasText && (
-              <>
               <button
                 type="button"
                 {...galleryLongPressBtnProps}
                 className={
-                  "flex h-10 w-10 shrink-0 touch-manipulation items-center justify-center rounded-full text-foreground/85 transition hover:bg-black/[0.06] dark:hover:bg-white/10 " +
+                  "flex h-8 w-8 shrink-0 touch-manipulation items-center justify-center rounded-full text-foreground/85 transition hover:bg-black/[0.06] dark:hover:bg-white/10 " +
                   (isQuranChannel ? "text-zinc-200" : "")
                 }
                 style={{ touchAction: "none" }}
-                aria-label="الاستديو: ضغطة للصور والفيديو، ضغط مطوّل لمقاطع كرسالة صوتية"
+                aria-label="معرض الصور"
                 onClick={() => {
                   setPlusAttachOpen(false);
                   onGalleryButtonClick();
@@ -6831,13 +7119,12 @@ function ChatRoom({
                 onTouchEnd={onGalleryTouchEnd}
                 onTouchCancel={onGalleryTouchEnd}
               >
-                <ImageIcon size={21} strokeWidth={2} />
+                <ImageIcon size={19} strokeWidth={2} />
               </button>
-
               <button
                 type="button"
                 className={
-                  "flex h-10 w-10 shrink-0 touch-manipulation items-center justify-center rounded-full text-foreground/85 transition hover:bg-black/[0.06] dark:hover:bg-white/10 " +
+                  "flex h-8 w-8 shrink-0 touch-manipulation items-center justify-center rounded-full text-foreground/85 transition hover:bg-black/[0.06] dark:hover:bg-white/10 " +
                   (isQuranChannel ? "text-zinc-200" : "")
                 }
                 aria-label="ملصقات"
@@ -6846,32 +7133,141 @@ function ChatRoom({
                   toggleStickerPanel();
                 }}
               >
-                <Sticker size={21} strokeWidth={2} />
+                <Sticker size={19} strokeWidth={2} />
               </button>
-
-              <div ref={plusAttachMenuRef} className="relative shrink-0">
+              </>
+              )}
+              {recording && (
                 <button
                   type="button"
-                  className={
-                    "flex h-10 w-10 shrink-0 touch-manipulation items-center justify-center rounded-full border text-foreground/90 transition hover:bg-black/[0.06] dark:hover:bg-white/10 " +
-                    (isQuranChannel ? "border-zinc-600/80 text-zinc-200" : "border-muted-foreground/40")
+                  className="flex h-8 w-8 shrink-0 touch-manipulation items-center justify-center rounded-full text-destructive hover:bg-destructive/10"
+                  aria-label={t("stop")}
+                  onClick={stopRecording}
+                >
+                  <Square size={15} fill="currentColor" />
+                </button>
+              )}
+              {composerMicCooldown && !composerHasText && !recording && (
+                <div className="h-8 w-8 shrink-0 touch-none pointer-events-none" aria-hidden />
+              )}
+              <MentionComposerField
+                textareaRef={composerInputRef}
+                rows={1}
+                dir="auto"
+                value={text}
+                onChange={onComposerChange}
+                mentionVariant={isQuranChannel ? "composerQuran" : "composer"}
+                wrapperClassName="chat-allow-select min-w-0 flex-1"
+                overlayClassName={
+                  "py-1.5 text-[16px] leading-5 " +
+                  (isQuranChannel ? "text-emerald-50" : "text-zinc-900 dark:text-zinc-50")
+                }
+                onCompositionStart={() => {
+                  composingRef.current = true;
+                }}
+                onCompositionEnd={e => {
+                  composingRef.current = false;
+                  onComposerChange(e.currentTarget.value);
+                }}
+                onKeyDown={e => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    submitTextMessage();
                   }
-                  aria-label="إرفاق"
-                  onPointerDown={e => e.stopPropagation()}
-                  onClick={e => {
+                }}
+                onFocus={onComposerFocus}
+                placeholder={t("typeMessage")}
+                aria-label={t("typeMessage")}
+                className={
+                  "chat-allow-select no-scrollbar min-h-[20px] min-w-0 max-h-[100px] flex-1 resize-none overflow-y-hidden py-1.5 text-[16px] leading-5 whitespace-pre-wrap break-words outline-none " +
+                  (isQuranChannel
+                    ? "caret-emerald-200 placeholder:text-emerald-200/55"
+                    : "caret-zinc-800 placeholder:text-zinc-500/65 dark:caret-zinc-200 dark:placeholder:text-zinc-400/60")
+                }
+                style={{ height: CHAT_COMPOSER_LINE_PX }}
+              />
+
+              {composerHasText ? (
+                <button
+                  type="button"
+                  className="relative z-[57] flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full bg-[#0084ff] text-white shadow-sm transition hover:bg-[#0073e6] active:scale-[0.97]"
+                  aria-label={t("send")}
+                  onPointerUp={e => {
+                    e.preventDefault();
                     e.stopPropagation();
-                    setPlusAttachOpen(o => !o);
+                    blockMicUntilRef.current = Date.now() + 520;
+                    submitTextMessage();
                   }}
                 >
-                  <Plus size={19} strokeWidth={2.25} />
+                  <Send size={18} strokeWidth={2.25} className="pointer-events-none ltr:-rotate-12" />
                 </button>
-                {plusAttachOpen && (
-                  <div
+              ) : null}
+            </div>
+            <div ref={plusAttachMenuRef} className="relative shrink-0">
+              <button
+                type="button"
+                className={
+                  "flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full text-foreground/90 transition hover:bg-black/[0.06] dark:hover:bg-white/10 " +
+                  (isQuranChannel ? "text-zinc-200" : "")
+                }
+                aria-label="إرفاق"
+                onPointerDown={e => e.stopPropagation()}
+                onClick={e => {
+                  e.stopPropagation();
+                  setPlusAttachOpen(o => !o);
+                }}
+              >
+                <Plus size={19} strokeWidth={2.25} />
+              </button>
+              {plusAttachOpen && (
+                <div
+                  className={
+                    "absolute bottom-[calc(100%+10px)] end-0 z-[60] min-w-[12rem] overflow-hidden rounded-2xl border py-1 shadow-xl " +
+                    (isQuranChannel ? "border-zinc-700 bg-zinc-900" : "border-border bg-popover")
+                  }
+                >
+                  <button
+                    type="button"
                     className={
-                      "absolute bottom-[calc(100%+10px)] end-0 z-[60] min-w-[12rem] overflow-hidden rounded-2xl border py-1 shadow-xl " +
-                      (isQuranChannel ? "border-zinc-700 bg-zinc-900" : "border-border bg-popover")
+                      "flex w-full items-center gap-3 px-4 py-3 text-start text-sm transition hover:bg-secondary " +
+                      (isQuranChannel ? "text-zinc-100" : "")
                     }
+                    onClick={() => {
+                      setPlusAttachOpen(false);
+                      setInstagramCameraOpen(true);
+                    }}
                   >
+                    <Camera size={18} /> <span>{state.language === "ar" ? "كاميرا" : "Camera"}</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isGuest}
+                    className={
+                      "flex w-full items-center gap-3 px-4 py-3 text-start text-sm transition hover:bg-secondary " +
+                      (isQuranChannel ? "text-zinc-100" : "") +
+                      (isGuest ? " cursor-not-allowed opacity-40" : "")
+                    }
+                    onClick={() => {
+                      setPlusAttachOpen(false);
+                      if (isGuest) { notifyGuestActionBlocked(); return; }
+                      setDrawComposeOpen(true);
+                    }}
+                  >
+                    <PenLine size={18} /> <span>رسم وكتابة</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isGuest}
+                    className={
+                      "flex w-full items-center gap-3 px-4 py-3 text-start text-sm transition hover:bg-secondary " +
+                      (isQuranChannel ? "text-zinc-100" : "") +
+                      (isGuest ? " cursor-not-allowed opacity-40" : "")
+                    }
+                    onClick={openGalleryVideoVoiceStudio}
+                  >
+                    <Video size={18} /> <span>استديو — مقطع كصوت</span>
+                  </button>
+                  {isDmRoom && (
                     <button
                       type="button"
                       disabled={isGuest}
@@ -6883,46 +7279,15 @@ function ChatRoom({
                       onClick={() => {
                         setPlusAttachOpen(false);
                         if (isGuest) { notifyGuestActionBlocked(); return; }
-                        setDrawComposeOpen(true);
+                        setShowPoolInviteModal(true);
                       }}
                     >
-                      <PenLine size={18} /> <span>رسم وكتابة</span>
+                      <span>🎱</span> <span>إنشاء لعبة</span>
                     </button>
-                    <button
-                      type="button"
-                      disabled={isGuest}
-                      className={
-                        "flex w-full items-center gap-3 px-4 py-3 text-start text-sm transition hover:bg-secondary " +
-                        (isQuranChannel ? "text-zinc-100" : "") +
-                        (isGuest ? " cursor-not-allowed opacity-40" : "")
-                      }
-                      onClick={openGalleryVideoVoiceStudio}
-                    >
-                      <Video size={18} /> <span>استديو — مقطع كصوت</span>
-                    </button>
-                    {isDmRoom && (
-                      <button
-                        type="button"
-                        disabled={isGuest}
-                        className={
-                          "flex w-full items-center gap-3 px-4 py-3 text-start text-sm transition hover:bg-secondary " +
-                          (isQuranChannel ? "text-zinc-100" : "") +
-                          (isGuest ? " cursor-not-allowed opacity-40" : "")
-                        }
-                        onClick={() => {
-                          setPlusAttachOpen(false);
-                          if (isGuest) { notifyGuestActionBlocked(); return; }
-                          setShowPoolInviteModal(true);
-                        }}
-                      >
-                        <span>🎱</span> <span>إنشاء لعبة</span>
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-              </>
+                  )}
+                </div>
               )}
+            </div>
             </div>
             )}
 
@@ -6960,22 +7325,26 @@ function ChatRoom({
         </div>
       )}
       </div>
+      <InstagramCamera
+        open={instagramCameraOpen}
+        language={state.language}
+        onClose={() => setInstagramCameraOpen(false)}
+        onCapture={cap => setCameraCompose({ kind: cap.kind, dataUrl: cap.dataUrl })}
+        onFallback={() => cameraCaptureRef.current?.click()}
+      />
       {cameraCompose && (
-        <ChatCameraComposeModal
+        <CameraCaptureShareScreen
           draft={cameraCompose}
-          senderName={me.username}
-          senderAvatar={me.avatar}
-          onClose={() => setCameraCompose(null)}
-          onSend={({ type, content, viewOnce }) => {
-            const rt = replyingTo ? { id: replyingTo.id, content: chatReplyPreview(replyingTo), type: replyingTo.type } : undefined;
+          language={state.language}
+          mode="chat"
+          onSendToChat={payload => {
             dispatchSend({
-              type,
-              content,
-              ...(viewOnce ? { viewOnce: true } : {}),
-              ...(rt ? { replyTo: rt } : {}),
+              type: payload.type,
+              content: payload.content,
+              ...(payload.shareText ? { shareText: payload.shareText } : {}),
             });
-            setReplyingTo(null);
           }}
+          onClose={() => setCameraCompose(null)}
         />
       )}
       {viewOnceOverlay && (
@@ -7009,6 +7378,17 @@ function ChatRoom({
       {forwardingMessage && (
         <ForwardChatSheet currentChat={chat} message={forwardingMessage} me={me} onClose={() => setForwardingMessage(null)} />
       )}
+      <ChatThemePickerSheet
+        open={showChatThemePicker}
+        selectedId={wallpaperId}
+        language={state.language}
+        onClose={() => setShowChatThemePicker(false)}
+        onSelect={id => {
+          setWallpaperId(id);
+          saveChatWallpaperForChat(chat, meId, id);
+          setShowChatThemePicker(false);
+        }}
+      />
       </div>
       </div>
       </SlideDismissContext.Provider>

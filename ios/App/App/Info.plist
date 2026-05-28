@@ -50,5 +50,13 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>Reyweet needs camera access to take photos and videos in chats and stories.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Reyweet needs microphone access to record videos with sound.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Reyweet needs photo library access to share images and videos.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Reyweet saves photos and videos you capture to your library when you choose to.</string>
 </dict>
 </plist>
