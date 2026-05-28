@@ -324,9 +324,7 @@ export function CreateScreen({
     } else if (
       type === "tweet" &&
       pickedFile &&
-      (pickedFile.type.startsWith("audio/") ||
-        pickedFile.type.startsWith("video/") ||
-        isVoiceMedia)
+      (isVoiceMedia || pickedFile.type.startsWith("audio/"))
     ) {
       setPublishing(true);
       const token = getApiToken();
@@ -341,7 +339,10 @@ export function CreateScreen({
       } catch {
         /* use original */
       }
-      const uploaded = await apiUploadMedia(token, fileToUpload, { timeoutMs: 120_000 });
+      const uploaded = await apiUploadMedia(token, fileToUpload, {
+        timeoutMs: 120_000,
+        voiceTweet: true,
+      });
       setPublishing(false);
       if (!uploaded.ok) {
         alert(uploaded.error);
@@ -349,6 +350,34 @@ export function CreateScreen({
       }
       audioUrl = resolveMediaUrl(uploaded.url);
       videoUrl = "";
+      imageUrl = "";
+    } else if (
+      type === "tweet" &&
+      pickedFile &&
+      pickedFile.type.startsWith("video/") &&
+      !isVoiceMedia
+    ) {
+      setPublishing(true);
+      const token = getApiToken();
+      if (!token || !apiBackendEnabled()) {
+        setPublishing(false);
+        alert("رفع الفيديو يتطلب اتصال الخادم");
+        return;
+      }
+      let fileToUpload = pickedFile;
+      try {
+        fileToUpload = await compressChatMediaFile(pickedFile);
+      } catch {
+        /* use original */
+      }
+      const uploaded = await apiUploadMedia(token, fileToUpload, { timeoutMs: 120_000 });
+      setPublishing(false);
+      if (!uploaded.ok) {
+        alert(uploaded.error);
+        return;
+      }
+      videoUrl = resolveMediaUrl(uploaded.url);
+      audioUrl = "";
       imageUrl = "";
     } else if (needsUpload && media?.startsWith("data:")) {
       setPublishing(true);

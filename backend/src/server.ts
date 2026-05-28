@@ -219,6 +219,8 @@ function publicUserPayload(user: UserRow) {
     displayName: user.displayName?.trim() || undefined,
     avatar,
     bio: user.bio ?? "",
+    note: user.note ?? "",
+    profileLink: user.profileLink ?? "",
     verified: user.verified === true,
     founderVerified: user.founderVerified === true,
     founderOfficialLabel: user.founderOfficialLabel,
@@ -1728,7 +1730,13 @@ app.post("/v1/media/upload", authMiddleware, mediaUploadMiddleware, async (req, 
       await fs.writeFile(tmpIn, file.buffer);
       const storyFast = String(req.query.story ?? "") === "1";
       const forReel = String(req.query.reel ?? "") === "1";
+      const forVoiceTweet = String(req.query.voice ?? "") === "1";
       try {
+        if (forVoiceTweet) {
+          const { extractVoiceAudioFromVideo } = await import("./lib/mediaCompress.js");
+          const { url } = await extractVoiceAudioFromVideo(tmpIn);
+          return res.json({ url, kind: "audio" });
+        }
         if (storyFast) {
           const { url } = await saveVideoFile(tmpIn);
           return res.json({ url, kind: "video" });

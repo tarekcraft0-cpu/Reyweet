@@ -51,6 +51,33 @@ export async function saveAudioFile(inputPath: string): Promise<{ url: string; p
   return { url: mediaPublicUrl("videos", outName), path: outPath };
 }
 
+/** استخراج مسار صوتي من فيديو قصير (تغريدة فويس من iOS) */
+export async function extractVoiceAudioFromVideo(
+  inputPath: string,
+): Promise<{ url: string; path: string }> {
+  await fs.mkdir(MEDIA_VIDEOS_DIR, { recursive: true });
+  const outName = `${randomUUID()}.m4a`;
+  const outPath = path.join(MEDIA_VIDEOS_DIR, outName);
+  try {
+    await new Promise<void>((resolve, reject) => {
+      ffmpeg(inputPath)
+        .noVideo()
+        .audioCodec("aac")
+        .audioBitrate("96k")
+        .outputOptions(["-y", "-movflags", "+faststart"])
+        .on("end", () => resolve())
+        .on("error", err => reject(err))
+        .save(outPath);
+    });
+    return { url: mediaPublicUrl("videos", outName), path: outPath };
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn("[media] voice extract failed, saving original audio track", e);
+    await fs.unlink(outPath).catch(() => undefined);
+    return saveAudioFile(inputPath);
+  }
+}
+
 /** رفع صورة/أفتار — يحافظ على GIF المتحرك */
 export async function saveUploadedImage(
   input: Buffer,

@@ -229,6 +229,19 @@ export function PostFeedMediaBlock({
     );
   }
 
+  if (postMedia.hasAudio && post.audio) {
+    return (
+      <div
+        className={
+          (profileInset ? "mx-0 w-full" : "mx-4 w-[calc(100%-2rem)]") +
+          " mb-1 rounded-2xl border border-border/60 bg-card p-3"
+        }
+      >
+        <TweetVoicePlayer src={post.audio} />
+      </div>
+    );
+  }
+
   if (postMedia.hasVideo) {
     const reelGrid = post.type === "reel";
     return (
@@ -247,19 +260,6 @@ export function PostFeedMediaBlock({
           onClick={e => e.stopPropagation()}
         />
       </PostFeedMedia>
-    );
-  }
-
-  if (postMedia.hasAudio) {
-    return (
-      <div
-        className={
-          (profileInset ? "mx-0 w-full" : "mx-4 w-[calc(100%-2rem)]") +
-          " mb-1 rounded-2xl border border-border/60 bg-card p-3"
-        }
-      >
-        <TweetVoicePlayer src={post.audio!} />
-      </div>
     );
   }
 

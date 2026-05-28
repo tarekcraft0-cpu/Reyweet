@@ -71,7 +71,6 @@ import { CreateScreen, type CreateScreenInitial } from "./screens/CreateScreen";
 import { EditProfileScreen } from "./screens/EditProfileScreen";
 import { AuthScreen } from "./screens/AuthScreen";
 import { GuestBrowseProfilePrompt } from "./GuestBrowseProfilePrompt";
-import { notifyGuestActionBlocked } from "@/lib/guestBlocked";
 import { NotificationsPanel } from "./NotificationsPanel";
 import { NotificationBanner } from "./NotificationBanner";
 import { Avatar } from "./Avatar";

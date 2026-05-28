@@ -1,10 +1,10 @@
-import { r as reactExports, a2 as getAugmentedNamespace, S as getDefaultExportFromCjs, W as jsxRuntimeExports, V as React__default, a3 as React } from "./server-DCIE6J5a.js";
+import { r as reactExports, a2 as getAugmentedNamespace, S as getDefaultExportFromCjs, W as jsxRuntimeExports, V as React__default, a3 as React } from "./server--IgNSFm5.js";
 import require$$0 from "fs";
 import require$$1 from "url";
-import { n as notImplementedClass, a as notImplemented } from "./worker-entry-Dy5iaLOQ.js";
+import { n as notImplementedClass, a as notImplemented } from "./worker-entry-Dc0IdM09.js";
 import require$$3 from "http";
 import require$$4 from "https";
-import { r as reactDomExports, R as ReactDOM } from "./router-BiCTcKb8.js";
+import { r as reactDomExports, R as ReactDOM } from "./router-4efRVdDp.js";
 import require$$0$1 from "util";
 import require$$1$1 from "stream";
 import require$$1$2 from "zlib";
@@ -297,6 +297,7 @@ class WebPlugin {
     });
   }
 }
+const WebView = /* @__PURE__ */ registerPlugin("WebView");
 const encode$1 = (str) => encodeURIComponent(str).replace(/%(2[346B]|5E|60|7C)/g, decodeURIComponent).replace(/[()]/g, escape);
 const decode$1 = (str) => str.replace(/(%[\dA-F]{2})+/gi, decodeURIComponent);
 class CapacitorCookiesPluginWeb extends WebPlugin {
@@ -350,7 +351,7 @@ class CapacitorCookiesPluginWeb extends WebPlugin {
     }
   }
 }
-registerPlugin("CapacitorCookies", {
+const CapacitorCookies = registerPlugin("CapacitorCookies", {
   web: () => new CapacitorCookiesPluginWeb()
 });
 const readBlobAsBase64 = async (blob) => new Promise((resolve, reject) => {
@@ -503,9 +504,23 @@ class CapacitorHttpPluginWeb extends WebPlugin {
     return this.request(Object.assign(Object.assign({}, options), { method: "DELETE" }));
   }
 }
-registerPlugin("CapacitorHttp", {
+const CapacitorHttp = registerPlugin("CapacitorHttp", {
   web: () => new CapacitorHttpPluginWeb()
 });
+const index$1 = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+  __proto__: null,
+  Capacitor,
+  CapacitorCookies,
+  CapacitorException,
+  CapacitorHttp,
+  get ExceptionCode() {
+    return ExceptionCode;
+  },
+  WebPlugin,
+  WebView,
+  buildRequestInit,
+  registerPlugin
+}, Symbol.toStringTag, { value: "Module" }));
 const PRODUCTION_VPS_HOST = "109.199.111.29";
 const PRODUCTION_VPS_API = `http://${PRODUCTION_VPS_HOST}`;
 const VERCEL_SITE_URL = "https://reyweet.vercel.app";
@@ -561,13 +576,60 @@ function isNativeCapacitorShell() {
     return false;
   }
 }
+function isExpiredTunnelApiUrl(url2) {
+  const u = url2.trim();
+  if (!u || !/\.trycloudflare\.com/i.test(u)) return false;
+  if (typeof window === "undefined") return true;
+  try {
+    return new URL(u).origin !== window.location.origin;
+  } catch {
+    return true;
+  }
+}
 function isStaleMobileApiUrl(url2) {
   const u = url2.trim();
   if (!u) return false;
-  if (/\.trycloudflare\.com/i.test(u)) return true;
+  if (isExpiredTunnelApiUrl(u)) return true;
   if (isProductionVpsApiUrl(u)) return true;
   if (u.startsWith("http://") && !isPrivateApiUrl(u)) return true;
   return false;
+}
+function isBlockedApiUrl(url2) {
+  const u = url2.trim();
+  if (!u) return false;
+  if (isNativeCapacitorShell()) {
+    return isPrivateApiUrl(u) || isStaleMobileApiUrl(u);
+  }
+  if (typeof window === "undefined") return false;
+  if (window.location.protocol === "https:" && u.startsWith("http://")) return true;
+  if (isPrivateApiUrl(u)) {
+    if (isPublicAppHost()) return true;
+    try {
+      const apiHost = new URL(u).hostname;
+      if (isLanOrLocalHostname(apiHost) && isLanOrLocalHostname(window.location.hostname)) {
+        return false;
+      }
+    } catch {
+    }
+    return true;
+  }
+  if (isPublicAppHost() && !isVpsProductionHost() && isProductionVpsApiUrl(u)) return true;
+  if (isExpiredTunnelApiUrl(u)) return true;
+  return false;
+}
+function sanitizeApiBaseUrl(candidate) {
+  const u = candidate.trim().replace(/\/$/, "");
+  if (!u || isBlockedApiUrl(u)) {
+    if (isNativeCapacitorShell()) return VERCEL_SITE_URL;
+    if (typeof window !== "undefined") {
+      const path = window.location.pathname || "";
+      if (isVpsProductionHost() || isPublicAppHost() && path.startsWith("/app")) {
+        return "";
+      }
+    }
+    return VERCEL_SITE_URL;
+  }
+  return u;
 }
 const API_RUNTIME_KEY = "retweet_web_api_config";
 let resolvedMode = "unset";
@@ -640,6 +702,7 @@ function readCachedApiUrl() {
     if (!raw) return "";
     const u = trimUrl(JSON.parse(raw).apiUrl);
     if (!u || isPublicAppHost() && isPrivateApiUrl(u)) return "";
+    if (isBlockedApiUrl(u)) return "";
     return u;
   } catch {
     return "";
@@ -648,6 +711,14 @@ function readCachedApiUrl() {
 function onAppPath() {
   if (typeof window === "undefined") return false;
   return (window.location.pathname || "").startsWith("/app");
+}
+function canUseSameOriginApi() {
+  if (typeof window === "undefined") return false;
+  if (!onAppPath()) return false;
+  if (isVpsProductionHost()) return true;
+  if (isPublicAppHost() && !isVpsProductionHost()) return true;
+  if (useUnifiedLocalServer()) return true;
+  return false;
 }
 function useUnifiedLocalServer() {
   if (typeof window === "undefined") return false;
@@ -677,11 +748,15 @@ function clearStaleApiConfig() {
       localStorage.removeItem(API_RUNTIME_KEY);
       return;
     }
+    if (/\.trycloudflare\.com/i.test(u) && isPublicAppHost()) {
+      localStorage.removeItem(API_RUNTIME_KEY);
+      return;
+    }
     if (isLanOrLocalHostname(window.location.hostname) && !isNativeCapacitorShell() && (/\.trycloudflare\.com/i.test(u) || u.includes("vercel.app"))) {
       localStorage.removeItem(API_RUNTIME_KEY);
       return;
     }
-    if (isNativeCapacitorShell() && isStaleMobileApiUrl(u)) {
+    if (isBlockedApiUrl(u)) {
       localStorage.removeItem(API_RUNTIME_KEY);
       return;
     }
@@ -768,6 +843,7 @@ async function loadConfigFileUrls() {
 }
 function persistAbsolute(url2) {
   if (!url2 || typeof window === "undefined") return;
+  if (isBlockedApiUrl(url2)) return;
   try {
     localStorage.setItem(API_RUNTIME_KEY, JSON.stringify({ apiUrl: url2 }));
   } catch {
@@ -806,24 +882,27 @@ async function ensureApiRuntimeConfig() {
     }
     if (injected?.startsWith("http") && !skipInjected) {
       const u = injected.replace(/\/$/, "");
-      if (!(isPublicAppHost() && isPrivateApiUrl(u))) {
+      if (!isBlockedApiUrl(u) && !(isPublicAppHost() && isPrivateApiUrl(u))) {
         if (isPublicAppHost() && onAppPath()) {
-          resolvedMode = "absolute";
-          resolvedAbsoluteUrl = u;
-          persistAbsolute(u);
-          return u;
+          const safe = sanitizeApiBaseUrl(u);
+          resolvedMode = safe ? "absolute" : "relative";
+          resolvedAbsoluteUrl = safe;
+          if (safe) persistAbsolute(safe);
+          return safe;
         }
         if (await probeUrl(u)) {
-          resolvedMode = "absolute";
-          resolvedAbsoluteUrl = u;
-          persistAbsolute(u);
-          return u;
+          const safe = sanitizeApiBaseUrl(u);
+          resolvedMode = safe ? "absolute" : "relative";
+          resolvedAbsoluteUrl = safe;
+          if (safe) persistAbsolute(safe);
+          return safe;
         }
       }
     }
   }
   if (resolvedMode !== "unset") {
-    return resolvedMode === "relative" ? "" : resolvedAbsoluteUrl;
+    const cached2 = resolvedMode === "relative" ? "" : resolvedAbsoluteUrl;
+    return sanitizeApiBaseUrl(cached2);
   }
   if (isNativeCapacitorShell()) {
     const injected = trimUrl(
@@ -854,6 +933,9 @@ async function ensureApiRuntimeConfig() {
   if (isPublicAppHost() && onAppPath() && !isVpsProductionHost()) {
     const r2 = await resolveSameOriginApi();
     if (r2 !== null) return r2;
+    resolvedMode = "relative";
+    resolvedAbsoluteUrl = "";
+    return "";
   }
   if (isPublicAppHost() && onAppPath()) {
     for (const u of fileUrls) {
@@ -897,6 +979,7 @@ async function ensureApiRuntimeConfig() {
   for (const raw of candidates) {
     const u = trimUrl(raw);
     if (!u || seen.has(u)) continue;
+    if (isBlockedApiUrl(u)) continue;
     if (isPublicAppHost() && isPrivateApiUrl(u)) continue;
     if (isPublicAppHost() && !isVpsProductionHost() && onAppPath() && isProductionVpsApiUrl(u)) {
       continue;
@@ -912,22 +995,24 @@ async function ensureApiRuntimeConfig() {
     ordered.push(u);
   }
   const hit = await firstReachableApiUrl(ordered);
-  if (hit) {
-    resolvedMode = "absolute";
-    resolvedAbsoluteUrl = hit;
-    persistAbsolute(hit);
-    return hit;
+  if (hit && !isBlockedApiUrl(hit)) {
+    const safe = sanitizeApiBaseUrl(hit);
+    resolvedMode = safe ? "absolute" : "relative";
+    resolvedAbsoluteUrl = safe;
+    if (safe) persistAbsolute(safe);
+    return safe;
   }
   if (onAppPath() && isTunnelPublicHost()) {
     const r2 = await resolveSameOriginApi();
     if (r2 !== null) return r2;
   }
   const injectedFallback = readInjectedApiUrl();
-  if (injectedFallback && await probeUrl(injectedFallback)) {
-    resolvedMode = "absolute";
-    resolvedAbsoluteUrl = injectedFallback;
-    persistAbsolute(injectedFallback);
-    return injectedFallback;
+  if (injectedFallback && !isBlockedApiUrl(injectedFallback) && await probeUrl(injectedFallback)) {
+    const safe = sanitizeApiBaseUrl(injectedFallback);
+    resolvedMode = safe ? "absolute" : "relative";
+    resolvedAbsoluteUrl = safe;
+    if (safe) persistAbsolute(safe);
+    return safe;
   }
   resolvedMode = "relative";
   resolvedAbsoluteUrl = "";
@@ -935,9 +1020,9 @@ async function ensureApiRuntimeConfig() {
 }
 function peekApiBaseUrl() {
   if (resolvedMode === "relative") return "";
-  if (resolvedMode === "absolute") return resolvedAbsoluteUrl;
+  if (resolvedMode === "absolute") return sanitizeApiBaseUrl(resolvedAbsoluteUrl);
   const cached2 = readCachedApiUrl();
-  if (cached2) return cached2;
+  if (cached2) return sanitizeApiBaseUrl(cached2);
   if (useViteDevProxy()) return "";
   if (isVpsProductionHost() && onAppPath()) return "";
   if (useUnifiedLocalServer() || onAppPath() && isTunnelPublicHost()) return "";
@@ -980,26 +1065,33 @@ function pageOriginForMedia() {
   if (typeof window === "undefined") return "";
   return window.location.origin.replace(/\/$/, "");
 }
-function getMediaResolveBase() {
-  if (typeof window !== "undefined" && isPublicAppHost() && !isVpsProductionHost()) {
-    return pageOriginForMedia();
+function getMediaServingOrigin() {
+  if (typeof window === "undefined") return VERCEL_SITE_URL;
+  if (isNativeCapacitorShell()) {
+    const w = window;
+    const injected2 = w.__RETWEET_API_URL__?.trim().replace(/\/$/, "");
+    if (injected2 && !isPrivateApiUrl(injected2) && !isStaleMobileApiUrl(injected2)) {
+      return injected2;
+    }
+    const fromApi2 = (getApiBaseUrl() || peekApiBaseUrl() || "").replace(/\/$/, "");
+    if (fromApi2 && !isPrivateApiUrl(fromApi2) && !isStaleMobileApiUrl(fromApi2)) return fromApi2;
+    return VERCEL_SITE_URL;
+  }
+  if (isPublicAppHost() && !isVpsProductionHost()) {
+    return pageOriginForMedia() || VERCEL_SITE_URL;
   }
   const fromApi = getApiBaseUrl() || peekApiBaseUrl();
   if (fromApi?.trim()) return coerceMediaBaseForHttpsPage(fromApi.trim());
-  if (typeof window !== "undefined") {
-    const w = window;
-    const injected = w.__RETWEET_API_URL__?.trim().replace(/\/$/, "");
-    if (injected && !isPrivateApiUrl(injected))
-      return coerceMediaBaseForHttpsPage(injected);
-  }
-  return pageOriginForMedia();
+  const injected = window.__RETWEET_API_URL__?.trim();
+  if (injected && !isPrivateApiUrl(injected)) return coerceMediaBaseForHttpsPage(injected);
+  return pageOriginForMedia() || VERCEL_SITE_URL;
+}
+function isServerMediaPath(path) {
+  return path.startsWith("/media/") || path.startsWith("/stickers/") || path.startsWith("/public/");
 }
 function resolveServerMediaPath(pathnameOnly, search) {
-  const origin = pageOriginForMedia();
-  if (origin) return `${origin}${pathnameOnly}${search}`;
-  const base = getMediaResolveBase().replace(/\/$/, "");
-  if (base) return `${base}${pathnameOnly}${search}`;
-  return `${pathnameOnly}${search}`;
+  const base = getMediaServingOrigin().replace(/\/$/, "");
+  return `${base}${pathnameOnly}${search}`;
 }
 function normalizeMediaRef(src) {
   const v = (src ?? "").trim();
@@ -1021,7 +1113,7 @@ function normalizeMediaRef(src) {
       if (m) path = m[1];
     }
   }
-  if (path.startsWith("/media/")) {
+  if (isServerMediaPath(path)) {
     const search = path.includes("?") ? path.slice(path.indexOf("?")) : "";
     const pathnameOnly = path.split("?")[0] ?? path;
     return resolveServerMediaPath(pathnameOnly, search);
@@ -1031,21 +1123,23 @@ function normalizeMediaRef(src) {
       const u = new URL(v);
       if (isPrivateApiUrl(v)) return "";
       if (isTunnelPublicHost(u.hostname) || /\.trycloudflare\.com$/i.test(u.hostname)) return "";
-      if (u.pathname.startsWith("/media/")) {
+      if (isServerMediaPath(u.pathname)) {
         return resolveServerMediaPath(u.pathname, u.search || "");
       }
-      if (u.hostname === PRODUCTION_VPS_HOST) {
-        const origin = pageOriginForMedia();
-        if (origin && (u.pathname.startsWith("/media/") || u.pathname.startsWith("/stickers/") || u.pathname.startsWith("/app/") || u.pathname.startsWith("/public/"))) {
-          return `${origin}${u.pathname}${u.search || ""}`;
-        }
+      if (u.hostname === PRODUCTION_VPS_HOST && isServerMediaPath(u.pathname)) {
+        return resolveServerMediaPath(u.pathname, u.search || "");
       }
       const h = u.hostname;
-      if (typeof window !== "undefined" && h === window.location.hostname)
-        return `${u.origin}${u.pathname}${u.search || ""}`;
+      if (!isNativeCapacitorShell()) {
+        if (typeof window !== "undefined" && h === window.location.hostname)
+          return `${u.origin}${u.pathname}${u.search || ""}`;
+      }
       if (h === "reyweet.vercel.app" || h.endsWith(".vercel.app"))
         return `${u.origin}${u.pathname}${u.search || ""}`;
       if (u.protocol === "https:") return `${u.origin}${u.pathname}${u.search || ""}`;
+      if (isNativeCapacitorShell() && u.pathname.startsWith("/media/")) {
+        return resolveServerMediaPath(u.pathname, u.search || "");
+      }
       return "";
     } catch {
       return "";
@@ -1791,12 +1885,7 @@ const PREFIX = "[Retweet API]";
 function shouldLogApi() {
   if (typeof window === "undefined") return false;
   const w = window;
-  if (w.__RETWEET_API_DEBUG__ === true) return true;
-  try {
-    if (Capacitor.isNativePlatform()) return true;
-  } catch {
-  }
-  return isNativeCapacitorShell();
+  return w.__RETWEET_API_DEBUG__ === true;
 }
 function logApi(phase, detail) {
   if (!shouldLogApi()) return;
@@ -1832,6 +1921,12 @@ function postToNativeShell(payload) {
   const bridge = window.ReactNativeWebView;
   bridge?.postMessage(JSON.stringify(payload));
 }
+function isGroupMembershipSystemContent(content) {
+  const text = (content || "").trim();
+  return /^@?[A-Za-z0-9_.-]+\s+أضاف\s+@?[A-Za-z0-9_.-]+\s+إلى المجموعة$/.test(text) || /^@?[A-Za-z0-9_.-]+\s+طرد\s+@?[A-Za-z0-9_.-]+\s+من المجموعة$/.test(text) || /^@?[A-Za-z0-9_.-]+\s+added\s+@?[A-Za-z0-9_.-]+/i.test(text) || /^@?[A-Za-z0-9_.-]+\s+removed\s+@?[A-Za-z0-9_.-]+/i.test(text);
+}
+const DEFAULT_AVATAR_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120"><rect width="120" height="120" fill="#ffffff"/><circle cx="60" cy="43" r="24" fill="#9aa3af"/><path d="M16 112c1-22 20-36 44-36s43 14 44 36" fill="#9aa3af"/></svg>`;
+const DEFAULT_AVATAR_DATA_URI = `data:image/svg+xml;utf8,${encodeURIComponent(DEFAULT_AVATAR_SVG)}`;
 const TOKEN_KEY = "retweet_api_token";
 function getApiBaseUrl() {
   const fromPeek = peekApiBaseUrl();
@@ -1839,35 +1934,25 @@ function getApiBaseUrl() {
   let useMobileBase = false;
   try {
     useMobileBase = Capacitor.isNativePlatform() || typeof window !== "undefined" && isReactNativeWebView();
-    if (useMobileBase) {
-      raw = "http://192.168.100.166:3000"?.trim() || void 0 || "";
-      if (raw && (isPrivateApiUrl(raw) || isStaleMobileApiUrl(raw))) {
-        logApi("mobile-api-url-rejected", { raw, reason: "private-or-stale" });
-        raw = "";
-      }
+    raw = "http://192.168.100.166:3000"?.trim() || void 0 || "";
+    if (raw && (isPrivateApiUrl(raw) || isStaleMobileApiUrl(raw))) {
+      logApi("api-url-rejected", { raw, reason: "private-or-stale" });
+      raw = "";
     }
   } catch {
   }
-  const base = (raw.replace(/\/$/, "") || fromPeek).replace(/\/$/, "");
-  if (useMobileBase && !base && isNativeCapacitorShell()) {
+  const base = sanitizeApiBaseUrl((raw.replace(/\/$/, "") || fromPeek).replace(/\/$/, ""));
+  if (useMobileBase && isNativeCapacitorShell() && !base) {
     return VERCEL_SITE_URL;
   }
   return base;
 }
 function hasApiBackendConnection() {
   if (getApiBaseUrl().length > 0) return true;
+  if (canUseSameOriginApi()) return true;
   if (typeof window !== "undefined") {
     const injected = window.__RETWEET_API_URL__;
     if (injected?.startsWith("http")) return true;
-    if (useViteDevProxy()) {
-      return true;
-    }
-    if (isVpsProductionHost() && (window.location.pathname || "").startsWith("/app")) {
-      return true;
-    }
-    if (isPublicAppHost() && !isVpsProductionHost() && (window.location.pathname || "").startsWith("/app")) {
-      return true;
-    }
     if (isNativeCapacitorShell()) {
       return true;
     }
@@ -1923,7 +2008,8 @@ function buildApiUrl(path, base) {
 async function apiFetch$1(path, init = {}) {
   await ensureApiRuntimeConfig();
   const base = getApiBaseUrl();
-  if (!base && true) {
+  const sameOrigin = canUseSameOriginApi();
+  if (!base && true && !sameOrigin) {
     return new Response(
       JSON.stringify({
         error: isPublicAppHost() ? "الخادم غير متصل — تأكد من اتصال الإنترنت أو جرّب لاحقاً" : "الخادم غير متصل — شغّل npm run stack:reyweet للتطوير المحلي"
@@ -2084,7 +2170,7 @@ function userFromSearchResult(row) {
     displayName: row.displayName?.trim() || void 0,
     email: "",
     password: "",
-    avatar: row.avatar || row.username.slice(0, 2).toUpperCase(),
+    avatar: row.avatar || DEFAULT_AVATAR_DATA_URI,
     bio: row.bio ?? "",
     isPrivate: row.isPrivate === true,
     followers: Array.isArray(row.followers) ? row.followers : [],
@@ -2285,7 +2371,26 @@ function mergeChatMessages(local, remote) {
   const byId = /* @__PURE__ */ new Map();
   for (const m of local) byId.set(m.id, m);
   for (const m of remote) byId.set(m.id, m);
+  const remoteSystemContent = new Set(
+    remote.filter((m) => m.type === "text" && isGroupMembershipSystemContent(m.content)).map((m) => m.content.trim())
+  );
+  for (const m of local) {
+    if (m.type !== "text" || byId.has(m.id)) continue;
+    const t = m.content.trim();
+    if (isGroupMembershipSystemContent(t) && !remoteSystemContent.has(t)) {
+      byId.set(m.id, m);
+    }
+  }
   return [...byId.values()].sort((a, b) => a.createdAt - b.createdAt);
+}
+function mergeChatRecord(local, server2) {
+  return {
+    ...local,
+    ...server2,
+    members: server2.members?.length ? server2.members : local.members,
+    admins: server2.admins?.length ? server2.admins : local.admins,
+    messages: mergeChatMessages(local.messages || [], server2.messages || [])
+  };
 }
 async function apiPostMessage(token, chatId, receiverId, message) {
   const res = await apiFetch$1("/v1/messages", {
@@ -2421,6 +2526,7 @@ async function apiRecordStoryView(token, storyId) {
   }
 }
 async function apiPatchProfile(token, patch) {
+  await ensureApiRuntimeConfig();
   const res = await apiFetch$1("/v1/me/profile", {
     method: "PATCH",
     token,
@@ -2430,62 +2536,64 @@ async function apiPatchProfile(token, patch) {
   if (!res.ok || !data.user) return { ok: false, error: data.error || "فشل حفظ البروفايل" };
   return { ok: true, user: data.user };
 }
+async function apiDeleteAccount(token, body) {
+  const res = await apiFetch$1("/v1/me/account", {
+    method: "DELETE",
+    body: JSON.stringify(body),
+    token
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    return { ok: false, error: data.error || "تعذر حذف الحساب" };
+  }
+  return { ok: true };
+}
 async function apiUploadMedia(token, file, opts) {
   await ensureApiRuntimeConfig();
-  const base = getApiBaseUrl().replace(/\/$/, "");
-  if (!base) {
+  if (!hasApiBackendConnection()) {
     return {
       ok: false,
-      error: "الخادم غير متصل — تأكد أن API يعمل (npm run api:tunnel)"
+      error: isNativeCapacitorShell() ? "الخادم غير متصل — تحقق من الإنترنت" : "الخادم غير متصل — تحقق من اتصال الإنترنت"
     };
   }
-  let uploadPath = "/v1/media/upload";
   const q = [];
   if (opts?.storyVideo) q.push("story=1");
   if (opts?.reelVideo) q.push("reel=1");
   if (opts?.avatarAnimated) q.push("avatar=1");
-  if (q.length) uploadPath += `?${q.join("&")}`;
-  const url2 = `${base}${uploadPath}`;
+  if (opts?.voiceTweet) q.push("voice=1");
+  const uploadPath = `/v1/media/upload${q.length ? `?${q.join("&")}` : ""}`;
   const fd = new FormData();
   fd.append("file", file);
-  const ctl = new AbortController();
-  const timeoutMs = opts?.timeoutMs ?? API_FETCH_TIMEOUT_MS;
-  const timer = setTimeout(() => ctl.abort(), timeoutMs);
-  try {
-    const res = await fetch(url2, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-      body: fd,
-      signal: ctl.signal,
-      cache: "no-store"
-    });
-    const data = await res.json().catch(() => ({}));
-    if (res.status === 413) {
-      return {
-        ok: false,
-        error: opts?.reelVideo ? "الملف كبير جداً — الحد 500 ميجا للريلز" : "الملف كبير جداً — جرّب فيديو أقصر (دقيقة) أو صورة أخف"
-      };
-    }
-    if (!res.ok || !data.url) {
-      const err = data.error || "";
-      if (/compress|ضغط/i.test(err)) {
-        return { ok: false, error: "تعذر ضغط الملف — جرّب صيغة MP4 أو JPG" };
-      }
-      return {
-        ok: false,
-        error: err || (file.type.startsWith("video/") ? "فشل رفع الفيديو" : "فشل رفع الصورة")
-      };
-    }
-    return { ok: true, url: data.url, posterUrl: data.posterUrl };
-  } catch (e) {
-    const aborted = e instanceof Error && e.name === "AbortError";
+  const res = await apiFetch$1(uploadPath, {
+    method: "POST",
+    token,
+    body: fd,
+    timeoutMs: opts?.timeoutMs ?? API_FETCH_TIMEOUT_MS
+  });
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 413) {
     return {
       ok: false,
-      error: aborted ? file.type.startsWith("video/") ? opts?.reelVideo ? "انتهت مهلة رفع الريل — جرّب شبكة أسرع أو مقطعاً أقصر" : "انتهت مهلة رفع الفيديو — جرّب شبكة أسرع أو مقطعاً أقصر" : "انتهت مهلة رفع الملف — جرّب مرة أخرى" : "تعذر الاتصال بالخادم — تأكد أن npm run api:tunnel يعمل على جهازك"
+      error: opts?.reelVideo ? "الملف كبير جداً — الحد 500 ميجا للريلز" : "الملف كبير جداً — جرّب فيديو أقصر (دقيقة) أو صورة أخف"
     };
-  } finally {
-    clearTimeout(timer);
   }
+  if (res.status === 503 || res.status === 504) {
+    return {
+      ok: false,
+      error: data.error || "تعذر الاتصال بالخادم — تحقق من الإنترنت وحاول مرة أخرى"
+    };
+  }
+  if (!res.ok || !data.url) {
+    const err = data.error || "";
+    if (/compress|ضغط/i.test(err)) {
+      return { ok: false, error: "تعذر ضغط الملف — جرّب صيغة MP4 أو JPG" };
+    }
+    return {
+      ok: false,
+      error: err || (file.type.startsWith("video/") ? "فشل رفع الفيديو" : "فشل رفع الصورة")
+    };
+  }
+  return { ok: true, url: data.url, posterUrl: data.posterUrl };
 }
 async function apiFetchChatMessages(token, chatId) {
   const res = await apiFetch$1(`/v1/chats/${encodeURIComponent(chatId)}/messages`, {
@@ -2597,6 +2705,7 @@ const apiBackend = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePr
   apiCreateGroup,
   apiCreateStory,
   apiDeclineFollowRequest,
+  apiDeleteAccount,
   apiFetch: apiFetch$1,
   apiFetchChatMessages,
   apiFetchGroupInvitePreview,
@@ -2633,6 +2742,7 @@ const apiBackend = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePr
   getApiToken,
   hasApiBackendConnection,
   mergeChatMessages,
+  mergeChatRecord,
   pullRemoteAppState,
   pushRemoteAppState,
   sanitizeAppStateForSync,
@@ -2702,6 +2812,37 @@ function isStoryStillActive(story, ent, now = Date.now()) {
   return story.createdAt + storyExpiryMs(story, ent) > now;
 }
 const AppLanguageCtx = reactExports.createContext("ar");
+async function groupFetch(path, init) {
+  const token = init?.token ?? getApiToken();
+  const res = await apiFetch$1(path, { ...init, token });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) return { ok: false, error: data.error || "فشل الطلب" };
+  return { ok: true, data };
+}
+async function apiPatchGroupSettings(chatId, patch) {
+  return groupFetch(`/v1/groups/${encodeURIComponent(chatId)}/settings`, {
+    method: "PATCH",
+    body: JSON.stringify(patch)
+  });
+}
+async function apiSetGroupMemberRole(chatId, userId, role) {
+  return groupFetch(
+    `/v1/groups/${encodeURIComponent(chatId)}/members/${encodeURIComponent(userId)}/role`,
+    { method: "PATCH", body: JSON.stringify({ role }) }
+  );
+}
+async function apiMuteGroupMember(chatId, userId, durationMinutes = 60) {
+  return groupFetch(
+    `/v1/groups/${encodeURIComponent(chatId)}/members/${encodeURIComponent(userId)}/mute`,
+    { method: "POST", body: JSON.stringify({ durationMinutes }) }
+  );
+}
+const groupApi = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+  __proto__: null,
+  apiMuteGroupMember,
+  apiPatchGroupSettings,
+  apiSetGroupMemberRole
+}, Symbol.toStringTag, { value: "Module" }));
 const ChildProcess = /* @__PURE__ */ notImplementedClass("child_process.ChildProcess");
 const _forkChild = /* @__PURE__ */ notImplemented("child_process.ChildProcess");
 const exec = /* @__PURE__ */ notImplemented("child_process.exec");
@@ -6941,19 +7082,19 @@ function emitMessagesRead(chatId, messageIds) {
   if (!socket2?.connected || messageIds.length === 0) return;
   socket2.emit("message:ack_read", { chatId, messageIds });
 }
-const DB_NAME = "retweet_chat_cache_v1";
+const DB_NAME$1 = "retweet_chat_cache_v1";
 const STORE = "messages";
 const VERSION = 1;
 function cacheKey(userId, chatId) {
   return `${userId}::${chatId}`;
 }
-function openDb() {
+function openDb$1() {
   return new Promise((resolve, reject) => {
     if (typeof indexedDB === "undefined") {
       reject(new Error("indexedDB unavailable"));
       return;
     }
-    const req = indexedDB.open(DB_NAME, VERSION);
+    const req = indexedDB.open(DB_NAME$1, VERSION);
     req.onerror = () => reject(req.error ?? new Error("idb open failed"));
     req.onsuccess = () => resolve(req.result);
     req.onupgradeneeded = () => {
@@ -6966,7 +7107,7 @@ function openDb() {
 }
 async function readCachedChatMessages(userId, chatId) {
   try {
-    const db = await openDb();
+    const db = await openDb$1();
     return await new Promise((resolve, reject) => {
       const tx = db.transaction(STORE, "readonly");
       const store2 = tx.objectStore(STORE);
@@ -6985,7 +7126,7 @@ async function readCachedChatMessages(userId, chatId) {
 async function writeCachedChatMessages(userId, chatId, messages) {
   if (!messages.length) return;
   try {
-    const db = await openDb();
+    const db = await openDb$1();
     const row = {
       key: cacheKey(userId, chatId),
       chatId,
@@ -7475,7 +7616,7 @@ function mergePostsPreservingLocalDeletes(localPosts, remotePosts) {
   return merged.sort((a, b) => b.createdAt - a.createdAt);
 }
 const INCOMING_CALL_WINDOW_EVENT = "retweet-call-ring";
-const STORAGE_KEY$1 = "retweet_state_v2";
+const STORAGE_KEY$2 = "retweet_state_v2";
 const STORY_TTL_MS = 24 * 60 * 60 * 1e3;
 const PROFILE_NOTE_TTL_MS = 24 * 60 * 60 * 1e3;
 function isProfileNoteActive(u) {
@@ -7816,7 +7957,7 @@ function normalizePersistedAppState(merged) {
       bio: typeof u.bio === "string" ? u.bio : "",
       note: noteActive ? u.note : "",
       noteAt: noteActive ? u.noteAt : void 0,
-      avatar: typeof u.avatar === "string" && u.avatar ? u.avatar : (u.username || "U").slice(0, 2).toUpperCase(),
+      avatar: typeof u.avatar === "string" && u.avatar ? u.avatar : DEFAULT_AVATAR_DATA_URI,
       password: typeof u.password === "string" ? u.password : "",
       followers: Array.isArray(u.followers) ? u.followers : [],
       following: Array.isArray(u.following) ? u.following : [],
@@ -7912,7 +8053,7 @@ function userFromApiAuth(user) {
     username: user.username,
     email: user.email,
     password: "",
-    avatar: user.avatar || user.username.slice(0, 2).toUpperCase()
+    avatar: user.avatar || DEFAULT_AVATAR_DATA_URI
   });
 }
 function ensureAuthUserInState(state, userId, apiUser) {
@@ -7994,11 +8135,11 @@ function loadState() {
   } catch {
   }
   try {
-    repairDevLocalStorageOnce(STORAGE_KEY$1, devSeedBundle, normalizePersistedAppState, initial);
+    repairDevLocalStorageOnce(STORAGE_KEY$2, devSeedBundle, normalizePersistedAppState, initial);
   } catch {
   }
   try {
-    const raw = localStorage.getItem(STORAGE_KEY$1);
+    const raw = localStorage.getItem(STORAGE_KEY$2);
     if (!raw) return safeNormalizeState(initial);
     const parsed = JSON.parse(raw);
     const merged = { ...initial, ...parsed };
@@ -8159,11 +8300,38 @@ function buildMultiAccountState(activeUserId, primary, previous, apiUser, opts) 
       } : { ...scoped, id: key }
     );
   };
-  if (activeCache && !opts?.serverAuthoritative) {
-    for (const c of activeCache.chats || []) absorbChat(c);
-  }
-  if (previous.currentUserId === resolvedId && !opts?.serverAuthoritative) {
-    for (const c of previous.chats || []) absorbChat(c);
+  const seedChatForMerge = (raw) => {
+    const scoped = scopeAppStateToAccount(resolvedId, {
+      ...primaryNorm,
+      chats: [normalizeChatRecord(raw)]
+    }).chats[0];
+    if (!scoped || !scoped.members.includes(resolvedId)) return;
+    const key = chatMergeKey(scoped, resolvedId);
+    const prev = chatsById.get(key);
+    chatsById.set(
+      key,
+      prev ? {
+        ...prev,
+        ...scoped,
+        id: key,
+        messages: mergeChatMessages(prev.messages, scoped.messages || [])
+      } : { ...scoped, id: key }
+    );
+  };
+  if (opts?.serverAuthoritative) {
+    if (activeCache) {
+      for (const c of activeCache.chats || []) seedChatForMerge(c);
+    }
+    if (previous.currentUserId === resolvedId) {
+      for (const c of previous.chats || []) seedChatForMerge(c);
+    }
+  } else {
+    if (activeCache) {
+      for (const c of activeCache.chats || []) absorbChat(c);
+    }
+    if (previous.currentUserId === resolvedId) {
+      for (const c of previous.chats || []) absorbChat(c);
+    }
   }
   for (const c of primaryNorm.chats || []) {
     if (c.members.includes(resolvedId)) absorbChat(c, { serverAuthoritative: true });
@@ -8596,7 +8764,7 @@ function AppProvider({
           const snap = stateRef.current;
           const toPersist = uid2 && !isGuestUserId(uid2) ? scopeStateForAccountPersist(snap, uid2) : snap;
           const stripped = stripGuestFromPersistedState(toPersist);
-          localStorage.setItem(STORAGE_KEY$1, JSON.stringify(stripped));
+          localStorage.setItem(STORAGE_KEY$2, JSON.stringify(stripped));
           if (uid2) saveAccountStateCache(uid2, stripped);
         } catch (e) {
           if (e instanceof DOMException && e.name === "QuotaExceededError") {
@@ -9181,9 +9349,7 @@ function AppProvider({
       nextForRemote = reconcileOwnedAccountProfiles(next);
       return nextForRemote;
     });
-    if (!nextForRemote || !apiBackendEnabled()) return;
-    const token = getApiToken();
-    if (!token) return;
+    if (!nextForRemote) return;
     const meId = nextForRemote.currentUserId;
     const meRow = nextForRemote.users.find((u) => u.id === meId);
     if (meId && meRow) {
@@ -9197,11 +9363,14 @@ function AppProvider({
         });
       }
     }
+    if (!apiBackendEnabled()) return;
+    const token = getApiToken();
+    if (!token) return;
     if (opts?.skipRemotePush) {
       profileSaveBusyRef.current = true;
       window.setTimeout(() => {
         profileSaveBusyRef.current = false;
-      }, avatarOnlyBusy ? 8e3 : 2500);
+      }, avatarOnlyBusy ? 8e3 : 5e3);
       return;
     }
     if (opts?.commitRemote) {
@@ -9209,7 +9378,7 @@ function AppProvider({
       void pushRemoteAppState(token, nextForRemote);
       window.setTimeout(() => {
         profileSaveBusyRef.current = false;
-      }, avatarOnlyBusy ? 8e3 : 2500);
+      }, avatarOnlyBusy ? 8e3 : 5e3);
       return;
     }
     void pushRemoteAppState(token, nextForRemote);
@@ -9486,6 +9655,7 @@ function AppProvider({
         text: created.text,
         image: created.image,
         video: created.video,
+        audio: created.audio,
         createdAt: created.createdAt
       });
     }
@@ -9497,23 +9667,46 @@ function AppProvider({
     const token = getApiToken();
     const useApi = Boolean(token && apiBackendEnabled());
     let rollbackLikes = null;
+    let postSnapshot = null;
+    let actorId = null;
     setState((s) => {
       const post = s.posts.find((p) => p.id === postId);
       if (!post || !s.currentUserId || isGuestUserId(s.currentUserId)) return s;
-      rollbackLikes = [...post.likes];
-      const liked = post.likes.includes(s.currentUserId);
+      actorId = s.currentUserId;
+      const prevLikes = Array.isArray(post.likes) ? post.likes : [];
+      rollbackLikes = [...prevLikes];
+      postSnapshot = { ...post };
+      const liked = prevLikes.includes(s.currentUserId);
       return {
         ...s,
         posts: s.posts.map(
           (p) => p.id === postId ? {
             ...p,
-            likes: liked ? p.likes.filter((x) => x !== s.currentUserId) : [...p.likes, s.currentUserId]
+            likes: liked ? (Array.isArray(p.likes) ? p.likes : []).filter((x) => x !== s.currentUserId) : [...Array.isArray(p.likes) ? p.likes : [], s.currentUserId]
           } : p
         )
       };
     });
     if (useApi && token) {
-      void apiTogglePostLike(token, postId).then((res) => {
+      void (async () => {
+        let res = await apiTogglePostLike(token, postId);
+        if (!res.ok && /غير موجود|not found|missing/i.test(res.error || "") && postSnapshot) {
+          if (actorId && postSnapshot.userId === actorId) {
+            await apiUpsertPost(token, {
+              id: postSnapshot.id,
+              type: postSnapshot.type,
+              text: postSnapshot.text || "",
+              image: postSnapshot.image,
+              video: postSnapshot.video,
+              audio: postSnapshot.audio,
+              createdAt: postSnapshot.createdAt || Date.now()
+            });
+            res = await apiTogglePostLike(token, postId);
+          } else {
+            await new Promise((r2) => window.setTimeout(r2, 120));
+            res = await apiTogglePostLike(token, postId);
+          }
+        }
         if (!res.ok) {
           if (rollbackLikes) {
             setState((s) => ({
@@ -9529,7 +9722,7 @@ function AppProvider({
             (p) => p.id === postId ? { ...p, likes: res.likes } : p
           )
         }));
-      });
+      })();
     }
   };
   const toggleStoryLike = (storyId) => setState((s) => {
@@ -9821,7 +10014,7 @@ function AppProvider({
               id: uid(),
               senderId: meId,
               type: "text",
-              content: `انضم ${nu?.username ? `@${nu.username}` : "عضو"} إلى المجموعة`,
+              content: `${adder?.username ? `@${adder.username}` : "مشرف"} أضاف ${nu?.username ? `@${nu.username}` : "عضو"} إلى المجموعة`,
               createdAt: Date.now()
             };
           });
@@ -9853,7 +10046,7 @@ function AppProvider({
             setState((s) => ({
               ...s,
               chats: s.chats.map(
-                (c) => c.id === chatId ? { ...c, ...res.chat, members: res.chat.members } : c
+                (c) => c.id === chatId ? mergeChatRecord(c, res.chat) : c
               )
             }));
             scheduleRemoteSync();
@@ -10028,27 +10221,36 @@ function AppProvider({
     setState((s) => ({ ...s, chats: [...s.chats, newChat] }));
     const token = getApiToken();
     if (token && apiBackendEnabled()) {
+      groupSyncBusyRef.current = true;
       void (async () => {
-        const created = await apiCreateGroup(token, {
-          id: newChat.id,
-          name: newChat.name || "مجموعة",
-          avatar: newChat.avatar || "👥",
-          memberIds: memberIds.filter((id) => id !== creatorId),
-          welcomeMessage: `مرحباً بكم في «${newChat.name || "مجموعة"}»`
-        });
-        if (created.ok) {
-          setState((s) => ({
-            ...s,
-            chats: s.chats.map(
-              (c) => c.id === newChat.id ? {
-                ...c,
-                ...created.chat,
-                members: Array.from(/* @__PURE__ */ new Set([...c.members, ...created.chat.members]))
-              } : c
-            )
-          }));
+        try {
+          const created = await apiCreateGroup(token, {
+            id: newChat.id,
+            name: newChat.name || "مجموعة",
+            avatar: newChat.avatar || "👥",
+            memberIds: memberIds.filter((id) => id !== creatorId),
+            welcomeMessage: `مرحباً بكم في «${newChat.name || "مجموعة"}»`
+          });
+          if (created.ok) {
+            setState((s) => ({
+              ...s,
+              chats: s.chats.map(
+                (c) => c.id === newChat.id ? {
+                  ...c,
+                  ...created.chat,
+                  members: Array.from(/* @__PURE__ */ new Set([...c.members, ...created.chat.members]))
+                } : c
+              )
+            }));
+          } else {
+            console.warn("[Retweet] createGroup API failed:", created.error);
+          }
+          scheduleRemoteSync();
+        } finally {
+          window.setTimeout(() => {
+            groupSyncBusyRef.current = false;
+          }, 1800);
         }
-        scheduleRemoteSync();
       })();
     }
     return newChat;
@@ -10263,6 +10465,14 @@ function AppProvider({
       const preflight = resolveChatForSend(snap, chatId, senderId) ?? findChatByOpenId(snap.chats, chatId, senderId);
       if (!preflight) return false;
       if (preflight.isChannel && !(preflight.hosts || []).includes(senderId)) return false;
+      if (preflight.isGroup && !preflight.isChannel) {
+        const mutedUntil = preflight.mutedUserIds?.[senderId];
+        if (mutedUntil && mutedUntil > Date.now()) return false;
+        const role = preflight.memberRoles?.[senderId] || (preflight.ownerId === senderId ? "owner" : (preflight.admins || []).includes(senderId) ? "admin" : "member");
+        const whoCanSend = preflight.groupSettings?.whoCanSendMessages || "everyone";
+        if (whoCanSend === "admins" && role !== "owner" && role !== "admin") return false;
+        if (whoCanSend === "moderators" && role === "member") return false;
+      }
       const m = {
         id: uid(),
         senderId,
@@ -10287,6 +10497,14 @@ function AppProvider({
           const existing = findDmChatForPeer(s.chats, senderId, peer);
           if (existing) chat = existing;
           else if (chat.id !== canonicalId) chat = { ...chat, id: canonicalId };
+        }
+        if (chat.isGroup && !chat.isChannel) {
+          const mutedUntil = chat.mutedUserIds?.[senderId];
+          if (mutedUntil && mutedUntil > Date.now()) return s;
+          const role = chat.memberRoles?.[senderId] || (chat.ownerId === senderId ? "owner" : (chat.admins || []).includes(senderId) ? "admin" : "member");
+          const whoCanSend = chat.groupSettings?.whoCanSendMessages || "everyone";
+          if (whoCanSend === "admins" && role !== "owner" && role !== "admin") return s;
+          if (whoCanSend === "moderators" && role === "member") return s;
         }
         const updatedChat = { ...chat, messages: [...chat.messages || [], m] };
         persistChat = updatedChat;
@@ -10423,13 +10641,75 @@ function AppProvider({
           ...c,
           members: c.members.filter((x) => x !== userId),
           admins: c.admins.filter((x) => x !== userId),
-          hosts: (c.hosts || []).filter((x) => x !== userId)
+          hosts: (c.hosts || []).filter((x) => x !== userId),
+          messages: [
+            ...c.messages || [],
+            {
+              id: uid(),
+              senderId: s.currentUserId || c.ownerId || userId,
+              type: "text",
+              content: `${s.users.find((u) => u.id === s.currentUserId)?.username ? `@${s.users.find((u) => u.id === s.currentUserId).username}` : "مشرف"} طرد ${s.users.find((u) => u.id === userId)?.username ? `@${s.users.find((u) => u.id === userId).username}` : "عضو"} من المجموعة`,
+              createdAt: Date.now()
+            }
+          ]
         } : c
       )
     }));
     const token = getApiToken();
     if (token && apiBackendEnabled()) {
-      void apiKickGroupMember(token, chatId, userId).then(() => scheduleRemoteSync());
+      groupSyncBusyRef.current = true;
+      void apiKickGroupMember(token, chatId, userId).then(() => scheduleRemoteSync()).finally(() => {
+        window.setTimeout(() => {
+          groupSyncBusyRef.current = false;
+        }, 2e3);
+      });
+    }
+  };
+  const muteGroupMember = (chatId, userId, durationMinutes) => {
+    const meId = stateRef.current.currentUserId;
+    if (!meId || isGuestUserId(meId)) return;
+    const now = Date.now();
+    const foreverMinutes = 5256e3;
+    const effectiveMinutes = durationMinutes == null ? foreverMinutes : Math.max(1, durationMinutes);
+    const mutedUntil = now + effectiveMinutes * 6e4;
+    const meUser = stateRef.current.users.find((u) => u.id === meId);
+    const targetUser = stateRef.current.users.find((u) => u.id === userId);
+    const muteLabel = durationMinutes == null ? "للأبد" : durationMinutes === 5 ? "5 دقائق" : durationMinutes === 10 ? "10 دقائق" : durationMinutes === 60 ? "ساعة" : `${durationMinutes} دقيقة`;
+    setState((s) => ({
+      ...s,
+      chats: s.chats.map((c) => {
+        if (c.id !== chatId) return c;
+        const mutedMap = { ...c.mutedUserIds || {}, [userId]: mutedUntil };
+        const systemMsg = {
+          id: uid(),
+          senderId: meId,
+          type: "text",
+          content: `${meUser?.username ? `@${meUser.username}` : "مشرف"} كتم ${targetUser?.username ? `@${targetUser.username}` : "عضو"} لمدة ${muteLabel}`,
+          createdAt: now
+        };
+        return {
+          ...c,
+          mutedUserIds: mutedMap,
+          messages: [...c.messages || [], systemMsg]
+        };
+      })
+    }));
+    const token = getApiToken();
+    if (token && apiBackendEnabled()) {
+      groupSyncBusyRef.current = true;
+      void apiMuteGroupMember(chatId, userId, Math.min(effectiveMinutes, 10080)).then((r2) => {
+        if (r2.ok && r2.data.chat) {
+          setState((s) => ({
+            ...s,
+            chats: s.chats.map((c) => c.id === chatId ? mergeChatRecord(c, r2.data.chat) : c)
+          }));
+        }
+        scheduleRemoteSync();
+      }).finally(() => {
+        window.setTimeout(() => {
+          groupSyncBusyRef.current = false;
+        }, 1200);
+      });
     }
   };
   const setGroupPublic = (chatId, isPublic) => {
@@ -10443,7 +10723,7 @@ function AppProvider({
         if (res.ok && res.chat) {
           setState((s) => ({
             ...s,
-            chats: s.chats.map((c) => c.id === chatId ? { ...c, ...res.chat } : c)
+            chats: s.chats.map((c) => c.id === chatId ? mergeChatRecord(c, res.chat) : c)
           }));
         }
         scheduleRemoteSync();
@@ -10470,11 +10750,13 @@ function AppProvider({
         if (!s.currentUserId) return s;
         const meId = s.currentUserId;
         const existing = s.chats.find((c) => c.id === res.chat.id);
-        const merged = existing ? {
-          ...existing,
+        const merged = existing ? mergeChatRecord(existing, {
           ...res.chat,
           members: Array.from(/* @__PURE__ */ new Set([...res.chat.members, meId]))
-        } : { ...res.chat, members: Array.from(/* @__PURE__ */ new Set([...res.chat.members, meId])) };
+        }) : {
+          ...res.chat,
+          members: Array.from(/* @__PURE__ */ new Set([...res.chat.members, meId]))
+        };
         const has = s.chats.some((c) => c.id === merged.id);
         return {
           ...s,
@@ -10495,7 +10777,17 @@ function AppProvider({
         if (c.id !== chatId) return c;
         const requests = (c.joinRequests || []).filter((r2) => r2.userId !== userId);
         const members = action === "accept" ? Array.from(/* @__PURE__ */ new Set([...c.members, userId])) : c.members;
-        return { ...c, joinRequests: requests, members };
+        if (action !== "accept") return { ...c, joinRequests: requests, members };
+        const actor = s.users.find((u) => u.id === s.currentUserId);
+        const target = s.users.find((u) => u.id === userId);
+        const joinMsg = {
+          id: uid(),
+          senderId: s.currentUserId || c.ownerId || userId,
+          type: "text",
+          content: `${actor?.username ? `@${actor.username}` : "مشرف"} أضاف ${target?.username ? `@${target.username}` : "عضو"} إلى المجموعة`,
+          createdAt: Date.now()
+        };
+        return { ...c, joinRequests: requests, members, messages: [...c.messages || [], joinMsg] };
       })
     }));
     const token = getApiToken();
@@ -10505,7 +10797,7 @@ function AppProvider({
         if (r2.ok && r2.chat) {
           setState((s) => ({
             ...s,
-            chats: s.chats.map((c) => c.id === chatId ? { ...c, ...r2.chat } : c)
+            chats: s.chats.map((c) => c.id === chatId ? mergeChatRecord(c, r2.chat) : c)
           }));
         }
         scheduleRemoteSync();
@@ -11701,6 +11993,7 @@ function AppProvider({
     updateGroupAvatar,
     toggleGroupAdmin,
     kickMember,
+    muteGroupMember,
     setGroupPublic,
     joinGroupByInviteCode,
     respondGroupJoinRequest,
@@ -11861,11 +12154,11 @@ const store = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePropert
   visibleStoryFriendsUserIds,
   visibleStoryUserIds
 }, Symbol.toStringTag, { value: "Module" }));
-const STORAGE_KEY = "retweet_state_v2";
+const STORAGE_KEY$1 = "retweet_state_v2";
 function loadPersisted() {
   if (typeof window === "undefined") return null;
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(STORAGE_KEY$1);
     if (!raw) return null;
     return JSON.parse(raw);
   } catch {
@@ -11875,7 +12168,7 @@ function loadPersisted() {
 function savePersisted(state) {
   if (typeof window === "undefined") return;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    localStorage.setItem(STORAGE_KEY$1, JSON.stringify(state));
   } catch {
   }
 }
@@ -12007,23 +12300,28 @@ const createLucideIcon = (iconName, iconNode) => {
   Component.displayName = toPascalCase(iconName);
   return Component;
 };
-const __iconNode$1y = [
+const __iconNode$1M = [
   ["rect", { width: "20", height: "5", x: "2", y: "3", rx: "1", key: "1wp1u1" }],
   ["path", { d: "M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8", key: "1s80jp" }],
   ["path", { d: "M10 12h4", key: "a56b0p" }]
 ];
-const Archive = createLucideIcon("archive", __iconNode$1y);
-const __iconNode$1x = [
+const Archive = createLucideIcon("archive", __iconNode$1M);
+const __iconNode$1L = [
+  ["path", { d: "m12 19-7-7 7-7", key: "1l729n" }],
+  ["path", { d: "M19 12H5", key: "x3x0zl" }]
+];
+const ArrowLeft = createLucideIcon("arrow-left", __iconNode$1L);
+const __iconNode$1K = [
   ["path", { d: "M5 12h14", key: "1ays0h" }],
   ["path", { d: "m12 5 7 7-7 7", key: "xquz4c" }]
 ];
-const ArrowRight = createLucideIcon("arrow-right", __iconNode$1x);
-const __iconNode$1w = [
+const ArrowRight = createLucideIcon("arrow-right", __iconNode$1K);
+const __iconNode$1J = [
   ["circle", { cx: "12", cy: "12", r: "4", key: "4exip2" }],
   ["path", { d: "M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8", key: "7n84p3" }]
 ];
-const AtSign = createLucideIcon("at-sign", __iconNode$1w);
-const __iconNode$1v = [
+const AtSign = createLucideIcon("at-sign", __iconNode$1J);
+const __iconNode$1I = [
   [
     "path",
     {
@@ -12033,13 +12331,13 @@ const __iconNode$1v = [
   ],
   ["path", { d: "m9 12 2 2 4-4", key: "dzmm74" }]
 ];
-const BadgeCheck = createLucideIcon("badge-check", __iconNode$1v);
-const __iconNode$1u = [
+const BadgeCheck = createLucideIcon("badge-check", __iconNode$1I);
+const __iconNode$1H = [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["path", { d: "M4.929 4.929 19.07 19.071", key: "196cmz" }]
 ];
-const Ban = createLucideIcon("ban", __iconNode$1u);
-const __iconNode$1t = [
+const Ban = createLucideIcon("ban", __iconNode$1H);
+const __iconNode$1G = [
   ["path", { d: "M10.268 21a2 2 0 0 0 3.464 0", key: "vwvbt9" }],
   [
     "path",
@@ -12051,8 +12349,8 @@ const __iconNode$1t = [
   ["path", { d: "m2 2 20 20", key: "1ooewy" }],
   ["path", { d: "M8.668 3.01A6 6 0 0 1 18 8c0 2.687.77 4.653 1.707 6.05", key: "1hqiys" }]
 ];
-const BellOff = createLucideIcon("bell-off", __iconNode$1t);
-const __iconNode$1s = [
+const BellOff = createLucideIcon("bell-off", __iconNode$1G);
+const __iconNode$1F = [
   ["path", { d: "M10.268 21a2 2 0 0 0 3.464 0", key: "vwvbt9" }],
   [
     "path",
@@ -12062,8 +12360,8 @@ const __iconNode$1s = [
     }
   ]
 ];
-const Bell = createLucideIcon("bell", __iconNode$1s);
-const __iconNode$1r = [
+const Bell = createLucideIcon("bell", __iconNode$1F);
+const __iconNode$1E = [
   ["path", { d: "M12 7v14", key: "1akyts" }],
   [
     "path",
@@ -12073,8 +12371,8 @@ const __iconNode$1r = [
     }
   ]
 ];
-const BookOpen = createLucideIcon("book-open", __iconNode$1r);
-const __iconNode$1q = [
+const BookOpen = createLucideIcon("book-open", __iconNode$1E);
+const __iconNode$1D = [
   [
     "path",
     {
@@ -12083,8 +12381,8 @@ const __iconNode$1q = [
     }
   ]
 ];
-const Bookmark = createLucideIcon("bookmark", __iconNode$1q);
-const __iconNode$1p = [
+const Bookmark = createLucideIcon("bookmark", __iconNode$1D);
+const __iconNode$1C = [
   [
     "path",
     {
@@ -12094,73 +12392,99 @@ const __iconNode$1p = [
   ],
   ["circle", { cx: "12", cy: "13", r: "3", key: "1vg3eu" }]
 ];
-const Camera = createLucideIcon("camera", __iconNode$1p);
-const __iconNode$1o = [
+const Camera = createLucideIcon("camera", __iconNode$1C);
+const __iconNode$1B = [
   ["path", { d: "M5 21v-6", key: "1hz6c0" }],
   ["path", { d: "M12 21V3", key: "1lcnhd" }],
   ["path", { d: "M19 21V9", key: "unv183" }]
 ];
-const ChartNoAxesColumn = createLucideIcon("chart-no-axes-column", __iconNode$1o);
-const __iconNode$1n = [
+const ChartNoAxesColumn = createLucideIcon("chart-no-axes-column", __iconNode$1B);
+const __iconNode$1A = [
   ["path", { d: "M18 6 7 17l-5-5", key: "116fxf" }],
   ["path", { d: "m22 10-7.5 7.5L13 16", key: "ke71qq" }]
 ];
-const CheckCheck = createLucideIcon("check-check", __iconNode$1n);
-const __iconNode$1m = [["path", { d: "M20 6 9 17l-5-5", key: "1gmf2c" }]];
-const Check = createLucideIcon("check", __iconNode$1m);
-const __iconNode$1l = [["path", { d: "m6 9 6 6 6-6", key: "qrunsl" }]];
-const ChevronDown = createLucideIcon("chevron-down", __iconNode$1l);
-const __iconNode$1k = [["path", { d: "m15 18-6-6 6-6", key: "1wnfg3" }]];
-const ChevronLeft = createLucideIcon("chevron-left", __iconNode$1k);
-const __iconNode$1j = [["path", { d: "m9 18 6-6-6-6", key: "mthhwq" }]];
-const ChevronRight = createLucideIcon("chevron-right", __iconNode$1j);
-const __iconNode$1i = [["path", { d: "m18 15-6-6-6 6", key: "153udz" }]];
-const ChevronUp = createLucideIcon("chevron-up", __iconNode$1i);
-const __iconNode$1h = [
+const CheckCheck = createLucideIcon("check-check", __iconNode$1A);
+const __iconNode$1z = [["path", { d: "M20 6 9 17l-5-5", key: "1gmf2c" }]];
+const Check = createLucideIcon("check", __iconNode$1z);
+const __iconNode$1y = [["path", { d: "m6 9 6 6 6-6", key: "qrunsl" }]];
+const ChevronDown = createLucideIcon("chevron-down", __iconNode$1y);
+const __iconNode$1x = [["path", { d: "m15 18-6-6 6-6", key: "1wnfg3" }]];
+const ChevronLeft = createLucideIcon("chevron-left", __iconNode$1x);
+const __iconNode$1w = [["path", { d: "m9 18 6-6-6-6", key: "mthhwq" }]];
+const ChevronRight = createLucideIcon("chevron-right", __iconNode$1w);
+const __iconNode$1v = [["path", { d: "m18 15-6-6-6 6", key: "153udz" }]];
+const ChevronUp = createLucideIcon("chevron-up", __iconNode$1v);
+const __iconNode$1u = [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["line", { x1: "12", x2: "12", y1: "8", y2: "12", key: "1pkeuh" }],
   ["line", { x1: "12", x2: "12.01", y1: "16", y2: "16", key: "4dfq90" }]
 ];
-const CircleAlert = createLucideIcon("circle-alert", __iconNode$1h);
-const __iconNode$1g = [
+const CircleAlert = createLucideIcon("circle-alert", __iconNode$1u);
+const __iconNode$1t = [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["path", { d: "m9 12 2 2 4-4", key: "dzmm74" }]
 ];
-const CircleCheck = createLucideIcon("circle-check", __iconNode$1g);
-const __iconNode$1f = [
+const CircleCheck = createLucideIcon("circle-check", __iconNode$1t);
+const __iconNode$1s = [
+  ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
+  ["circle", { cx: "12", cy: "12", r: "1", key: "41hilf" }]
+];
+const CircleDot = createLucideIcon("circle-dot", __iconNode$1s);
+const __iconNode$1r = [
+  [
+    "path",
+    {
+      d: "M9 9.003a1 1 0 0 1 1.517-.859l4.997 2.997a1 1 0 0 1 0 1.718l-4.997 2.997A1 1 0 0 1 9 14.996z",
+      key: "kmsa83"
+    }
+  ],
+  ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }]
+];
+const CirclePlay = createLucideIcon("circle-play", __iconNode$1r);
+const __iconNode$1q = [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["path", { d: "M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3", key: "1u773s" }],
   ["path", { d: "M12 17h.01", key: "p32p05" }]
 ];
-const CircleQuestionMark = createLucideIcon("circle-question-mark", __iconNode$1f);
-const __iconNode$1e = [
+const CircleQuestionMark = createLucideIcon("circle-question-mark", __iconNode$1q);
+const __iconNode$1p = [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["circle", { cx: "12", cy: "10", r: "3", key: "ilqhr7" }],
   ["path", { d: "M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662", key: "154egf" }]
 ];
-const CircleUser = createLucideIcon("circle-user", __iconNode$1e);
-const __iconNode$1d = [
+const CircleUser = createLucideIcon("circle-user", __iconNode$1p);
+const __iconNode$1o = [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["path", { d: "m15 9-6 6", key: "1uzhvr" }],
   ["path", { d: "m9 9 6 6", key: "z0biqf" }]
 ];
-const CircleX = createLucideIcon("circle-x", __iconNode$1d);
-const __iconNode$1c = [
+const CircleX = createLucideIcon("circle-x", __iconNode$1o);
+const __iconNode$1n = [
+  ["path", { d: "m12.296 3.464 3.02 3.956", key: "qash78" }],
+  [
+    "path",
+    { d: "M20.2 6 3 11l-.9-2.4c-.3-1.1.3-2.2 1.3-2.5l13.5-4c1.1-.3 2.2.3 2.5 1.3z", key: "1h7j8b" }
+  ],
+  ["path", { d: "M3 11h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z", key: "4lm6w1" }],
+  ["path", { d: "m6.18 5.276 3.1 3.899", key: "zjj9t3" }]
+];
+const Clapperboard = createLucideIcon("clapperboard", __iconNode$1n);
+const __iconNode$1m = [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["path", { d: "M12 6v6l4 2", key: "mmk7yg" }]
 ];
-const Clock = createLucideIcon("clock", __iconNode$1c);
-const __iconNode$1b = [
+const Clock = createLucideIcon("clock", __iconNode$1m);
+const __iconNode$1l = [
   ["rect", { width: "14", height: "14", x: "8", y: "8", rx: "2", ry: "2", key: "17jyea" }],
   ["path", { d: "M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2", key: "zix9uf" }]
 ];
-const Copy = createLucideIcon("copy", __iconNode$1b);
-const __iconNode$1a = [
+const Copy = createLucideIcon("copy", __iconNode$1l);
+const __iconNode$1k = [
   ["rect", { width: "20", height: "14", x: "2", y: "5", rx: "2", key: "ynyp8z" }],
   ["line", { x1: "2", x2: "22", y1: "10", y2: "10", key: "1b3vmo" }]
 ];
-const CreditCard = createLucideIcon("credit-card", __iconNode$1a);
-const __iconNode$19 = [
+const CreditCard = createLucideIcon("credit-card", __iconNode$1k);
+const __iconNode$1j = [
   [
     "path",
     {
@@ -12170,32 +12494,32 @@ const __iconNode$19 = [
   ],
   ["path", { d: "M5 21h14", key: "11awu3" }]
 ];
-const Crown = createLucideIcon("crown", __iconNode$19);
-const __iconNode$18 = [
+const Crown = createLucideIcon("crown", __iconNode$1j);
+const __iconNode$1i = [
   ["path", { d: "M12 15V3", key: "m9g1x1" }],
   ["path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", key: "ih7n3h" }],
   ["path", { d: "m7 10 5 5 5-5", key: "brsn70" }]
 ];
-const Download = createLucideIcon("download", __iconNode$18);
-const __iconNode$17 = [
+const Download = createLucideIcon("download", __iconNode$1i);
+const __iconNode$1h = [
   ["circle", { cx: "12", cy: "12", r: "1", key: "41hilf" }],
   ["circle", { cx: "12", cy: "5", r: "1", key: "gxeob9" }],
   ["circle", { cx: "12", cy: "19", r: "1", key: "lyex9k" }]
 ];
-const EllipsisVertical = createLucideIcon("ellipsis-vertical", __iconNode$17);
-const __iconNode$16 = [
+const EllipsisVertical = createLucideIcon("ellipsis-vertical", __iconNode$1h);
+const __iconNode$1g = [
   ["circle", { cx: "12", cy: "12", r: "1", key: "41hilf" }],
   ["circle", { cx: "19", cy: "12", r: "1", key: "1wjl8i" }],
   ["circle", { cx: "5", cy: "12", r: "1", key: "1pcz8c" }]
 ];
-const Ellipsis = createLucideIcon("ellipsis", __iconNode$16);
-const __iconNode$15 = [
+const Ellipsis = createLucideIcon("ellipsis", __iconNode$1g);
+const __iconNode$1f = [
   ["path", { d: "M15 3h6v6", key: "1q9fwt" }],
   ["path", { d: "M10 14 21 3", key: "gplh6r" }],
   ["path", { d: "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6", key: "a6xqqp" }]
 ];
-const ExternalLink = createLucideIcon("external-link", __iconNode$15);
-const __iconNode$14 = [
+const ExternalLink = createLucideIcon("external-link", __iconNode$1f);
+const __iconNode$1e = [
   [
     "path",
     {
@@ -12213,8 +12537,8 @@ const __iconNode$14 = [
   ],
   ["path", { d: "m2 2 20 20", key: "1ooewy" }]
 ];
-const EyeOff = createLucideIcon("eye-off", __iconNode$14);
-const __iconNode$13 = [
+const EyeOff = createLucideIcon("eye-off", __iconNode$1e);
+const __iconNode$1d = [
   [
     "path",
     {
@@ -12224,8 +12548,8 @@ const __iconNode$13 = [
   ],
   ["circle", { cx: "12", cy: "12", r: "3", key: "1v7zrd" }]
 ];
-const Eye = createLucideIcon("eye", __iconNode$13);
-const __iconNode$12 = [
+const Eye = createLucideIcon("eye", __iconNode$1d);
+const __iconNode$1c = [
   ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", key: "afitv7" }],
   ["path", { d: "M7 3v18", key: "bbkbws" }],
   ["path", { d: "M3 7.5h4", key: "zfgn84" }],
@@ -12235,8 +12559,8 @@ const __iconNode$12 = [
   ["path", { d: "M17 7.5h4", key: "myr1c1" }],
   ["path", { d: "M17 16.5h4", key: "go4c1d" }]
 ];
-const Film = createLucideIcon("film", __iconNode$12);
-const __iconNode$11 = [
+const Film = createLucideIcon("film", __iconNode$1c);
+const __iconNode$1b = [
   [
     "path",
     {
@@ -12245,8 +12569,8 @@ const __iconNode$11 = [
     }
   ]
 ];
-const Flag = createLucideIcon("flag", __iconNode$11);
-const __iconNode$10 = [
+const Flag = createLucideIcon("flag", __iconNode$1b);
+const __iconNode$1a = [
   [
     "path",
     {
@@ -12264,26 +12588,32 @@ const __iconNode$10 = [
   ["path", { d: "M16 17h4", key: "1dejxt" }],
   ["path", { d: "M4 13h4", key: "1bwh8b" }]
 ];
-const Footprints = createLucideIcon("footprints", __iconNode$10);
-const __iconNode$$ = [
+const Footprints = createLucideIcon("footprints", __iconNode$1a);
+const __iconNode$19 = [
   ["path", { d: "m15 17 5-5-5-5", key: "nf172w" }],
   ["path", { d: "M4 18v-2a4 4 0 0 1 4-4h12", key: "jmiej9" }]
 ];
-const Forward = createLucideIcon("forward", __iconNode$$);
-const __iconNode$_ = [
+const Forward = createLucideIcon("forward", __iconNode$19);
+const __iconNode$18 = [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["path", { d: "M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20", key: "13o1zl" }],
   ["path", { d: "M2 12h20", key: "9i4pu4" }]
 ];
-const Globe = createLucideIcon("globe", __iconNode$_);
-const __iconNode$Z = [
+const Globe = createLucideIcon("globe", __iconNode$18);
+const __iconNode$17 = [
+  ["path", { d: "M12 3v18", key: "108xh3" }],
+  ["path", { d: "M3 12h18", key: "1i2n21" }],
+  ["rect", { x: "3", y: "3", width: "18", height: "18", rx: "2", key: "h1oib" }]
+];
+const Grid2x2 = createLucideIcon("grid-2x2", __iconNode$17);
+const __iconNode$16 = [
   ["line", { x1: "4", x2: "20", y1: "9", y2: "9", key: "4lhtct" }],
   ["line", { x1: "4", x2: "20", y1: "15", y2: "15", key: "vyu0kd" }],
   ["line", { x1: "10", x2: "8", y1: "3", y2: "21", key: "1ggp8o" }],
   ["line", { x1: "16", x2: "14", y1: "3", y2: "21", key: "weycgp" }]
 ];
-const Hash = createLucideIcon("hash", __iconNode$Z);
-const __iconNode$Y = [
+const Hash = createLucideIcon("hash", __iconNode$16);
+const __iconNode$15 = [
   [
     "path",
     {
@@ -12292,8 +12622,8 @@ const __iconNode$Y = [
     }
   ]
 ];
-const Heart = createLucideIcon("heart", __iconNode$Y);
-const __iconNode$X = [
+const Heart = createLucideIcon("heart", __iconNode$15);
+const __iconNode$14 = [
   ["path", { d: "M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8", key: "5wwlr5" }],
   [
     "path",
@@ -12303,24 +12633,31 @@ const __iconNode$X = [
     }
   ]
 ];
-const House = createLucideIcon("house", __iconNode$X);
-const __iconNode$W = [
+const House = createLucideIcon("house", __iconNode$14);
+const __iconNode$13 = [
+  ["path", { d: "m22 11-1.296-1.296a2.4 2.4 0 0 0-3.408 0L11 16", key: "9kzy35" }],
+  ["path", { d: "M4 8a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2", key: "1t0f0t" }],
+  ["circle", { cx: "13", cy: "7", r: "1", fill: "currentColor", key: "1obus6" }],
+  ["rect", { x: "8", y: "2", width: "14", height: "14", rx: "2", key: "1gvhby" }]
+];
+const Images = createLucideIcon("images", __iconNode$13);
+const __iconNode$12 = [
   ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", ry: "2", key: "1m3agn" }],
   ["circle", { cx: "9", cy: "9", r: "2", key: "af1f0g" }],
   ["path", { d: "m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21", key: "1xmnt7" }]
 ];
-const Image$1 = createLucideIcon("image", __iconNode$W);
-const __iconNode$V = [
+const Image$1 = createLucideIcon("image", __iconNode$12);
+const __iconNode$11 = [
   ["path", { d: "M6 16c5 0 7-8 12-8a4 4 0 0 1 0 8c-5 0-7-8-12-8a4 4 0 1 0 0 8", key: "18ogeb" }]
 ];
-const Infinity$1 = createLucideIcon("infinity", __iconNode$V);
-const __iconNode$U = [
+const Infinity$1 = createLucideIcon("infinity", __iconNode$11);
+const __iconNode$10 = [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["path", { d: "M12 16v-4", key: "1dtifu" }],
   ["path", { d: "M12 8h.01", key: "e9boi3" }]
 ];
-const Info = createLucideIcon("info", __iconNode$U);
-const __iconNode$T = [
+const Info = createLucideIcon("info", __iconNode$10);
+const __iconNode$$ = [
   [
     "path",
     {
@@ -12330,15 +12667,15 @@ const __iconNode$T = [
   ],
   ["circle", { cx: "16.5", cy: "7.5", r: ".5", fill: "currentColor", key: "w0ekpg" }]
 ];
-const KeyRound = createLucideIcon("key-round", __iconNode$T);
-const __iconNode$S = [
+const KeyRound = createLucideIcon("key-round", __iconNode$$);
+const __iconNode$_ = [
   ["rect", { width: "7", height: "7", x: "3", y: "3", rx: "1", key: "1g98yp" }],
   ["rect", { width: "7", height: "7", x: "14", y: "3", rx: "1", key: "6d4xhi" }],
   ["rect", { width: "7", height: "7", x: "14", y: "14", rx: "1", key: "nxv5o0" }],
   ["rect", { width: "7", height: "7", x: "3", y: "14", rx: "1", key: "1bb6yr" }]
 ];
-const LayoutGrid = createLucideIcon("layout-grid", __iconNode$S);
-const __iconNode$R = [
+const LayoutGrid = createLucideIcon("layout-grid", __iconNode$_);
+const __iconNode$Z = [
   ["rect", { width: "7", height: "7", x: "3", y: "3", rx: "1", key: "1g98yp" }],
   ["rect", { width: "7", height: "7", x: "3", y: "14", rx: "1", key: "1bb6yr" }],
   ["path", { d: "M14 4h7", key: "3xa0d5" }],
@@ -12346,19 +12683,19 @@ const __iconNode$R = [
   ["path", { d: "M14 15h7", key: "1mj8o2" }],
   ["path", { d: "M14 20h7", key: "11slyb" }]
 ];
-const LayoutList = createLucideIcon("layout-list", __iconNode$R);
-const __iconNode$Q = [
+const LayoutList = createLucideIcon("layout-list", __iconNode$Z);
+const __iconNode$Y = [
   ["path", { d: "M9 17H7A5 5 0 0 1 7 7h2", key: "8i5ue5" }],
   ["path", { d: "M15 7h2a5 5 0 1 1 0 10h-2", key: "1b9ql8" }],
   ["line", { x1: "8", x2: "16", y1: "12", y2: "12", key: "1jonct" }]
 ];
-const Link2 = createLucideIcon("link-2", __iconNode$Q);
-const __iconNode$P = [
+const Link2 = createLucideIcon("link-2", __iconNode$Y);
+const __iconNode$X = [
   ["path", { d: "M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71", key: "1cjeqo" }],
   ["path", { d: "M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71", key: "19qd67" }]
 ];
-const Link = createLucideIcon("link", __iconNode$P);
-const __iconNode$O = [
+const Link = createLucideIcon("link", __iconNode$X);
+const __iconNode$W = [
   ["path", { d: "M11 5h10", key: "1cz7ny" }],
   ["path", { d: "M11 12h10", key: "1438ji" }],
   ["path", { d: "M11 19h10", key: "11t30w" }],
@@ -12366,21 +12703,21 @@ const __iconNode$O = [
   ["path", { d: "M4 9h2", key: "r1h2o0" }],
   ["path", { d: "M6.5 20H3.4c0-1 2.6-1.925 2.6-3.5a1.5 1.5 0 0 0-2.6-1.02", key: "xtkcd5" }]
 ];
-const ListOrdered = createLucideIcon("list-ordered", __iconNode$O);
-const __iconNode$N = [["path", { d: "M21 12a9 9 0 1 1-6.219-8.56", key: "13zald" }]];
-const LoaderCircle = createLucideIcon("loader-circle", __iconNode$N);
-const __iconNode$M = [
+const ListOrdered = createLucideIcon("list-ordered", __iconNode$W);
+const __iconNode$V = [["path", { d: "M21 12a9 9 0 1 1-6.219-8.56", key: "13zald" }]];
+const LoaderCircle = createLucideIcon("loader-circle", __iconNode$V);
+const __iconNode$U = [
   ["rect", { width: "18", height: "11", x: "3", y: "11", rx: "2", ry: "2", key: "1w4ew1" }],
   ["path", { d: "M7 11V7a5 5 0 0 1 10 0v4", key: "fwvmzm" }]
 ];
-const Lock = createLucideIcon("lock", __iconNode$M);
-const __iconNode$L = [
+const Lock = createLucideIcon("lock", __iconNode$U);
+const __iconNode$T = [
   ["path", { d: "m16 17 5-5-5-5", key: "1bji2h" }],
   ["path", { d: "M21 12H9", key: "dn1m92" }],
   ["path", { d: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4", key: "1uf3rs" }]
 ];
-const LogOut = createLucideIcon("log-out", __iconNode$L);
-const __iconNode$K = [
+const LogOut = createLucideIcon("log-out", __iconNode$T);
+const __iconNode$S = [
   [
     "path",
     {
@@ -12390,8 +12727,8 @@ const __iconNode$K = [
   ],
   ["circle", { cx: "12", cy: "10", r: "3", key: "ilqhr7" }]
 ];
-const MapPin = createLucideIcon("map-pin", __iconNode$K);
-const __iconNode$J = [
+const MapPin = createLucideIcon("map-pin", __iconNode$S);
+const __iconNode$R = [
   [
     "path",
     {
@@ -12402,14 +12739,14 @@ const __iconNode$J = [
   ["path", { d: "M6 14a12 12 0 0 0 2.4 7.2 2 2 0 0 0 3.2-2.4A8 8 0 0 1 10 14", key: "1853fq" }],
   ["path", { d: "M8 6v8", key: "15ugcq" }]
 ];
-const Megaphone = createLucideIcon("megaphone", __iconNode$J);
-const __iconNode$I = [
+const Megaphone = createLucideIcon("megaphone", __iconNode$R);
+const __iconNode$Q = [
   ["path", { d: "M4 5h16", key: "1tepv9" }],
   ["path", { d: "M4 12h16", key: "1lakjw" }],
   ["path", { d: "M4 19h16", key: "1djgab" }]
 ];
-const Menu = createLucideIcon("menu", __iconNode$I);
-const __iconNode$H = [
+const Menu = createLucideIcon("menu", __iconNode$Q);
+const __iconNode$P = [
   [
     "path",
     {
@@ -12420,8 +12757,8 @@ const __iconNode$H = [
   ["path", { d: "M8 12h8", key: "1wcyev" }],
   ["path", { d: "M12 8v8", key: "napkw2" }]
 ];
-const MessageCirclePlus = createLucideIcon("message-circle-plus", __iconNode$H);
-const __iconNode$G = [
+const MessageCirclePlus = createLucideIcon("message-circle-plus", __iconNode$P);
+const __iconNode$O = [
   [
     "path",
     {
@@ -12432,8 +12769,8 @@ const __iconNode$G = [
   ["path", { d: "M12 8v4", key: "1got3b" }],
   ["path", { d: "M12 16h.01", key: "1drbdi" }]
 ];
-const MessageCircleWarning = createLucideIcon("message-circle-warning", __iconNode$G);
-const __iconNode$F = [
+const MessageCircleWarning = createLucideIcon("message-circle-warning", __iconNode$O);
+const __iconNode$N = [
   [
     "path",
     {
@@ -12442,8 +12779,8 @@ const __iconNode$F = [
     }
   ]
 ];
-const MessageCircle = createLucideIcon("message-circle", __iconNode$F);
-const __iconNode$E = [
+const MessageCircle = createLucideIcon("message-circle", __iconNode$N);
+const __iconNode$M = [
   [
     "path",
     {
@@ -12452,8 +12789,8 @@ const __iconNode$E = [
     }
   ]
 ];
-const MessageSquare = createLucideIcon("message-square", __iconNode$E);
-const __iconNode$D = [
+const MessageSquare = createLucideIcon("message-square", __iconNode$M);
+const __iconNode$L = [
   ["path", { d: "M12 19v3", key: "npa21l" }],
   ["path", { d: "M15 9.34V5a3 3 0 0 0-5.68-1.33", key: "1gzdoj" }],
   ["path", { d: "M16.95 16.95A7 7 0 0 1 5 12v-2", key: "cqa7eg" }],
@@ -12461,14 +12798,14 @@ const __iconNode$D = [
   ["path", { d: "m2 2 20 20", key: "1ooewy" }],
   ["path", { d: "M9 9v3a3 3 0 0 0 5.12 2.12", key: "r2i35w" }]
 ];
-const MicOff = createLucideIcon("mic-off", __iconNode$D);
-const __iconNode$C = [
+const MicOff = createLucideIcon("mic-off", __iconNode$L);
+const __iconNode$K = [
   ["path", { d: "M12 19v3", key: "npa21l" }],
   ["path", { d: "M19 10v2a7 7 0 0 1-14 0v-2", key: "1vc78b" }],
   ["rect", { x: "9", y: "2", width: "6", height: "13", rx: "3", key: "s6n7sd" }]
 ];
-const Mic = createLucideIcon("mic", __iconNode$C);
-const __iconNode$B = [
+const Mic = createLucideIcon("mic", __iconNode$K);
+const __iconNode$J = [
   [
     "path",
     {
@@ -12477,24 +12814,48 @@ const __iconNode$B = [
     }
   ]
 ];
-const Moon = createLucideIcon("moon", __iconNode$B);
-const __iconNode$A = [
+const Moon = createLucideIcon("moon", __iconNode$J);
+const __iconNode$I = [
   ["circle", { cx: "8", cy: "18", r: "4", key: "1fc0mg" }],
   ["path", { d: "M12 18V2l7 4", key: "g04rme" }]
 ];
-const Music2 = createLucideIcon("music-2", __iconNode$A);
-const __iconNode$z = [
+const Music2 = createLucideIcon("music-2", __iconNode$I);
+const __iconNode$H = [
   ["path", { d: "M9 18V5l12-2v13", key: "1jmyc2" }],
   ["circle", { cx: "6", cy: "18", r: "3", key: "fqmcym" }],
   ["circle", { cx: "18", cy: "16", r: "3", key: "1hluhg" }]
 ];
-const Music = createLucideIcon("music", __iconNode$z);
-const __iconNode$y = [
+const Music = createLucideIcon("music", __iconNode$H);
+const __iconNode$G = [
+  [
+    "path",
+    {
+      d: "M12 22a1 1 0 0 1 0-20 10 9 0 0 1 10 9 5 5 0 0 1-5 5h-2.25a1.75 1.75 0 0 0-1.4 2.8l.3.4a1.75 1.75 0 0 1-1.4 2.8z",
+      key: "e79jfc"
+    }
+  ],
+  ["circle", { cx: "13.5", cy: "6.5", r: ".5", fill: "currentColor", key: "1okk4w" }],
+  ["circle", { cx: "17.5", cy: "10.5", r: ".5", fill: "currentColor", key: "f64h9f" }],
+  ["circle", { cx: "6.5", cy: "12.5", r: ".5", fill: "currentColor", key: "qy21gx" }],
+  ["circle", { cx: "8.5", cy: "7.5", r: ".5", fill: "currentColor", key: "fotxhn" }]
+];
+const Palette = createLucideIcon("palette", __iconNode$G);
+const __iconNode$F = [
+  [
+    "path",
+    {
+      d: "m16 6-8.414 8.586a2 2 0 0 0 2.829 2.829l8.414-8.586a4 4 0 1 0-5.657-5.657l-8.379 8.551a6 6 0 1 0 8.485 8.485l8.379-8.551",
+      key: "1miecu"
+    }
+  ]
+];
+const Paperclip = createLucideIcon("paperclip", __iconNode$F);
+const __iconNode$E = [
   ["rect", { x: "14", y: "3", width: "5", height: "18", rx: "1", key: "kaeet6" }],
   ["rect", { x: "5", y: "3", width: "5", height: "18", rx: "1", key: "1wsw3u" }]
 ];
-const Pause = createLucideIcon("pause", __iconNode$y);
-const __iconNode$x = [
+const Pause = createLucideIcon("pause", __iconNode$E);
+const __iconNode$D = [
   ["path", { d: "M13 21h8", key: "1jsn5i" }],
   [
     "path",
@@ -12504,8 +12865,8 @@ const __iconNode$x = [
     }
   ]
 ];
-const PenLine = createLucideIcon("pen-line", __iconNode$x);
-const __iconNode$w = [
+const PenLine = createLucideIcon("pen-line", __iconNode$D);
+const __iconNode$C = [
   [
     "path",
     {
@@ -12514,8 +12875,8 @@ const __iconNode$w = [
     }
   ]
 ];
-const Phone = createLucideIcon("phone", __iconNode$w);
-const __iconNode$v = [
+const Phone = createLucideIcon("phone", __iconNode$C);
+const __iconNode$B = [
   ["path", { d: "M12 17v5", key: "bb1du9" }],
   [
     "path",
@@ -12525,8 +12886,8 @@ const __iconNode$v = [
     }
   ]
 ];
-const Pin = createLucideIcon("pin", __iconNode$v);
-const __iconNode$u = [
+const Pin = createLucideIcon("pin", __iconNode$B);
+const __iconNode$A = [
   [
     "path",
     {
@@ -12535,13 +12896,13 @@ const __iconNode$u = [
     }
   ]
 ];
-const Play = createLucideIcon("play", __iconNode$u);
-const __iconNode$t = [
+const Play = createLucideIcon("play", __iconNode$A);
+const __iconNode$z = [
   ["path", { d: "M5 12h14", key: "1ays0h" }],
   ["path", { d: "M12 5v14", key: "s699le" }]
 ];
-const Plus = createLucideIcon("plus", __iconNode$t);
-const __iconNode$s = [
+const Plus = createLucideIcon("plus", __iconNode$z);
+const __iconNode$y = [
   ["rect", { width: "5", height: "5", x: "3", y: "3", rx: "1", key: "1tu5fj" }],
   ["rect", { width: "5", height: "5", x: "16", y: "3", rx: "1", key: "1v8r4q" }],
   ["rect", { width: "5", height: "5", x: "3", y: "16", rx: "1", key: "1x03jg" }],
@@ -12555,25 +12916,37 @@ const __iconNode$s = [
   ["path", { d: "M21 12v.01", key: "1lwtk9" }],
   ["path", { d: "M12 21v-1", key: "1880an" }]
 ];
-const QrCode = createLucideIcon("qr-code", __iconNode$s);
-const __iconNode$r = [
+const QrCode = createLucideIcon("qr-code", __iconNode$y);
+const __iconNode$x = [
+  ["path", { d: "M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8", key: "v9h5vc" }],
+  ["path", { d: "M21 3v5h-5", key: "1q7to0" }],
+  ["path", { d: "M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16", key: "3uifl3" }],
+  ["path", { d: "M8 16H3v5", key: "1cv678" }]
+];
+const RefreshCw = createLucideIcon("refresh-cw", __iconNode$x);
+const __iconNode$w = [
   ["path", { d: "m2 9 3-3 3 3", key: "1ltn5i" }],
   ["path", { d: "M13 18H7a2 2 0 0 1-2-2V6", key: "1r6tfw" }],
   ["path", { d: "m22 15-3 3-3-3", key: "4rnwn2" }],
   ["path", { d: "M11 6h6a2 2 0 0 1 2 2v10", key: "2f72bc" }]
 ];
-const Repeat2 = createLucideIcon("repeat-2", __iconNode$r);
-const __iconNode$q = [
+const Repeat2 = createLucideIcon("repeat-2", __iconNode$w);
+const __iconNode$v = [
   ["path", { d: "M20 18v-2a4 4 0 0 0-4-4H4", key: "5vmcpk" }],
   ["path", { d: "m9 17-5-5 5-5", key: "nvlc11" }]
 ];
-const Reply = createLucideIcon("reply", __iconNode$q);
-const __iconNode$p = [
+const Reply = createLucideIcon("reply", __iconNode$v);
+const __iconNode$u = [
+  ["path", { d: "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8", key: "1357e3" }],
+  ["path", { d: "M3 3v5h5", key: "1xhq8a" }]
+];
+const RotateCcw = createLucideIcon("rotate-ccw", __iconNode$u);
+const __iconNode$t = [
   ["path", { d: "m21 21-4.34-4.34", key: "14j7rj" }],
   ["circle", { cx: "11", cy: "11", r: "8", key: "4ej97u" }]
 ];
-const Search = createLucideIcon("search", __iconNode$p);
-const __iconNode$o = [
+const Search = createLucideIcon("search", __iconNode$t);
+const __iconNode$s = [
   [
     "path",
     {
@@ -12583,8 +12956,8 @@ const __iconNode$o = [
   ],
   ["path", { d: "m21.854 2.147-10.94 10.939", key: "12cjpa" }]
 ];
-const Send = createLucideIcon("send", __iconNode$o);
-const __iconNode$n = [
+const Send = createLucideIcon("send", __iconNode$s);
+const __iconNode$r = [
   [
     "path",
     {
@@ -12594,16 +12967,16 @@ const __iconNode$n = [
   ],
   ["circle", { cx: "12", cy: "12", r: "3", key: "1v7zrd" }]
 ];
-const Settings = createLucideIcon("settings", __iconNode$n);
-const __iconNode$m = [
+const Settings = createLucideIcon("settings", __iconNode$r);
+const __iconNode$q = [
   ["circle", { cx: "18", cy: "5", r: "3", key: "gq8acd" }],
   ["circle", { cx: "6", cy: "12", r: "3", key: "w7nqdw" }],
   ["circle", { cx: "18", cy: "19", r: "3", key: "1xt0gg" }],
   ["line", { x1: "8.59", x2: "15.42", y1: "13.51", y2: "17.49", key: "47mynk" }],
   ["line", { x1: "15.41", x2: "8.59", y1: "6.51", y2: "10.49", key: "1n3mei" }]
 ];
-const Share2 = createLucideIcon("share-2", __iconNode$m);
-const __iconNode$l = [
+const Share2 = createLucideIcon("share-2", __iconNode$q);
+const __iconNode$p = [
   [
     "path",
     {
@@ -12613,8 +12986,8 @@ const __iconNode$l = [
   ],
   ["path", { d: "m9 12 2 2 4-4", key: "dzmm74" }]
 ];
-const ShieldCheck = createLucideIcon("shield-check", __iconNode$l);
-const __iconNode$k = [
+const ShieldCheck = createLucideIcon("shield-check", __iconNode$p);
+const __iconNode$o = [
   [
     "path",
     {
@@ -12623,8 +12996,8 @@ const __iconNode$k = [
     }
   ]
 ];
-const Shield = createLucideIcon("shield", __iconNode$k);
-const __iconNode$j = [
+const Shield = createLucideIcon("shield", __iconNode$o);
+const __iconNode$n = [
   ["path", { d: "M10 5H3", key: "1qgfaw" }],
   ["path", { d: "M12 19H3", key: "yhmn1j" }],
   ["path", { d: "M14 3v4", key: "1sua03" }],
@@ -12635,15 +13008,15 @@ const __iconNode$j = [
   ["path", { d: "M8 10v4", key: "tgpxqk" }],
   ["path", { d: "M8 12H3", key: "a7s4jb" }]
 ];
-const SlidersHorizontal = createLucideIcon("sliders-horizontal", __iconNode$j);
-const __iconNode$i = [
+const SlidersHorizontal = createLucideIcon("sliders-horizontal", __iconNode$n);
+const __iconNode$m = [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["path", { d: "M8 14s1.5 2 4 2 4-2 4-2", key: "1y1vjs" }],
   ["line", { x1: "9", x2: "9.01", y1: "9", y2: "9", key: "yxxnd0" }],
   ["line", { x1: "15", x2: "15.01", y1: "9", y2: "9", key: "1p4y9e" }]
 ];
-const Smile = createLucideIcon("smile", __iconNode$i);
-const __iconNode$h = [
+const Smile = createLucideIcon("smile", __iconNode$m);
+const __iconNode$l = [
   [
     "path",
     {
@@ -12655,12 +13028,40 @@ const __iconNode$h = [
   ["path", { d: "M22 4h-4", key: "gwowj6" }],
   ["circle", { cx: "4", cy: "20", r: "2", key: "6kqj1y" }]
 ];
-const Sparkles = createLucideIcon("sparkles", __iconNode$h);
-const __iconNode$g = [
+const Sparkles = createLucideIcon("sparkles", __iconNode$l);
+const __iconNode$k = [
+  ["path", { d: "M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7", key: "1m0v6g" }],
+  [
+    "path",
+    {
+      d: "M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z",
+      key: "ohrbg2"
+    }
+  ]
+];
+const SquarePen = createLucideIcon("square-pen", __iconNode$k);
+const __iconNode$j = [
+  ["rect", { x: "3", y: "3", width: "18", height: "18", rx: "2", key: "h1oib" }],
+  [
+    "path",
+    {
+      d: "M9 9.003a1 1 0 0 1 1.517-.859l4.997 2.997a1 1 0 0 1 0 1.718l-4.997 2.997A1 1 0 0 1 9 14.996z",
+      key: "kmsa83"
+    }
+  ]
+];
+const SquarePlay = createLucideIcon("square-play", __iconNode$j);
+const __iconNode$i = [
+  ["path", { d: "M4 10c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h4c1.1 0 2 .9 2 2", key: "4i38lg" }],
+  ["path", { d: "M10 16c-1.1 0-2-.9-2-2v-4c0-1.1.9-2 2-2h4c1.1 0 2 .9 2 2", key: "mlte4a" }],
+  ["rect", { width: "8", height: "8", x: "14", y: "14", rx: "2", key: "1fa9i4" }]
+];
+const SquareStack = createLucideIcon("square-stack", __iconNode$i);
+const __iconNode$h = [
   ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", key: "afitv7" }]
 ];
-const Square = createLucideIcon("square", __iconNode$g);
-const __iconNode$f = [
+const Square = createLucideIcon("square", __iconNode$h);
+const __iconNode$g = [
   [
     "path",
     {
@@ -12669,8 +13070,8 @@ const __iconNode$f = [
     }
   ]
 ];
-const Star = createLucideIcon("star", __iconNode$f);
-const __iconNode$e = [
+const Star = createLucideIcon("star", __iconNode$g);
+const __iconNode$f = [
   [
     "path",
     {
@@ -12683,8 +13084,8 @@ const __iconNode$e = [
   ["path", { d: "M16 13h.01", key: "wip0gl" }],
   ["path", { d: "M10 16s.8 1 2 1c1.3 0 2-1 2-1", key: "1vvgv3" }]
 ];
-const Sticker = createLucideIcon("sticker", __iconNode$e);
-const __iconNode$d = [
+const Sticker = createLucideIcon("sticker", __iconNode$f);
+const __iconNode$e = [
   [
     "path",
     {
@@ -12694,8 +13095,8 @@ const __iconNode$d = [
   ],
   ["path", { d: "M15 3v5a1 1 0 0 0 1 1h5", key: "6s6qgf" }]
 ];
-const StickyNote = createLucideIcon("sticky-note", __iconNode$d);
-const __iconNode$c = [
+const StickyNote = createLucideIcon("sticky-note", __iconNode$e);
+const __iconNode$d = [
   ["circle", { cx: "12", cy: "12", r: "4", key: "4exip2" }],
   ["path", { d: "M12 2v2", key: "tus03m" }],
   ["path", { d: "M12 20v2", key: "1lh1kg" }],
@@ -12706,59 +13107,59 @@ const __iconNode$c = [
   ["path", { d: "m6.34 17.66-1.41 1.41", key: "1m8zz5" }],
   ["path", { d: "m19.07 4.93-1.41 1.41", key: "1shlcs" }]
 ];
-const Sun = createLucideIcon("sun", __iconNode$c);
-const __iconNode$b = [
+const Sun = createLucideIcon("sun", __iconNode$d);
+const __iconNode$c = [
   ["path", { d: "M10 11v6", key: "nco0om" }],
   ["path", { d: "M14 11v6", key: "outv1u" }],
   ["path", { d: "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6", key: "miytrc" }],
   ["path", { d: "M3 6h18", key: "d0wm0j" }],
   ["path", { d: "M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2", key: "e791ji" }]
 ];
-const Trash2 = createLucideIcon("trash-2", __iconNode$b);
-const __iconNode$a = [
+const Trash2 = createLucideIcon("trash-2", __iconNode$c);
+const __iconNode$b = [
   ["path", { d: "M12 4v16", key: "1654pz" }],
   ["path", { d: "M4 7V5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2", key: "e0r10z" }],
   ["path", { d: "M9 20h6", key: "s66wpe" }]
 ];
-const Type = createLucideIcon("type", __iconNode$a);
-const __iconNode$9 = [
+const Type = createLucideIcon("type", __iconNode$b);
+const __iconNode$a = [
   ["path", { d: "M9 14 4 9l5-5", key: "102s5s" }],
   ["path", { d: "M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11", key: "f3b9sd" }]
 ];
-const Undo2 = createLucideIcon("undo-2", __iconNode$9);
-const __iconNode$8 = [
+const Undo2 = createLucideIcon("undo-2", __iconNode$a);
+const __iconNode$9 = [
   ["path", { d: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2", key: "1yyitq" }],
   ["circle", { cx: "9", cy: "7", r: "4", key: "nufk8" }],
   ["line", { x1: "19", x2: "19", y1: "8", y2: "14", key: "1bvyxn" }],
   ["line", { x1: "22", x2: "16", y1: "11", y2: "11", key: "1shjgl" }]
 ];
-const UserPlus = createLucideIcon("user-plus", __iconNode$8);
-const __iconNode$7 = [
+const UserPlus = createLucideIcon("user-plus", __iconNode$9);
+const __iconNode$8 = [
   ["path", { d: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2", key: "1yyitq" }],
   ["circle", { cx: "9", cy: "7", r: "4", key: "nufk8" }],
   ["line", { x1: "17", x2: "22", y1: "8", y2: "13", key: "3nzzx3" }],
   ["line", { x1: "22", x2: "17", y1: "8", y2: "13", key: "1swrse" }]
 ];
-const UserX = createLucideIcon("user-x", __iconNode$7);
-const __iconNode$6 = [
+const UserX = createLucideIcon("user-x", __iconNode$8);
+const __iconNode$7 = [
   ["path", { d: "M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2", key: "975kel" }],
   ["circle", { cx: "12", cy: "7", r: "4", key: "17ys0d" }]
 ];
-const User = createLucideIcon("user", __iconNode$6);
-const __iconNode$5 = [
+const User = createLucideIcon("user", __iconNode$7);
+const __iconNode$6 = [
   ["path", { d: "M18 21a8 8 0 0 0-16 0", key: "3ypg7q" }],
   ["circle", { cx: "10", cy: "8", r: "5", key: "o932ke" }],
   ["path", { d: "M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3", key: "10s06x" }]
 ];
-const UsersRound = createLucideIcon("users-round", __iconNode$5);
-const __iconNode$4 = [
+const UsersRound = createLucideIcon("users-round", __iconNode$6);
+const __iconNode$5 = [
   ["path", { d: "M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2", key: "1yyitq" }],
   ["path", { d: "M16 3.128a4 4 0 0 1 0 7.744", key: "16gr8j" }],
   ["path", { d: "M22 21v-2a4 4 0 0 0-3-3.87", key: "kshegd" }],
   ["circle", { cx: "9", cy: "7", r: "4", key: "nufk8" }]
 ];
-const Users = createLucideIcon("users", __iconNode$4);
-const __iconNode$3 = [
+const Users = createLucideIcon("users", __iconNode$5);
+const __iconNode$4 = [
   [
     "path",
     {
@@ -12768,20 +13169,8 @@ const __iconNode$3 = [
   ],
   ["rect", { x: "2", y: "6", width: "14", height: "12", rx: "2", key: "158x01" }]
 ];
-const Video = createLucideIcon("video", __iconNode$3);
-const __iconNode$2 = [
-  [
-    "path",
-    {
-      d: "M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z",
-      key: "uqj9uw"
-    }
-  ],
-  ["path", { d: "M16 9a5 5 0 0 1 0 6", key: "1q6k2b" }],
-  ["path", { d: "M19.364 18.364a9 9 0 0 0 0-12.728", key: "ijwkga" }]
-];
-const Volume2 = createLucideIcon("volume-2", __iconNode$2);
-const __iconNode$1 = [
+const Video = createLucideIcon("video", __iconNode$4);
+const __iconNode$3 = [
   [
     "path",
     {
@@ -12792,12 +13181,35 @@ const __iconNode$1 = [
   ["line", { x1: "22", x2: "16", y1: "9", y2: "15", key: "1ewh16" }],
   ["line", { x1: "16", x2: "22", y1: "9", y2: "15", key: "5ykzw1" }]
 ];
-const VolumeX = createLucideIcon("volume-x", __iconNode$1);
-const __iconNode = [
+const VolumeX = createLucideIcon("volume-x", __iconNode$3);
+const __iconNode$2 = [
   ["path", { d: "M18 6 6 18", key: "1bl5f8" }],
   ["path", { d: "m6 6 12 12", key: "d8bk6v" }]
 ];
-const X = createLucideIcon("x", __iconNode);
+const X = createLucideIcon("x", __iconNode$2);
+const __iconNode$1 = [
+  ["path", { d: "M10.513 4.856 13.12 2.17a.5.5 0 0 1 .86.46l-1.377 4.317", key: "193nxd" }],
+  ["path", { d: "M15.656 10H20a1 1 0 0 1 .78 1.63l-1.72 1.773", key: "27a7lr" }],
+  [
+    "path",
+    {
+      d: "M16.273 16.273 10.88 21.83a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14H4a1 1 0 0 1-.78-1.63l4.507-4.643",
+      key: "1e0qe9"
+    }
+  ],
+  ["path", { d: "m2 2 20 20", key: "1ooewy" }]
+];
+const ZapOff = createLucideIcon("zap-off", __iconNode$1);
+const __iconNode = [
+  [
+    "path",
+    {
+      d: "M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z",
+      key: "1xq2db"
+    }
+  ]
+];
+const Zap = createLucideIcon("zap", __iconNode);
 function r(e) {
   var t, f, n = "";
   if ("string" == typeof e || "number" == typeof e) n += e;
@@ -17261,6 +17673,2083 @@ function openStoryViewer(userId, storyId) {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new CustomEvent(OPEN_STORY_EVENT, { detail: { userId, storyId } }));
 }
+function notifyCameraOpen() {
+  if (typeof document === "undefined") return;
+  document.documentElement.classList.add("retweet-camera-open");
+  window.dispatchEvent(new CustomEvent("retweet-camera-open"));
+}
+function notifyCameraClose() {
+  if (typeof document === "undefined") return;
+  document.documentElement.classList.remove("retweet-camera-open");
+  window.dispatchEvent(new CustomEvent("retweet-camera-close"));
+}
+function notifyStoryPickerOpen() {
+  if (typeof document === "undefined") return;
+  window.dispatchEvent(new CustomEvent("retweet-story-picker-open"));
+}
+function notifyStoryPickerClose() {
+  if (typeof document === "undefined") return;
+  window.dispatchEvent(new CustomEvent("retweet-story-picker-close"));
+}
+function resetMediaChromeOverlays() {
+  notifyCameraClose();
+  notifyStoryPickerClose();
+}
+const STORY_GALLERY_OPEN_EVENT = "retweet-open-story-gallery";
+function requestOpenStoryGallery() {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent(STORY_GALLERY_OPEN_EVENT));
+}
+function notifyGuestActionBlocked() {
+  try {
+    window.dispatchEvent(new CustomEvent("retweet-guest-blocked", { bubbles: true }));
+  } catch {
+  }
+}
+const VOICE_WAVE_BARS$1 = 40;
+const VOICE_MEDIA_OFFSCREEN$1 = "pointer-events-none fixed start-0 top-0 z-[-1] m-0 h-[2px] w-[2px] max-h-[2px] max-w-[2px] overflow-hidden border-0 p-0 opacity-[0.02]";
+function voiceWaveHeightsFromSrc$1(src) {
+  let h = 0;
+  for (let i = 0; i < src.length; i++) h = (h + src.charCodeAt(i) * (i + 1)) % 100017;
+  return Array.from({ length: VOICE_WAVE_BARS$1 }, (_, i) => {
+    const t = Math.sin((i + 1) * 1.55 + h * 12e-5) * 0.45 + 0.55;
+    const t2 = Math.cos((i + 2) * 0.9 + h * 8e-5) * 0.2;
+    return Math.round(Math.min(100, Math.max(28, (t + t2) * 100)));
+  });
+}
+function voiceUsesVideoElement$1(src) {
+  if (src.startsWith("data:video")) return true;
+  const low = src.slice(0, 120).toLowerCase();
+  return low.includes("audio/webm") || low.includes("video/webm");
+}
+function waitVoiceMediaCanPlay(el) {
+  if (el.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const done = () => {
+      cleanup();
+      resolve();
+    };
+    const fail = () => {
+      cleanup();
+      reject(new Error("media load failed"));
+    };
+    const cleanup = () => {
+      el.removeEventListener("canplay", done);
+      el.removeEventListener("loadeddata", done);
+      el.removeEventListener("error", fail);
+    };
+    el.addEventListener("canplay", done, { once: true });
+    el.addEventListener("loadeddata", done, { once: true });
+    el.addEventListener("error", fail, { once: true });
+    try {
+      el.load();
+    } catch {
+    }
+  });
+}
+function fmtVoiceTime$1(sec) {
+  const s = Math.max(0, Math.floor(sec || 0));
+  const m = Math.floor(s / 60);
+  const r2 = s % 60;
+  return `${m}:${String(r2).padStart(2, "0")}`;
+}
+function isVoicePlaybackVideoSrc(src) {
+  if (!src?.trim()) return false;
+  const t = src.trim();
+  if (t.startsWith("data:video")) return true;
+  if (t.startsWith("data:video/")) return true;
+  if (/\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(t)) return true;
+  if (t.includes("/media/videos/")) return true;
+  const low = t.slice(0, 120).toLowerCase();
+  return low.includes("audio/webm") || low.includes("video/webm");
+}
+function isVoiceAttachFile(file) {
+  return file.type.startsWith("audio/") || file.type.startsWith("video/");
+}
+const POST_PLACEHOLDER_MEDIA = /* @__PURE__ */ new Set(["🖼️", "📝", "🎬"]);
+function resolvePostDisplayType(post) {
+  if (post.type === "tweet" || post.type === "reel") return post.type;
+  const text = post.text?.trim() ?? "";
+  const img = post.image?.trim() ?? "";
+  const vid = post.video?.trim() ?? "";
+  const aud = post.audio?.trim() ?? "";
+  if (post.type === "post" && text && !vid && !aud) {
+    if (!img) return "tweet";
+    if (POST_PLACEHOLDER_MEDIA.has(img)) return "post";
+    const media = normalizePostMedia(post);
+    if (!media.hasImage && !media.hasVideo) return "tweet";
+  }
+  return post.type ?? "post";
+}
+function isDisplayTweet(post) {
+  return resolvePostDisplayType(post) === "tweet";
+}
+const CREATE_PLACEHOLDER_MEDIA = /* @__PURE__ */ new Set(["🎬", "🖼️", "📝"]);
+function hasCreateAttachmentMedia(media, hasFile) {
+  if (hasFile) return true;
+  const m = media.trim();
+  if (!m || CREATE_PLACEHOLDER_MEDIA.has(m)) return false;
+  if (m.startsWith("data:video/") || m.startsWith("data:image/") || m.startsWith("data:audio/")) {
+    return true;
+  }
+  if (m.startsWith("blob:")) return true;
+  if (isVideoMediaRef(m)) return true;
+  return isRenderableMediaUrl(m);
+}
+function isReelFeedPost(post) {
+  if (post.type === "tweet") return false;
+  return normalizePostMedia(post).hasVideo;
+}
+function postShowsFeedMedia(post) {
+  if (!isDisplayTweet(post)) return true;
+  const media = normalizePostMedia(post);
+  return media.hasImage || media.hasVideo || media.hasAudio;
+}
+function isVideoMediaRef(s) {
+  if (!s?.trim()) return false;
+  const t = s.trim();
+  if (t.startsWith("data:video/")) return true;
+  if (/\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(t)) return true;
+  return t.includes("/media/videos/");
+}
+function normalizePostMedia(post) {
+  let imageRaw = post.image?.trim() || "";
+  let videoRaw = post.video?.trim() || "";
+  let audioRaw = post.audio?.trim() || "";
+  if (imageRaw && isVideoMediaRef(imageRaw) && !videoRaw) {
+    videoRaw = imageRaw;
+    imageRaw = "";
+  }
+  const imageUrl = imageRaw && !isVideoMediaRef(imageRaw) ? resolveMediaUrl(imageRaw) : "";
+  const videoUrl = videoRaw ? resolveMediaUrl(videoRaw) : "";
+  const audioUrl = audioRaw ? resolveMediaUrl(audioRaw) : "";
+  const posterUrl = imageUrl && isRenderableMediaUrl(imageUrl) ? imageUrl : "";
+  const voiceTweet = post.type === "tweet" && !!audioRaw;
+  const normalized = {
+    imageUrl,
+    videoUrl,
+    posterUrl,
+    hasImage: !!imageUrl && isRenderableMediaUrl(imageUrl) && !isVideoMediaRef(imageRaw),
+    hasVideo: !voiceTweet && !!videoRaw && isVideoMediaRef(videoRaw) && !!videoUrl,
+    hasAudio: !!audioRaw && (isRenderableMediaUrl(audioUrl) || isVoicePlaybackVideoSrc(audioRaw)),
+    audioUrl,
+    emojiFallback: (!imageUrl && !videoUrl && imageRaw && !isRenderableMediaUrl(imageRaw) ? imageRaw : "") || (!imageUrl && !videoUrl && videoRaw && !isRenderableMediaUrl(videoRaw) ? videoRaw : "") || (post.type === "reel" && !videoUrl ? "🎬" : "") || (post.type === "tweet" ? "" : "📝")
+  };
+  return normalized;
+}
+const DB_NAME = "retweet-story-gallery-v1";
+const DB_VER = 1;
+const META = "meta";
+const BLOBS = "blobs";
+const THUMBS = "thumbs";
+function openDb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VER);
+    req.onerror = () => reject(req.error);
+    req.onsuccess = () => resolve(req.result);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(META)) db.createObjectStore(META, { keyPath: "id" });
+      if (!db.objectStoreNames.contains(BLOBS)) db.createObjectStore(BLOBS);
+      if (!db.objectStoreNames.contains(THUMBS)) db.createObjectStore(THUMBS);
+    };
+  });
+}
+function txDone(tx) {
+  return new Promise((resolve, reject) => {
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.onabort = () => reject(tx.error);
+  });
+}
+async function idbGet(store2, key) {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(store2, "readonly");
+    const req = tx.objectStore(store2).get(key);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function idbPut(store2, key, value2) {
+  const db = await openDb();
+  const tx = db.transaction(store2, "readwrite");
+  const os = tx.objectStore(store2);
+  if (store2 === META) os.put(value2);
+  else os.put(value2, key);
+  await txDone(tx);
+}
+async function listMeta() {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(META, "readonly");
+    const req = tx.objectStore(META).getAll();
+    req.onsuccess = () => {
+      const rows = req.result || [];
+      resolve(rows.sort((a, b) => b.createdAt - a.createdAt));
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+function guessAlbum(file) {
+  const rel = file.webkitRelativePath;
+  if (rel && rel.includes("/")) {
+    const parts2 = rel.split("/");
+    if (parts2.length >= 2) return parts2[parts2.length - 2] || "Recents";
+  }
+  const n = file.name.toLowerCase();
+  if (/whatsapp|wa\d/i.test(n)) return "WhatsApp";
+  if (/snap|screenshot/i.test(n)) return "Snapchat";
+  if (/insta|ig_/i.test(n)) return "Instagram";
+  if (/pinterest|pin_/i.test(n)) return "Pinterest";
+  return "Recents";
+}
+async function imageThumbBlob(file, max = 320) {
+  try {
+    const bitmap = await createImageBitmap(file);
+    const scale = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
+    const w = Math.max(1, Math.round(bitmap.width * scale));
+    const h = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas2 = document.createElement("canvas");
+    canvas2.width = w;
+    canvas2.height = h;
+    const ctx = canvas2.getContext("2d");
+    if (!ctx) {
+      bitmap.close();
+      return null;
+    }
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    bitmap.close();
+    return await new Promise((resolve) => canvas2.toBlob((b) => resolve(b), "image/jpeg", 0.72));
+  } catch {
+    return null;
+  }
+}
+async function videoThumbBlob(file) {
+  const url2 = URL.createObjectURL(file);
+  try {
+    const video = document.createElement("video");
+    video.muted = true;
+    video.playsInline = true;
+    video.src = url2;
+    await new Promise((resolve, reject) => {
+      video.onloadeddata = () => resolve();
+      video.onerror = () => reject(new Error("video load"));
+    });
+    video.currentTime = Math.min(0.5, video.duration || 0.5);
+    await new Promise((resolve) => {
+      video.onseeked = () => resolve();
+      window.setTimeout(resolve, 400);
+    });
+    const max = 320;
+    const scale = Math.min(1, max / Math.max(video.videoWidth, video.videoHeight));
+    const w = Math.max(1, Math.round(video.videoWidth * scale));
+    const h = Math.max(1, Math.round(video.videoHeight * scale));
+    const canvas2 = document.createElement("canvas");
+    canvas2.width = w;
+    canvas2.height = h;
+    const ctx = canvas2.getContext("2d");
+    if (!ctx) return null;
+    ctx.drawImage(video, 0, 0, w, h);
+    return await new Promise((resolve) => canvas2.toBlob((b) => resolve(b), "image/jpeg", 0.72));
+  } catch {
+    return null;
+  } finally {
+    URL.revokeObjectURL(url2);
+  }
+}
+async function importFilesToGallery(files2, albumHint) {
+  let added = 0;
+  for (const file of files2) {
+    const isVideo = file.type.startsWith("video/");
+    const isImage2 = file.type.startsWith("image/") || /\.(jpe?g|png|gif|webp|heic|heif)$/i.test(file.name);
+    if (!isVideo && !isImage2) continue;
+    const id = `g_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    const record = {
+      id,
+      kind: isVideo ? "video" : "image",
+      mime: file.type || (isVideo ? "video/mp4" : "image/jpeg"),
+      album: guessAlbum(file),
+      favorite: false,
+      createdAt: file.lastModified || Date.now(),
+      name: file.name
+    };
+    const thumb = isVideo ? await videoThumbBlob(file) : await imageThumbBlob(file);
+    await idbPut(META, id, record);
+    await idbPut(BLOBS, id, file);
+    if (thumb) await idbPut(THUMBS, id, thumb);
+    added += 1;
+  }
+  return added;
+}
+async function loadGalleryTiles() {
+  const meta = await listMeta();
+  const tiles = [];
+  for (const rec of meta) {
+    const thumb = await idbGet(THUMBS, rec.id);
+    const blob = thumb || await idbGet(BLOBS, rec.id);
+    if (!blob) continue;
+    tiles.push({
+      ...rec,
+      previewUrl: URL.createObjectURL(blob)
+    });
+  }
+  return tiles;
+}
+async function resolveGalleryDraft(item) {
+  if (item.remoteUrl) {
+    const url2 = resolveMediaUrl(item.remoteUrl);
+    if (!isRenderableMediaUrl(url2)) return null;
+    return { kind: item.kind, dataUrl: url2 };
+  }
+  const blob = await idbGet(BLOBS, item.id);
+  if (!blob) return null;
+  return new Promise((resolve, reject) => {
+    const r2 = new FileReader();
+    r2.onload = () => resolve({ kind: item.kind, dataUrl: String(r2.result) });
+    r2.onerror = () => reject(r2.error);
+    r2.readAsDataURL(blob);
+  });
+}
+function filterGalleryTiles(tiles, filter) {
+  if (filter === "videos") return tiles.filter((t) => t.kind === "video");
+  if (filter === "favorites") return tiles.filter((t) => t.favorite);
+  return tiles;
+}
+function summarizeAlbums(tiles) {
+  const map = /* @__PURE__ */ new Map();
+  for (const t of tiles) {
+    const list = map.get(t.album) || [];
+    list.push(t);
+    map.set(t.album, list);
+  }
+  return [...map.entries()].map(([name, items]) => ({
+    name,
+    count: items.length,
+    coverUrl: items[0]?.previewUrl || ""
+  })).sort((a, b) => {
+    if (a.name === "Recents") return -1;
+    if (b.name === "Recents") return 1;
+    return b.count - a.count;
+  });
+}
+function filterByMediaType(tiles, type) {
+  const n = (s) => s.toLowerCase();
+  return tiles.filter((t) => {
+    const hay = n(t.name) + n(t.album);
+    switch (type) {
+      case "videos":
+        return t.kind === "video";
+      case "selfies":
+        return /selfie|front|camera|portrait/i.test(hay);
+      case "panoramas":
+        return /pano|panorama|360/i.test(hay);
+      case "bursts":
+        return /burst|brst/i.test(hay);
+      case "timelapse":
+        return /timelapse|time-lapse|hyperlapse/i.test(hay);
+      default:
+        return true;
+    }
+  });
+}
+function revokeGalleryTileUrls(tiles) {
+  for (const t of tiles) {
+    if (t.remoteUrl) continue;
+    try {
+      URL.revokeObjectURL(t.previewUrl);
+    } catch {
+    }
+  }
+}
+const QUICK = [
+  { id: "search", icon: Search, label: "بحث" },
+  { id: "recents", icon: Grid2x2, label: "الأحدث" },
+  { id: "favorites", icon: Heart, label: "المفضلة" },
+  { id: "videos", icon: CirclePlay, label: "فيديو" },
+  { id: "selfies", icon: Smile, label: "سيلفي" }
+];
+const MEDIA_TYPES = [
+  { id: "videos", label: "فيديو" },
+  { id: "selfies", label: "سيلفي" },
+  { id: "panoramas", label: "بانوراما" },
+  { id: "bursts", label: "متتابعة" },
+  { id: "timelapse", label: "تايم لابس" }
+];
+function StoryAlbumPicker({
+  open,
+  albums,
+  onClose,
+  onPickAlbum,
+  onQuickFilter,
+  onMediaType,
+  language = "ar"
+}) {
+  const ar = language === "ar";
+  const title = ar ? "اختر ألبوماً" : "Select album";
+  const albumsLabel = ar ? "الألبومات" : "Albums";
+  const seeAll = ar ? "عرض الكل" : "See all";
+  const mediaTypesLabel = ar ? "أنواع الوسائط" : "Media Types";
+  const cancel = ar ? "إلغاء" : "Cancel";
+  const topAlbums = reactExports.useMemo(() => albums.slice(0, 6), [albums]);
+  if (!open || typeof document === "undefined") return null;
+  return reactDomExports.createPortal(
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-[650] flex flex-col justify-end bg-black/60", onClick: onClose, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "div",
+      {
+        className: "mx-auto flex w-full max-w-md flex-col rounded-t-[22px] bg-black text-white",
+        style: { maxHeight: "min(92vh, 780px)" },
+        onClick: (e) => e.stopPropagation(),
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex shrink-0 justify-center pt-2 pb-1", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-1 w-10 rounded-full bg-white/25" }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex shrink-0 items-center justify-between px-4 pb-3", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onClose, className: "text-[17px] font-medium text-[#3897f0]", children: cancel }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-[17px] font-semibold", children: title }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "w-14" })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-8", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-5 flex gap-4 overflow-x-auto no-scrollbar", children: QUICK.map((q) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "button",
+              {
+                type: "button",
+                onClick: () => onQuickFilter(q.id),
+                className: "flex w-[4.5rem] shrink-0 flex-col items-center gap-2",
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex h-14 w-14 items-center justify-center rounded-full bg-[#262626]", children: /* @__PURE__ */ jsxRuntimeExports.jsx(q.icon, { size: 26, strokeWidth: 1.75 }) }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[11px] text-white/90", children: q.label })
+                ]
+              },
+              q.id
+            )) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-2 flex items-center justify-between", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[15px] font-semibold", children: albumsLabel }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "text-[13px] font-semibold text-[#3897f0]", children: seeAll })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-6 grid grid-cols-2 gap-3", children: topAlbums.map((a) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "button",
+              {
+                type: "button",
+                onClick: () => onPickAlbum(a.name),
+                className: "text-start",
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-1.5 aspect-square overflow-hidden rounded-md bg-[#262626]", children: a.coverUrl ? /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: a.coverUrl, alt: "", className: "h-full w-full object-cover" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-full w-full items-center justify-center", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Image$1, { size: 32, className: "text-white/30" }) }) }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "truncate text-[13px] font-medium", children: a.name }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[12px] text-white/55", children: a.count.toLocaleString(ar ? "ar" : "en") })
+                ]
+              },
+              a.name
+            )) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mb-2 text-[13px] font-semibold text-white/45", children: mediaTypesLabel }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("ul", { className: "divide-y divide-white/10 rounded-xl bg-[#121212]", children: MEDIA_TYPES.map((mt) => /* @__PURE__ */ jsxRuntimeExports.jsx("li", { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "button",
+              {
+                type: "button",
+                onClick: () => onMediaType(mt.id),
+                className: "flex w-full items-center justify-between px-4 py-3.5 text-[15px] active:bg-white/5",
+                children: [
+                  mt.label,
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronRight, { size: 18, className: "text-white/35" })
+                ]
+              }
+            ) }, mt.id)) })
+          ] })
+        ]
+      }
+    ) }),
+    document.body
+  );
+}
+const FILTER_LABELS = {
+  all: { ar: "الأحدث", en: "Recents" },
+  videos: { ar: "فيديو", en: "Videos" },
+  favorites: { ar: "المفضلة", en: "Favorites" }
+};
+function StoryGalleryPicker({
+  open,
+  onClose,
+  onOpenCamera,
+  onPickDraft,
+  language = "ar"
+}) {
+  const ar = language === "ar";
+  const importRef = reactExports.useRef(null);
+  const [tiles, setTiles] = reactExports.useState([]);
+  const [filter, setFilter] = reactExports.useState("all");
+  const [albumFilter, setAlbumFilter] = reactExports.useState(null);
+  const [mediaTypeFilter, setMediaTypeFilter] = reactExports.useState(null);
+  const [menuOpen, setMenuOpen] = reactExports.useState(false);
+  const [albumPickerOpen, setAlbumPickerOpen] = reactExports.useState(false);
+  const [loading, setLoading] = reactExports.useState(false);
+  const refresh = reactExports.useCallback(async () => {
+    setLoading(true);
+    try {
+      const local = await loadGalleryTiles();
+      setTiles((prev) => {
+        revokeGalleryTileUrls(prev.filter((p) => !p.remoteUrl));
+        return local;
+      });
+    } catch {
+      setTiles((prev) => {
+        revokeGalleryTileUrls(prev.filter((p) => !p.remoteUrl));
+        return [];
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  reactExports.useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    void (async () => {
+      setLoading(true);
+      try {
+        const local = await loadGalleryTiles();
+        if (cancelled) return;
+        setTiles((prev) => {
+          revokeGalleryTileUrls(prev.filter((p) => !p.remoteUrl));
+          return local;
+        });
+      } catch {
+        if (!cancelled) {
+          setTiles((prev) => {
+            revokeGalleryTileUrls(prev.filter((p) => !p.remoteUrl));
+            return [];
+          });
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+  reactExports.useEffect(() => {
+    if (!open) return;
+    return () => revokeGalleryTileUrls(tiles.filter((t) => !t.remoteUrl));
+  }, [open]);
+  const filtered = reactExports.useMemo(() => {
+    let list = filterGalleryTiles(tiles, filter);
+    if (albumFilter) list = list.filter((t) => t.album === albumFilter);
+    if (mediaTypeFilter) list = filterByMediaType(list, mediaTypeFilter);
+    return list;
+  }, [tiles, filter, albumFilter, mediaTypeFilter]);
+  const albums = reactExports.useMemo(() => summarizeAlbums(tiles), [tiles]);
+  const filterLabel = reactExports.useMemo(() => {
+    if (albumFilter) return albumFilter;
+    if (mediaTypeFilter) {
+      const map = {
+        videos: ar ? "فيديو" : "Videos",
+        selfies: ar ? "سيلفي" : "Selfies",
+        panoramas: ar ? "بانوراما" : "Panoramas",
+        bursts: ar ? "متتابعة" : "Bursts",
+        timelapse: ar ? "تايم لابس" : "Time-lapse"
+      };
+      return map[mediaTypeFilter];
+    }
+    return ar ? FILTER_LABELS[filter].ar : FILTER_LABELS[filter].en;
+  }, [albumFilter, mediaTypeFilter, filter, ar]);
+  const pickItem = async (item) => {
+    const draft = await resolveGalleryDraft(item);
+    if (!draft) return;
+    onPickDraft(draft);
+    onClose();
+  };
+  const onImport = async (files2) => {
+    if (!files2?.length) return;
+    await importFilesToGallery([...files2]);
+    await refresh();
+  };
+  const applyMenu = (id) => {
+    setMenuOpen(false);
+    setAlbumFilter(null);
+    setMediaTypeFilter(null);
+    if (id === "albums") {
+      setAlbumPickerOpen(true);
+      return;
+    }
+    setFilter(id);
+  };
+  const closePicker = () => {
+    setMenuOpen(false);
+    setAlbumPickerOpen(false);
+    onClose();
+  };
+  if (!open || typeof document === "undefined") return null;
+  const title = ar ? "إضافة إلى الستوري" : "Add to story";
+  return reactDomExports.createPortal(
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "div",
+        {
+          role: "dialog",
+          "aria-modal": "true",
+          "aria-label": title,
+          className: "fixed inset-0 z-[600] flex flex-col bg-black text-white touch-manipulation",
+          style: {
+            height: "100dvh",
+            maxHeight: "100dvh",
+            paddingBottom: "env(safe-area-inset-bottom, 0px)"
+          },
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "header",
+              {
+                className: "flex shrink-0 items-center justify-between px-4 pb-2",
+                style: { paddingTop: "max(10px, env(safe-area-inset-top, 0px))" },
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: closePicker, "aria-label": ar ? "إغلاق" : "Close", className: "p-1", children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 28, strokeWidth: 2.5 }) }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "text-[17px] font-bold", children: title }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "button",
+                    {
+                      type: "button",
+                      "aria-label": ar ? "الإعدادات" : "Settings",
+                      className: "p-1 text-white/90",
+                      onClick: () => importRef.current?.click(),
+                      children: /* @__PURE__ */ jsxRuntimeExports.jsx(Settings, { size: 24, strokeWidth: 2 })
+                    }
+                  )
+                ]
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex shrink-0 gap-2 overflow-x-auto px-3 pb-3 no-scrollbar", children: [
+              { icon: Images, label: ar ? "أضف قصتك" : "Add Yours" },
+              { icon: Music, label: ar ? "موسيقى" : "Music" },
+              { icon: LayoutGrid, label: ar ? "كولاج" : "Collage" }
+            ].map((card, i) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "button",
+              {
+                type: "button",
+                onClick: () => i === 0 ? importRef.current?.click() : void 0,
+                className: "flex min-w-[7.5rem] flex-1 flex-col items-center justify-center gap-2 rounded-2xl bg-[#262626] py-4",
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(card.icon, { size: 28, strokeWidth: 1.75, className: "text-white/95" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[12px] font-medium", children: card.label })
+                ]
+              },
+              i
+            )) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative z-20 flex shrink-0 items-center justify-between px-4 pb-2", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                "button",
+                {
+                  type: "button",
+                  onClick: () => setMenuOpen((v) => !v),
+                  className: "flex items-center gap-0.5 text-[16px] font-semibold",
+                  children: [
+                    filterLabel,
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronDown, { size: 18, className: menuOpen ? "rotate-180 transition" : "transition" })
+                  ]
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                "button",
+                {
+                  type: "button",
+                  className: "flex items-center gap-1.5 text-[15px] font-semibold",
+                  onClick: () => importRef.current?.click(),
+                  children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(SquareStack, { size: 18, strokeWidth: 2 }),
+                    ar ? "اختيار" : "Select"
+                  ]
+                }
+              )
+            ] }),
+            menuOpen && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "fixed inset-0 z-[221] bg-black/20", onClick: () => setMenuOpen(false) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute start-4 top-[calc(env(safe-area-inset-top,0px)+7.5rem)] z-[222] min-w-[220px] overflow-hidden rounded-2xl border border-white/10 bg-[#262626]/95 shadow-2xl backdrop-blur-xl", children: [
+                { id: "all", icon: Grid2x2, label: ar ? "الأحدث" : "Recents" },
+                { id: "videos", icon: CirclePlay, label: ar ? "فيديو" : "Videos" },
+                { id: "favorites", icon: Heart, label: ar ? "المفضلة" : "Favorites" },
+                { id: "albums", icon: LayoutGrid, label: ar ? "كل الألبومات" : "All albums" }
+              ].map((row) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                "button",
+                {
+                  type: "button",
+                  onClick: () => applyMenu(row.id),
+                  className: "flex w-full items-center gap-3 px-4 py-3.5 text-[15px] active:bg-white/10",
+                  children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(row.icon, { size: 22, strokeWidth: 1.75 }),
+                    row.label
+                  ]
+                },
+                row.id
+              )) })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-h-0 flex-1 overflow-y-auto overscroll-contain", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-3 gap-[2px]", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "button",
+                  {
+                    type: "button",
+                    onClick: () => {
+                      onClose();
+                      onOpenCamera();
+                    },
+                    className: "relative aspect-[3/4] bg-[#1c1c1c] active:opacity-80",
+                    children: /* @__PURE__ */ jsxRuntimeExports.jsx(Camera, { size: 36, strokeWidth: 1.75, className: "absolute inset-0 m-auto text-white" })
+                  }
+                ),
+                filtered.map((item) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                  "button",
+                  {
+                    type: "button",
+                    onClick: () => void pickItem(item),
+                    className: "relative aspect-[3/4] bg-[#1c1c1c] active:opacity-80",
+                    children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: item.previewUrl, alt: "", className: "h-full w-full object-cover", loading: "lazy" }),
+                      item.kind === "video" && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "absolute end-1.5 top-1.5 rounded bg-black/55 px-1 text-[10px] font-semibold", children: "▶" }),
+                      item.favorite && /* @__PURE__ */ jsxRuntimeExports.jsx(Heart, { size: 14, className: "absolute bottom-1.5 start-1.5 fill-white text-white" })
+                    ]
+                  },
+                  item.id
+                ))
+              ] }),
+              !loading && filtered.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "py-16 text-center text-sm text-white/50", children: ar ? "لا توجد وسائط — اضغط الإعدادات لاستيراد الاستوديو" : "No media — tap settings to import" })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "input",
+              {
+                ref: importRef,
+                type: "file",
+                accept: "image/*,video/*",
+                multiple: true,
+                className: "hidden",
+                onChange: (e) => {
+                  void onImport(e.target.files);
+                  e.target.value = "";
+                }
+              }
+            )
+          ]
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        StoryAlbumPicker,
+        {
+          open: albumPickerOpen,
+          albums,
+          language,
+          onClose: () => setAlbumPickerOpen(false),
+          onPickAlbum: (name) => {
+            setAlbumPickerOpen(false);
+            setFilter("all");
+            setMediaTypeFilter(null);
+            setAlbumFilter(name);
+          },
+          onQuickFilter: (id) => {
+            setAlbumPickerOpen(false);
+            setAlbumFilter(null);
+            setMediaTypeFilter(null);
+            if (id === "search") {
+              importRef.current?.click();
+              return;
+            }
+            if (id === "favorites") {
+              setFilter("favorites");
+              return;
+            }
+            if (id === "videos") {
+              setFilter("videos");
+              return;
+            }
+            setFilter("all");
+          },
+          onMediaType: (type) => {
+            setAlbumPickerOpen(false);
+            setAlbumFilter(null);
+            setFilter("all");
+            setMediaTypeFilter(type);
+          }
+        }
+      )
+    ] }),
+    document.body
+  );
+}
+class CameraSessionError extends Error {
+  constructor(message, code) {
+    super(message);
+    this.code = code;
+    this.name = "CameraSessionError";
+  }
+  code;
+}
+function isCameraApiAvailable() {
+  return typeof navigator !== "undefined" && !!navigator.mediaDevices?.getUserMedia;
+}
+async function requestCameraStream(facing, withAudio) {
+  if (!isCameraApiAvailable()) {
+    throw new CameraSessionError("الكاميرا غير مدعومة على هذا الجهاز", "unsupported");
+  }
+  const video = {
+    facingMode: { ideal: facing },
+    width: { ideal: 1920, max: 1920 },
+    height: { ideal: 1080, max: 1080 },
+    frameRate: { ideal: 30, max: 60 }
+  };
+  try {
+    return await navigator.mediaDevices.getUserMedia({
+      video,
+      audio: withAudio
+    });
+  } catch (e) {
+    const name = e instanceof DOMException ? e.name : "";
+    if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+      throw new CameraSessionError("يُرجى السماح بالوصول إلى الكاميرا والميكروفون من الإعدادات", "denied");
+    }
+    if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+      throw new CameraSessionError("لم يُعثر على كاميرا", "unknown");
+    }
+    if (name === "NotReadableError" || name === "TrackStartError") {
+      throw new CameraSessionError("الكاميرا قيد الاستخدام من تطبيق آخر", "busy");
+    }
+    throw new CameraSessionError(
+      e instanceof Error ? e.message : "تعذّر تشغيل الكاميرا",
+      "unknown"
+    );
+  }
+}
+function stopMediaStream(stream) {
+  if (!stream) return;
+  for (const track of stream.getTracks()) {
+    try {
+      track.stop();
+    } catch {
+    }
+  }
+}
+function pickVideoMimeType() {
+  const candidates = [
+    "video/mp4",
+    "video/webm;codecs=vp9",
+    "video/webm;codecs=vp8",
+    "video/webm"
+  ];
+  for (const t of candidates) {
+    if (typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(t)) return t;
+  }
+  return "";
+}
+function capturePhotoFromVideo(video, facing, quality = 0.92) {
+  const w = video.videoWidth;
+  const h = video.videoHeight;
+  if (!w || !h) throw new Error("no frame");
+  const canvas2 = document.createElement("canvas");
+  canvas2.width = w;
+  canvas2.height = h;
+  const ctx = canvas2.getContext("2d");
+  if (!ctx) throw new Error("canvas");
+  if (facing === "user") {
+    ctx.translate(w, 0);
+    ctx.scale(-1, 1);
+  }
+  ctx.drawImage(video, 0, 0, w, h);
+  return canvas2.toDataURL("image/jpeg", quality);
+}
+async function setTorchEnabled(stream, on2) {
+  const track = stream?.getVideoTracks()[0];
+  if (!track) return false;
+  try {
+    const caps = track.getCapabilities?.();
+    if (!caps?.torch) return false;
+    await track.applyConstraints({ advanced: [{ torch: on2 }] });
+    return true;
+  } catch {
+    return false;
+  }
+}
+function hapticLight() {
+  try {
+    navigator.vibrate?.(12);
+  } catch {
+  }
+}
+function hapticMedium() {
+  try {
+    navigator.vibrate?.(24);
+  } catch {
+  }
+}
+const MAX_VIDEO_MS = 6e4;
+const HOLD_VIDEO_MS = 280;
+const MODES = [
+  { id: "post", label: "POST" },
+  { id: "story", label: "STORY" },
+  { id: "reel", label: "REEL" },
+  { id: "live", label: "LIVE" }
+];
+function readBlobAsDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const r2 = new FileReader();
+    r2.onload = () => resolve(String(r2.result));
+    r2.onerror = () => reject(new Error("read failed"));
+    r2.readAsDataURL(blob);
+  });
+}
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const r2 = new FileReader();
+    r2.onload = () => resolve(String(r2.result));
+    r2.onerror = () => reject(new Error("read failed"));
+    r2.readAsDataURL(file);
+  });
+}
+function SideToolBtn({
+  children,
+  label,
+  onClick,
+  active: active2
+}) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "button",
+    {
+      type: "button",
+      onClick,
+      "aria-label": label,
+      className: "flex h-11 w-11 touch-manipulation items-center justify-center rounded-xl text-white drop-shadow-[0_1px_6px_rgba(0,0,0,0.85)] transition active:scale-95 " + (active2 ? "bg-white/20" : "bg-transparent"),
+      children
+    }
+  );
+}
+function InstagramCamera({
+  open,
+  onClose,
+  onCapture,
+  onFallback,
+  language = "ar"
+}) {
+  const ar = language === "ar";
+  const videoRef = reactExports.useRef(null);
+  const galleryInputRef = reactExports.useRef(null);
+  const streamRef = reactExports.useRef(null);
+  const recorderRef = reactExports.useRef(null);
+  const chunksRef = reactExports.useRef([]);
+  const holdTimerRef = reactExports.useRef(null);
+  const recordStartRef = reactExports.useRef(0);
+  const recordRafRef = reactExports.useRef(0);
+  const [phase, setPhase] = reactExports.useState("loading");
+  const [errorMsg, setErrorMsg] = reactExports.useState("");
+  const [facing, setFacing] = reactExports.useState("environment");
+  const [torchOn, setTorchOn] = reactExports.useState(false);
+  const [torchSupported, setTorchSupported] = reactExports.useState(false);
+  const [recording, setRecording] = reactExports.useState(false);
+  const [recordProgress, setRecordProgress] = reactExports.useState(0);
+  const [entered, setEntered] = reactExports.useState(false);
+  const [closing, setClosing] = reactExports.useState(false);
+  const [mode2, setMode] = reactExports.useState("post");
+  const [galleryThumb, setGalleryThumb] = reactExports.useState(null);
+  const [sideToolsExpanded, setSideToolsExpanded] = reactExports.useState(true);
+  const stopRecording = reactExports.useCallback(() => {
+    if (holdTimerRef.current) {
+      window.clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+    if (recordRafRef.current) {
+      cancelAnimationFrame(recordRafRef.current);
+      recordRafRef.current = 0;
+    }
+    const rec = recorderRef.current;
+    recorderRef.current = null;
+    if (rec && rec.state !== "inactive") {
+      try {
+        rec.stop();
+      } catch {
+      }
+    } else {
+      setRecording(false);
+      setRecordProgress(0);
+    }
+  }, []);
+  const teardown = reactExports.useCallback(() => {
+    stopRecording();
+    void setTorchEnabled(streamRef.current, false);
+    stopMediaStream(streamRef.current);
+    streamRef.current = null;
+    const v = videoRef.current;
+    if (v) v.srcObject = null;
+    setTorchOn(false);
+    setTorchSupported(false);
+  }, [stopRecording]);
+  const attachStream = reactExports.useCallback(
+    async (f) => {
+      setPhase("loading");
+      setErrorMsg("");
+      teardown();
+      try {
+        const stream = await requestCameraStream(f, true);
+        streamRef.current = stream;
+        const v = videoRef.current;
+        if (!v) {
+          stopMediaStream(stream);
+          return;
+        }
+        v.srcObject = stream;
+        v.setAttribute("playsinline", "true");
+        v.muted = true;
+        await v.play();
+        const caps = stream.getVideoTracks()[0]?.getCapabilities?.();
+        setTorchSupported(!!caps?.torch);
+        setPhase("ready");
+      } catch (e) {
+        teardown();
+        const msg = e instanceof CameraSessionError ? e.message : ar ? "تعذّر تشغيل الكاميرا" : "Could not start camera";
+        setErrorMsg(msg);
+        setPhase("error");
+      }
+    },
+    [ar, teardown]
+  );
+  const requestClose = reactExports.useCallback(() => {
+    if (closing) return;
+    setClosing(true);
+    teardown();
+    notifyCameraClose();
+    window.setTimeout(() => {
+      setClosing(false);
+      setEntered(false);
+      onClose();
+    }, 200);
+  }, [closing, onClose, teardown]);
+  reactExports.useEffect(() => {
+    if (!open) {
+      setEntered(false);
+      return;
+    }
+    notifyCameraOpen();
+    setClosing(false);
+    setMode("post");
+    const id = requestAnimationFrame(() => setEntered(true));
+    void attachStream(facing);
+    return () => {
+      cancelAnimationFrame(id);
+      teardown();
+      notifyCameraClose();
+    };
+  }, [open, facing, attachStream, teardown]);
+  reactExports.useEffect(() => {
+    if (!open) return;
+    const onVis = () => {
+      if (document.visibilityState === "hidden") teardown();
+    };
+    const onPageHide = () => teardown();
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("pagehide", onPageHide);
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("pagehide", onPageHide);
+    };
+  }, [open, teardown]);
+  const flipCamera = () => {
+    hapticLight();
+    setFacing((f) => f === "environment" ? "user" : "environment");
+  };
+  const toggleTorch = async () => {
+    hapticLight();
+    if (!torchSupported) return;
+    const next = !torchOn;
+    const ok = await setTorchEnabled(streamRef.current, next);
+    if (ok) setTorchOn(next);
+  };
+  const startVideoRecording = reactExports.useCallback(() => {
+    const stream = streamRef.current;
+    const mime = pickVideoMimeType();
+    if (!stream || !mime || typeof MediaRecorder === "undefined") return;
+    chunksRef.current = [];
+    try {
+      const rec = new MediaRecorder(stream, { mimeType: mime });
+      recorderRef.current = rec;
+      rec.ondataavailable = (ev) => {
+        if (ev.data.size > 0) chunksRef.current.push(ev.data);
+      };
+      rec.onstop = () => {
+        setRecording(false);
+        setRecordProgress(0);
+        const blob = new Blob(chunksRef.current, { type: mime });
+        chunksRef.current = [];
+        if (blob.size < 800) return;
+        void readBlobAsDataUrl(blob).then((dataUrl) => {
+          hapticMedium();
+          onCapture({ kind: "video", dataUrl });
+          requestClose();
+        });
+      };
+      rec.start(200);
+      recordStartRef.current = Date.now();
+      setRecording(true);
+      hapticMedium();
+      const tick = () => {
+        const elapsed = Date.now() - recordStartRef.current;
+        const maxMs = mode2 === "story" ? 15e3 : mode2 === "reel" ? 9e4 : MAX_VIDEO_MS;
+        setRecordProgress(Math.min(1, elapsed / maxMs));
+        if (elapsed >= maxMs) {
+          stopRecording();
+          return;
+        }
+        recordRafRef.current = requestAnimationFrame(tick);
+      };
+      recordRafRef.current = requestAnimationFrame(tick);
+    } catch {
+      setRecording(false);
+    }
+  }, [mode2, onCapture, requestClose, stopRecording]);
+  const capturePhoto = reactExports.useCallback(() => {
+    const v = videoRef.current;
+    if (!v || phase !== "ready") return;
+    try {
+      const dataUrl = capturePhotoFromVideo(v, facing);
+      hapticMedium();
+      onCapture({ kind: "image", dataUrl });
+      requestClose();
+    } catch {
+      setErrorMsg(ar ? "تعذّر التقاط الصورة" : "Capture failed");
+      setPhase("error");
+    }
+  }, [ar, facing, onCapture, phase, requestClose]);
+  const onShutterDown = () => {
+    if (phase !== "ready" || recording || mode2 === "live") return;
+    const videoMode = mode2 === "reel" || mode2 === "story";
+    if (videoMode) {
+      startVideoRecording();
+      return;
+    }
+    holdTimerRef.current = window.setTimeout(() => {
+      holdTimerRef.current = null;
+      startVideoRecording();
+    }, HOLD_VIDEO_MS);
+  };
+  const onShutterUp = () => {
+    if (mode2 === "reel" || mode2 === "story") {
+      if (recording) stopRecording();
+      return;
+    }
+    if (holdTimerRef.current) {
+      window.clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+      capturePhoto();
+      return;
+    }
+    if (recording) stopRecording();
+  };
+  const onGalleryChange = async (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    try {
+      const dataUrl = await readFileAsDataUrl(f);
+      setGalleryThumb(dataUrl);
+      const kind = f.type.startsWith("video") ? "video" : "image";
+      hapticMedium();
+      onCapture({ kind, dataUrl });
+      requestClose();
+    } catch {
+      alert(ar ? "تعذّر فتح الصورة" : "Could not open media");
+    }
+  };
+  if (!open || typeof document === "undefined") return null;
+  const ringRadius = 38;
+  const ringCirc = 2 * Math.PI * ringRadius;
+  const ringOffset = ringCirc * (1 - recordProgress);
+  const body = /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "div",
+    {
+      className: "fixed inset-0 z-[420] mx-auto max-w-md bg-black text-white transition-opacity duration-200 " + (entered && !closing ? "opacity-100" : "opacity-0"),
+      role: "dialog",
+      "aria-modal": "true",
+      "aria-label": ar ? "الكاميرا" : "Camera",
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "input",
+          {
+            ref: galleryInputRef,
+            type: "file",
+            accept: "image/*,video/*",
+            className: "hidden",
+            onChange: (e) => void onGalleryChange(e)
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "video",
+          {
+            ref: videoRef,
+            className: "absolute inset-0 h-full w-full object-cover " + (facing === "user" ? "-scale-x-100" : ""),
+            playsInline: true,
+            muted: true,
+            autoPlay: true
+          }
+        ),
+        phase === "loading" && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 z-10 flex items-center justify-center bg-black/50", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-10 w-10 animate-spin rounded-full border-2 border-white/25 border-t-white" }) }),
+        phase === "error" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 bg-black/85 px-8 text-center", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-white/90", children: errorMsg }),
+          !isCameraApiAvailable() && onFallback ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              type: "button",
+              className: "rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-black",
+              onClick: () => {
+                requestClose();
+                onFallback();
+              },
+              children: ar ? "فتح كاميرا النظام" : "Use system camera"
+            }
+          ) : /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              type: "button",
+              className: "rounded-full bg-white px-5 py-2.5 text-sm font-semibold text-black",
+              onClick: () => void attachStream(facing),
+              children: ar ? "إعادة المحاولة" : "Retry"
+            }
+          )
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "pointer-events-none absolute inset-x-0 top-0 z-10 h-28 bg-gradient-to-b from-black/55 to-transparent" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "pointer-events-none absolute inset-x-0 bottom-0 z-10 h-52 bg-gradient-to-t from-black/80 via-black/35 to-transparent" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "div",
+          {
+            className: "absolute inset-x-0 top-0 z-20 px-4",
+            style: { paddingTop: "max(10px, var(--sat, env(safe-area-inset-top, 0px)))" },
+            children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative flex h-11 items-center justify-between", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  type: "button",
+                  onClick: requestClose,
+                  className: "flex h-11 w-11 touch-manipulation items-center justify-center text-white drop-shadow-[0_1px_6px_rgba(0,0,0,0.9)] active:scale-95",
+                  "aria-label": ar ? "إغلاق" : "Close",
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 28, strokeWidth: 2 })
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  type: "button",
+                  onClick: () => void toggleTorch(),
+                  disabled: !torchSupported,
+                  className: "absolute left-1/2 flex h-11 w-11 -translate-x-1/2 touch-manipulation items-center justify-center text-white drop-shadow-[0_1px_6px_rgba(0,0,0,0.9)] active:scale-95 disabled:opacity-45",
+                  "aria-label": ar ? "الفلاش" : "Flash",
+                  children: torchOn ? /* @__PURE__ */ jsxRuntimeExports.jsx(Zap, { size: 26, strokeWidth: 2, className: "text-amber-200" }) : /* @__PURE__ */ jsxRuntimeExports.jsx(ZapOff, { size: 26, strokeWidth: 2 })
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-11 w-11", "aria-hidden": true })
+            ] })
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "div",
+          {
+            className: "absolute start-3 z-20 flex flex-col items-center gap-3",
+            style: { top: "calc(max(72px, var(--sat, 0px)) + 4.5rem)" },
+            children: [
+              sideToolsExpanded && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  SideToolBtn,
+                  {
+                    label: ar ? "نص" : "Text",
+                    onClick: () => alert(ar ? "النص على الصورة — قريباً" : "Text overlay — coming soon"),
+                    children: /* @__PURE__ */ jsxRuntimeExports.jsx(Type, { size: 26, strokeWidth: 2 })
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  SideToolBtn,
+                  {
+                    label: "Boomerang",
+                    onClick: () => alert(ar ? "بوميرانغ — قريباً" : "Boomerang — coming soon"),
+                    children: /* @__PURE__ */ jsxRuntimeExports.jsx(Infinity$1, { size: 26, strokeWidth: 2 })
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  SideToolBtn,
+                  {
+                    label: ar ? "تخطيط" : "Layout",
+                    onClick: () => alert(ar ? "تخطيط — قريباً" : "Layout — coming soon"),
+                    children: /* @__PURE__ */ jsxRuntimeExports.jsx(LayoutGrid, { size: 24, strokeWidth: 2 })
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  SideToolBtn,
+                  {
+                    label: ar ? "بدون يد" : "Hands-free",
+                    onClick: () => {
+                      hapticLight();
+                      startVideoRecording();
+                    },
+                    children: /* @__PURE__ */ jsxRuntimeExports.jsx(CircleDot, { size: 24, strokeWidth: 2 })
+                  }
+                )
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  type: "button",
+                  onClick: () => setSideToolsExpanded((v) => !v),
+                  className: "flex h-8 w-8 items-center justify-center text-white/80 drop-shadow-md active:scale-95",
+                  "aria-label": sideToolsExpanded ? ar ? "إخفاء الأدوات" : "Hide tools" : ar ? "إظهار الأدوات" : "Show tools",
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    ChevronDown,
+                    {
+                      size: 22,
+                      className: "transition-transform " + (sideToolsExpanded ? "" : "rotate-180")
+                    }
+                  )
+                }
+              )
+            ]
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "div",
+          {
+            className: "absolute inset-x-0 bottom-0 z-20 flex flex-col items-center",
+            style: { paddingBottom: "max(8px, var(--sab, env(safe-area-inset-bottom, 0px)))" },
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-3 flex w-full items-center justify-between px-5", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "button",
+                  {
+                    type: "button",
+                    onClick: () => galleryInputRef.current?.click(),
+                    className: "flex h-11 w-11 touch-manipulation items-center justify-center overflow-hidden rounded-lg border-2 border-white bg-zinc-800/80 shadow-lg active:scale-95",
+                    "aria-label": ar ? "المعرض" : "Gallery",
+                    children: galleryThumb ? /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: galleryThumb, alt: "", className: "h-full w-full object-cover" }) : /* @__PURE__ */ jsxRuntimeExports.jsx(Images, { size: 22, className: "text-white/90" })
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative flex items-center justify-center", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                    "svg",
+                    {
+                      className: "absolute " + (recording ? "opacity-100" : "opacity-0"),
+                      width: 92,
+                      height: 92,
+                      viewBox: "0 0 92 92",
+                      "aria-hidden": true,
+                      children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("circle", { cx: 46, cy: 46, r: ringRadius, fill: "none", stroke: "rgba(255,255,255,0.25)", strokeWidth: 3 }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx(
+                          "circle",
+                          {
+                            cx: 46,
+                            cy: 46,
+                            r: ringRadius,
+                            fill: "none",
+                            stroke: "#fff",
+                            strokeWidth: 3,
+                            strokeLinecap: "round",
+                            strokeDasharray: ringCirc,
+                            strokeDashoffset: ringOffset,
+                            transform: "rotate(-90 46 46)"
+                          }
+                        )
+                      ]
+                    }
+                  ),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "button",
+                    {
+                      type: "button",
+                      disabled: phase !== "ready" || mode2 === "live",
+                      onPointerDown: onShutterDown,
+                      onPointerUp: onShutterUp,
+                      onPointerCancel: onShutterUp,
+                      onContextMenu: (e) => e.preventDefault(),
+                      className: "relative flex h-[78px] w-[78px] touch-manipulation items-center justify-center rounded-full border-[4px] border-white/95 shadow-[0_0_0_1px_rgba(0,0,0,0.2)] active:scale-[0.96] disabled:opacity-40",
+                      "aria-label": ar ? "التقاط" : "Capture",
+                      children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+                        "span",
+                        {
+                          className: "block rounded-full bg-white transition-all duration-150 " + (recording ? "h-7 w-7 rounded-[6px]" : "h-[64px] w-[64px]")
+                        }
+                      )
+                    }
+                  )
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "button",
+                  {
+                    type: "button",
+                    disabled: phase !== "ready" || recording,
+                    onClick: flipCamera,
+                    className: "flex h-11 w-11 touch-manipulation items-center justify-center rounded-full border border-white/35 bg-white/10 text-white shadow-lg backdrop-blur-sm active:scale-95 disabled:opacity-40",
+                    "aria-label": ar ? "عكس الكاميرا" : "Flip camera",
+                    children: /* @__PURE__ */ jsxRuntimeExports.jsx(RefreshCw, { size: 24, strokeWidth: 2 })
+                  }
+                )
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-2 flex w-full max-w-[min(100%,340px)] items-center justify-center gap-5 px-4", children: MODES.map((m) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  type: "button",
+                  onClick: () => {
+                    hapticLight();
+                    if (m.id === "live") {
+                      alert(ar ? "البث المباشر — قريباً" : "Live — coming soon");
+                      return;
+                    }
+                    setMode(m.id);
+                  },
+                  className: "touch-manipulation text-[11px] font-bold tracking-[0.12em] transition " + (mode2 === m.id ? "text-white scale-105" : "text-white/45"),
+                  children: m.label
+                },
+                m.id
+              )) })
+            ]
+          }
+        )
+      ]
+    }
+  );
+  return reactDomExports.createPortal(body, document.body);
+}
+function isRenderableAvatarImageUrl(src) {
+  const s = src.trim();
+  if (!s) return false;
+  const low = s.toLowerCase();
+  if (low.startsWith("blob:")) return true;
+  if (low.startsWith("data:image/")) return true;
+  if (low.startsWith("data:") && (low.includes("image/") || low.includes("base64,"))) return true;
+  if (low.startsWith("/media/")) return true;
+  if (low.startsWith("/stickers/") || low.startsWith("/app/")) return true;
+  return /^https?:\/\//i.test(s);
+}
+function Avatar({ name = "?", src, size = 40, className, ring, ringSeen }) {
+  const [imgFailed, setImgFailed] = reactExports.useState(false);
+  const [videoFailed, setVideoFailed] = reactExports.useState(false);
+  const resolvedSrc = reactExports.useMemo(() => {
+    const resolved = resolveMediaUrl(src);
+    if (resolved) return resolved;
+    const raw = src?.trim() || "";
+    if (raw.startsWith("/media/") || raw.startsWith("/stickers/") || raw.startsWith("/public/")) {
+      return `${getMediaServingOrigin().replace(/\/$/, "")}${raw}`;
+    }
+    return resolved;
+  }, [src]);
+  const isVideoAvatar = !!(resolvedSrc && isVideoMediaRef(resolvedSrc));
+  reactExports.useEffect(() => {
+    setImgFailed(false);
+    setVideoFailed(false);
+  }, [resolvedSrc]);
+  const showVideo = !!(resolvedSrc && isVideoAvatar && !videoFailed);
+  const showImg = !!(resolvedSrc && !isVideoAvatar && isRenderableAvatarImageUrl(resolvedSrc) && !imgFailed);
+  const showEmoji = !!(resolvedSrc && !showImg && !showVideo && resolvedSrc.length <= 4 && /[^\p{L}\p{N}]/u.test(resolvedSrc));
+  const inner = /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "div",
+    {
+      className: cn(
+        "rounded-full bg-secondary text-secondary-foreground flex items-center justify-center overflow-hidden font-semibold select-none",
+        className
+      ),
+      style: { width: size, height: size, fontSize: size * 0.38 },
+      children: showVideo ? /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "relative block h-full w-full min-h-0 min-w-0 overflow-hidden rounded-full", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "video",
+          {
+            src: resolvedSrc,
+            className: "absolute inset-0 h-full w-full object-cover scale-[1.01]",
+            muted: true,
+            playsInline: true,
+            loop: true,
+            autoPlay: true,
+            draggable: false,
+            preload: "auto",
+            "aria-hidden": true,
+            onError: () => setVideoFailed(true),
+            onLoadedData: (e) => {
+              const v = e.currentTarget;
+              void v.play().catch(() => void 0);
+            }
+          },
+          resolvedSrc
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "sr-only", children: name })
+      ] }) : showImg ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "relative block h-full w-full min-h-0 min-w-0 overflow-hidden rounded-full", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "img",
+        {
+          src: resolvedSrc,
+          alt: name,
+          className: "absolute inset-0 h-full w-full object-cover",
+          draggable: false,
+          decoding: "async",
+          loading: "eager",
+          onError: () => setImgFailed(true)
+        },
+        resolvedSrc
+      ) }) : showEmoji ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: size * 0.55 }, children: resolvedSrc }) : /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "relative block h-full w-full min-h-0 min-w-0 overflow-hidden rounded-full", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "img",
+        {
+          src: DEFAULT_AVATAR_DATA_URI,
+          alt: name,
+          className: "absolute inset-0 h-full w-full object-cover",
+          draggable: false,
+          decoding: "async",
+          loading: "eager"
+        }
+      ) })
+    }
+  );
+  if (ring) {
+    return ringSeen ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "story-ring-seen inline-block", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "bg-background rounded-full p-[2px]", children: inner }) }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "story-ring-live-outer", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "story-ring-live-inner", children: inner }) });
+  }
+  return inner;
+}
+const IG_BLUE = "#0095F6";
+const IG_PINK = "#FF2D55";
+function verificationBadgeHex(color) {
+  return color === "pink" ? IG_PINK : IG_BLUE;
+}
+const SEAL_PATH = "M 12 1 Q 15.444 3.685 19.778 4.222 Q 20.315 8.556 23 12 Q 20.315 15.444 19.778 19.778 Q 15.444 20.315 12 23 Q 8.556 20.315 4.222 19.778 Q 3.685 15.444 1 12 Q 3.685 8.556 4.222 4.222 Q 8.556 3.685 12 1 Z";
+function VerifiedBadge({
+  size = 16,
+  className = "",
+  title = "موثّق",
+  color = "blue"
+}) {
+  const fill = verificationBadgeHex(color);
+  const { state } = useApp();
+  const isDark = state.theme === "dark";
+  const checkStroke = isDark ? "#0d0d0d" : "#ffffff";
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "svg",
+    {
+      width: size,
+      height: size,
+      viewBox: "0 0 24 24",
+      className: "shrink-0 inline-block align-middle " + className,
+      role: "img",
+      "aria-label": title,
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: SEAL_PATH, fill }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "path",
+          {
+            d: "M7.15 12.05 L10.55 15.35 L16.85 8.65",
+            fill: "none",
+            stroke: checkStroke,
+            strokeWidth: "2.35",
+            strokeLinecap: "round",
+            strokeLinejoin: "round"
+          }
+        )
+      ]
+    }
+  );
+}
+function FounderVerifiedBadge({
+  size = 16,
+  className = "",
+  title = "حساب رسمي — مؤسس التطبيق"
+}) {
+  const uid2 = reactExports.useId().replace(/:/g, "");
+  const gMain = `founder-g-${uid2}`;
+  const gRing = `founder-r-${uid2}`;
+  const gShine = `founder-s-${uid2}`;
+  const fGlow = `founder-f-${uid2}`;
+  const seal = "M12 1.8 L14.9 3.1 L17.8 2.4 L19.1 5.3 L22 6.6 L21.3 9.5 L23.2 12 L21.3 14.5 L22 17.4 L19.1 18.7 L17.8 21.6 L14.9 20.9 L12 22.2 L9.1 20.9 L6.2 21.6 L4.9 18.7 L2 17.4 L2.7 14.5 L0.8 12 L2.7 9.5 L2 6.6 L4.9 5.3 L6.2 2.4 L9.1 3.1 Z";
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "svg",
+    {
+      width: size,
+      height: size,
+      viewBox: "0 0 24 24",
+      className: "shrink-0 inline-block align-middle drop-shadow-sm " + className,
+      role: "img",
+      "aria-label": title,
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("defs", { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("linearGradient", { id: gMain, x1: "4", y1: "2", x2: "20", y2: "22", gradientUnits: "userSpaceOnUse", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("stop", { offset: "0%", stopColor: "#FFF8DC" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("stop", { offset: "28%", stopColor: "#F7D774" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("stop", { offset: "55%", stopColor: "#E8B020" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("stop", { offset: "82%", stopColor: "#C8860A" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("stop", { offset: "100%", stopColor: "#8B5E00" })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("linearGradient", { id: gRing, x1: "0", y1: "0", x2: "24", y2: "24", gradientUnits: "userSpaceOnUse", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("stop", { offset: "0%", stopColor: "#FFE9A8" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("stop", { offset: "100%", stopColor: "#6B4500" })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("linearGradient", { id: gShine, x1: "6", y1: "4", x2: "14", y2: "12", gradientUnits: "userSpaceOnUse", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("stop", { offset: "0%", stopColor: "#FFFFFF", stopOpacity: "0.55" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("stop", { offset: "100%", stopColor: "#FFFFFF", stopOpacity: "0" })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("filter", { id: fGlow, x: "-30%", y: "-30%", width: "160%", height: "160%", children: /* @__PURE__ */ jsxRuntimeExports.jsx("feDropShadow", { dx: "0", dy: "0.6", stdDeviation: "0.65", floodColor: "#E8B020", floodOpacity: "0.45" }) })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("g", { filter: `url(#${fGlow})`, children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: seal, fill: `url(#${gRing})`, opacity: "0.95", transform: "scale(1.06) translate(-0.72 -0.72)" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: seal, fill: `url(#${gMain})`, stroke: "#5C3D00", strokeWidth: "0.35" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: seal, fill: `url(#${gShine})` }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("circle", { cx: "12", cy: "12", r: "5.15", fill: "#1a1408", fillOpacity: "0.22" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "path",
+            {
+              d: "M8.1 12.15 L10.85 14.75 L15.95 9.25",
+              fill: "none",
+              stroke: "#FFFBF0",
+              strokeWidth: "2.15",
+              strokeLinecap: "round",
+              strokeLinejoin: "round"
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "path",
+            {
+              d: "M8.1 12.15 L10.85 14.75 L15.95 9.25",
+              fill: "none",
+              stroke: "#5C3D00",
+              strokeWidth: "0.45",
+              strokeLinecap: "round",
+              strokeLinejoin: "round",
+              opacity: "0.35"
+            }
+          )
+        ] })
+      ]
+    }
+  );
+}
+function AppOfficialVerifiedBadge({
+  size = 16,
+  className = "",
+  title = "حساب التطبيق الرسمي"
+}) {
+  const uid2 = reactExports.useId().replace(/:/g, "");
+  const g = `app-official-g-${uid2}`;
+  const seal = "M12 1.8 L14.9 3.1 L17.8 2.4 L19.1 5.3 L22 6.6 L21.3 9.5 L23.2 12 L21.3 14.5 L22 17.4 L19.1 18.7 L17.8 21.6 L14.9 20.9 L12 22.2 L9.1 20.9 L6.2 21.6 L4.9 18.7 L2 17.4 L2.7 14.5 L0.8 12 L2.7 9.5 L2 6.6 L4.9 5.3 L6.2 2.4 L9.1 3.1 Z";
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "svg",
+    {
+      width: size,
+      height: size,
+      viewBox: "0 0 24 24",
+      className: "shrink-0 inline-block align-middle drop-shadow-sm " + className,
+      role: "img",
+      "aria-label": title,
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("defs", { children: /* @__PURE__ */ jsxRuntimeExports.jsxs("linearGradient", { id: g, x1: "2", y1: "2", x2: "22", y2: "22", gradientUnits: "userSpaceOnUse", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("stop", { offset: "0%", stopColor: "#818CF8" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("stop", { offset: "45%", stopColor: "#6366F1" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("stop", { offset: "100%", stopColor: "#4338CA" })
+        ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: seal, fill: `url(#${g})`, stroke: "#312E81", strokeWidth: "0.35" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "path",
+          {
+            d: "M8.1 12.15 L10.85 14.75 L15.95 9.25",
+            fill: "none",
+            stroke: "#EEF2FF",
+            strokeWidth: "2.15",
+            strokeLinecap: "round",
+            strokeLinejoin: "round"
+          }
+        )
+      ]
+    }
+  );
+}
+function VerifiedMarkForUser({
+  user,
+  size = 16,
+  className
+}) {
+  if (user.founderVerified) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(FounderVerifiedBadge, { size, className, title: "منشئ التطبيق — الحساب الرسمي" });
+  }
+  if (user.appOfficialVerified) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(AppOfficialVerifiedBadge, { size, className, title: "حساب التطبيق الرسمي" });
+  }
+  if (!isVerifiedBadgeActive(user)) return null;
+  const color = user.verificationBadgeColor === "pink" ? "pink" : "blue";
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(VerifiedBadge, { size, className, color });
+}
+function SideEditBtn({
+  children,
+  label,
+  onClick
+}) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "button",
+    {
+      type: "button",
+      "aria-label": label,
+      onClick,
+      className: "flex h-11 w-11 items-center justify-center rounded-full bg-black/35 text-white shadow-lg backdrop-blur-md active:scale-95",
+      children
+    }
+  );
+}
+function CameraCaptureShareScreen({
+  draft,
+  onClose,
+  language = "ar",
+  mode: mode2 = "default",
+  onSendToChat
+}) {
+  const ar = language === "ar";
+  const { state, currentUser, addStory, openOrCreateChat, sendMessage, isGuest } = useApp();
+  const me = currentUser;
+  const [screen, setScreen] = reactExports.useState("preview");
+  const [caption, setCaption] = reactExports.useState("");
+  const [shareTarget, setShareTarget] = reactExports.useState("all");
+  const [search, setSearch] = reactExports.useState("");
+  const [busy, setBusy] = reactExports.useState(false);
+  const [toolsOpen, setToolsOpen] = reactExports.useState(true);
+  const mediaUrl = draft?.dataUrl ?? "";
+  const isVideo = draft?.kind === "video";
+  reactExports.useEffect(() => {
+    if (!draft) return;
+    setScreen("preview");
+    notifyCameraOpen();
+    return () => notifyCameraClose();
+  }, [draft, mode2]);
+  const closeAll = reactExports.useCallback(() => {
+    notifyCameraClose();
+    onClose();
+  }, [onClose]);
+  const friends = reactExports.useMemo(() => {
+    if (!me) return [];
+    const ids = /* @__PURE__ */ new Set([...me.following, ...state.chats.map((c) => c.members.find((m) => m !== me.id)).filter(Boolean)]);
+    return [...ids].map((id) => userById(state, id)).filter((u) => !!u && u.id !== me.id).filter((u) => !me.blocked.includes(u.id) && !u.blocked.includes(me.id));
+  }, [me, state.chats, state.users]);
+  const filteredFriends = reactExports.useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return friends;
+    return friends.filter(
+      (u) => u.username.toLowerCase().includes(q) || (u.name || "").toLowerCase().includes(q)
+    );
+  }, [friends, search]);
+  const publishStory = reactExports.useCallback(
+    async (audience) => {
+      if (!draft || !me || isGuest) {
+        if (isGuest) notifyGuestActionBlocked();
+        return;
+      }
+      setBusy(true);
+      const r2 = isVideo ? await addStory("", audience, void 0, draft.dataUrl) : await addStory(draft.dataUrl, audience);
+      setBusy(false);
+      if (!r2.ok) {
+        alert(r2.error);
+        return;
+      }
+      closeAll();
+    },
+    [addStory, closeAll, draft, isGuest, isVideo, me]
+  );
+  const sendToUser = reactExports.useCallback(
+    (otherId) => {
+      if (!draft || isGuest) {
+        if (isGuest) notifyGuestActionBlocked();
+        return;
+      }
+      const chat = openOrCreateChat(otherId);
+      if (!chat) {
+        alert(ar ? "تعذّر فتح المحادثة" : "Could not open chat");
+        return;
+      }
+      const note = caption.trim();
+      sendMessage(chat.id, {
+        type: draft.kind,
+        content: draft.dataUrl,
+        ...note ? { shareText: note } : {}
+      });
+      closeAll();
+    },
+    [ar, caption, closeAll, draft, isGuest, openOrCreateChat, sendMessage]
+  );
+  if (!draft || typeof document === "undefined" || !me) return null;
+  const t = {
+    yourStory: ar ? "ستوريك" : "Your story",
+    closeFriends: ar ? "الأصدقاء المقرّبون" : "Close Friends",
+    addPeople: ar ? "إضافة أشخاص" : "Add people",
+    sharingOptions: ar ? "خيارات المشاركة" : "Sharing options",
+    message: ar ? "رسالة" : "Message",
+    share: ar ? "مشاركة" : "Share",
+    search: ar ? "بحث" : "Search",
+    send: ar ? "إرسال" : "Send",
+    captionPh: ar ? "أضف تعليقاً…" : "Add a caption…",
+    text: ar ? "نص" : "Text",
+    sticker: ar ? "ملصق" : "Sticker",
+    music: ar ? "موسيقى" : "Music",
+    effects: ar ? "تأثيرات" : "Effects",
+    soon: ar ? "قريباً" : "Coming soon",
+    sendToChat: ar ? "إرسال للمحادثة" : "Send to chat"
+  };
+  const sendDirectToChat = reactExports.useCallback(() => {
+    if (!draft || !onSendToChat || busy || isGuest) {
+      if (isGuest) notifyGuestActionBlocked();
+      return;
+    }
+    const note = caption.trim();
+    onSendToChat({
+      type: draft.kind,
+      content: draft.dataUrl,
+      ...note ? { shareText: note } : {}
+    });
+    closeAll();
+  }, [busy, caption, closeAll, draft, isGuest, onSendToChat]);
+  const previewLayer = /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+    isVideo ? /* @__PURE__ */ jsxRuntimeExports.jsx("video", { src: mediaUrl, className: "absolute inset-0 h-full w-full object-cover", playsInline: true, autoPlay: true, loop: true, muted: true }) : /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: mediaUrl, alt: "", className: "absolute inset-0 h-full w-full object-cover" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "pointer-events-none absolute inset-x-0 top-0 h-32 bg-gradient-to-b from-black/50 to-transparent" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "pointer-events-none absolute inset-x-0 bottom-0 h-48 bg-gradient-to-t from-black/70 to-transparent" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "button",
+      {
+        type: "button",
+        onClick: closeAll,
+        className: "absolute start-4 z-30 flex h-11 w-11 items-center justify-center text-white drop-shadow-lg active:scale-95",
+        style: { top: "max(12px, var(--sat, env(safe-area-inset-top, 0px)))" },
+        "aria-label": ar ? "حذف" : "Discard",
+        children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 30, strokeWidth: 2.5 })
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "div",
+      {
+        className: "absolute end-3 z-30 flex flex-col items-center gap-2.5",
+        style: { top: "max(56px, calc(var(--sat, 0px) + 44px))" },
+        children: [
+          toolsOpen && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(SideEditBtn, { label: t.text, onClick: () => alert(t.soon), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Type, { size: 22, strokeWidth: 2 }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(SideEditBtn, { label: t.sticker, onClick: () => alert(t.soon), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Sticker, { size: 22, strokeWidth: 2 }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(SideEditBtn, { label: t.music, onClick: () => alert(t.soon), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Music, { size: 22, strokeWidth: 2 }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(SideEditBtn, { label: t.effects, onClick: () => alert(t.soon), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Sparkles, { size: 22, strokeWidth: 2 }) })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              type: "button",
+              onClick: () => setToolsOpen((o) => !o),
+              className: "flex h-9 w-9 items-center justify-center text-white/90 drop-shadow-md",
+              "aria-hidden": true,
+              children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronDown, { size: 24, className: "transition " + (toolsOpen ? "" : "rotate-180") })
+            }
+          )
+        ]
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "div",
+      {
+        className: "absolute inset-x-0 z-30 px-4",
+        style: { bottom: "calc(max(88px, var(--sab, 0px)) + 56px)" },
+        children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "input",
+          {
+            value: caption,
+            onChange: (e) => setCaption(e.target.value),
+            placeholder: t.captionPh,
+            className: "w-full bg-transparent text-[15px] text-white placeholder:text-white/55 outline-none drop-shadow-md"
+          }
+        )
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "div",
+      {
+        className: "absolute inset-x-0 bottom-0 z-30 flex items-center gap-2 px-3",
+        style: { paddingBottom: "max(14px, var(--sab, env(safe-area-inset-bottom, 0px)))" },
+        children: mode2 === "chat" ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "min-w-0 flex-1" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              type: "button",
+              disabled: busy,
+              onClick: sendDirectToChat,
+              className: "flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#0095f6] text-white shadow-lg active:scale-95 disabled:opacity-50",
+              "aria-label": t.sendToChat,
+              children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowRight, { size: 24, strokeWidth: 2.5 })
+            }
+          )
+        ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "button",
+            {
+              type: "button",
+              disabled: busy,
+              onClick: () => void publishStory("all"),
+              className: "flex min-w-0 flex-1 items-center gap-2 rounded-full bg-black/45 py-2.5 pe-3 ps-2 backdrop-blur-md active:scale-[0.98] disabled:opacity-50",
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: me.username, src: me.avatar, size: 32, className: "ring-2 ring-white/30" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "truncate text-[13px] font-semibold text-white", children: t.yourStory })
+              ]
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "button",
+            {
+              type: "button",
+              disabled: busy,
+              onClick: () => void publishStory("close"),
+              className: "flex shrink-0 items-center gap-1.5 rounded-full bg-black/45 px-3 py-2.5 backdrop-blur-md active:scale-[0.98] disabled:opacity-50",
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex h-7 w-7 items-center justify-center rounded-full bg-[#41d27d]", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Star, { size: 14, className: "fill-white text-white" }) }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "max-w-[5.5rem] truncate text-[12px] font-semibold text-white", children: t.closeFriends })
+              ]
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              type: "button",
+              onClick: () => setScreen("share"),
+              className: "flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#0095f6] text-white shadow-lg active:scale-95",
+              "aria-label": t.share,
+              children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowRight, { size: 24, strokeWidth: 2.5 })
+            }
+          )
+        ] })
+      }
+    )
+  ] });
+  const shareSheet = /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "absolute inset-0 z-40 flex flex-col bg-black/92", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex shrink-0 justify-center pt-3 pb-2", style: { paddingTop: "max(8px, var(--sat, 0px))" }, children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-1 w-10 rounded-full bg-white/30" }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex shrink-0 justify-center px-6 pb-3", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-[38vh] max-h-[320px] w-[42%] min-w-[120px] overflow-hidden rounded-xl bg-zinc-900 shadow-2xl ring-1 ring-white/10", children: isVideo ? /* @__PURE__ */ jsxRuntimeExports.jsx("video", { src: mediaUrl, className: "h-full w-full object-cover", playsInline: true, muted: true }) : /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: mediaUrl, alt: "", className: "h-full w-full object-cover" }) }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-auto flex min-h-0 flex-1 flex-col rounded-t-3xl bg-[#121212]", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative flex items-center justify-center py-4", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            type: "button",
+            onClick: () => setScreen("preview"),
+            className: "absolute start-3 p-2 text-white active:opacity-70",
+            "aria-label": ar ? "رجوع" : "Back",
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowLeft, { size: 22, className: "rtl:rotate-180" })
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-[17px] font-bold text-white", children: t.share })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "button",
+        {
+          type: "button",
+          onClick: () => setShareTarget("all"),
+          className: "flex w-full items-center gap-3 px-5 py-3.5 text-start active:bg-white/5",
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: me.username, src: me.avatar, size: 44 }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "font-semibold text-white", children: t.yourStory }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-sm text-zinc-400", children: [
+                t.sharingOptions,
+                " ›"
+              ] })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "span",
+              {
+                className: "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 " + (shareTarget === "all" ? "border-white" : "border-zinc-500"),
+                children: shareTarget === "all" && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "h-3 w-3 rounded-full bg-white" })
+              }
+            )
+          ]
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "button",
+        {
+          type: "button",
+          onClick: () => setShareTarget("close"),
+          className: "flex w-full items-center gap-3 px-5 py-3.5 text-start active:bg-white/5",
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#41d27d]", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Star, { size: 22, className: "fill-white text-white" }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "font-semibold text-white", children: t.closeFriends }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-sm text-zinc-400", children: [
+                t.addPeople,
+                " ›"
+              ] })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "span",
+              {
+                className: "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 " + (shareTarget === "close" ? "border-white" : "border-zinc-500"),
+                children: shareTarget === "close" && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "h-3 w-3 rounded-full bg-white" })
+              }
+            )
+          ]
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "button",
+        {
+          type: "button",
+          onClick: () => setScreen("message"),
+          className: "flex w-full items-center gap-3 border-b border-white/10 px-5 py-3.5 text-start active:bg-white/5",
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex h-11 w-11 shrink-0 items-center justify-center", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Send, { size: 28, className: "text-white" }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "flex-1 font-semibold text-white", children: t.message }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronRight, { size: 22, className: "text-zinc-400 rtl:rotate-180" })
+          ]
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "p-4", style: { paddingBottom: "max(16px, var(--sab, 0px))" }, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          type: "button",
+          disabled: busy,
+          onClick: () => void publishStory(shareTarget),
+          className: "w-full rounded-xl bg-[#0095f6] py-3.5 text-[15px] font-bold text-white active:opacity-90 disabled:opacity-50",
+          children: t.share
+        }
+      ) })
+    ] })
+  ] });
+  const messageScreen = /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "absolute inset-0 z-50 flex flex-col bg-[#121212]", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "div",
+      {
+        className: "flex shrink-0 items-center gap-2 border-b border-white/10 px-3 py-3",
+        style: { paddingTop: "max(8px, var(--sat, 0px))" },
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => setScreen("share"), className: "p-2 text-white active:opacity-70", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowLeft, { size: 24, className: "rtl:rotate-180" }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "flex-1 text-center text-[17px] font-bold text-white", children: t.message }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-10" })
+        ]
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "px-4 py-3", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 rounded-xl bg-zinc-800/90 px-3 py-2.5", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Search, { size: 18, className: "shrink-0 text-zinc-400" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "input",
+        {
+          value: search,
+          onChange: (e) => setSearch(e.target.value),
+          placeholder: t.search,
+          className: "min-w-0 flex-1 bg-transparent text-[15px] text-white outline-none placeholder:text-zinc-500"
+        }
+      )
+    ] }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-2 pb-4", children: [
+      filteredFriends.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "py-8 text-center text-sm text-zinc-500", children: ar ? "لا يوجد مستخدمون" : "No users" }),
+      filteredFriends.map((u) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3 rounded-xl px-3 py-2.5 active:bg-white/5", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u.username, src: u.avatar, size: 48 }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "flex items-center gap-1 truncate font-semibold text-white", children: [
+            u.name || u.username,
+            u.verified && /* @__PURE__ */ jsxRuntimeExports.jsx(VerifiedBadge, { size: 14 })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "truncate text-sm text-zinc-400", children: [
+            "@",
+            u.username
+          ] })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            type: "button",
+            onClick: () => sendToUser(u.id),
+            className: "shrink-0 rounded-lg bg-[#0095f6] px-5 py-1.5 text-[14px] font-semibold text-white active:opacity-90",
+            children: t.send
+          }
+        )
+      ] }, u.id))
+    ] })
+  ] });
+  const body = /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "fixed inset-0 z-[425] mx-auto max-w-md bg-black", role: "dialog", "aria-modal": "true", children: [
+    previewLayer,
+    screen === "share" && shareSheet,
+    screen === "message" && messageScreen
+  ] });
+  return reactDomExports.createPortal(body, document.body);
+}
 const REPORT_SHEET_OPEN_EVENT = "retweet-report-sheet-open";
 function setReportSheetOpen(open) {
   if (typeof document !== "undefined") {
@@ -17448,69 +19937,6 @@ function postFeedSignature(post) {
     post.reposts?.length ?? 0
   ].join("|");
 }
-const POST_PLACEHOLDER_MEDIA = /* @__PURE__ */ new Set(["🖼️", "📝", "🎬"]);
-function resolvePostDisplayType(post) {
-  if (post.type === "tweet" || post.type === "reel") return post.type;
-  const text = post.text?.trim() ?? "";
-  const img = post.image?.trim() ?? "";
-  const vid = post.video?.trim() ?? "";
-  if (post.type === "post" && text && !vid) {
-    if (!img) return "tweet";
-    if (POST_PLACEHOLDER_MEDIA.has(img)) return "post";
-    const media = normalizePostMedia(post);
-    if (!media.hasImage && !media.hasVideo) return "tweet";
-  }
-  return post.type ?? "post";
-}
-function isDisplayTweet(post) {
-  return resolvePostDisplayType(post) === "tweet";
-}
-const CREATE_PLACEHOLDER_MEDIA = /* @__PURE__ */ new Set(["🎬", "🖼️", "📝"]);
-function hasCreateAttachmentMedia(media, hasFile) {
-  if (hasFile) return true;
-  const m = media.trim();
-  if (!m || CREATE_PLACEHOLDER_MEDIA.has(m)) return false;
-  if (m.startsWith("data:video/") || m.startsWith("data:image/")) return true;
-  if (m.startsWith("blob:")) return true;
-  if (isVideoMediaRef(m)) return true;
-  return isRenderableMediaUrl(m);
-}
-function isReelFeedPost(post) {
-  if (post.type === "tweet") return false;
-  return normalizePostMedia(post).hasVideo;
-}
-function postShowsFeedMedia(post) {
-  if (!isDisplayTweet(post)) return true;
-  const media = normalizePostMedia(post);
-  return media.hasImage || media.hasVideo;
-}
-function isVideoMediaRef(s) {
-  if (!s?.trim()) return false;
-  const t = s.trim();
-  if (t.startsWith("data:video/")) return true;
-  if (/\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(t)) return true;
-  return t.includes("/media/videos/");
-}
-function normalizePostMedia(post) {
-  let imageRaw = post.image?.trim() || "";
-  let videoRaw = post.video?.trim() || "";
-  if (imageRaw && isVideoMediaRef(imageRaw) && !videoRaw) {
-    videoRaw = imageRaw;
-    imageRaw = "";
-  }
-  const imageUrl = imageRaw && !isVideoMediaRef(imageRaw) ? resolveMediaUrl(imageRaw) : "";
-  const videoUrl = videoRaw ? resolveMediaUrl(videoRaw) : "";
-  const posterUrl = imageUrl && isRenderableMediaUrl(imageUrl) ? imageUrl : "";
-  const normalized = {
-    imageUrl,
-    videoUrl,
-    posterUrl,
-    hasImage: !!imageUrl && isRenderableMediaUrl(imageUrl) && !isVideoMediaRef(imageRaw),
-    hasVideo: !!videoRaw && isVideoMediaRef(videoRaw) && !!videoUrl,
-    emojiFallback: (!imageUrl && !videoUrl && imageRaw && !isRenderableMediaUrl(imageRaw) ? imageRaw : "") || (!imageUrl && !videoUrl && videoRaw && !isRenderableMediaUrl(videoRaw) ? videoRaw : "") || (post.type === "reel" && !videoUrl ? "🎬" : "") || (post.type === "tweet" ? "" : "📝")
-  };
-  return normalized;
-}
 const dict = {
   ar: {
     home: "الرئيسية",
@@ -17680,7 +20106,14 @@ const dict = {
     archiveEmpty: "لا توجد قصص في الأرشيف بعد.",
     archiveEmptyDetail: "عند انتهاء صلاحية قصة (بعد ٢٤ ساعة) تُنقل تلقائياً إلى هنا.",
     storiesArchive: "أرشيف القصص",
-    addToCloseFriends: "إضافة"
+    addToCloseFriends: "إضافة",
+    privacyPolicy: "سياسة الخصوصية",
+    deleteAccount: "حذف الحساب",
+    deleteAccountHint: "سيُحذف حسابك وجميع منشوراتك ورسائلك نهائياً. لا يمكن التراجع.",
+    deleteAccountConfirmLabel: "اكتب DELETE للتأكيد",
+    deleteAccountPassword: "كلمة المرور",
+    deleteAccountDone: "تم حذف الحساب",
+    deleteAccountFailed: "تعذر حذف الحساب"
   },
   en: {
     home: "Home",
@@ -17850,7 +20283,14 @@ const dict = {
     archiveEmpty: "No stories in your archive yet.",
     archiveEmptyDetail: "When a story expires after 24 hours, it moves here automatically.",
     storiesArchive: "Stories archive",
-    addToCloseFriends: "Add"
+    addToCloseFriends: "Add",
+    privacyPolicy: "Privacy Policy",
+    deleteAccount: "Delete account",
+    deleteAccountHint: "Your account, posts, and messages will be permanently deleted. This cannot be undone.",
+    deleteAccountConfirmLabel: "Type DELETE to confirm",
+    deleteAccountPassword: "Password",
+    deleteAccountDone: "Account deleted",
+    deleteAccountFailed: "Could not delete account"
   }
 };
 function useT() {
@@ -17962,12 +20402,6 @@ function CommentOptionsMenu({
     }
   );
 }
-function notifyGuestActionBlocked() {
-  try {
-    window.dispatchEvent(new CustomEvent("retweet-guest-blocked", { bubbles: true }));
-  } catch {
-  }
-}
 function formatRelativeTime(createdAt, lang = "ar") {
   const sec = Math.max(0, Math.floor((Date.now() - createdAt) / 1e3));
   if (lang === "en") {
@@ -18002,88 +20436,6 @@ function formatRelativeTime(createdAt, lang = "ar") {
   if (mo < 12) return `منذ ${mo} أشهر`;
   const y = Math.floor(d / 365);
   return y <= 1 ? "منذ سنة" : `منذ ${y} سنوات`;
-}
-function isRenderableAvatarImageUrl(src) {
-  const s = src.trim();
-  if (!s) return false;
-  const low = s.toLowerCase();
-  if (low.startsWith("blob:")) return true;
-  if (low.startsWith("data:image/")) return true;
-  if (low.startsWith("data:") && (low.includes("image/") || low.includes("base64,"))) return true;
-  if (low.startsWith("/media/")) return true;
-  if (low.startsWith("/stickers/") || low.startsWith("/app/")) return true;
-  return /^https?:\/\//i.test(s);
-}
-function Avatar$1({ name = "?", src, size = 40, className, ring, ringSeen }) {
-  const initials = name.slice(0, 2).toUpperCase();
-  const [imgFailed, setImgFailed] = reactExports.useState(false);
-  const [videoFailed, setVideoFailed] = reactExports.useState(false);
-  const resolvedSrc = reactExports.useMemo(() => {
-    const resolved = resolveMediaUrl(src);
-    if (resolved) return resolved;
-    const raw = src?.trim() || "";
-    if (raw.startsWith("/media/") && typeof window !== "undefined") {
-      return `${window.location.origin.replace(/\/$/, "")}${raw}`;
-    }
-    return resolved;
-  }, [src]);
-  const isVideoAvatar = !!(resolvedSrc && isVideoMediaRef(resolvedSrc));
-  reactExports.useEffect(() => {
-    setImgFailed(false);
-    setVideoFailed(false);
-  }, [resolvedSrc]);
-  const showVideo = !!(resolvedSrc && isVideoAvatar && !videoFailed);
-  const showImg = !!(resolvedSrc && !isVideoAvatar && isRenderableAvatarImageUrl(resolvedSrc) && !imgFailed);
-  const showEmoji = !!(resolvedSrc && !showImg && !showVideo && resolvedSrc.length <= 4);
-  const inner = /* @__PURE__ */ jsxRuntimeExports.jsx(
-    "div",
-    {
-      className: cn(
-        "rounded-full bg-secondary text-secondary-foreground flex items-center justify-center overflow-hidden font-semibold select-none",
-        className
-      ),
-      style: { width: size, height: size, fontSize: size * 0.38 },
-      children: showVideo ? /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "relative block h-full w-full min-h-0 min-w-0 overflow-hidden rounded-full", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "video",
-          {
-            src: resolvedSrc,
-            className: "absolute inset-0 h-full w-full object-cover scale-[1.01]",
-            muted: true,
-            playsInline: true,
-            loop: true,
-            autoPlay: true,
-            draggable: false,
-            preload: "auto",
-            "aria-hidden": true,
-            onError: () => setVideoFailed(true),
-            onLoadedData: (e) => {
-              const v = e.currentTarget;
-              void v.play().catch(() => void 0);
-            }
-          },
-          resolvedSrc
-        ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "sr-only", children: name })
-      ] }) : showImg ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "relative block h-full w-full min-h-0 min-w-0 overflow-hidden rounded-full", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "img",
-        {
-          src: resolvedSrc,
-          alt: name,
-          className: "absolute inset-0 h-full w-full object-cover",
-          draggable: false,
-          decoding: "async",
-          loading: "eager",
-          onError: () => setImgFailed(true)
-        },
-        resolvedSrc
-      ) }) : showEmoji ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { style: { fontSize: size * 0.55 }, children: resolvedSrc }) : initials
-    }
-  );
-  if (ring) {
-    return ringSeen ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "story-ring-seen inline-block", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "bg-background rounded-full p-[2px]", children: inner }) }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "story-ring-live-outer", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "story-ring-live-inner", children: inner }) });
-  }
-  return inner;
 }
 function NoteReplySheet({ note, contentLabelAr, onClose, onSent }) {
   const { state, replyToMediaNoteAsDm, isGuest } = useApp();
@@ -18216,192 +20568,11 @@ function renderComposerMentionOverlay(text, variant = "composer") {
     renderHashtag: (h, key) => /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-inherit", children: h }, key)
   });
 }
-const IG_BLUE = "#0095F6";
-const IG_PINK = "#FF2D55";
-function verificationBadgeHex(color) {
-  return color === "pink" ? IG_PINK : IG_BLUE;
-}
-const SEAL_PATH = "M 12 1 Q 15.444 3.685 19.778 4.222 Q 20.315 8.556 23 12 Q 20.315 15.444 19.778 19.778 Q 15.444 20.315 12 23 Q 8.556 20.315 4.222 19.778 Q 3.685 15.444 1 12 Q 3.685 8.556 4.222 4.222 Q 8.556 3.685 12 1 Z";
-function VerifiedBadge({
-  size = 16,
-  className = "",
-  title = "موثّق",
-  color = "blue"
-}) {
-  const fill = verificationBadgeHex(color);
-  const { state } = useApp();
-  const isDark = state.theme === "dark";
-  const checkStroke = isDark ? "#0d0d0d" : "#ffffff";
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
-    "svg",
-    {
-      width: size,
-      height: size,
-      viewBox: "0 0 24 24",
-      className: "shrink-0 inline-block align-middle " + className,
-      role: "img",
-      "aria-label": title,
-      children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: SEAL_PATH, fill }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "path",
-          {
-            d: "M7.15 12.05 L10.55 15.35 L16.85 8.65",
-            fill: "none",
-            stroke: checkStroke,
-            strokeWidth: "2.35",
-            strokeLinecap: "round",
-            strokeLinejoin: "round"
-          }
-        )
-      ]
-    }
-  );
-}
-function FounderVerifiedBadge({
-  size = 16,
-  className = "",
-  title = "حساب رسمي — مؤسس التطبيق"
-}) {
-  const uid2 = reactExports.useId().replace(/:/g, "");
-  const gMain = `founder-g-${uid2}`;
-  const gRing = `founder-r-${uid2}`;
-  const gShine = `founder-s-${uid2}`;
-  const fGlow = `founder-f-${uid2}`;
-  const seal = "M12 1.8 L14.9 3.1 L17.8 2.4 L19.1 5.3 L22 6.6 L21.3 9.5 L23.2 12 L21.3 14.5 L22 17.4 L19.1 18.7 L17.8 21.6 L14.9 20.9 L12 22.2 L9.1 20.9 L6.2 21.6 L4.9 18.7 L2 17.4 L2.7 14.5 L0.8 12 L2.7 9.5 L2 6.6 L4.9 5.3 L6.2 2.4 L9.1 3.1 Z";
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
-    "svg",
-    {
-      width: size,
-      height: size,
-      viewBox: "0 0 24 24",
-      className: "shrink-0 inline-block align-middle drop-shadow-sm " + className,
-      role: "img",
-      "aria-label": title,
-      children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("defs", { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("linearGradient", { id: gMain, x1: "4", y1: "2", x2: "20", y2: "22", gradientUnits: "userSpaceOnUse", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("stop", { offset: "0%", stopColor: "#FFF8DC" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("stop", { offset: "28%", stopColor: "#F7D774" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("stop", { offset: "55%", stopColor: "#E8B020" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("stop", { offset: "82%", stopColor: "#C8860A" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("stop", { offset: "100%", stopColor: "#8B5E00" })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("linearGradient", { id: gRing, x1: "0", y1: "0", x2: "24", y2: "24", gradientUnits: "userSpaceOnUse", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("stop", { offset: "0%", stopColor: "#FFE9A8" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("stop", { offset: "100%", stopColor: "#6B4500" })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("linearGradient", { id: gShine, x1: "6", y1: "4", x2: "14", y2: "12", gradientUnits: "userSpaceOnUse", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("stop", { offset: "0%", stopColor: "#FFFFFF", stopOpacity: "0.55" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("stop", { offset: "100%", stopColor: "#FFFFFF", stopOpacity: "0" })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("filter", { id: fGlow, x: "-30%", y: "-30%", width: "160%", height: "160%", children: /* @__PURE__ */ jsxRuntimeExports.jsx("feDropShadow", { dx: "0", dy: "0.6", stdDeviation: "0.65", floodColor: "#E8B020", floodOpacity: "0.45" }) })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("g", { filter: `url(#${fGlow})`, children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: seal, fill: `url(#${gRing})`, opacity: "0.95", transform: "scale(1.06) translate(-0.72 -0.72)" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: seal, fill: `url(#${gMain})`, stroke: "#5C3D00", strokeWidth: "0.35" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: seal, fill: `url(#${gShine})` }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("circle", { cx: "12", cy: "12", r: "5.15", fill: "#1a1408", fillOpacity: "0.22" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "path",
-            {
-              d: "M8.1 12.15 L10.85 14.75 L15.95 9.25",
-              fill: "none",
-              stroke: "#FFFBF0",
-              strokeWidth: "2.15",
-              strokeLinecap: "round",
-              strokeLinejoin: "round"
-            }
-          ),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "path",
-            {
-              d: "M8.1 12.15 L10.85 14.75 L15.95 9.25",
-              fill: "none",
-              stroke: "#5C3D00",
-              strokeWidth: "0.45",
-              strokeLinecap: "round",
-              strokeLinejoin: "round",
-              opacity: "0.35"
-            }
-          )
-        ] })
-      ]
-    }
-  );
-}
-function AppOfficialVerifiedBadge({
-  size = 16,
-  className = "",
-  title = "حساب التطبيق الرسمي"
-}) {
-  const uid2 = reactExports.useId().replace(/:/g, "");
-  const g = `app-official-g-${uid2}`;
-  const seal = "M12 1.8 L14.9 3.1 L17.8 2.4 L19.1 5.3 L22 6.6 L21.3 9.5 L23.2 12 L21.3 14.5 L22 17.4 L19.1 18.7 L17.8 21.6 L14.9 20.9 L12 22.2 L9.1 20.9 L6.2 21.6 L4.9 18.7 L2 17.4 L2.7 14.5 L0.8 12 L2.7 9.5 L2 6.6 L4.9 5.3 L6.2 2.4 L9.1 3.1 Z";
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
-    "svg",
-    {
-      width: size,
-      height: size,
-      viewBox: "0 0 24 24",
-      className: "shrink-0 inline-block align-middle drop-shadow-sm " + className,
-      role: "img",
-      "aria-label": title,
-      children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("defs", { children: /* @__PURE__ */ jsxRuntimeExports.jsxs("linearGradient", { id: g, x1: "2", y1: "2", x2: "22", y2: "22", gradientUnits: "userSpaceOnUse", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("stop", { offset: "0%", stopColor: "#818CF8" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("stop", { offset: "45%", stopColor: "#6366F1" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("stop", { offset: "100%", stopColor: "#4338CA" })
-        ] }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: seal, fill: `url(#${g})`, stroke: "#312E81", strokeWidth: "0.35" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "path",
-          {
-            d: "M8.1 12.15 L10.85 14.75 L15.95 9.25",
-            fill: "none",
-            stroke: "#EEF2FF",
-            strokeWidth: "2.15",
-            strokeLinecap: "round",
-            strokeLinejoin: "round"
-          }
-        )
-      ]
-    }
-  );
-}
-function VerifiedMarkForUser({
-  user,
-  size = 16,
-  className
-}) {
-  if (user.founderVerified) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx(FounderVerifiedBadge, { size, className, title: "منشئ التطبيق — الحساب الرسمي" });
-  }
-  if (user.appOfficialVerified) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx(AppOfficialVerifiedBadge, { size, className, title: "حساب التطبيق الرسمي" });
-  }
-  if (!isVerifiedBadgeActive(user)) return null;
-  const color = user.verificationBadgeColor === "pink" ? "pink" : "blue";
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(VerifiedBadge, { size, className, color });
-}
 const RS_ACCENT = "#5AC8D8";
-const PASTEL_AVATARS = [
-  { bg: "#F3E8FF", color: "#7C3AED" },
-  { bg: "#E0F2FE", color: "#0284C7" },
-  { bg: "#FCE7F3", color: "#DB2777" },
-  { bg: "#D1FAE5", color: "#059669" },
-  { bg: "#FEF3C7", color: "#D97706" },
-  { bg: "#EDE9FE", color: "#6D28D9" }
-];
 function displayNameFromUsername(username) {
   const base = username.replace(/^@/, "").trim();
   if (!base) return "?";
   return base.split(/[._-]+/).filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
-}
-function pastelAvatarColors(seed) {
-  let h = 0;
-  for (let i = 0; i < seed.length; i++) h = h + seed.charCodeAt(i) * 31 | 0;
-  return PASTEL_AVATARS[Math.abs(h) % PASTEL_AVATARS.length];
 }
 function formatChatListTime(createdAt) {
   const diff = Math.max(0, Date.now() - createdAt);
@@ -18427,6 +20598,254 @@ function userDisplayName(u) {
   const dn = u.displayName?.trim();
   if (dn) return dn;
   return displayNameFromUsername(u.username);
+}
+function waveBarsFromAnalyser$1(analyser, barCount) {
+  const n = analyser.frequencyBinCount;
+  const data = new Uint8Array(n);
+  analyser.getByteFrequencyData(data);
+  const heights = [];
+  for (let b = 0; b < barCount; b++) {
+    const t0 = (b / barCount) ** 1.05;
+    const t1 = ((b + 1) / barCount) ** 1.05;
+    const start = Math.floor(n * t0);
+    const end = Math.ceil(n * t1);
+    let sum = 0;
+    for (let i = start; i < end; i++) sum += data[Math.min(i, n - 1)];
+    const avg = sum / Math.max(1, end - start) / 255;
+    const boosted = Math.min(1.15, avg * 1.75 + 0.03);
+    const eased = Math.pow(boosted, 0.82);
+    const pct = Math.round(20 + eased * 80);
+    heights.push(Math.min(100, Math.max(17, pct)));
+  }
+  return heights;
+}
+function useVoicePlaybackSrc$1(src) {
+  const [playbackSrc, setPlaybackSrc] = reactExports.useState(src);
+  reactExports.useEffect(() => {
+    if (!src.startsWith("data:")) {
+      setPlaybackSrc(src);
+      return;
+    }
+    let revoked = null;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const blob = await (await fetch(src)).blob();
+        if (cancelled) return;
+        revoked = URL.createObjectURL(blob);
+        setPlaybackSrc(revoked);
+      } catch {
+        if (!cancelled) setPlaybackSrc(src);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (revoked) URL.revokeObjectURL(revoked);
+    };
+  }, [src]);
+  return playbackSrc;
+}
+function VoiceWavePlayer({
+  src,
+  className = "",
+  durationSec
+}) {
+  const playbackSrc = useVoicePlaybackSrc$1(src);
+  const useVideoEl = voiceUsesVideoElement$1(playbackSrc);
+  const audioRef = reactExports.useRef(null);
+  const videoRef = reactExports.useRef(null);
+  const analyserGraphRef = reactExports.useRef(null);
+  const ensureAnalyserRef = reactExports.useRef(null);
+  const waveRafRef = reactExports.useRef(0);
+  const waveSmoothRef = reactExports.useRef(Array.from({ length: VOICE_WAVE_BARS$1 }, () => 40));
+  const waveFrameRef = reactExports.useRef(0);
+  const [playing, setPlaying] = reactExports.useState(false);
+  const [loading, setLoading] = reactExports.useState(false);
+  const [cur, setCur] = reactExports.useState(0);
+  const [dur, setDur] = reactExports.useState(durationSec || 0);
+  const [levelsLive, setLevelsLive] = reactExports.useState(null);
+  const idleHeights = reactExports.useMemo(() => voiceWaveHeightsFromSrc$1(src), [src]);
+  const idleRef = reactExports.useRef(idleHeights);
+  idleRef.current = idleHeights;
+  reactExports.useEffect(() => {
+    waveSmoothRef.current = idleRef.current.slice();
+    setLevelsLive(null);
+    setPlaying(false);
+    setCur(0);
+    setDur(durationSec || 0);
+    if (waveRafRef.current) cancelAnimationFrame(waveRafRef.current);
+    waveRafRef.current = 0;
+    void analyserGraphRef.current?.ctx.close().catch(() => {
+    });
+    analyserGraphRef.current = null;
+    ensureAnalyserRef.current = null;
+    const el = useVideoEl ? videoRef.current : audioRef.current;
+    if (!el) return void 0;
+    try {
+      el.load();
+    } catch {
+    }
+    const onT = () => setCur(el.currentTime);
+    const onMeta = () => {
+      const d = el.duration;
+      setDur(d && isFinite(d) && d > 0 ? d : durationSec || 0);
+    };
+    const onPlay = () => setPlaying(true);
+    const stopWaveRaf = () => {
+      if (waveRafRef.current) cancelAnimationFrame(waveRafRef.current);
+      waveRafRef.current = 0;
+    };
+    const onWaveStop = () => {
+      stopWaveRaf();
+      setLevelsLive(null);
+    };
+    const onPause = () => {
+      setPlaying(false);
+      onWaveStop();
+    };
+    const onEnded = () => {
+      setPlaying(false);
+      setCur(0);
+      onWaveStop();
+    };
+    const attachAnalyser = async () => {
+      if (analyserGraphRef.current) return;
+      const AW = typeof window !== "undefined" && (window.AudioContext || window.webkitAudioContext);
+      if (!AW) return;
+      try {
+        const ctx = new AW();
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 512;
+        analyser.smoothingTimeConstant = 0.72;
+        const source = ctx.createMediaElementSource(el);
+        source.connect(analyser);
+        analyser.connect(ctx.destination);
+        analyserGraphRef.current = { ctx, analyser };
+        await ctx.resume();
+      } catch {
+        analyserGraphRef.current = null;
+      }
+    };
+    ensureAnalyserRef.current = attachAnalyser;
+    const waveLoop = () => {
+      if (el.paused) return;
+      const graph = analyserGraphRef.current;
+      if (!graph) return;
+      const raw = waveBarsFromAnalyser$1(graph.analyser, VOICE_WAVE_BARS$1);
+      const sm = waveSmoothRef.current;
+      for (let i = 0; i < VOICE_WAVE_BARS$1; i++) {
+        sm[i] = sm[i] * 0.56 + raw[i] * 0.44;
+      }
+      waveFrameRef.current += 1;
+      if ((waveFrameRef.current & 3) === 0) setLevelsLive([...sm]);
+      waveRafRef.current = requestAnimationFrame(waveLoop);
+    };
+    const onPlaying = () => {
+      setLoading(false);
+      void ensureAnalyserRef.current?.();
+      void analyserGraphRef.current?.ctx.resume().catch(() => {
+      });
+      waveSmoothRef.current = idleRef.current.slice();
+      waveFrameRef.current = 0;
+      stopWaveRaf();
+      if (analyserGraphRef.current) waveRafRef.current = requestAnimationFrame(waveLoop);
+    };
+    el.addEventListener("timeupdate", onT);
+    el.addEventListener("loadedmetadata", onMeta);
+    el.addEventListener("play", onPlay);
+    el.addEventListener("playing", onPlaying);
+    el.addEventListener("pause", onPause);
+    el.addEventListener("ended", onEnded);
+    return () => {
+      el.removeEventListener("timeupdate", onT);
+      el.removeEventListener("loadedmetadata", onMeta);
+      el.removeEventListener("play", onPlay);
+      el.removeEventListener("playing", onPlaying);
+      el.removeEventListener("pause", onPause);
+      el.removeEventListener("ended", onEnded);
+      stopWaveRaf();
+      setLevelsLive(null);
+      void analyserGraphRef.current?.ctx.close().catch(() => {
+      });
+      analyserGraphRef.current = null;
+      ensureAnalyserRef.current = null;
+    };
+  }, [playbackSrc, useVideoEl, durationSec]);
+  const toggle = async () => {
+    const el = useVideoEl ? videoRef.current : audioRef.current;
+    if (!el) return;
+    try {
+      if (!el.paused) {
+        el.pause();
+        setLoading(false);
+        return;
+      }
+      setLoading(true);
+      await waitVoiceMediaCanPlay(el);
+      await el.play();
+    } catch {
+      try {
+        await waitVoiceMediaCanPlay(el);
+        await el.play();
+      } catch {
+        setLoading(false);
+      }
+    }
+  };
+  const total = dur || durationSec || 0;
+  const filledBars = total > 0 ? Math.min(VOICE_WAVE_BARS$1, Math.ceil(cur / total * VOICE_WAVE_BARS$1)) : 0;
+  const remaining = Math.max(0, total - cur);
+  const displayHeights = levelsLive ?? idleHeights;
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex w-full flex-col " + className, children: [
+    useVideoEl ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "video",
+      {
+        ref: videoRef,
+        src: playbackSrc,
+        preload: "auto",
+        className: VOICE_MEDIA_OFFSCREEN$1,
+        playsInline: true,
+        controls: false
+      }
+    ) : /* @__PURE__ */ jsxRuntimeExports.jsx("audio", { ref: audioRef, src: playbackSrc, preload: "auto", className: VOICE_MEDIA_OFFSCREEN$1 }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "div",
+      {
+        className: "flex w-full min-w-0 items-center gap-3 rounded-2xl bg-muted/60 px-2.5 py-2 dark:bg-muted/40",
+        dir: "ltr",
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              type: "button",
+              onClick: toggle,
+              className: "flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-white transition active:scale-[0.97] dark:bg-white dark:text-zinc-950",
+              "aria-label": playing ? "إيقاف" : loading ? "تحميل" : "تشغيل",
+              disabled: loading && !playing,
+              children: loading && !playing ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" }) : playing ? /* @__PURE__ */ jsxRuntimeExports.jsx(Pause, { size: 18, className: "fill-current" }) : /* @__PURE__ */ jsxRuntimeExports.jsx(Play, { size: 18, className: "ms-0.5 fill-current" })
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-w-0 flex-1 flex-col gap-1", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-9 min-w-0 flex-1 items-end justify-stretch gap-[2px] px-0.5", children: displayHeights.map((hPct, i) => {
+              const active2 = i < filledBars;
+              return /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "span",
+                {
+                  className: "min-h-[4px] min-w-[2px] max-w-[4px] flex-1 origin-bottom rounded-full transition-colors duration-100 " + (active2 ? "bg-zinc-800 dark:bg-white" : "bg-zinc-400/42 dark:bg-white/24") + (playing && active2 ? " motion-safe:opacity-95" : ""),
+                  style: { height: `${hPct}%` }
+                },
+                i
+              );
+            }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex items-center justify-end px-0.5", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[12px] font-semibold tabular-nums tracking-tight text-zinc-600 dark:text-zinc-300", children: total > 0 ? fmtVoiceTime$1(remaining) : "—" }) })
+          ] })
+        ]
+      }
+    )
+  ] });
+}
+function TweetVoicePlayer({ src, className = "" }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(VoiceWavePlayer, { src: resolveMediaUrl(src), className });
 }
 const FEED_POST_DIR = "rtl";
 function ProfilePostMetaRow({
@@ -18532,6 +20951,15 @@ function PostFeedMediaBlock({
       )
     ] });
   }
+  if (postMedia.hasAudio && post.audio) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "div",
+      {
+        className: (profileInset ? "mx-0 w-full" : "mx-4 w-[calc(100%-2rem)]") + " mb-1 rounded-2xl border border-border/60 bg-card p-3",
+        children: /* @__PURE__ */ jsxRuntimeExports.jsx(TweetVoicePlayer, { src: post.audio })
+      }
+    );
+  }
   if (postMedia.hasVideo) {
     const reelGrid = post.type === "reel";
     return /* @__PURE__ */ jsxRuntimeExports.jsxs(PostFeedMedia, { aspect: reelGrid ? "square" : "video", onClick: onOpen, profileInset, children: [
@@ -18624,7 +21052,7 @@ function FeedPostColumnShell({
   className = ""
 }) {
   return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "relative px-3 py-3 " + className, dir: "ltr", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-3", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onOpenAuthor, className: "h-10 w-10 shrink-0 self-start", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: author.username, src: author.avatar, size: 40 }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onOpenAuthor, className: "h-10 w-10 shrink-0 self-start", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: author.username, src: author.avatar, size: 40 }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "min-w-0 flex-1", children })
   ] }) });
 }
@@ -18696,13 +21124,16 @@ function PostCardInner({
   );
   const [comment, setComment] = reactExports.useState("");
   const [menuOpen, setMenuOpen] = reactExports.useState(false);
+  const postLikes = Array.isArray(post.likes) ? post.likes : [];
+  const postComments = Array.isArray(post.comments) ? post.comments : [];
+  const postReposts = Array.isArray(post.reposts) ? post.reposts : [];
   const guestBlock = () => {
     if (!isGuest) return false;
     notifyGuestActionBlocked();
     return true;
   };
-  const liked = currentUser ? (post.likes ?? []).includes(currentUser.id) : false;
-  const reposted = currentUser ? (post.reposts ?? []).includes(currentUser.id) : false;
+  const liked = currentUser ? postLikes.includes(currentUser.id) : false;
+  const reposted = currentUser ? postReposts.includes(currentUser.id) : false;
   const feedNotesRaw = currentUser ? visibleMediaNotes(state, "post", post.id, currentUser.id).slice(0, 5) : [];
   const feedNotes = feedNotesRaw.filter((n) => {
     const nu = userById(state, n.authorId);
@@ -18751,7 +21182,7 @@ function PostCardInner({
             e.stopPropagation();
             openAuthorProfile(nu.id);
           },
-          children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: nu.username, src: nu.avatar, size: 26 })
+          children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: nu.username, src: nu.avatar, size: 26 })
         }
       )
     ] }, n.id);
@@ -18796,9 +21227,9 @@ function PostCardInner({
         {
           liked,
           reposted,
-          likeCount: post.likes.length,
-          commentCount: post.comments.length,
-          repostCount: post.reposts.length,
+          likeCount: postLikes.length,
+          commentCount: postComments.length,
+          repostCount: postReposts.length,
           onLike: () => {
             if (guestBlock()) return;
             reactExports.startTransition(() => toggleLike(post.id));
@@ -18951,203 +21382,6 @@ function formatStoryViewTime(ts) {
   if (diff < 864e5) return `${Math.floor(diff / 36e5)} س`;
   return new Date(ts).toLocaleDateString("ar", { day: "numeric", month: "short" });
 }
-const MAX_STORY_UPLOAD_BYTES = 78 * 1024 * 1024;
-let pendingStoryPickFile = null;
-function stashPendingStoryFile(file) {
-  pendingStoryPickFile = file;
-}
-function takePendingStoryFile() {
-  const f = pendingStoryPickFile;
-  pendingStoryPickFile = null;
-  return f;
-}
-async function fileFromDataUrl(dataUrl) {
-  const res = await fetch(dataUrl);
-  const blob = await res.blob();
-  const mime = blob.type || "image/jpeg";
-  const ext = mime === "image/gif" ? "gif" : mime === "image/png" ? "png" : mime.startsWith("video/") ? "mp4" : "jpg";
-  return new File([blob], `story.${ext}`, { type: mime });
-}
-async function normalizeStoryImageFile(file) {
-  const isHeic = /heic|heif/i.test(file.type) || /\.hei[cf]$/i.test(file.name);
-  if (isHeic || !file.type.startsWith("image/") && !file.type) {
-    try {
-      const bitmap = await createImageBitmap(file);
-      const maxSide = 1080;
-      const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
-      const w = Math.max(1, Math.round(bitmap.width * scale));
-      const h = Math.max(1, Math.round(bitmap.height * scale));
-      const canvas2 = document.createElement("canvas");
-      canvas2.width = w;
-      canvas2.height = h;
-      const ctx = canvas2.getContext("2d");
-      if (!ctx) {
-        bitmap.close();
-        return file;
-      }
-      ctx.drawImage(bitmap, 0, 0, w, h);
-      bitmap.close();
-      const blob = await new Promise(
-        (resolve) => canvas2.toBlob((b) => resolve(b), "image/jpeg", 0.88)
-      );
-      if (blob) return new File([blob], "story.jpg", { type: "image/jpeg" });
-    } catch {
-    }
-  }
-  if (!file.type.startsWith("image/") || file.type === "image/gif") return file;
-  try {
-    const bitmap = await createImageBitmap(file);
-    const maxSide = 1080;
-    const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
-    const w = Math.max(1, Math.round(bitmap.width * scale));
-    const h = Math.max(1, Math.round(bitmap.height * scale));
-    const canvas2 = document.createElement("canvas");
-    canvas2.width = w;
-    canvas2.height = h;
-    const ctx = canvas2.getContext("2d");
-    if (!ctx) {
-      bitmap.close();
-      return file;
-    }
-    ctx.drawImage(bitmap, 0, 0, w, h);
-    bitmap.close();
-    const quality = file.size > 3e6 ? 0.82 : 0.88;
-    const blob = await new Promise(
-      (resolve) => canvas2.toBlob((b) => resolve(b), "image/jpeg", quality)
-    );
-    if (!blob) return file;
-    return new File([blob], "story.jpg", { type: "image/jpeg" });
-  } catch {
-    return file;
-  }
-}
-async function prepareStoryFile(file) {
-  if (file.type.startsWith("image/")) {
-    return normalizeStoryImageFile(file);
-  }
-  return file;
-}
-const MAX_STORY_VIDEO_DURATION_SEC = 60;
-function uploadTimeoutMs$1(file) {
-  if (file.type.startsWith("video/")) {
-    if (file.size > 40 * 1024 * 1024) return 3e5;
-    if (file.size > 15 * 1024 * 1024) return 24e4;
-    return 18e4;
-  }
-  if (file.size > 40 * 1024 * 1024) return 18e4;
-  if (file.size > 15 * 1024 * 1024) return 12e4;
-  return 6e4;
-}
-async function validateStoryVideoFile(file, maxDurationSec = MAX_STORY_VIDEO_DURATION_SEC) {
-  if (!file.type.startsWith("video/")) return { ok: true };
-  const cap = Math.max(1, Math.min(60, maxDurationSec));
-  return new Promise((resolve) => {
-    const url2 = URL.createObjectURL(file);
-    const v = document.createElement("video");
-    v.preload = "metadata";
-    const done = (result) => {
-      URL.revokeObjectURL(url2);
-      resolve(result);
-    };
-    v.onloadedmetadata = () => {
-      const d = v.duration;
-      if (Number.isFinite(d) && d > cap + 1) {
-        done({
-          ok: false,
-          error: `مدة الفيديو ${Math.ceil(d)} ثانية — الحد الأقصى ${cap} ثانية.`
-        });
-        return;
-      }
-      done({ ok: true });
-    };
-    v.onerror = () => done({ ok: true });
-    v.src = url2;
-  });
-}
-async function uploadStoryFile(file, opts) {
-  const token = getApiToken();
-  if (!apiBackendEnabled() || !token) {
-    return { ok: false, error: "الخادم غير متصل — شغّل API ثم أعد المحاولة" };
-  }
-  await ensureApiRuntimeConfig();
-  try {
-    const durationCheck = await validateStoryVideoFile(
-      file,
-      opts?.maxVideoDurationSec ?? MAX_STORY_VIDEO_DURATION_SEC
-    );
-    if (!durationCheck.ok) return durationCheck;
-    let prepared = await prepareStoryFile(file);
-    if (prepared.size > MAX_STORY_UPLOAD_BYTES) {
-      const mb = (prepared.size / (1024 * 1024)).toFixed(0);
-      return {
-        ok: false,
-        error: `الملف ${mb} ميجا — الحد الأقصى 78 ميجا. جرّب قصّ الفيديو أو صورة أخف.`
-      };
-    }
-    const up = await apiUploadMedia(token, prepared, {
-      timeoutMs: uploadTimeoutMs$1(prepared),
-      storyVideo: prepared.type.startsWith("video/")
-    });
-    if (!up.ok) return { ok: false, error: up.error };
-    return { ok: true, url: up.url };
-  } catch {
-    return {
-      ok: false,
-      error: "تعذر رفع الستوري — الخادم غير متصل. شغّل npm run api:tunnel على جهازك"
-    };
-  }
-}
-async function resolveStoryMediaForSave(media) {
-  const t = media?.trim() || "";
-  if (!t || t === "📷") return { ok: false, error: "اختر صورة أو فيديو للستوري" };
-  if (t.startsWith("blob:")) {
-    try {
-      const res = await fetch(t);
-      const blob = await res.blob();
-      const ext = blob.type.startsWith("video/") ? "mp4" : "jpg";
-      const file = new File([blob], `story.${ext}`, { type: blob.type || "application/octet-stream" });
-      return uploadStoryFile(file);
-    } catch {
-      return { ok: false, error: "أعد اختيار الملف من زر الإرفاق" };
-    }
-  }
-  if (!t.startsWith("data:")) {
-    return { ok: true, url: t };
-  }
-  const token = getApiToken();
-  if (!apiBackendEnabled() || !token) return { ok: true, url: t };
-  await ensureApiRuntimeConfig();
-  try {
-    const file = await fileFromDataUrl(t);
-    return uploadStoryFile(file);
-  } catch {
-    return {
-      ok: false,
-      error: "تعذر رفع الستوري — الخادم غير متصل. شغّل npm run api:tunnel على جهازك"
-    };
-  }
-}
-function storyPayloadFromUrl(url2) {
-  if (isVideoMediaRef(url2)) return { image: "🎬", video: url2 };
-  return { image: url2 };
-}
-function storyArchiveThumbnailUrl(story) {
-  const media = normalizeStoryMedia(story);
-  if (media.hasImage) return media.imageUrl;
-  if (media.hasVideo && media.imageUrl) return media.imageUrl;
-  return null;
-}
-function normalizeStoryMedia(story) {
-  const imageRaw = story.image?.trim() || "";
-  const videoRaw = story.video?.trim() || "";
-  const videoUrl = videoRaw ? resolveMediaUrl(videoRaw) : "";
-  const imageUrl = imageRaw && !isVideoMediaRef(imageRaw) ? resolveMediaUrl(imageRaw) : "";
-  const hasVideo = !!videoUrl && isRenderableMediaUrl(videoUrl);
-  const hasImage = !!imageUrl && isRenderableMediaUrl(imageUrl);
-  const emojiFallback = !hasVideo && !hasImage ? imageRaw || (videoRaw && !isVideoMediaRef(videoRaw) ? videoRaw : "") : "";
-  return { imageUrl, videoUrl, hasVideo, hasImage, emojiFallback };
-}
-const resolvePostMediaForSave = resolveStoryMediaForSave;
 function buildShareUrl(target) {
   const base = typeof window !== "undefined" ? `${window.location.origin}${window.location.pathname}` : "";
   if (target.kind === "post") return `${base}?post=${encodeURIComponent(target.post.id)}`;
@@ -19267,7 +21501,7 @@ function ShareSheet({ target, onClose }) {
     /* @__PURE__ */ jsxRuntimeExports.jsx("h4", { className: "text-xs text-muted-foreground mb-2 px-1", children: "إرسال إلى" }),
     friends.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-center text-muted-foreground py-4 text-sm", children: "تابع أصدقاء أولاً" }),
     /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "grid grid-cols-4 gap-3", children: friends.map((u) => u && /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", onClick: () => sendToFriend(u.id), className: "flex flex-col items-center gap-1", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: u.username, src: u.avatar, size: 56 }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u.username, src: u.avatar, size: 56 }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs truncate w-full text-center", children: u.username })
     ] }, u.id)) })
   ] }) });
@@ -19286,13 +21520,16 @@ function PostDetail({ post: postProp, onBack, onOpenProfile, onOpenChat, profile
   const [comment, setComment] = reactExports.useState("");
   const [shareOpen, setShareOpen] = reactExports.useState(false);
   const me = currentUser;
+  const postLikes = Array.isArray(post.likes) ? post.likes : [];
+  const postReposts = Array.isArray(post.reposts) ? post.reposts : [];
+  const postComments = Array.isArray(post.comments) ? post.comments : [];
   const guestBlock = () => {
     if (!isGuest) return false;
     notifyGuestActionBlocked();
     return true;
   };
-  const liked = post.likes.includes(me.id);
-  const reposted = post.reposts.includes(me.id);
+  const liked = postLikes.includes(me.id);
+  const reposted = postReposts.includes(me.id);
   const postKindAr = post.type === "tweet" ? "التغريدة" : post.type === "reel" ? "الريلز" : "المنشور";
   const detailNotes = visibleMediaNotes(state, "post", post.id, me.id).slice(0, 8).filter((n) => {
     const nu = userById(state, n.authorId);
@@ -19398,7 +21635,7 @@ function PostDetail({ post: postProp, onBack, onOpenProfile, onOpenChat, profile
                 type: "button",
                 onClick: () => reactExports.startTransition(() => onOpenProfile(author.id, returnCtx(false))),
                 className: "shrink-0",
-                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: author.username, src: author.avatar, size: 36 })
+                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: author.username, src: author.avatar, size: 36 })
               }
             ),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1 text-start", children: [
@@ -19442,7 +21679,7 @@ function PostDetail({ post: postProp, onBack, onOpenProfile, onOpenChat, profile
                 children: n.text
               }
             ) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "line-clamp-2 w-full rounded-xl border border-white/25 bg-black/45 px-2 py-1 text-start text-[11px] font-medium leading-snug text-white backdrop-blur-sm", children: n.text }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => reactExports.startTransition(() => onOpenProfile(nu.id, returnCtx(false))), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: nu.username, src: nu.avatar, size: 26 }) })
+            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => reactExports.startTransition(() => onOpenProfile(nu.id, returnCtx(false))), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: nu.username, src: nu.avatar, size: 26 }) })
           ] }, n.id);
         }) }),
         isRenderableMediaUrl(post.image) ? /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: resolveMediaUrl(post.image), className: "max-h-[70vh] w-full object-contain", alt: "" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex min-h-[10rem] items-center justify-center py-12 text-5xl", children: post.image })
@@ -19465,12 +21702,13 @@ function PostDetail({ post: postProp, onBack, onOpenProfile, onOpenChat, profile
                 children: n.text
               }
             ) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "line-clamp-2 w-full rounded-xl border border-white/25 bg-black/45 px-2 py-1 text-start text-[11px] font-medium leading-snug text-white backdrop-blur-sm", children: n.text }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => reactExports.startTransition(() => onOpenProfile(nu.id, returnCtx(false))), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: nu.username, src: nu.avatar, size: 26 }) })
+            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => reactExports.startTransition(() => onOpenProfile(nu.id, returnCtx(false))), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: nu.username, src: nu.avatar, size: 26 }) })
           ] }, n.id);
         }) }),
         isRenderableMediaUrl(post.video) ? /* @__PURE__ */ jsxRuntimeExports.jsx("video", { src: resolveMediaUrl(post.video), controls: true, playsInline: true, className: "max-h-[70vh] w-full object-contain" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex min-h-[10rem] items-center justify-center py-12 text-5xl text-white", children: post.video })
       ] }),
-      !post.image && !post.video && detailNotes.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "px-4 pb-2 flex gap-2 overflow-x-auto no-scrollbar", children: detailNotes.map((n) => {
+      post.audio && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "px-4 pt-3", children: isRenderableMediaUrl(post.audio) ? /* @__PURE__ */ jsxRuntimeExports.jsx(TweetVoicePlayer, { src: post.audio }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-xl border border-border bg-card px-3 py-2 text-sm text-muted-foreground", children: "مقطع صوتي" }) }),
+      !post.image && !post.video && !post.audio && detailNotes.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "px-4 pb-2 flex gap-2 overflow-x-auto no-scrollbar", children: detailNotes.map((n) => {
         const nu = userById(state, n.authorId);
         const canReplyNote = n.authorId !== me.id;
         return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col items-center shrink-0 max-w-[4rem]", children: [
@@ -19486,7 +21724,7 @@ function PostDetail({ post: postProp, onBack, onOpenProfile, onOpenChat, profile
               children: n.text
             }
           ) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[9px] leading-tight text-start bg-secondary rounded-lg px-1.5 py-0.5 mb-0.5 line-clamp-3 border border-border", children: n.text }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => reactExports.startTransition(() => onOpenProfile(nu.id, returnCtx(false))), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: nu.username, src: nu.avatar, size: 28 }) })
+          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => reactExports.startTransition(() => onOpenProfile(nu.id, returnCtx(false))), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: nu.username, src: nu.avatar, size: 28 }) })
         ] }, n.id);
       }) }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-5 px-4 pt-3", children: [
@@ -19505,24 +21743,24 @@ function PostDetail({ post: postProp, onBack, onOpenProfile, onOpenChat, profile
         }, "aria-label": "مشاركة", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Send, { size: 22 }) })
       ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "px-4 pt-2 text-sm space-y-1", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("b", { children: post.likes.length }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("b", { children: postLikes.length }),
         " ",
         t("likes"),
         " · ",
-        /* @__PURE__ */ jsxRuntimeExports.jsx("b", { children: post.reposts.length }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("b", { children: postReposts.length }),
         " ",
         t("reposts"),
         " · ",
-        /* @__PURE__ */ jsxRuntimeExports.jsx("b", { children: post.comments.length }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("b", { children: postComments.length }),
         " ",
         t("comments")
       ] }) }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "px-4 pt-3 space-y-2 border-t border-border mt-3 pb-2", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { id: "post-comments-anchor", className: "font-semibold text-sm pt-2 scroll-mt-24 sm:scroll-mt-20", children: t("comments") }),
-        post.comments.map((c) => {
+        postComments.map((c) => {
           const u = userById(state, c.userId);
           return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative flex gap-2 text-sm", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "shrink-0 rounded-full", onClick: () => reactExports.startTransition(() => u && onOpenProfile(u.id, returnCtx(true))), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: u?.username || "?", src: u?.avatar, size: 28 }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "shrink-0 rounded-full", onClick: () => reactExports.startTransition(() => u && onOpenProfile(u.id, returnCtx(true))), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u?.username || "?", src: u?.avatar, size: 28 }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1", children: [
               /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", className: "font-semibold", onClick: () => reactExports.startTransition(() => u && onOpenProfile(u.id, returnCtx(true))), children: [
                 "@",
@@ -19546,7 +21784,7 @@ function PostDetail({ post: postProp, onBack, onOpenProfile, onOpenChat, profile
             )
           ] }, c.id);
         }),
-        post.comments.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground", children: "—" })
+        postComments.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground", children: "—" })
       ] }),
       shareOpen && /* @__PURE__ */ jsxRuntimeExports.jsx(ShareSheet, { target: { kind: "post", post }, onClose: () => setShareOpen(false) }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -19732,7 +21970,7 @@ function StoryViewsSheet({
                 onOpenProfile?.(vu.id);
               },
               children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: vu.username, src: vu.avatar, size: 44 }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: vu.username, src: vu.avatar, size: 44 }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "min-w-0 flex-1", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "flex items-center gap-1 font-medium text-white", children: [
                   "@",
                   vu.username,
@@ -20019,6 +22257,200 @@ function SliderSticker({
     ] })
   ] });
 }
+const MAX_STORY_UPLOAD_BYTES = 78 * 1024 * 1024;
+let pendingStoryPickFile = null;
+function takePendingStoryFile() {
+  const f = pendingStoryPickFile;
+  pendingStoryPickFile = null;
+  return f;
+}
+async function fileFromDataUrl(dataUrl) {
+  const res = await fetch(dataUrl);
+  const blob = await res.blob();
+  const mime = blob.type || "image/jpeg";
+  const ext = mime === "image/gif" ? "gif" : mime === "image/png" ? "png" : mime.startsWith("video/") ? "mp4" : "jpg";
+  return new File([blob], `story.${ext}`, { type: mime });
+}
+async function normalizeStoryImageFile(file) {
+  const isHeic = /heic|heif/i.test(file.type) || /\.hei[cf]$/i.test(file.name);
+  if (isHeic || !file.type.startsWith("image/") && !file.type) {
+    try {
+      const bitmap = await createImageBitmap(file);
+      const maxSide = 1080;
+      const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+      const w = Math.max(1, Math.round(bitmap.width * scale));
+      const h = Math.max(1, Math.round(bitmap.height * scale));
+      const canvas2 = document.createElement("canvas");
+      canvas2.width = w;
+      canvas2.height = h;
+      const ctx = canvas2.getContext("2d");
+      if (!ctx) {
+        bitmap.close();
+        return file;
+      }
+      ctx.drawImage(bitmap, 0, 0, w, h);
+      bitmap.close();
+      const blob = await new Promise(
+        (resolve) => canvas2.toBlob((b) => resolve(b), "image/jpeg", 0.88)
+      );
+      if (blob) return new File([blob], "story.jpg", { type: "image/jpeg" });
+    } catch {
+    }
+  }
+  if (!file.type.startsWith("image/") || file.type === "image/gif") return file;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const maxSide = 1080;
+    const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+    const w = Math.max(1, Math.round(bitmap.width * scale));
+    const h = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas2 = document.createElement("canvas");
+    canvas2.width = w;
+    canvas2.height = h;
+    const ctx = canvas2.getContext("2d");
+    if (!ctx) {
+      bitmap.close();
+      return file;
+    }
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    bitmap.close();
+    const quality = file.size > 3e6 ? 0.82 : 0.88;
+    const blob = await new Promise(
+      (resolve) => canvas2.toBlob((b) => resolve(b), "image/jpeg", quality)
+    );
+    if (!blob) return file;
+    return new File([blob], "story.jpg", { type: "image/jpeg" });
+  } catch {
+    return file;
+  }
+}
+async function prepareStoryFile(file) {
+  if (file.type.startsWith("image/")) {
+    return normalizeStoryImageFile(file);
+  }
+  return file;
+}
+const MAX_STORY_VIDEO_DURATION_SEC = 60;
+function uploadTimeoutMs$1(file) {
+  if (file.type.startsWith("video/")) {
+    if (file.size > 40 * 1024 * 1024) return 3e5;
+    if (file.size > 15 * 1024 * 1024) return 24e4;
+    return 18e4;
+  }
+  if (file.size > 40 * 1024 * 1024) return 18e4;
+  if (file.size > 15 * 1024 * 1024) return 12e4;
+  return 6e4;
+}
+async function validateStoryVideoFile(file, maxDurationSec = MAX_STORY_VIDEO_DURATION_SEC) {
+  if (!file.type.startsWith("video/")) return { ok: true };
+  const cap = Math.max(1, Math.min(60, maxDurationSec));
+  return new Promise((resolve) => {
+    const url2 = URL.createObjectURL(file);
+    const v = document.createElement("video");
+    v.preload = "metadata";
+    const done = (result) => {
+      URL.revokeObjectURL(url2);
+      resolve(result);
+    };
+    v.onloadedmetadata = () => {
+      const d = v.duration;
+      if (Number.isFinite(d) && d > cap + 1) {
+        done({
+          ok: false,
+          error: `مدة الفيديو ${Math.ceil(d)} ثانية — الحد الأقصى ${cap} ثانية.`
+        });
+        return;
+      }
+      done({ ok: true });
+    };
+    v.onerror = () => done({ ok: true });
+    v.src = url2;
+  });
+}
+async function uploadStoryFile(file, opts) {
+  const token = getApiToken();
+  if (!apiBackendEnabled() || !token) {
+    return { ok: false, error: "الخادم غير متصل — شغّل API ثم أعد المحاولة" };
+  }
+  await ensureApiRuntimeConfig();
+  try {
+    const durationCheck = await validateStoryVideoFile(
+      file,
+      opts?.maxVideoDurationSec ?? MAX_STORY_VIDEO_DURATION_SEC
+    );
+    if (!durationCheck.ok) return durationCheck;
+    let prepared = await prepareStoryFile(file);
+    if (prepared.size > MAX_STORY_UPLOAD_BYTES) {
+      const mb = (prepared.size / (1024 * 1024)).toFixed(0);
+      return {
+        ok: false,
+        error: `الملف ${mb} ميجا — الحد الأقصى 78 ميجا. جرّب قصّ الفيديو أو صورة أخف.`
+      };
+    }
+    const up = await apiUploadMedia(token, prepared, {
+      timeoutMs: uploadTimeoutMs$1(prepared),
+      storyVideo: prepared.type.startsWith("video/")
+    });
+    if (!up.ok) return { ok: false, error: up.error };
+    return { ok: true, url: up.url };
+  } catch {
+    return {
+      ok: false,
+      error: "تعذر رفع الستوري — الخادم غير متصل. شغّل npm run api:tunnel على جهازك"
+    };
+  }
+}
+async function resolveStoryMediaForSave(media) {
+  const t = media?.trim() || "";
+  if (!t || t === "📷") return { ok: false, error: "اختر صورة أو فيديو للستوري" };
+  if (t.startsWith("blob:")) {
+    try {
+      const res = await fetch(t);
+      const blob = await res.blob();
+      const ext = blob.type.startsWith("video/") ? "mp4" : "jpg";
+      const file = new File([blob], `story.${ext}`, { type: blob.type || "application/octet-stream" });
+      return uploadStoryFile(file);
+    } catch {
+      return { ok: false, error: "أعد اختيار الملف من زر الإرفاق" };
+    }
+  }
+  if (!t.startsWith("data:")) {
+    return { ok: true, url: t };
+  }
+  const token = getApiToken();
+  if (!apiBackendEnabled() || !token) return { ok: true, url: t };
+  await ensureApiRuntimeConfig();
+  try {
+    const file = await fileFromDataUrl(t);
+    return uploadStoryFile(file);
+  } catch {
+    return {
+      ok: false,
+      error: "تعذر رفع الستوري — الخادم غير متصل. شغّل npm run api:tunnel على جهازك"
+    };
+  }
+}
+function storyPayloadFromUrl(url2) {
+  if (isVideoMediaRef(url2)) return { image: "🎬", video: url2 };
+  return { image: url2 };
+}
+function storyArchiveThumbnailUrl(story) {
+  const media = normalizeStoryMedia(story);
+  if (media.hasImage) return media.imageUrl;
+  if (media.hasVideo && media.imageUrl) return media.imageUrl;
+  return null;
+}
+function normalizeStoryMedia(story) {
+  const imageRaw = story.image?.trim() || "";
+  const videoRaw = story.video?.trim() || "";
+  const videoUrl = videoRaw ? resolveMediaUrl(videoRaw) : "";
+  const imageUrl = imageRaw && !isVideoMediaRef(imageRaw) ? resolveMediaUrl(imageRaw) : "";
+  const hasVideo = !!videoUrl && isRenderableMediaUrl(videoUrl);
+  const hasImage = !!imageUrl && isRenderableMediaUrl(imageUrl);
+  const emojiFallback = !hasVideo && !hasImage ? imageRaw || (videoRaw && !isVideoMediaRef(videoRaw) ? videoRaw : "") : "";
+  return { imageUrl, videoUrl, hasVideo, hasImage, emojiFallback };
+}
+const resolvePostMediaForSave = resolveStoryMediaForSave;
 const STORY_IMAGE_DURATION_MS = 5e3;
 const STORY_VIDEO_MAX_MS = 6e4;
 const STORY_VIDEO_MIN_MS = 1e3;
@@ -20689,7 +23121,7 @@ function StoryViewer({
                   /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex shrink-0 items-center gap-2 px-3 text-white", "data-story-interactive": true, children: [
                     /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: closeViewer, className: "p-2", "aria-label": "رجوع", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronLeft, { size: 24 }) }),
                     /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", onClick: () => onOpenProfile?.(author.id), className: "flex items-center gap-2 flex-1 min-w-0", children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: author.username, src: author.avatar, size: 32 }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: author.username, src: author.avatar, size: 32 }),
                       /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-sm font-semibold inline-flex items-center gap-1", children: [
                         "@",
                         author.username,
@@ -20741,7 +23173,7 @@ function StoryViewer({
                           children: n.text
                         }
                       ) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[10px] leading-tight text-start bg-white/10 rounded-xl px-1.5 py-0.5 mb-1 line-clamp-2 text-white w-full", children: n.text }),
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => onOpenProfile?.(nu.id), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: nu.username, src: nu.avatar, size: 32 }) })
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => onOpenProfile?.(nu.id), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: nu.username, src: nu.avatar, size: 32 }) })
                     ] }, n.id);
                   }) })
                 ]
@@ -20975,7 +23407,7 @@ const StoryTrayItem = reactExports.memo(function StoryTrayItem2({
       },
       children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(
-          Avatar$1,
+          Avatar,
           {
             name: u.username,
             src: u.avatar,
@@ -21011,10 +23443,22 @@ function StoriesRow({ userIds, onOpenStory, onCreateStory }) {
     const rect = myBtnRef.current?.getBoundingClientRect();
     if (hasMyStories) {
       onOpenStory({ userId: me.id, origin: rect });
-    } else {
-      onCreateStory();
+      return;
     }
+    onCreateStory();
   }, [hasMyStories, isGuest, me.id, onCreateStory, onOpenStory]);
+  const createNewStory = reactExports.useCallback(
+    (e) => {
+      e?.stopPropagation();
+      e?.preventDefault();
+      if (isGuest) {
+        notifyGuestActionBlocked();
+        return;
+      }
+      onCreateStory();
+    },
+    [isGuest, onCreateStory]
+  );
   const openFriend = reactExports.useCallback(
     (id, origin) => {
       onOpenStory({ userId: id, origin });
@@ -21044,7 +23488,7 @@ function StoriesRow({ userIds, onOpenStory, onCreateStory }) {
                 children: [
                   /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative", children: [
                     /* @__PURE__ */ jsxRuntimeExports.jsx(
-                      Avatar$1,
+                      Avatar,
                       {
                         name: me.username,
                         src: me.avatar,
@@ -21059,16 +23503,9 @@ function StoriesRow({ userIds, onOpenStory, onCreateStory }) {
                         role: "button",
                         tabIndex: 0,
                         "aria-label": "إنشاء ستوري",
-                        onClick: (e) => {
-                          e.stopPropagation();
-                          onCreateStory();
-                        },
+                        onClick: createNewStory,
                         onKeyDown: (e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            onCreateStory();
-                          }
+                          if (e.key === "Enter" || e.key === " ") createNewStory(e);
                         },
                         className: "absolute -bottom-0.5 -end-0.5 z-10 flex h-5 w-5 cursor-pointer items-center justify-center rounded-full bg-primary text-xs text-primary-foreground shadow",
                         children: "+"
@@ -21114,7 +23551,6 @@ function HomeScreen({
   const [focusCommentsOnOpen, setFocusCommentsOnOpen] = reactExports.useState(false);
   const [commentsSheetPostId, setCommentsSheetPostId] = reactExports.useState(null);
   const [sheetCommentDraft, setSheetCommentDraft] = reactExports.useState("");
-  const [showStoryCreate, setShowStoryCreate] = reactExports.useState(false);
   const [feedTick, setFeedTick] = reactExports.useState(0);
   const [pullHint, setPullHint] = reactExports.useState(false);
   const touchRef = reactExports.useRef({ y0: 0, active: false });
@@ -21165,26 +23601,16 @@ function HomeScreen({
     () => commentsSheetPostId ? state.posts.find((po) => po.id === commentsSheetPostId) ?? null : null,
     [state.posts, commentsSheetPostId]
   );
-  const handleStoryCreate = () => {
+  const handleStoryCreate = reactExports.useCallback(() => {
     if (isGuest) {
       notifyGuestActionBlocked();
       return;
     }
-    const input = document.createElement("input");
-    input.type = "file";
-    input.accept = "image/*,video/*";
-    input.onchange = (e) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      stashPendingStoryFile(file);
-      window.dispatchEvent(
-        new CustomEvent("retweet-open-create", {
-          detail: { type: "story" }
-        })
-      );
-    };
-    input.click();
-  };
+    requestOpenStoryGallery();
+  }, [isGuest]);
+  const goToReelsTab = reactExports.useCallback(() => {
+    window.dispatchEvent(new CustomEvent("retweet-go-reels"));
+  }, []);
   const tabScrollRef = useTabPanelScrollRef();
   reactExports.useEffect(() => {
     const scrollTop = () => tabScrollRef?.current?.scrollTop ?? 0;
@@ -21267,109 +23693,145 @@ function HomeScreen({
               onCreateStory: handleStoryCreate
             }
           ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "px-3 py-2", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 rounded-full border border-border bg-card p-1", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                type: "button",
+                className: "rounded-full bg-background px-3 py-1.5 text-sm font-semibold text-foreground shadow-sm",
+                "aria-label": "الرئيسية",
+                children: "الرئيسية"
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "button",
+              {
+                type: "button",
+                onClick: goToReelsTab,
+                className: "flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-sm font-semibold text-muted-foreground hover:bg-background/80 hover:text-foreground",
+                "aria-label": "ريلز",
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(SquarePlay, { size: 14 }),
+                  "ريلز"
+                ]
+              }
+            )
+          ] }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { "aria-label": "الخلاصة", className: "relative z-0 flex flex-col bg-background", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(HomeFeedActionsProvider, { value: feedActions, children: feed.map((p) => /* @__PURE__ */ jsxRuntimeExports.jsx(HomeFeedPostItem, { post: p }, p.id)) }),
             feed.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-center text-muted-foreground py-12", children: t("noPosts") })
           ] }),
           shareTarget && /* @__PURE__ */ jsxRuntimeExports.jsx(ShareSheet, { target: { kind: "post", post: shareTarget }, onClose: () => setShareTarget(null) }),
-          commentsSheetPost && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-[60] bg-black/50 flex items-end", onClick: () => setCommentsSheetPostId(null), children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-            "div",
-            {
-              className: "mx-auto flex w-full max-w-md flex-col rounded-t-3xl border-t border-border bg-background text-foreground shadow-2xl",
-              style: { height: "min(72vh, 640px)", maxHeight: "72vh" },
-              onClick: (e) => e.stopPropagation(),
-              children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex shrink-0 items-center justify-between border-b border-border p-3", children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-sm font-semibold", children: [
-                    "التعليقات (",
-                    commentsSheetPost.comments.length,
-                    ")"
+          commentsSheetPost && (() => {
+            const sheetComments = (Array.isArray(commentsSheetPost.comments) ? commentsSheetPost.comments : []).filter((c) => {
+              if (!c || typeof c !== "object") return false;
+              const row = c;
+              return typeof row.id === "string" && row.id.trim().length > 0 && typeof row.userId === "string" && row.userId.trim().length > 0 && typeof row.text === "string";
+            }).map((c) => ({
+              id: c.id,
+              userId: c.userId,
+              text: c.text,
+              createdAt: typeof c.createdAt === "number" ? c.createdAt : Date.now()
+            }));
+            return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-[60] bg-black/50 flex items-end", onClick: () => setCommentsSheetPostId(null), children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "div",
+              {
+                className: "mx-auto flex w-full max-w-md flex-col rounded-t-3xl border-t border-border bg-background text-foreground shadow-2xl",
+                style: { height: "min(72vh, 640px)", maxHeight: "72vh" },
+                onClick: (e) => e.stopPropagation(),
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex shrink-0 items-center justify-between border-b border-border p-3", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-sm font-semibold", children: [
+                      "التعليقات (",
+                      sheetComments.length,
+                      ")"
+                    ] }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => setCommentsSheetPostId(null), "aria-label": "إغلاق", children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 22 }) })
                   ] }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => setCommentsSheetPostId(null), "aria-label": "إغلاق", children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 22 }) })
-                ] }),
-                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-h-0 flex-1 overflow-y-auto p-3 space-y-2", children: [
-                  commentsSheetPost.comments.map((c) => {
-                    const cu = userById(state, c.userId);
-                    return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative flex gap-2 text-sm", children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsx(
-                        "button",
-                        {
-                          type: "button",
-                          className: "shrink-0",
-                          onClick: () => cu && onOpenProfile(cu.id, {
-                            postId: commentsSheetPost.id,
-                            tab: "home",
-                            commentsOpen: true,
-                            homeSurface: "feed_comments_sheet"
-                          }),
-                          children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: cu?.username || "?", src: cu?.avatar, size: 32 })
-                        }
-                      ),
-                      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-                        /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-h-0 flex-1 overflow-y-auto p-3 space-y-2", children: [
+                    sheetComments.map((c) => {
+                      const cu = userById(state, c.userId);
+                      return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative flex gap-2 text-sm", children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsx(
                           "button",
                           {
                             type: "button",
-                            className: "font-semibold",
+                            className: "shrink-0",
                             onClick: () => cu && onOpenProfile(cu.id, {
                               postId: commentsSheetPost.id,
                               tab: "home",
                               commentsOpen: true,
                               homeSurface: "feed_comments_sheet"
                             }),
-                            children: [
-                              "@",
-                              cu?.username
-                            ]
+                            children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: cu?.username || "?", src: cu?.avatar, size: 32 })
                           }
                         ),
-                        " ",
-                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: c.text })
-                      ] }),
-                      currentUser && c.userId === currentUser.id && /* @__PURE__ */ jsxRuntimeExports.jsx(
-                        "button",
-                        {
-                          type: "button",
-                          onClick: () => {
-                            if (!window.confirm("حذف هذا التعليق؟")) return;
-                            deleteComment(commentsSheetPost.id, c.id);
-                          },
-                          className: "shrink-0 rounded-full p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive",
-                          "aria-label": "حذف التعليق",
-                          children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 16 })
-                        }
-                      )
-                    ] }, c.id);
-                  }),
-                  commentsSheetPost.comments.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-center text-muted-foreground text-sm py-6", children: "لا تعليقات بعد" })
-                ] }),
-                /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                  "form",
-                  {
-                    className: "p-3 border-t border-border flex gap-2 shrink-0",
-                    onSubmit: (e) => {
-                      e.preventDefault();
-                      if (!sheetCommentDraft.trim()) return;
-                      addComment(commentsSheetPost.id, sheetCommentDraft);
-                      setSheetCommentDraft("");
-                    },
-                    children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsx(
-                        "input",
-                        {
-                          value: sheetCommentDraft,
-                          onChange: (e) => setSheetCommentDraft(e.target.value),
-                          placeholder: "أضف تعليقاً...",
-                          className: "flex-1 bg-input rounded-full px-4 py-2 text-sm outline-none"
-                        }
-                      ),
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "submit", className: "text-primary font-semibold text-sm px-2", children: "إرسال" })
-                    ]
-                  }
-                )
-              ]
-            }
-          ) }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+                          /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                            "button",
+                            {
+                              type: "button",
+                              className: "font-semibold",
+                              onClick: () => cu && onOpenProfile(cu.id, {
+                                postId: commentsSheetPost.id,
+                                tab: "home",
+                                commentsOpen: true,
+                                homeSurface: "feed_comments_sheet"
+                              }),
+                              children: [
+                                "@",
+                                cu?.username
+                              ]
+                            }
+                          ),
+                          " ",
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: c.text })
+                        ] }),
+                        currentUser && c.userId === currentUser.id && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                          "button",
+                          {
+                            type: "button",
+                            onClick: () => {
+                              if (!window.confirm("حذف هذا التعليق؟")) return;
+                              deleteComment(commentsSheetPost.id, c.id);
+                            },
+                            className: "shrink-0 rounded-full p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive",
+                            "aria-label": "حذف التعليق",
+                            children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 16 })
+                          }
+                        )
+                      ] }, c.id);
+                    }),
+                    sheetComments.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-center text-muted-foreground text-sm py-6", children: "لا تعليقات بعد" })
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                    "form",
+                    {
+                      className: "p-3 border-t border-border flex gap-2 shrink-0",
+                      onSubmit: (e) => {
+                        e.preventDefault();
+                        if (!sheetCommentDraft.trim()) return;
+                        addComment(commentsSheetPost.id, sheetCommentDraft);
+                        setSheetCommentDraft("");
+                      },
+                      children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsx(
+                          "input",
+                          {
+                            value: sheetCommentDraft,
+                            onChange: (e) => setSheetCommentDraft(e.target.value),
+                            placeholder: "أضف تعليقاً...",
+                            className: "flex-1 bg-input rounded-full px-4 py-2 text-sm outline-none"
+                          }
+                        ),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "submit", className: "text-primary font-semibold text-sm px-2", children: "إرسال" })
+                      ]
+                    }
+                  )
+                ]
+              }
+            ) });
+          })(),
           storyOpen && /* @__PURE__ */ jsxRuntimeExports.jsx(
             StoryViewer,
             {
@@ -21630,7 +24092,7 @@ function SearchScreen({
             searching && accountList.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground py-2", children: "جاري التحديث من الخادم…" }),
             !searching && accountList.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground py-2", children: qq ? "لا توجد حسابات مطابقة" : "لا توجد حسابات بعد" }),
             accountList.map((u) => /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", onClick: () => onOpenProfile(u.id), className: "w-full flex items-center gap-3 p-2 hover:bg-secondary rounded-2xl", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: u.username, src: u.avatar }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u.username, src: u.avatar }),
               /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 text-start", children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "truncate text-sm font-semibold", children: userDisplayName(u) }),
                 /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "truncate text-xs text-muted-foreground", dir: "ltr", children: [
@@ -21844,7 +24306,7 @@ function ReelsScreen({
   restoreFromProfileContext = null,
   onConsumedRestoreFromProfile
 }) {
-  const { state, toggleLike, currentUser, addComment, isGuest, refreshFromServer } = useApp();
+  const { state, toggleLike, toggleRepost, currentUser, addComment, isGuest, refreshFromServer } = useApp();
   const isTabActive = useIsTabActive("reels");
   const t = useT();
   const me = currentUser;
@@ -21866,6 +24328,20 @@ function ReelsScreen({
   const [commentMenuId, setCommentMenuId] = reactExports.useState(null);
   const [heartBurst, setHeartBurst] = reactExports.useState(null);
   const [holdPaused, setHoldPaused] = reactExports.useState(false);
+  reactExports.useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("retweet-reels-comments-open", {
+        detail: { open: !!commentsFor }
+      })
+    );
+    return () => {
+      window.dispatchEvent(
+        new CustomEvent("retweet-reels-comments-open", {
+          detail: { open: false }
+        })
+      );
+    };
+  }, [commentsFor]);
   const scrollRef = reactExports.useRef(null);
   const pullRef = reactExports.useRef({ y0: 0, active: false });
   const activeReelIdRef = reactExports.useRef(null);
@@ -22064,6 +24540,15 @@ function ReelsScreen({
           backdropFilter: "none"
         },
         children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              type: "button",
+              "aria-label": "create",
+              className: "absolute start-4 bottom-2 p-1 text-white",
+              children: /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 24 })
+            }
+          ),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-1 items-center justify-center gap-6 px-4", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(
               "button",
@@ -22084,17 +24569,13 @@ function ReelsScreen({
               }
             )
           ] }),
-          reels.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
             "button",
             {
               type: "button",
-              onClick: () => {
-                unlockSound();
-                setSoundOn((s) => !s);
-              },
-              className: "absolute end-4 bottom-2 rounded-full bg-black/35 p-2 backdrop-blur-sm",
-              "aria-label": soundOn ? "كتم الصوت" : "تشغيل الصوت",
-              children: soundOn && effectiveSoundOn ? /* @__PURE__ */ jsxRuntimeExports.jsx(Volume2, { size: 20 }) : /* @__PURE__ */ jsxRuntimeExports.jsx(VolumeX, { size: 20 })
+              "aria-label": "reels settings",
+              className: "absolute end-4 bottom-2 p-1 text-white",
+              children: /* @__PURE__ */ jsxRuntimeExports.jsx(SlidersHorizontal, { size: 22 })
             }
           )
         ]
@@ -22122,8 +24603,13 @@ function ReelsScreen({
           reels.map((r2) => {
             const slideH = slideHeightPx > 0 ? slideHeightPx : 0;
             const u = userById(state, r2.userId);
+            const friendReposterId = (r2.reposts || []).find(
+              (uid2) => uid2 !== me.id && me.following.includes(uid2)
+            );
+            const friendReposter = friendReposterId ? userById(state, friendReposterId) : null;
             const media = normalizePostMedia(r2);
             const liked = r2.likes.includes(me.id);
+            const reposted = r2.reposts.includes(me.id);
             const notes = visibleMediaNotes(state, "post", r2.id, me.id).slice(0, 8);
             const isActive = isTabActive && activeReelId === r2.id;
             return /* @__PURE__ */ jsxRuntimeExports.jsxs(ReelSlide, { reelId: r2.id, slideHeightPx: slideH, children: [
@@ -22219,6 +24705,28 @@ function ReelsScreen({
                       {
                         onClick: () => {
                           if (guestBlock()) return;
+                          toggleRepost(r2.id);
+                        },
+                        label: "ريبوست",
+                        icon: /* @__PURE__ */ jsxRuntimeExports.jsx(
+                          Repeat2,
+                          {
+                            size: 28,
+                            strokeWidth: 1.9,
+                            className: reposted ? "text-violet-400" : "text-white",
+                            style: { filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.6))" }
+                          }
+                        ),
+                        count: r2.reposts.length,
+                        active: reposted,
+                        activeColor: "text-violet-400"
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      SideActionButton,
+                      {
+                        onClick: () => {
+                          if (guestBlock()) return;
                           setSharePost(r2);
                         },
                         label: "مشاركة",
@@ -22235,7 +24743,7 @@ function ReelsScreen({
                         icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Bookmark, { size: 28, strokeWidth: 1.75, style: { filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.6))" } })
                       }
                     ),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-9 w-9 overflow-hidden rounded-full border-2 border-white/50 shadow-lg", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: u?.username || "?", src: u?.avatar, size: 36 }) })
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-9 w-9 overflow-hidden rounded-full border-2 border-white/50 shadow-lg", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u?.username || "?", src: u?.avatar, size: 36 }) })
                   ]
                 }
               ),
@@ -22248,6 +24756,26 @@ function ReelsScreen({
                     paddingInlineEnd: "var(--reel-safe-inline-end, 4.5rem)"
                   },
                   children: [
+                    friendReposter && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "button",
+                      {
+                        type: "button",
+                        onClick: () => onOpenProfile(friendReposter.id, { postId: r2.id, tab: "reels" }),
+                        className: "mb-2 inline-flex items-center rounded-full bg-black/50 p-1 backdrop-blur-sm",
+                        "aria-label": `@${friendReposter.username} repost`,
+                        children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative", children: [
+                          /* @__PURE__ */ jsxRuntimeExports.jsx(
+                            Avatar,
+                            {
+                              name: friendReposter.username,
+                              src: friendReposter.avatar,
+                              size: 30
+                            }
+                          ),
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "absolute -bottom-1 -end-1 flex h-4 w-4 items-center justify-center rounded-full bg-violet-600 ring-2 ring-black", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Repeat2, { size: 10, className: "text-white" }) })
+                        ] })
+                      }
+                    ),
                     notes.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-2.5 flex flex-wrap gap-1.5 max-h-14 overflow-y-auto no-scrollbar", children: notes.map((n) => {
                       const nu = userById(state, n.authorId);
                       if (!nu) return null;
@@ -22265,7 +24793,7 @@ function ReelsScreen({
                                 type: "button",
                                 onClick: () => onOpenProfile(nu.id, { tab: "reels" }),
                                 className: "shrink-0 ring-1 ring-white/30 rounded-full",
-                                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: nu.username, src: nu.avatar, size: 20 })
+                                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: nu.username, src: nu.avatar, size: 20 })
                               }
                             ),
                             canReplyNote ? /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -22292,7 +24820,7 @@ function ReelsScreen({
                         onClick: () => u && onOpenProfile(u.id, { tab: "reels" }),
                         className: "mb-1 flex items-center gap-1.5",
                         children: [
-                          /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: u?.username || "?", src: u?.avatar, size: 28, className: "ring-2 ring-white/40" }),
+                          /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u?.username || "?", src: u?.avatar, size: 28, className: "ring-2 ring-white/40" }),
                           /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-[14px] font-semibold drop-shadow-sm", children: [
                             "@",
                             u?.username ?? "user"
@@ -22360,7 +24888,7 @@ function ReelsScreen({
                           tab: "reels",
                           commentsOpen: true
                         }),
-                        children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: cu?.username || "?", src: cu?.avatar, size: 34 })
+                        children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: cu?.username || "?", src: cu?.avatar, size: 34 })
                       }
                     ),
                     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1", children: [
@@ -22419,7 +24947,7 @@ function ReelsScreen({
                     setCommentDraft("");
                   },
                   children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: me.username, src: me.avatar, size: 32, className: "shrink-0" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: me.username, src: me.avatar, size: 32, className: "shrink-0" }),
                     /* @__PURE__ */ jsxRuntimeExports.jsx(
                       "input",
                       {
@@ -22675,202 +25203,6 @@ function ChatStackRoomGestureShell({
       children
     }
   ) });
-}
-let nativeKeyboardPx = 0;
-let engineRefs = 0;
-let rafLoop = 0;
-let nativeListenersReady = false;
-function readChatKeyboardSnapshot() {
-  if (typeof window === "undefined") {
-    return { keyboardInset: 0, vvHeight: 0, vvOffsetTop: 0, open: false };
-  }
-  const vv = window.visualViewport;
-  const layoutH = window.innerHeight;
-  const vvHeight = vv ? Math.round(vv.height) : layoutH;
-  const vvOffsetTop = vv ? Math.round(vv.offsetTop) : 0;
-  const vvInset = Math.max(0, Math.round(layoutH - vvHeight - vvOffsetTop));
-  const keyboardInset = Math.max(vvInset, nativeKeyboardPx);
-  return {
-    keyboardInset,
-    vvHeight,
-    vvOffsetTop,
-    open: keyboardInset > 8
-  };
-}
-function lockLayoutViewportForKeyboard(open) {
-  if (typeof window === "undefined") return;
-  const vv = window.visualViewport;
-  if (open) {
-    if (vv && vv.offsetTop !== 0) {
-      try {
-        window.scrollTo(0, 0);
-      } catch {
-      }
-    }
-    if (isNativeCapacitorShell()) {
-      document.body.style.overflow = "hidden";
-      document.documentElement.style.overflow = "hidden";
-    }
-    return;
-  }
-  document.body.style.overflow = "";
-  document.documentElement.style.overflow = "";
-}
-function applyChatKeyboardCss() {
-  const snap = readChatKeyboardSnapshot();
-  const root = document.documentElement;
-  root.style.setProperty("--vv-height", `${snap.vvHeight}px`);
-  root.style.setProperty("--vv-offset-top", `${snap.vvOffsetTop}px`);
-  root.style.setProperty("--vv-keyboard-inset", `${snap.keyboardInset}px`);
-  root.style.setProperty("--chat-composer-bottom", `${snap.keyboardInset}px`);
-  root.style.setProperty("--chat-sab-effective", snap.open ? "0px" : "var(--sab)");
-  const wasOpen = root.classList.contains("retweet-chat-keyboard-open");
-  root.classList.toggle("retweet-chat-keyboard-open", snap.open);
-  if (wasOpen !== snap.open) lockLayoutViewportForKeyboard(snap.open);
-  return snap;
-}
-function scheduleRafLoop() {
-  if (rafLoop) return;
-  const tick = () => {
-    rafLoop = 0;
-    const snap = applyChatKeyboardCss();
-    if (snap.open) rafLoop = requestAnimationFrame(tick);
-  };
-  rafLoop = requestAnimationFrame(tick);
-}
-function onViewportChange() {
-  const snap = applyChatKeyboardCss();
-  if (snap.open) scheduleRafLoop();
-}
-async function ensureNativeKeyboardBridge() {
-  if (nativeListenersReady || !isNativeCapacitorShell()) return;
-  nativeListenersReady = true;
-  try {
-    const { Keyboard, KeyboardResize } = await import("./index-407G7XJi.js");
-    try {
-      await Keyboard.setResizeMode({ mode: KeyboardResize.None });
-    } catch {
-    }
-    Keyboard.addListener("keyboardWillShow", (info) => {
-      nativeKeyboardPx = Math.max(0, Math.round(info.keyboardHeight));
-      onViewportChange();
-    });
-    Keyboard.addListener("keyboardDidShow", (info) => {
-      nativeKeyboardPx = Math.max(0, Math.round(info.keyboardHeight));
-      onViewportChange();
-    });
-    Keyboard.addListener("keyboardWillHide", () => {
-      nativeKeyboardPx = 0;
-      onViewportChange();
-    });
-    Keyboard.addListener("keyboardDidHide", () => {
-      nativeKeyboardPx = 0;
-      onViewportChange();
-    });
-  } catch {
-    nativeListenersReady = false;
-  }
-}
-function mountChatKeyboardEngine() {
-  engineRefs += 1;
-  if (engineRefs > 1) {
-    return () => {
-      engineRefs = Math.max(0, engineRefs - 1);
-    };
-  }
-  void ensureNativeKeyboardBridge();
-  applyChatKeyboardCss();
-  const vv = window.visualViewport;
-  const onSafeArea = () => onViewportChange();
-  vv?.addEventListener("resize", onViewportChange, { passive: true });
-  vv?.addEventListener("scroll", onViewportChange, { passive: true });
-  window.addEventListener("resize", onViewportChange, { passive: true });
-  window.addEventListener("orientationchange", onViewportChange, { passive: true });
-  window.addEventListener("retweet-safe-area-change", onSafeArea, { passive: true });
-  return () => {
-    engineRefs = Math.max(0, engineRefs - 1);
-    if (engineRefs > 0) return;
-    if (rafLoop) cancelAnimationFrame(rafLoop);
-    rafLoop = 0;
-    nativeKeyboardPx = 0;
-    vv?.removeEventListener("resize", onViewportChange);
-    vv?.removeEventListener("scroll", onViewportChange);
-    window.removeEventListener("resize", onViewportChange);
-    window.removeEventListener("orientationchange", onViewportChange);
-    window.removeEventListener("retweet-safe-area-change", onSafeArea);
-    const root = document.documentElement;
-    root.classList.remove("retweet-chat-keyboard-open");
-    root.style.removeProperty("--chat-composer-bottom");
-    root.style.removeProperty("--chat-sab-effective");
-    lockLayoutViewportForKeyboard(false);
-  };
-}
-function readVisualViewportLayout() {
-  const snap = readChatKeyboardSnapshot();
-  return {
-    height: snap.vvHeight,
-    offsetTop: snap.vvOffsetTop,
-    keyboardInset: snap.keyboardInset
-  };
-}
-function chatComposerBottomPadding(keyboardOpen) {
-  return keyboardOpen ? "0px" : "var(--chat-sab-effective, var(--sab))";
-}
-function useVisualViewportLayout() {
-  const [layout, setLayout] = reactExports.useState(readVisualViewportLayout);
-  const prevInsetRef = reactExports.useRef(layout.keyboardInset);
-  const prevHeightRef = reactExports.useRef(layout.height);
-  reactExports.useEffect(() => {
-    const vv = window.visualViewport;
-    let raf = 0;
-    const sync = () => {
-      if (raf) cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => {
-        raf = 0;
-        const next = readVisualViewportLayout();
-        const wasOpen = prevInsetRef.current > 8;
-        const isOpen = next.keyboardInset > 8;
-        const heightDelta = Math.abs(next.height - prevHeightRef.current);
-        prevInsetRef.current = next.keyboardInset;
-        prevHeightRef.current = next.height;
-        if (wasOpen !== isOpen || heightDelta > 50) {
-          setLayout(next);
-        }
-      });
-    };
-    sync();
-    vv?.addEventListener("resize", sync, { passive: true });
-    vv?.addEventListener("scroll", sync, { passive: true });
-    window.addEventListener("resize", sync, { passive: true });
-    window.addEventListener("orientationchange", sync, { passive: true });
-    return () => {
-      if (raf) cancelAnimationFrame(raf);
-      vv?.removeEventListener("resize", sync);
-      vv?.removeEventListener("scroll", sync);
-      window.removeEventListener("resize", sync);
-      window.removeEventListener("orientationchange", sync);
-    };
-  }, []);
-  return layout;
-}
-function useChatKeyboardInsets(enabled) {
-  const [snap, setSnap] = reactExports.useState(readChatKeyboardSnapshot);
-  reactExports.useEffect(() => {
-    const unmountEngine = mountChatKeyboardEngine();
-    const sync = () => setSnap(readChatKeyboardSnapshot());
-    sync();
-    const vv = window.visualViewport;
-    vv?.addEventListener("resize", sync, { passive: true });
-    vv?.addEventListener("scroll", sync, { passive: true });
-    window.addEventListener("retweet-chat-keyboard-sync", sync);
-    return () => {
-      vv?.removeEventListener("resize", sync);
-      vv?.removeEventListener("scroll", sync);
-      window.removeEventListener("retweet-chat-keyboard-sync", sync);
-      unmountEngine();
-    };
-  }, [enabled]);
-  return snap;
 }
 const NATIVE_LONG_PRESS_ATTR = "data-native-long-press";
 const ALLOW_SELECT_SELECTOR = 'input, textarea, select, [contenteditable="true"], .chat-allow-select, .native-allow-select';
@@ -23159,7 +25491,7 @@ function ChatDmIntroCard({ other, meId, state, onOpenProfile, isQuran, hasMessag
         onClick: onOpenProfile,
         className: "rounded-full transition active:scale-[0.98]",
         "aria-label": `عرض ملف @${other.username}`,
-        children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: other.username, src: other.avatar, size: 72 })
+        children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: other.username, src: other.avatar, size: 72 })
       }
     ),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", onClick: onOpenProfile, className: "mt-3 flex max-w-full items-center justify-center gap-1", children: [
@@ -23184,7 +25516,7 @@ function ChatDmIntroCard({ other, meId, state, onOpenProfile, isQuran, hasMessag
       ] })
     ] }),
     mutualUsers.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4 flex max-w-full flex-col items-center gap-2", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex items-center justify-center -space-x-2 rtl:space-x-reverse", children: mutualUsers.slice(0, 3).map((u) => /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: u.username, src: u.avatar, size: 28 }, u.id)) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex items-center justify-center -space-x-2 rtl:space-x-reverse", children: mutualUsers.slice(0, 3).map((u) => /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u.username, src: u.avatar, size: 28 }, u.id)) }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm " + muted, children: mutualUsers.length === 1 ? `صديق مشترك · @${mutualUsers[0].username}` : `${formatCompactCount(mutualUsers.length)} أصدقاء مشتركون` })
     ] }) : followingEachOther ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-4 text-sm " + muted, children: "أنتم تتابعان بعضكم" }) : state.users.find((u) => u.id === meId)?.following.includes(other.id) ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-4 text-sm " + muted, children: "أنت تتابعه" }) : other.followers.includes(meId) ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-4 text-sm " + muted, children: "يتابعك" }) : null,
     other.bio?.trim() ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-3 max-w-sm text-sm leading-relaxed line-clamp-2 " + muted, children: other.bio.trim() }) : null,
@@ -23554,182 +25886,6 @@ function ChatDrawingCanvas({
     }
   );
 }
-function loadImage(url2) {
-  return new Promise((resolve, reject) => {
-    const im = new Image();
-    im.onload = () => resolve(im);
-    im.onerror = reject;
-    im.src = url2;
-  });
-}
-async function mergeTwoImagesSideBySide(leftUrl, rightUrl) {
-  const [a, b] = await Promise.all([loadImage(leftUrl), loadImage(rightUrl)]);
-  const h = Math.max(a.height, b.height);
-  const wa = Math.round(a.width * (h / a.height));
-  const wb = Math.round(b.width * (h / b.height));
-  const canvas2 = document.createElement("canvas");
-  canvas2.width = wa + wb;
-  canvas2.height = h;
-  const ctx = canvas2.getContext("2d");
-  if (!ctx) return leftUrl;
-  ctx.drawImage(a, 0, 0, wa, h);
-  ctx.drawImage(b, wa, 0, wb, h);
-  return canvas2.toDataURL("image/jpeg", 0.92);
-}
-function ChatCameraComposeModal({
-  draft,
-  senderName,
-  senderAvatar,
-  onClose,
-  onSend
-}) {
-  const [preview, setPreview] = reactExports.useState("");
-  const [kind, setKind] = reactExports.useState("image");
-  const [viewOnce, setViewOnce] = reactExports.useState(true);
-  const splitInputRef = reactExports.useRef(null);
-  reactExports.useEffect(() => {
-    if (!draft) {
-      setPreview("");
-      return;
-    }
-    setPreview(draft.dataUrl);
-    setKind(draft.kind);
-    setViewOnce(draft.kind === "image");
-  }, [draft]);
-  const applyTextOnImage = reactExports.useCallback(() => {
-    if (kind !== "image" || !draft) return;
-    const t = window.prompt("اكتب على الصورة", "");
-    if (t == null || !t.trim()) return;
-    void (async () => {
-      try {
-        const base = preview || draft.dataUrl;
-        const img = await loadImage(base);
-        const canvas2 = document.createElement("canvas");
-        canvas2.width = img.width;
-        canvas2.height = img.height;
-        const ctx = canvas2.getContext("2d");
-        if (!ctx) return;
-        ctx.drawImage(img, 0, 0);
-        const fontSize = Math.max(20, Math.round(img.width / 14));
-        ctx.font = `bold ${fontSize}px system-ui, sans-serif`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.strokeStyle = "rgba(0,0,0,0.65)";
-        ctx.lineWidth = Math.max(3, fontSize / 8);
-        ctx.fillStyle = "#fff";
-        const cx = img.width / 2;
-        const cy = img.height / 2;
-        const line = t.trim();
-        ctx.strokeText(line, cx, cy);
-        ctx.fillText(line, cx, cy);
-        setPreview(canvas2.toDataURL("image/jpeg", 0.92));
-      } catch {
-        alert("تعذّر تطبيق النص");
-      }
-    })();
-  }, [kind, preview, draft]);
-  const onPickSecondLayout = reactExports.useCallback(
-    (e) => {
-      const f = e.target.files?.[0];
-      e.target.value = "";
-      if (!f || !f.type.startsWith("image/") || kind !== "image" || !draft) return;
-      const r2 = new FileReader();
-      r2.onload = () => {
-        void (async () => {
-          try {
-            const second = String(r2.result);
-            const merged = await mergeTwoImagesSideBySide(preview || draft.dataUrl, second);
-            setPreview(merged);
-          } catch {
-            alert("تعذّر تجميع الصورتين");
-          }
-        })();
-      };
-      r2.readAsDataURL(f);
-    },
-    [kind, preview, draft]
-  );
-  const downloadMedia = reactExports.useCallback(() => {
-    const url2 = preview || draft?.dataUrl;
-    if (!url2) return;
-    const a = document.createElement("a");
-    a.href = url2;
-    a.download = kind === "video" ? "video.webm" : "photo.jpg";
-    a.click();
-  }, [preview, draft, kind]);
-  if (typeof document === "undefined" || !draft) return null;
-  const toolBtn = "flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white backdrop-blur-sm hover:bg-white/20 active:scale-95 transition";
-  const body = /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "fixed inset-0 z-[360] mx-auto flex max-w-md flex-col bg-black", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex shrink-0 items-center justify-between gap-2 px-3 pb-2 pt-3", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onClose, className: toolBtn, "aria-label": "إغلاق", children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 20 }) }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-w-0 flex-1 justify-end gap-2 overflow-x-auto py-1 pe-1 [scrollbar-width:none]", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: toolBtn, "aria-label": "فلاتر", onClick: () => alert("الفلاتر قريباً"), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Sparkles, { size: 18 }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: toolBtn, "aria-label": "نص", onClick: applyTextOnImage, disabled: kind !== "image", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Type, { size: 18, className: kind !== "image" ? "opacity-40" : "" }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: toolBtn, "aria-label": "رسم", onClick: () => alert("الرسم قريباً"), children: /* @__PURE__ */ jsxRuntimeExports.jsx(PenLine, { size: 18 }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: toolBtn, "aria-label": "ملصقات", onClick: () => alert("الملصقات قريباً"), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Sticker, { size: 18 }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: toolBtn, "aria-label": "موسيقى", onClick: () => alert("الموسيقى قريباً"), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Music, { size: 18 }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: toolBtn, "aria-label": "تنزيل", onClick: downloadMedia, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Download, { size: 18 }) })
-      ] })
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex min-h-0 flex-1 items-center justify-center px-3 pb-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "relative max-h-[min(70vh,520px)] w-full overflow-hidden rounded-2xl bg-zinc-900 ring-1 ring-white/10", children: kind === "image" ? /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: preview || draft.dataUrl, alt: "", className: "mx-auto block h-full max-h-[min(70vh,520px)] w-auto max-w-full object-contain" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("video", { src: preview || draft.dataUrl, className: "mx-auto block h-full max-h-[min(70vh,520px)] w-full object-contain", controls: true, playsInline: true }) }) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("input", { ref: splitInputRef, type: "file", accept: "image/*", className: "hidden", onChange: onPickSecondLayout }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "shrink-0 space-y-3 rounded-t-3xl border-t border-white/10 bg-zinc-950 px-4 pb-6 pt-3", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-wrap gap-2", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(
-          "button",
-          {
-            type: "button",
-            onClick: () => splitInputRef.current?.click(),
-            disabled: kind !== "image",
-            className: "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium " + (kind === "image" ? "border-violet-500/50 bg-violet-600/25 text-violet-100" : "border-white/10 text-white/40"),
-            children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx(LayoutGrid, { size: 14 }),
-              "تقسيم شاشة"
-            ]
-          }
-        ),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs(
-          "button",
-          {
-            type: "button",
-            onClick: () => alert("تكرار الفيديو (بوميرانغ) قريباً"),
-            disabled: kind !== "video",
-            className: "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium " + (kind === "video" ? "border-violet-500/50 bg-violet-600/25 text-violet-100" : "border-white/10 text-white/40"),
-            children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx(Infinity$1, { size: 14 }),
-              "تكرار"
-            ]
-          }
-        )
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "flex cursor-pointer items-center justify-between gap-3 text-sm text-zinc-200", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "flex items-center gap-2", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Eye, { size: 16, className: "text-zinc-400" }),
-          "مشاهدة لمرة واحدة"
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("input", { type: "checkbox", checked: viewOnce, onChange: (e) => setViewOnce(e.target.checked), className: "h-4 w-4 accent-violet-500" })
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[11px] leading-relaxed text-zinc-500", children: "عند التفعيل لا يظهر المحتوى كاملاً في الفقاعة؛ يظهر زرّ بنفسجي، وبعد فتحه مرة لا يمكن إعادة المشاهدة." }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs(
-        "button",
-        {
-          type: "button",
-          onClick: () => {
-            const content = preview || draft.dataUrl;
-            onSend({ type: kind, content, viewOnce });
-            onClose();
-          },
-          className: "flex w-full items-center justify-center gap-2 rounded-full bg-white py-3 text-sm font-semibold text-black shadow-lg active:scale-[0.99]",
-          children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: senderName || "?", src: senderAvatar, size: 28 }),
-            "إرسال"
-          ]
-        }
-      )
-    ] })
-  ] });
-  return reactDomExports.createPortal(body, document.body);
-}
 function ViewOnceMediaOverlay({
   media,
   src,
@@ -23981,7 +26137,7 @@ function ChatDrawComposeModal({
               disabled: !layers2.length,
               className: "flex w-full items-center justify-center gap-2 rounded-full py-3 text-sm font-semibold shadow-lg active:scale-[0.99] disabled:opacity-40 " + (isQuranChannel ? "bg-emerald-500 text-black" : "bg-white text-black"),
               children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: senderName || "?", src: senderAvatar, size: 28 }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: senderName || "?", src: senderAvatar, size: 28 }),
                 "إرسال الرسمة"
               ]
             }
@@ -24038,7 +26194,7 @@ function ChatInlineMediaLightbox({ media, src, sender, senderLabel, onClose }) {
         children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onClose, className: "rounded-full p-2.5 text-white transition hover:bg-white/10", "aria-label": "رجوع", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronLeft, { size: 26, strokeWidth: 2.25 }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-w-0 flex-1 items-center justify-center gap-2 px-1", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: displayName.replace(/^@/, ""), src: sender?.avatar, size: 34 }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: displayName.replace(/^@/, ""), src: sender?.avatar, size: 34 }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "truncate text-sm font-semibold text-white", children: displayName })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative flex shrink-0 items-center gap-0.5", children: [
@@ -24103,7 +26259,7 @@ function ShareFeedPostSection({ postId }) {
   const emojiOnly = !!(img && !hasImg && img.length <= 6);
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-h-0 flex-1 flex-col bg-background", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3 px-4 pt-4", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: author.username, src: author.avatar, size: 44 }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: author.username, src: author.avatar, size: 44 }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1 text-start", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1 truncate text-base font-semibold", children: [
           "@",
@@ -24143,7 +26299,7 @@ function ShareFeedStorySection({ storyId }) {
   }
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-h-0 flex-1 flex-col bg-background", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3 px-4 pt-4", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: author.username, src: author.avatar, size: 44 }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: author.username, src: author.avatar, size: 44 }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1 text-start", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1 truncate text-base font-semibold", children: [
           "@",
@@ -24251,7 +26407,7 @@ function SharedPostPreview({ postId, comment, compact = false, variant = "defaul
     const mediaFrame = "relative w-full overflow-hidden rounded-none bg-transparent";
     return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "w-full max-w-[min(96vw,360px)] overflow-hidden rounded-none border-0 bg-transparent shadow-none ring-0", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 px-1 py-1.5", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: author.username, src: author.avatar, size: 22 }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: author.username, src: author.avatar, size: 22 }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1 text-start", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1 truncate", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "truncate text-xs font-semibold", children: userDisplayName(author) }),
@@ -24314,7 +26470,7 @@ function SharedPostPreview({ postId, comment, compact = false, variant = "defaul
   if (compact) {
     return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl bg-muted/40 p-3 dark:bg-zinc-900/60", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-2 flex items-center gap-2", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: author.username, src: author.avatar, size: 20 }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: author.username, src: author.avatar, size: 20 }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-xs font-medium", children: [
           "@",
           author.username
@@ -24341,7 +26497,7 @@ function SharedPostPreview({ postId, comment, compact = false, variant = "defaul
   }
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "overflow-hidden rounded-xl bg-muted/30 dark:bg-zinc-900/70", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 p-3", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: author.username, src: author.avatar, size: 24 }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: author.username, src: author.avatar, size: 24 }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-sm font-medium", children: [
@@ -24391,7 +26547,7 @@ function SharedStoryChatPreview({ storyId, comment }) {
   }
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "w-full max-w-[min(96vw,360px)] overflow-hidden rounded-none border-0 bg-transparent shadow-none ring-0", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 px-1 py-1.5", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: author.username, src: author.avatar, size: 22 }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: author.username, src: author.avatar, size: 22 }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1 text-start", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1 truncate", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "truncate text-xs font-semibold", children: [
@@ -24490,7 +26646,7 @@ function SharedGroupInvitePreview({
   }
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "w-full max-w-[min(96vw,340px)] overflow-hidden rounded-2xl border border-border bg-card p-3 shadow-sm", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: info.name, src: info.avatar, size: 52 }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: info.name, src: info.avatar, size: 52 }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1 text-start", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "truncate font-semibold", children: info.name }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-0.5 flex items-center gap-1 text-xs text-muted-foreground", children: [
@@ -24563,7 +26719,7 @@ function ChatStoryReplyStack({
         },
         children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 border-b border-border/60 px-2.5 py-1.5", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: author.username, src: author.avatar, size: 24 }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: author.username, src: author.avatar, size: 24 }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-xs font-semibold", children: [
               "@",
               author.username
@@ -24702,9 +26858,9 @@ function ChatSwipeMessageRowInner({
                   e.stopPropagation();
                   onAvatarClick();
                 },
-                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: avatarName, src: avatarSrc, size: 28 })
+                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: avatarName, src: avatarSrc, size: 28 })
               }
-            ) : /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: avatarName, src: avatarSrc, size: 28, className: "mb-0.5 shrink-0 self-end" })),
+            ) : /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: avatarName, src: avatarSrc, size: 28, className: "mb-0.5 shrink-0 self-end" })),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative w-max max-w-full", children: [
               dragX > 6 && /* @__PURE__ */ jsxRuntimeExports.jsx(
                 "span",
@@ -24788,6 +26944,163 @@ function ChatListOutgoingStatusIcon({ status }) {
     return /* @__PURE__ */ jsxRuntimeExports.jsx(CheckCheck, { size: 12, className: "shrink-0 text-[#53bdeb]", strokeWidth: 2.25, "aria-hidden": true });
   }
   return /* @__PURE__ */ jsxRuntimeExports.jsx(CheckCheck, { size: 12, className: "shrink-0 text-muted-foreground/70", strokeWidth: 2.25, "aria-hidden": true });
+}
+let nativeKeyboardPx = 0;
+let engineRefs = 0;
+let rafLoop = 0;
+let nativeListenersReady = false;
+let nativeBridgeTeardown = null;
+function readNativeKeyboardInsetFromCss() {
+  if (typeof document === "undefined") return 0;
+  const raw = getComputedStyle(document.documentElement).getPropertyValue("--retweet-keyboard-inset").trim();
+  const n = parseFloat(raw);
+  return Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0;
+}
+function readChatKeyboardSnapshot() {
+  if (typeof window === "undefined") {
+    return { keyboardInset: 0, vvHeight: 0, vvOffsetTop: 0, open: false };
+  }
+  const vv = window.visualViewport;
+  const layoutH = window.innerHeight;
+  const vvHeight = vv ? Math.round(vv.height) : layoutH;
+  const vvOffsetTop = vv ? Math.round(vv.offsetTop) : 0;
+  const vvInset = Math.max(0, Math.round(layoutH - vvHeight - vvOffsetTop));
+  const nativeCssInset = readNativeKeyboardInsetFromCss();
+  const keyboardInset = Math.max(vvInset, nativeKeyboardPx, nativeCssInset);
+  return {
+    keyboardInset,
+    vvHeight,
+    vvOffsetTop,
+    open: keyboardInset > 8
+  };
+}
+function dispatchKeyboardSync() {
+  try {
+    window.dispatchEvent(new Event("retweet-chat-keyboard-sync"));
+  } catch {
+  }
+}
+function applyChatKeyboardCss() {
+  const snap = readChatKeyboardSnapshot();
+  const root = document.documentElement;
+  root.style.setProperty("--vv-height", `${snap.vvHeight}px`);
+  root.style.setProperty("--vv-offset-top", `${snap.vvOffsetTop}px`);
+  root.style.setProperty("--vv-keyboard-inset", `${snap.keyboardInset}px`);
+  root.style.setProperty("--chat-sab-effective", snap.open ? "0px" : "var(--sab)");
+  root.classList.toggle("chat-keyboard-open", snap.open);
+  const scrollPad = snap.open ? "calc(12px + var(--chat-composer-h, 72px) + var(--vv-keyboard-inset, 0px))" : "calc(12px + var(--chat-composer-h, 0px))";
+  root.style.setProperty("--chat-scroll-padding-bottom", scrollPad);
+  return snap;
+}
+function scheduleRafLoop() {
+  if (rafLoop) return;
+  const tick = () => {
+    rafLoop = 0;
+    const snap = applyChatKeyboardCss();
+    if (snap.open) rafLoop = requestAnimationFrame(tick);
+  };
+  rafLoop = requestAnimationFrame(tick);
+}
+function onViewportChange() {
+  const snap = applyChatKeyboardCss();
+  dispatchKeyboardSync();
+  if (snap.open) scheduleRafLoop();
+}
+async function ensureNativeKeyboardBridge() {
+  if (nativeListenersReady) return;
+  nativeListenersReady = true;
+  try {
+    const [{ Keyboard }, { Capacitor: Capacitor2 }] = await Promise.all([
+      import("./index-CQlmOpCt.js"),
+      Promise.resolve().then(() => index$1)
+    ]);
+    if (!Capacitor2.isNativePlatform()) return;
+    const onShow = (info) => {
+      nativeKeyboardPx = Math.max(0, Math.round(info.keyboardHeight ?? 0));
+      const snap = applyChatKeyboardCss();
+      dispatchKeyboardSync();
+      if (snap.open) scheduleRafLoop();
+    };
+    const onHide = () => {
+      nativeKeyboardPx = 0;
+      applyChatKeyboardCss();
+      dispatchKeyboardSync();
+    };
+    const handles = await Promise.all([
+      Keyboard.addListener("keyboardWillShow", onShow),
+      Keyboard.addListener("keyboardDidShow", onShow),
+      Keyboard.addListener("keyboardWillHide", onHide),
+      Keyboard.addListener("keyboardDidHide", onHide)
+    ]);
+    nativeBridgeTeardown = () => {
+      void Promise.all(handles.map((h) => h.remove())).catch(() => void 0);
+    };
+  } catch {
+  }
+}
+function mountChatKeyboardEngine() {
+  engineRefs += 1;
+  if (engineRefs > 1) {
+    return () => {
+      engineRefs = Math.max(0, engineRefs - 1);
+    };
+  }
+  void ensureNativeKeyboardBridge();
+  applyChatKeyboardCss();
+  const vv = window.visualViewport;
+  const onSafeArea = () => onViewportChange();
+  vv?.addEventListener("resize", onViewportChange, { passive: true });
+  vv?.addEventListener("scroll", onViewportChange, { passive: true });
+  window.addEventListener("resize", onViewportChange, { passive: true });
+  window.addEventListener("orientationchange", onViewportChange, { passive: true });
+  window.addEventListener("retweet-safe-area-change", onSafeArea, { passive: true });
+  window.addEventListener("retweet-keyboard-layout-change", onSafeArea, { passive: true });
+  return () => {
+    engineRefs = Math.max(0, engineRefs - 1);
+    if (engineRefs > 0) return;
+    if (rafLoop) cancelAnimationFrame(rafLoop);
+    rafLoop = 0;
+    nativeKeyboardPx = 0;
+    nativeListenersReady = false;
+    nativeBridgeTeardown?.();
+    nativeBridgeTeardown = null;
+    vv?.removeEventListener("resize", onViewportChange);
+    vv?.removeEventListener("scroll", onViewportChange);
+    window.removeEventListener("resize", onViewportChange);
+    window.removeEventListener("orientationchange", onViewportChange);
+    window.removeEventListener("retweet-safe-area-change", onSafeArea);
+    window.removeEventListener("retweet-keyboard-layout-change", onSafeArea);
+    const root = document.documentElement;
+    root.style.removeProperty("--retweet-keyboard-inset");
+    root.style.removeProperty("--vv-keyboard-inset");
+    root.style.removeProperty("--vv-height");
+    root.style.removeProperty("--vv-offset-top");
+    root.style.removeProperty("--chat-sab-effective");
+    root.style.removeProperty("--chat-scroll-padding-bottom");
+    root.classList.remove("chat-keyboard-open");
+  };
+}
+function useChatKeyboardInsets(enabled) {
+  const [snap, setSnap] = reactExports.useState(readChatKeyboardSnapshot);
+  reactExports.useEffect(() => {
+    const unmountEngine = mountChatKeyboardEngine();
+    const sync = () => setSnap(readChatKeyboardSnapshot());
+    sync();
+    const vv = window.visualViewport;
+    vv?.addEventListener("resize", sync, { passive: true });
+    vv?.addEventListener("scroll", sync, { passive: true });
+    window.addEventListener("retweet-chat-keyboard-sync", sync);
+    return () => {
+      vv?.removeEventListener("resize", sync);
+      vv?.removeEventListener("scroll", sync);
+      window.removeEventListener("retweet-chat-keyboard-sync", sync);
+      unmountEngine();
+    };
+  }, [enabled]);
+  return snap;
+}
+function chatComposerBottomPadding(keyboardOpen) {
+  return keyboardOpen ? "0px" : "var(--chat-sab-effective, var(--sab))";
 }
 const MAX_IMAGE_EDGE = 1280;
 const IMAGE_JPEG_QUALITY = 0.82;
@@ -25124,25 +27437,6 @@ function canGroup(chat, userId, permission) {
   if (!role) return false;
   return roleHasPermission(role, permission);
 }
-async function groupFetch(path, init) {
-  const token = init?.token ?? getApiToken();
-  const res = await apiFetch$1(path, { ...init, token });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) return { ok: false, error: data.error || "فشل الطلب" };
-  return { ok: true, data };
-}
-async function apiPatchGroupSettings(chatId, patch) {
-  return groupFetch(`/v1/groups/${encodeURIComponent(chatId)}/settings`, {
-    method: "PATCH",
-    body: JSON.stringify(patch)
-  });
-}
-async function apiSetGroupMemberRole(chatId, userId, role) {
-  return groupFetch(
-    `/v1/groups/${encodeURIComponent(chatId)}/members/${encodeURIComponent(userId)}/role`,
-    { method: "PATCH", body: JSON.stringify({ role }) }
-  );
-}
 const ROLE_LABEL = {
   owner: "مالك",
   admin: "مشرف",
@@ -25227,7 +27521,7 @@ function GroupRolesSheet({
             {
               className: "flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-secondary/60",
               children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: u.username, src: u.avatar, size: 40 }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u.username, src: u.avatar, size: 40 }),
                 /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1", children: [
                   /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "truncate font-medium", children: [
                     "@",
@@ -26017,6 +28311,77 @@ function appThemeScopeStyle(theme) {
     color: vars["--foreground"]
   };
 }
+const CHAT_WALLPAPER_THEMES = [
+  { id: "default", labelAr: "افتراضي", labelEn: "Default" },
+  {
+    id: "monstera",
+    labelAr: "أوراق استوائية",
+    labelEn: "Monstera",
+    imagePath: "chat-themes/monstera.png",
+    overlayOpacity: 0.38
+  }
+];
+const STORAGE_KEY = "retweet_chat_wallpapers_v1";
+function readMap() {
+  if (typeof localStorage === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    const out = {};
+    for (const [k, v] of Object.entries(parsed)) {
+      if (CHAT_WALLPAPER_THEMES.some((t) => t.id === v)) out[k] = v;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+function writeMap(map) {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(map));
+  } catch {
+  }
+}
+function getChatWallpaperTheme(id) {
+  return CHAT_WALLPAPER_THEMES.find((t) => t.id === id) ?? CHAT_WALLPAPER_THEMES[0];
+}
+function chatWallpaperStorageKeys(chat, ownerId) {
+  const keys = /* @__PURE__ */ new Set();
+  if (chat.id?.trim()) keys.add(chat.id.trim());
+  if (ownerId) {
+    const merge = chatMergeKey(chat, ownerId);
+    if (merge) keys.add(merge);
+  }
+  return [...keys];
+}
+function loadChatWallpaperForChat(chat, ownerId) {
+  const map = readMap();
+  for (const key of chatWallpaperStorageKeys(chat, ownerId)) {
+    const hit = map[key];
+    if (hit) return hit;
+  }
+  return "default";
+}
+function saveChatWallpaperForChat(chat, ownerId, id) {
+  const keys = chatWallpaperStorageKeys(chat, ownerId);
+  if (keys.length === 0) return;
+  const map = readMap();
+  for (const key of keys) {
+    if (id === "default") delete map[key];
+    else map[key] = id;
+  }
+  writeMap(map);
+}
+function chatWallpaperAssetUrl(imagePath) {
+  const base = "/";
+  const normalized = base.endsWith("/") ? base : `${base}/`;
+  return `${normalized}${imagePath.replace(/^\//, "")}`;
+}
+function chatWallpaperLabel(theme, lang) {
+  return lang === "en" ? theme.labelEn : theme.labelAr;
+}
 function isDefaultGroupName(name) {
   const n = name?.trim() || "";
   return !n || n === "مجموعة" || n.startsWith("👥");
@@ -26031,14 +28396,14 @@ function GroupStackedAvatars({
   size = 96
 }) {
   if (chat.avatar && !chat.avatar.startsWith("👥") && chat.avatar.length > 4) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: chat.name || "مجموعة", src: chat.avatar, size, className: "mx-auto" });
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: chat.name || "مجموعة", src: chat.avatar, size, className: "mx-auto" });
   }
   const slice = memberUsers.slice(0, 2);
   if (slice.length === 0) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: chat.name || "مجموعة", src: chat.avatar, size, className: "mx-auto" });
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: chat.name || "مجموعة", src: chat.avatar, size, className: "mx-auto" });
   }
   if (slice.length === 1) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: slice[0].username, src: slice[0].avatar, size, className: "mx-auto" });
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: slice[0].username, src: slice[0].avatar, size, className: "mx-auto" });
   }
   const cell = Math.round(size * 0.58);
   const overlap = Math.round(cell * 0.42);
@@ -26048,7 +28413,7 @@ function GroupStackedAvatars({
     {
       className: "absolute rounded-full ring-[3px] ring-background",
       style: { width: cell, height: cell, insetInlineStart: i * overlap, zIndex: slice.length - i },
-      children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: u.username, src: u.avatar, size: cell })
+      children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u.username, src: u.avatar, size: cell })
     },
     u.id
   )) });
@@ -26112,7 +28477,9 @@ function GroupDetailsScreen({
   onBack,
   onOpenProfile,
   onOpenStickers,
-  onCreateNewGroup
+  onOpenChatTheme,
+  onCreateNewGroup,
+  embeddedInChatStack = false
 }) {
   const {
     state,
@@ -26122,6 +28489,7 @@ function GroupDetailsScreen({
     updateGroupAvatar,
     toggleGroupAdmin,
     kickMember,
+    muteGroupMember,
     toggleHost,
     leaveChat,
     addGroupMembers,
@@ -26147,7 +28515,10 @@ function GroupDetailsScreen({
   const [pickIds, setPickIds] = reactExports.useState([]);
   const [kickTarget, setKickTarget] = reactExports.useState(null);
   const [inviteBusy, setInviteBusy] = reactExports.useState(false);
+  const [selectedJoinRequestIds, setSelectedJoinRequestIds] = reactExports.useState([]);
+  const [bulkApproveBusy, setBulkApproveBusy] = reactExports.useState(false);
   const [memberMenuTarget, setMemberMenuTarget] = reactExports.useState(null);
+  const [muteTarget, setMuteTarget] = reactExports.useState(null);
   const avatarInputRef = reactExports.useRef(null);
   const isAdmin = chat.admins.includes(me.id);
   const canManageRoles = canGroup(chat, me.id, "roles.assign_admin") || canGroup(chat, me.id, "roles.demote_any_admin");
@@ -26163,7 +28534,7 @@ function GroupDetailsScreen({
   const peopleSubtitle = memberUsers.map((u) => u.username).join(", ");
   const reportPeer = memberUsers.find((u) => u.id !== me.id);
   const otherMembers = memberUsers.filter((u) => u.id !== me.id);
-  const requireJoinApproval = chat.isPublicGroup !== true;
+  chat.isPublicGroup !== true;
   const meRow = userById(state, me.id) || me;
   const meDisplayName = chat.groupNicknames?.[me.id]?.trim() || meRow.displayName?.trim() || meRow.username || "?";
   const isFollowingUser = (userId) => (me.following || []).includes(userId);
@@ -26201,7 +28572,10 @@ function GroupDetailsScreen({
     })();
   };
   const closeSub = () => setSubView(null);
-  const themeSubtitle = state.theme === "dark" ? t("darkMode") : t("groupThemeDefault");
+  const themeSubtitle = chatWallpaperLabel(
+    getChatWallpaperTheme(loadChatWallpaperForChat(chat, currentUser?.id ?? "")),
+    state.language
+  );
   const actionBtn = (icon, label, onClick) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "button",
     {
@@ -26275,7 +28649,7 @@ function GroupDetailsScreen({
       )
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-      menuRow(/* @__PURE__ */ jsxRuntimeExports.jsx(ThemeGradientIcon, {}), t("groupTheme"), themeSubtitle, () => onOpenStickers?.()),
+      menuRow(/* @__PURE__ */ jsxRuntimeExports.jsx(ThemeGradientIcon, {}), t("groupTheme"), themeSubtitle, () => (onOpenChatTheme ?? onOpenStickers)?.()),
       !chat.isChannel && menuRow(
         /* @__PURE__ */ jsxRuntimeExports.jsx(Link2, { size: 20, strokeWidth: 1.75 }),
         t("groupInviteLink"),
@@ -26427,7 +28801,7 @@ function GroupDetailsScreen({
           const following = isFollowingUser(u.id);
           const showActions = opts?.showActions !== false && u.id !== me.id;
           return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3 px-4 py-2.5", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => onOpenProfile(u.id), className: "shrink-0", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: u.username, src: u.avatar, size: 56 }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => onOpenProfile(u.id), className: "shrink-0", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u.username, src: u.avatar, size: 56 }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs(
               "button",
               {
@@ -26482,16 +28856,21 @@ function GroupDetailsScreen({
               onAdd: openAddMembers
             }
           ),
-          isAdmin && !chat.isChannel && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between gap-3 border-b border-border/60 px-4 py-3.5", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[15px] text-foreground", children: t("groupRequireJoinApproval") }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              IgToggle$1,
-              {
-                on: requireJoinApproval,
-                onToggle: () => setGroupPublic(chat.id, chat.isPublicGroup === true)
-              }
-            )
-          ] }),
+          isAdmin && !chat.isChannel && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "button",
+            {
+              type: "button",
+              onClick: () => {
+                setSelectedJoinRequestIds([]);
+                setSubView("requests");
+              },
+              className: "flex w-full items-center justify-between border-b border-border/60 px-4 py-3.5 text-start hover:bg-secondary/40",
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[15px] font-medium text-foreground", children: "Requests" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[14px] font-semibold text-[#0095F6]", children: (chat.joinRequests || []).length })
+              ]
+            }
+          ),
           /* @__PURE__ */ jsxRuntimeExports.jsx(PeopleSectionLabel, { children: t("groupYou") }),
           renderMemberRow(
             {
@@ -26516,7 +28895,7 @@ function GroupDetailsScreen({
               const u = userById(state, req.userId);
               if (!u) return null;
               return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3 px-4 py-2.5", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: u.username, src: u.avatar, size: 56 }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u.username, src: u.avatar, size: 56 }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "min-w-0 flex-1 text-start", children: /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "truncate text-[15px] font-semibold text-foreground", children: u.username }) }),
                 /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex shrink-0 gap-2", children: [
                   /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -26588,45 +28967,106 @@ function GroupDetailsScreen({
       case "invite":
         return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(IgSubHeader, { title: t("groupInviteLink"), onBack: closeSub }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-4 px-4 py-6", children: [
-            inviteUrl && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex justify-center", children: /* @__PURE__ */ jsxRuntimeExports.jsx(GroupInviteQr, { chat, size: 160 }) }),
-            inviteUrl ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "break-all text-center text-sm text-muted-foreground dir-ltr", children: inviteUrl }) : /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-center text-sm text-muted-foreground", children: "لا يوجد رابط بعد" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-2", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx(
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-0 px-0 pb-[max(1rem,var(--sab))]", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "border-b border-border/70 px-4 py-4", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-3 flex items-center justify-between gap-3", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[17px] font-semibold text-foreground", children: "Invite link" }),
+                  inviteUrl ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 break-all text-sm text-[#8ea2ff] dir-ltr", children: inviteUrl }) : /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-sm text-muted-foreground", children: "No invite link yet" })
+                ] }),
+                isAdmin && !chat.isChannel ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  IgToggle$1,
+                  {
+                    on: chat.isPublicGroup !== true,
+                    onToggle: () => setGroupPublic(chat.id, chat.isPublicGroup !== true)
+                  }
+                ) : null
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-muted-foreground", children: chat.isPublicGroup === true ? "عند إيقاف الزر: المجموعة عامة وتظهر في البحث ويمكن الانضمام مباشرة." : "عند تشغيل الزر: المجموعة خاصة، الدخول عبر الرابط أو الطلبات فقط." }),
+              inviteUrl && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-4 flex justify-center", children: /* @__PURE__ */ jsxRuntimeExports.jsx(GroupInviteQr, { chat, size: 156 }) })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "border-b border-border/70 py-1", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs(
                 "button",
                 {
                   type: "button",
                   disabled: !inviteUrl,
-                  className: "flex-1 rounded-xl bg-secondary py-3 text-sm font-semibold text-foreground disabled:opacity-40",
+                  className: "flex w-full items-center gap-3 px-4 py-3 text-start text-[16px] text-foreground disabled:opacity-40",
                   onClick: () => {
                     if (!inviteUrl) return;
                     void navigator.clipboard.writeText(inviteUrl);
-                    alert("تم نسخ الرابط");
+                    alert("Copied");
                   },
-                  children: "نسخ"
+                  children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(Copy, { size: 20 }),
+                    "Copy"
+                  ]
                 }
               ),
-              /* @__PURE__ */ jsxRuntimeExports.jsx(
+              /* @__PURE__ */ jsxRuntimeExports.jsxs(
                 "button",
                 {
                   type: "button",
                   disabled: !chat.inviteCode,
-                  className: "flex-1 rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground disabled:opacity-40",
+                  className: "flex w-full items-center gap-3 px-4 py-3 text-start text-[16px] text-foreground disabled:opacity-40",
                   onClick: () => {
                     if (!chat.inviteCode) return;
                     sendMessage(chat.id, { type: "shared_group", content: chat.inviteCode });
-                    alert("تم الإرسال في المحادثة");
+                    alert("Sent");
                   },
-                  children: "مشاركة"
+                  children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(Send, { size: 20 }),
+                    "Send in Instagram"
+                  ]
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                "button",
+                {
+                  type: "button",
+                  disabled: !inviteUrl,
+                  className: "flex w-full items-center gap-3 px-4 py-3 text-start text-[16px] text-foreground disabled:opacity-40",
+                  onClick: () => {
+                    if (!inviteUrl) return;
+                    setTimeout(() => {
+                      alert("QR code is shown above.");
+                    }, 0);
+                  },
+                  children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(QrCode, { size: 20 }),
+                    "QR code"
+                  ]
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                "button",
+                {
+                  type: "button",
+                  disabled: !inviteUrl,
+                  className: "flex w-full items-center gap-3 px-4 py-3 text-start text-[16px] text-foreground disabled:opacity-40",
+                  onClick: () => {
+                    if (!inviteUrl) return;
+                    if (navigator.share) {
+                      void navigator.share({ title: chat.name || "Group Invite", url: inviteUrl }).catch(() => {
+                      });
+                      return;
+                    }
+                    void navigator.clipboard.writeText(inviteUrl);
+                    alert("Copied for sharing");
+                  },
+                  children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(Share2, { size: 20 }),
+                    "Share"
+                  ]
                 }
               )
             ] }),
-            !inviteUrl && isAdmin && /* @__PURE__ */ jsxRuntimeExports.jsx(
+            isAdmin && /* @__PURE__ */ jsxRuntimeExports.jsxs(
               "button",
               {
                 type: "button",
                 disabled: inviteBusy,
-                className: "w-full rounded-xl border border-border py-3 text-sm font-semibold text-foreground",
+                className: "mt-1 flex w-full items-center gap-3 px-4 py-3 text-start text-[16px] text-rose-500 disabled:opacity-40",
                 onClick: () => {
                   const token = getApiToken();
                   if (!token || !apiBackendEnabled()) return;
@@ -26642,344 +29082,599 @@ function GroupDetailsScreen({
                           (c) => c.id === chat.id ? { ...c, inviteCode: res.chat.inviteCode } : c
                         )
                       }));
-                      alert("تم إنشاء رابط الدعوة");
+                      alert("Invite link reset");
                     } else {
                       alert(res.error || "فشل إنشاء الرابط");
                     }
                   })();
                 },
-                children: inviteBusy ? "…" : "إنشاء رابط دعوة"
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(RotateCcw, { size: 19 }),
+                  inviteBusy ? "Resetting..." : "Reset link"
+                ]
               }
             )
           ] })
         ] });
+      case "requests": {
+        const requests = (chat.joinRequests || []).map((req) => ({ ...req, user: userById(state, req.userId) })).filter((row) => !!row.user);
+        const selectedCount = selectedJoinRequestIds.length;
+        const allSelected = requests.length > 0 && selectedCount === requests.length;
+        return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(PeopleSubHeader, { title: "Requests", onBack: closeSub }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "border-b border-border/60 px-4 py-3", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-muted-foreground", children: "اختر الحسابات ثم اضغط قبول لإدخالهم إلى القروب." }),
+            requests.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                type: "button",
+                onClick: () => setSelectedJoinRequestIds(allSelected ? [] : requests.map((row) => row.userId)),
+                className: "mt-2 text-sm font-semibold text-[#0095F6]",
+                children: allSelected ? "إلغاء تحديد الكل" : "تحديد الكل"
+              }
+            )
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "divide-y divide-border/50", children: [
+            requests.map(({ userId, user }) => {
+              const selected = selectedJoinRequestIds.includes(userId);
+              return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                "button",
+                {
+                  type: "button",
+                  onClick: () => setSelectedJoinRequestIds(
+                    (prev) => prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]
+                  ),
+                  className: "flex w-full items-center gap-3 px-4 py-3 text-start hover:bg-secondary/40",
+                  children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: user.username, src: user.avatar, size: 52 }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1", children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "truncate text-[15px] font-semibold text-foreground", children: [
+                        "@",
+                        user.username
+                      ] }),
+                      user.displayName ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "truncate text-[13px] text-muted-foreground", children: user.displayName }) : null
+                    ] }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "span",
+                      {
+                        className: "flex h-6 w-6 items-center justify-center rounded-full border " + (selected ? "border-[#0095F6] bg-[#0095F6] text-white" : "border-border bg-background text-transparent"),
+                        children: /* @__PURE__ */ jsxRuntimeExports.jsx(Check, { size: 14 })
+                      }
+                    )
+                  ]
+                },
+                userId
+              );
+            }),
+            requests.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "px-4 py-8 text-center text-sm text-muted-foreground", children: "لا توجد طلبات حالياً" })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "sticky bottom-0 border-t border-border bg-background/95 p-3 backdrop-blur", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              type: "button",
+              disabled: selectedCount === 0 || bulkApproveBusy,
+              onClick: () => {
+                if (selectedCount === 0) return;
+                setBulkApproveBusy(true);
+                try {
+                  selectedJoinRequestIds.forEach(
+                    (id) => respondGroupJoinRequest(chat.id, id, "accept")
+                  );
+                  setSelectedJoinRequestIds([]);
+                } finally {
+                  setBulkApproveBusy(false);
+                }
+              },
+              className: "w-full rounded-xl bg-[#0095F6] py-3 text-sm font-semibold text-white disabled:opacity-40",
+              children: bulkApproveBusy ? "جاري القبول..." : selectedCount > 0 ? `قبول (${selectedCount})` : "قبول"
+            }
+          ) })
+        ] });
+      }
       case "privacy":
         return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(IgSubHeader, { title: t("groupPrivacySafety"), onBack: closeSub }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "px-4 py-4", children: isAdmin && !chat.isChannel ? /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "flex items-center justify-between gap-3 rounded-xl bg-card px-4 py-4 ring-1 ring-border", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm text-foreground", children: "مجموعة عامة (انضمام بالرابط)" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "input",
-              {
-                type: "checkbox",
-                checked: chat.isPublicGroup === true,
-                onChange: (e) => setGroupPublic(chat.id, e.target.checked),
-                className: "h-5 w-5"
-              }
-            )
-          ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-center text-sm text-muted-foreground py-8", children: "إعدادات الخصوصية للمشرف فقط" }) })
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "px-4 py-4", children: [
+            canEditSettings && !chat.isChannel && /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "mb-3 flex items-center justify-between gap-3 rounded-xl bg-card px-4 py-4 ring-1 ring-border", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm font-semibold text-foreground", children: "كتم جماعي للكتابة" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-0.5 text-xs text-muted-foreground", children: "عند التشغيل: فقط الأدمن يكتب" })
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                IgToggle$1,
+                {
+                  on: (chat.groupSettings?.whoCanSendMessages || "everyone") === "admins",
+                  onToggle: () => {
+                    const lockOn = (chat.groupSettings?.whoCanSendMessages || "everyone") !== "admins";
+                    const nextWhoCanSend = lockOn ? "admins" : "everyone";
+                    setState((s) => ({
+                      ...s,
+                      chats: s.chats.map(
+                        (c) => c.id === chat.id ? {
+                          ...c,
+                          groupSettings: {
+                            ...c.groupSettings || {},
+                            whoCanSendMessages: nextWhoCanSend
+                          }
+                        } : c
+                      )
+                    }));
+                    if (apiBackendEnabled()) {
+                      void Promise.resolve().then(() => groupApi).then(({ apiPatchGroupSettings: apiPatchGroupSettings2 }) => {
+                        void apiPatchGroupSettings2(chat.id, { whoCanSendMessages: nextWhoCanSend });
+                      });
+                    }
+                  }
+                }
+              )
+            ] }),
+            isAdmin && !chat.isChannel ? /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "flex items-center justify-between gap-3 rounded-xl bg-card px-4 py-4 ring-1 ring-border", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm text-foreground", children: "مجموعة عامة (انضمام بالرابط)" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "input",
+                {
+                  type: "checkbox",
+                  checked: chat.isPublicGroup === true,
+                  onChange: (e) => setGroupPublic(chat.id, e.target.checked),
+                  className: "h-5 w-5"
+                }
+              )
+            ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-center text-sm text-muted-foreground py-8", children: "إعدادات الخصوصية للمشرف فقط" })
+          ] })
         ] });
       default:
         return null;
     }
   };
   const themeScopeStyle = appThemeScopeStyle(state.theme);
+  const panel = /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "div",
+    {
+      className: "group-details-screen-root flex min-h-0 flex-1 flex-col",
+      style: themeScopeStyle,
+      "data-app-theme": state.theme,
+      children: [
+        subView == null ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "shrink-0 px-3 pt-[max(0.5rem,var(--sat))]", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SlideDismissBackButton,
+          {
+            navScope: "local",
+            onDismiss: onBack,
+            className: "flex h-10 w-10 items-center justify-center rounded-full bg-secondary text-foreground hover:bg-secondary/80",
+            "aria-label": "رجوع",
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowRight, { size: 22, strokeWidth: 1.75 })
+          }
+        ) }) : null,
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "min-h-0 flex-1 overflow-y-auto overscroll-y-contain pb-[max(1.5rem,var(--sab))]", children: subView == null ? mainList : renderSubView() }),
+        showOptions && /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "div",
+          {
+            className: "fixed inset-0 z-[70] flex items-end justify-center bg-black/60 p-0",
+            onClick: () => setShowOptions(false),
+            children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "div",
+              {
+                className: "w-full max-w-md rounded-t-3xl bg-background p-2 pb-[max(1rem,var(--sab))] animate-in slide-in-from-bottom duration-200",
+                onClick: (e) => e.stopPropagation(),
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                    "button",
+                    {
+                      type: "button",
+                      className: "mb-1 flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-[15px] text-foreground hover:bg-secondary/50",
+                      onClick: () => {
+                        setShowOptions(false);
+                        (onOpenChatTheme ?? onOpenStickers)?.();
+                      },
+                      children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsx(Smile, { size: 22 }),
+                        t("groupTheme")
+                      ]
+                    }
+                  ),
+                  !chat.isChannel && canManageRoles && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                    "button",
+                    {
+                      type: "button",
+                      className: "flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-[15px] text-foreground hover:bg-secondary/50",
+                      onClick: () => {
+                        setShowOptions(false);
+                        setShowRoles(true);
+                      },
+                      children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsx(ShieldCheck, { size: 22 }),
+                        "الأدوار والصلاحيات"
+                      ]
+                    }
+                  ),
+                  !chat.isChannel && canEditSettings && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                    "button",
+                    {
+                      type: "button",
+                      className: "flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-[15px] text-foreground hover:bg-secondary/50",
+                      onClick: () => {
+                        setShowOptions(false);
+                        setShowAdvancedSettings(true);
+                      },
+                      children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsx(Shield, { size: 22 }),
+                        "إعدادات متقدمة"
+                      ]
+                    }
+                  ),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                    "button",
+                    {
+                      type: "button",
+                      className: "mt-1 flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-[15px] font-semibold text-destructive hover:bg-destructive/10",
+                      onClick: () => {
+                        setShowOptions(false);
+                        leaveChat(chat.id);
+                        onBack();
+                      },
+                      children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsx(LogOut, { size: 18 }),
+                        chat.isChannel ? t("leave") : "مغادرة المجموعة"
+                      ]
+                    }
+                  )
+                ]
+              }
+            )
+          }
+        ),
+        showAddMembers && isAdmin && !chat.isChannel && /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "div",
+          {
+            className: "fixed inset-0 z-[75] flex items-end justify-center bg-black/60 p-0",
+            onClick: () => setShowAddMembers(false),
+            children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "div",
+              {
+                className: "flex max-h-[min(85vh,640px)] w-full max-w-md flex-col rounded-t-3xl bg-background p-4 pb-[max(1rem,var(--sab))] text-foreground animate-in slide-in-from-bottom duration-200",
+                "data-no-dismiss-drag": true,
+                onClick: (e) => e.stopPropagation(),
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mb-3 text-center text-sm font-semibold", children: t("addMembers") }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-3 flex items-center gap-2 rounded-xl bg-input px-3 py-2", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(Search, { size: 16, className: "shrink-0 text-muted-foreground" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "input",
+                      {
+                        value: addMemberSearch,
+                        onChange: (e) => setAddMemberSearch(e.target.value),
+                        placeholder: t("searchPlaceholder"),
+                        className: "min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none",
+                        autoFocus: true
+                      }
+                    )
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-y-contain", children: [
+                    filteredAddCandidates.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "py-6 text-center text-xs text-muted-foreground", children: "لا يوجد حسابات إضافية" }),
+                    filteredAddCandidates.map((u) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                      "button",
+                      {
+                        type: "button",
+                        "data-no-dismiss-drag": true,
+                        onClick: () => setPickIds((ids) => ids.includes(u.id) ? ids.filter((x) => x !== u.id) : [...ids, u.id]),
+                        className: "flex w-full touch-manipulation items-center gap-3 rounded-2xl p-2.5 hover:bg-secondary/50",
+                        children: [
+                          /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u.username, src: u.avatar, size: 36 }),
+                          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "flex-1 text-start text-sm", children: [
+                            "@",
+                            u.username
+                          ] }),
+                          pickIds.includes(u.id) && /* @__PURE__ */ jsxRuntimeExports.jsx(Check, { className: "shrink-0 text-primary" })
+                        ]
+                      },
+                      u.id
+                    ))
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-3 flex shrink-0 gap-2", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "button",
+                      {
+                        type: "button",
+                        className: "flex-1 rounded-2xl bg-secondary py-2.5 text-sm font-semibold text-foreground",
+                        onClick: () => setShowAddMembers(false),
+                        children: t("cancel")
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                      "button",
+                      {
+                        type: "button",
+                        disabled: pickIds.length === 0,
+                        className: "flex-1 rounded-2xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-50",
+                        onClick: () => {
+                          addGroupMembers(chat.id, pickIds);
+                          setShowAddMembers(false);
+                          setPickIds([]);
+                        },
+                        children: [
+                          t("groupAdd"),
+                          " (",
+                          pickIds.length,
+                          ")"
+                        ]
+                      }
+                    )
+                  ] })
+                ]
+              }
+            )
+          }
+        ),
+        memberMenuTarget && isAdmin && /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "div",
+          {
+            className: "fixed inset-0 z-[72] flex items-end justify-center bg-black/60 p-0",
+            onClick: () => setMemberMenuTarget(null),
+            children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "div",
+              {
+                className: "w-full max-w-md rounded-t-3xl bg-background p-2 pb-[max(1rem,var(--sab))] animate-in slide-in-from-bottom duration-200",
+                onClick: (e) => e.stopPropagation(),
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "button",
+                    {
+                      type: "button",
+                      className: "flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-[15px] text-foreground hover:bg-secondary/50",
+                      onClick: () => {
+                        onOpenProfile(memberMenuTarget.id);
+                        setMemberMenuTarget(null);
+                      },
+                      children: "عرض الملف الشخصي"
+                    }
+                  ),
+                  !chat.isChannel && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "button",
+                      {
+                        type: "button",
+                        className: "flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-[15px] text-foreground hover:bg-secondary/50",
+                        onClick: () => {
+                          toggleGroupAdmin(chat.id, memberMenuTarget.id);
+                          setMemberMenuTarget(null);
+                        },
+                        children: chat.admins.includes(memberMenuTarget.id) ? "إزالة مشرف" : "تعيين مشرف"
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "button",
+                      {
+                        type: "button",
+                        className: "flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-[15px] font-semibold text-destructive hover:bg-destructive/10",
+                        onClick: () => {
+                          setKickTarget(memberMenuTarget);
+                          setMemberMenuTarget(null);
+                        },
+                        children: "طرد من المجموعة"
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                      "button",
+                      {
+                        type: "button",
+                        className: "flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-[15px] text-foreground hover:bg-secondary/50",
+                        onClick: () => {
+                          setMuteTarget(memberMenuTarget);
+                          setMemberMenuTarget(null);
+                        },
+                        children: [
+                          /* @__PURE__ */ jsxRuntimeExports.jsx(MicOff, { size: 18, className: "shrink-0" }),
+                          "كتم العضو"
+                        ]
+                      }
+                    )
+                  ] }),
+                  chat.isChannel && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "button",
+                    {
+                      type: "button",
+                      className: "flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-[15px] text-foreground hover:bg-secondary/50",
+                      onClick: () => {
+                        toggleHost(chat.id, memberMenuTarget.id);
+                        setMemberMenuTarget(null);
+                      },
+                      children: (chat.hosts || []).includes(memberMenuTarget.id) ? t("removeHost") : t("inviteHost")
+                    }
+                  )
+                ]
+              }
+            )
+          }
+        ),
+        kickTarget && /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "div",
+          {
+            className: "fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4",
+            onClick: () => setKickTarget(null),
+            children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "div",
+              {
+                className: "w-full max-w-sm rounded-3xl bg-background p-5 text-foreground shadow-xl ring-1 ring-border",
+                onClick: (e) => e.stopPropagation(),
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-center text-lg font-bold", children: "تأكيد الطرد" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-3 text-center text-sm text-muted-foreground", children: [
+                    "هل تريد طرد @",
+                    kickTarget.username,
+                    "؟"
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-5 flex gap-2", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "button",
+                      {
+                        type: "button",
+                        className: "flex-1 rounded-2xl bg-secondary py-2.5 text-sm font-semibold text-foreground",
+                        onClick: () => setKickTarget(null),
+                        children: t("cancel")
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "button",
+                      {
+                        type: "button",
+                        className: "flex-1 rounded-2xl bg-destructive py-2.5 text-sm font-semibold text-destructive-foreground",
+                        onClick: () => {
+                          kickMember(chat.id, kickTarget.id);
+                          setKickTarget(null);
+                        },
+                        children: "تأكيد"
+                      }
+                    )
+                  ] })
+                ]
+              }
+            )
+          }
+        ),
+        muteTarget && /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "div",
+          {
+            className: "fixed inset-0 z-[82] flex items-center justify-center bg-black/70 p-4",
+            onClick: () => setMuteTarget(null),
+            children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "div",
+              {
+                className: "w-full max-w-sm rounded-3xl bg-background p-5 text-foreground shadow-xl ring-1 ring-border",
+                onClick: (e) => e.stopPropagation(),
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("h3", { className: "text-center text-lg font-bold", children: [
+                    "كتم @",
+                    muteTarget.username
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-center text-sm text-muted-foreground", children: "حدد مدة الكتم:" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-4 space-y-2", children: [
+                    { label: "5 دقائق", value: 5 },
+                    { label: "10 دقائق", value: 10 },
+                    { label: "ساعة", value: 60 },
+                    { label: "للأبد", value: null }
+                  ].map((item) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                    "button",
+                    {
+                      type: "button",
+                      className: "flex w-full items-center justify-between rounded-xl border border-border px-4 py-3 text-sm font-semibold hover:bg-secondary",
+                      onClick: () => {
+                        muteGroupMember(chat.id, muteTarget.id, item.value);
+                        setMuteTarget(null);
+                      },
+                      children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: item.label }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx(Lock, { size: 16, className: "text-muted-foreground" })
+                      ]
+                    },
+                    item.label
+                  )) }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "button",
+                    {
+                      type: "button",
+                      className: "mt-4 w-full rounded-xl bg-secondary py-2.5 text-sm font-semibold text-foreground",
+                      onClick: () => setMuteTarget(null),
+                      children: t("cancel")
+                    }
+                  )
+                ]
+              }
+            )
+          }
+        ),
+        showReport && reportPeer && /* @__PURE__ */ jsxRuntimeExports.jsx(
+          ReportFlowSheet,
+          {
+            open: showReport,
+            onClose: () => setShowReport(false),
+            reportedUserId: reportPeer.id,
+            reportedUsername: reportPeer.username,
+            targetType: "user"
+          }
+        ),
+        showRoles && !chat.isChannel && /* @__PURE__ */ jsxRuntimeExports.jsx(GroupRolesSheet, { chat, onClose: () => setShowRoles(false) }),
+        showAdvancedSettings && !chat.isChannel && /* @__PURE__ */ jsxRuntimeExports.jsx(GroupSettingsSheet, { chat, onClose: () => setShowAdvancedSettings(false) })
+      ]
+    }
+  );
+  if (embeddedInChatStack) return panel;
   return /* @__PURE__ */ jsxRuntimeExports.jsx(
     SlideDismissShell,
     {
       onDismiss: onBack,
       variant: "inline",
       className: "flex-1",
-      blocked: !!kickTarget || showAddMembers || showReport || !!memberMenuTarget,
+      blocked: !!kickTarget || !!muteTarget || showAddMembers || showReport || !!memberMenuTarget,
+      children: panel
+    }
+  );
+}
+function ChatThemePickerSheet({
+  open,
+  selectedId,
+  language,
+  onSelect,
+  onClose
+}) {
+  if (!open) return null;
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "div",
+    {
+      className: "fixed inset-0 z-[280] mx-auto flex max-w-md flex-col justify-end bg-black/50",
+      role: "dialog",
+      "aria-modal": true,
+      "aria-label": language === "en" ? "Chat theme" : "سمة المحادثة",
+      onClick: onClose,
       children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
         "div",
         {
-          className: "group-details-screen-root flex min-h-0 flex-1 flex-col",
-          style: themeScopeStyle,
-          "data-app-theme": state.theme,
+          className: "max-h-[78dvh] overflow-hidden rounded-t-3xl bg-background shadow-2xl animate-in slide-in-from-bottom duration-200",
+          onClick: (e) => e.stopPropagation(),
           children: [
-            subView == null ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "shrink-0 px-3 pt-[max(0.5rem,var(--sat))]", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-              SlideDismissBackButton,
-              {
-                onDismiss: onBack,
-                className: "flex h-10 w-10 items-center justify-center rounded-full bg-secondary text-foreground hover:bg-secondary/80",
-                "aria-label": "رجوع",
-                children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowRight, { size: 22, strokeWidth: 1.75 })
-              }
-            ) }) : null,
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "min-h-0 flex-1 overflow-y-auto overscroll-y-contain pb-[max(1.5rem,var(--sab))]", children: subView == null ? mainList : renderSubView() }),
-            showOptions && /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "div",
-              {
-                className: "fixed inset-0 z-[70] flex items-end justify-center bg-black/60 p-0",
-                onClick: () => setShowOptions(false),
-                children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                  "div",
-                  {
-                    className: "w-full max-w-md rounded-t-3xl bg-background p-2 pb-[max(1rem,var(--sab))] animate-in slide-in-from-bottom duration-200",
-                    onClick: (e) => e.stopPropagation(),
-                    children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                        "button",
-                        {
-                          type: "button",
-                          className: "mb-1 flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-[15px] text-foreground hover:bg-secondary/50",
-                          onClick: () => {
-                            setShowOptions(false);
-                            onOpenStickers?.();
-                          },
-                          children: [
-                            /* @__PURE__ */ jsxRuntimeExports.jsx(Smile, { size: 22 }),
-                            t("groupTheme")
-                          ]
-                        }
-                      ),
-                      !chat.isChannel && canManageRoles && /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                        "button",
-                        {
-                          type: "button",
-                          className: "flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-[15px] text-foreground hover:bg-secondary/50",
-                          onClick: () => {
-                            setShowOptions(false);
-                            setShowRoles(true);
-                          },
-                          children: [
-                            /* @__PURE__ */ jsxRuntimeExports.jsx(ShieldCheck, { size: 22 }),
-                            "الأدوار والصلاحيات"
-                          ]
-                        }
-                      ),
-                      !chat.isChannel && canEditSettings && /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                        "button",
-                        {
-                          type: "button",
-                          className: "flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-[15px] text-foreground hover:bg-secondary/50",
-                          onClick: () => {
-                            setShowOptions(false);
-                            setShowAdvancedSettings(true);
-                          },
-                          children: [
-                            /* @__PURE__ */ jsxRuntimeExports.jsx(Shield, { size: 22 }),
-                            "إعدادات متقدمة"
-                          ]
-                        }
-                      ),
-                      /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                        "button",
-                        {
-                          type: "button",
-                          className: "mt-1 flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-[15px] font-semibold text-destructive hover:bg-destructive/10",
-                          onClick: () => {
-                            setShowOptions(false);
-                            leaveChat(chat.id);
-                            onBack();
-                          },
-                          children: [
-                            /* @__PURE__ */ jsxRuntimeExports.jsx(LogOut, { size: 18 }),
-                            chat.isChannel ? t("leave") : "مغادرة المجموعة"
-                          ]
-                        }
-                      )
-                    ]
-                  }
-                )
-              }
-            ),
-            showAddMembers && isAdmin && !chat.isChannel && /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "div",
-              {
-                className: "fixed inset-0 z-[75] flex items-end justify-center bg-black/60 p-0",
-                onClick: () => setShowAddMembers(false),
-                children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                  "div",
-                  {
-                    className: "flex max-h-[min(85vh,640px)] w-full max-w-md flex-col rounded-t-3xl bg-background p-4 pb-[max(1rem,var(--sab))] text-foreground animate-in slide-in-from-bottom duration-200",
-                    "data-no-dismiss-drag": true,
-                    onClick: (e) => e.stopPropagation(),
-                    children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mb-3 text-center text-sm font-semibold", children: t("addMembers") }),
-                      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-3 flex items-center gap-2 rounded-xl bg-input px-3 py-2", children: [
-                        /* @__PURE__ */ jsxRuntimeExports.jsx(Search, { size: 16, className: "shrink-0 text-muted-foreground" }),
-                        /* @__PURE__ */ jsxRuntimeExports.jsx(
-                          "input",
-                          {
-                            value: addMemberSearch,
-                            onChange: (e) => setAddMemberSearch(e.target.value),
-                            placeholder: t("searchPlaceholder"),
-                            className: "min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none",
-                            autoFocus: true
-                          }
-                        )
-                      ] }),
-                      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-y-contain", children: [
-                        filteredAddCandidates.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "py-6 text-center text-xs text-muted-foreground", children: "لا يوجد حسابات إضافية" }),
-                        filteredAddCandidates.map((u) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                          "button",
-                          {
-                            type: "button",
-                            "data-no-dismiss-drag": true,
-                            onClick: () => setPickIds((ids) => ids.includes(u.id) ? ids.filter((x) => x !== u.id) : [...ids, u.id]),
-                            className: "flex w-full touch-manipulation items-center gap-3 rounded-2xl p-2.5 hover:bg-secondary/50",
-                            children: [
-                              /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: u.username, src: u.avatar, size: 36 }),
-                              /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "flex-1 text-start text-sm", children: [
-                                "@",
-                                u.username
-                              ] }),
-                              pickIds.includes(u.id) && /* @__PURE__ */ jsxRuntimeExports.jsx(Check, { className: "shrink-0 text-primary" })
-                            ]
-                          },
-                          u.id
-                        ))
-                      ] }),
-                      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-3 flex shrink-0 gap-2", children: [
-                        /* @__PURE__ */ jsxRuntimeExports.jsx(
-                          "button",
-                          {
-                            type: "button",
-                            className: "flex-1 rounded-2xl bg-secondary py-2.5 text-sm font-semibold text-foreground",
-                            onClick: () => setShowAddMembers(false),
-                            children: t("cancel")
-                          }
-                        ),
-                        /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                          "button",
-                          {
-                            type: "button",
-                            disabled: pickIds.length === 0,
-                            className: "flex-1 rounded-2xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-50",
-                            onClick: () => {
-                              addGroupMembers(chat.id, pickIds);
-                              setShowAddMembers(false);
-                              setPickIds([]);
-                            },
-                            children: [
-                              t("groupAdd"),
-                              " (",
-                              pickIds.length,
-                              ")"
-                            ]
-                          }
-                        )
-                      ] })
-                    ]
-                  }
-                )
-              }
-            ),
-            memberMenuTarget && isAdmin && /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "div",
-              {
-                className: "fixed inset-0 z-[72] flex items-end justify-center bg-black/60 p-0",
-                onClick: () => setMemberMenuTarget(null),
-                children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                  "div",
-                  {
-                    className: "w-full max-w-md rounded-t-3xl bg-background p-2 pb-[max(1rem,var(--sab))] animate-in slide-in-from-bottom duration-200",
-                    onClick: (e) => e.stopPropagation(),
-                    children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between border-b border-border px-4 py-3", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-[17px] font-semibold text-foreground", children: language === "en" ? "Chat theme" : "سمة المحادثة" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  type: "button",
+                  onClick: onClose,
+                  className: "rounded-full px-3 py-1.5 text-sm font-semibold text-primary",
+                  children: language === "en" ? "Done" : "تم"
+                }
+              )
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "no-scrollbar overflow-y-auto px-4 py-4 pb-[max(1rem,var(--sab))]", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "grid grid-cols-2 gap-3", children: CHAT_WALLPAPER_THEMES.map((theme) => {
+              const selected = theme.id === selectedId;
+              const previewUrl = theme.imagePath ? chatWallpaperAssetUrl(theme.imagePath) : null;
+              return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                "button",
+                {
+                  type: "button",
+                  onClick: () => onSelect(theme.id),
+                  className: "relative aspect-[3/4] overflow-hidden rounded-2xl border-2 text-start transition " + (selected ? "border-primary ring-2 ring-primary/30" : "border-border hover:border-primary/40"),
+                  children: [
+                    previewUrl ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
                       /* @__PURE__ */ jsxRuntimeExports.jsx(
-                        "button",
+                        "div",
                         {
-                          type: "button",
-                          className: "flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-[15px] text-foreground hover:bg-secondary/50",
-                          onClick: () => {
-                            onOpenProfile(memberMenuTarget.id);
-                            setMemberMenuTarget(null);
-                          },
-                          children: "عرض الملف الشخصي"
+                          className: "absolute inset-0 bg-cover bg-center",
+                          style: { backgroundImage: `url(${previewUrl})` }
                         }
                       ),
-                      !chat.isChannel && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-                        /* @__PURE__ */ jsxRuntimeExports.jsx(
-                          "button",
-                          {
-                            type: "button",
-                            className: "flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-[15px] text-foreground hover:bg-secondary/50",
-                            onClick: () => {
-                              toggleGroupAdmin(chat.id, memberMenuTarget.id);
-                              setMemberMenuTarget(null);
-                            },
-                            children: chat.admins.includes(memberMenuTarget.id) ? "إزالة مشرف" : "تعيين مشرف"
-                          }
-                        ),
-                        /* @__PURE__ */ jsxRuntimeExports.jsx(
-                          "button",
-                          {
-                            type: "button",
-                            className: "flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-[15px] font-semibold text-destructive hover:bg-destructive/10",
-                            onClick: () => {
-                              setKickTarget(memberMenuTarget);
-                              setMemberMenuTarget(null);
-                            },
-                            children: "طرد من المجموعة"
-                          }
-                        )
-                      ] }),
-                      chat.isChannel && /* @__PURE__ */ jsxRuntimeExports.jsx(
-                        "button",
+                      /* @__PURE__ */ jsxRuntimeExports.jsx(
+                        "div",
                         {
-                          type: "button",
-                          className: "flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-[15px] text-foreground hover:bg-secondary/50",
-                          onClick: () => {
-                            toggleHost(chat.id, memberMenuTarget.id);
-                            setMemberMenuTarget(null);
-                          },
-                          children: (chat.hosts || []).includes(memberMenuTarget.id) ? t("removeHost") : t("inviteHost")
+                          className: "absolute inset-0",
+                          style: { backgroundColor: `rgba(0,0,0,${theme.overlayOpacity ?? 0.38})` }
                         }
                       )
-                    ]
-                  }
-                )
-              }
-            ),
-            kickTarget && /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "div",
-              {
-                className: "fixed inset-0 z-[80] flex items-center justify-center bg-black/70 p-4",
-                onClick: () => setKickTarget(null),
-                children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                  "div",
-                  {
-                    className: "w-full max-w-sm rounded-3xl bg-background p-5 text-foreground shadow-xl ring-1 ring-border",
-                    onClick: (e) => e.stopPropagation(),
-                    children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-center text-lg font-bold", children: "تأكيد الطرد" }),
-                      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-3 text-center text-sm text-muted-foreground", children: [
-                        "هل تريد طرد @",
-                        kickTarget.username,
-                        "؟"
-                      ] }),
-                      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-5 flex gap-2", children: [
-                        /* @__PURE__ */ jsxRuntimeExports.jsx(
-                          "button",
-                          {
-                            type: "button",
-                            className: "flex-1 rounded-2xl bg-secondary py-2.5 text-sm font-semibold text-foreground",
-                            onClick: () => setKickTarget(null),
-                            children: t("cancel")
-                          }
-                        ),
-                        /* @__PURE__ */ jsxRuntimeExports.jsx(
-                          "button",
-                          {
-                            type: "button",
-                            className: "flex-1 rounded-2xl bg-destructive py-2.5 text-sm font-semibold text-destructive-foreground",
-                            onClick: () => {
-                              kickMember(chat.id, kickTarget.id);
-                              setKickTarget(null);
-                            },
-                            children: "تأكيد"
-                          }
-                        )
-                      ] })
-                    ]
-                  }
-                )
-              }
-            ),
-            showReport && reportPeer && /* @__PURE__ */ jsxRuntimeExports.jsx(
-              ReportFlowSheet,
-              {
-                open: showReport,
-                onClose: () => setShowReport(false),
-                reportedUserId: reportPeer.id,
-                reportedUsername: reportPeer.username,
-                targetType: "user"
-              }
-            ),
-            showRoles && !chat.isChannel && /* @__PURE__ */ jsxRuntimeExports.jsx(GroupRolesSheet, { chat, onClose: () => setShowRoles(false) }),
-            showAdvancedSettings && !chat.isChannel && /* @__PURE__ */ jsxRuntimeExports.jsx(GroupSettingsSheet, { chat, onClose: () => setShowAdvancedSettings(false) })
+                    ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 bg-gradient-to-br from-zinc-200 to-zinc-400 dark:from-zinc-700 dark:to-zinc-900" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2.5 pb-2.5 pt-8", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[13px] font-semibold text-white", children: chatWallpaperLabel(theme, language) }) }),
+                    selected ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-primary text-primary-foreground shadow", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Check, { size: 16, strokeWidth: 2.5 }) }) : null
+                  ]
+                },
+                theme.id
+              );
+            }) }) })
           ]
         }
       )
@@ -28019,32 +30714,8 @@ function buildChatTimelineRows(messages, meId, lang) {
   }
   return rows;
 }
-function canShowImage(src) {
-  if (!src?.trim()) return false;
-  const s = src.trim().toLowerCase();
-  return s.startsWith("data:image/") || s.startsWith("blob:") || s.startsWith("/media/") || /^https?:\/\//i.test(s);
-}
 function RSocialAvatar({ name = "?", src, size = 48, ring, className }) {
-  const initials = name.replace(/^@/, "").slice(0, 2).toUpperCase();
-  const resolved = reactExports.useMemo(() => resolveMediaUrl(src), [src]);
-  const [imgFailed, setImgFailed] = reactExports.useState(false);
-  reactExports.useEffect(() => setImgFailed(false), [resolved]);
-  const showImg = !!(resolved && canShowImage(resolved) && !imgFailed);
-  const { bg, color } = pastelAvatarColors(name);
-  const inner = showImg ? /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name, src, size, className }) : /* @__PURE__ */ jsxRuntimeExports.jsx(
-    "div",
-    {
-      className: "rounded-full flex items-center justify-center overflow-hidden font-bold select-none shrink-0 " + (className || ""),
-      style: {
-        width: size,
-        height: size,
-        fontSize: size * 0.34,
-        backgroundColor: bg,
-        color
-      },
-      children: initials
-    }
-  );
+  const inner = /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name, src, size, className });
   if (ring) {
     return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "story-ring inline-block", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-full bg-white p-[2px]", children: inner }) });
   }
@@ -28133,7 +30804,7 @@ function CallScreen({
       )
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col items-center gap-3 " + (video ? "py-6" : "flex-1 justify-center"), children: [
-      !video && /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: other?.username || "?", src: other?.avatar, size: 120 }),
+      !video && /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: other?.username || "?", src: other?.avatar, size: 120 }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-xl font-semibold", children: [
         "@",
         other?.username || "?"
@@ -28246,6 +30917,18 @@ function chatForwardLabel(state, c, meId) {
   const u = oid ? userById(state, oid) : null;
   return u ? "@" + u.username : "?";
 }
+function parseGroupSystemEvent(raw) {
+  const text = (raw || "").trim();
+  let m = text.match(/^@?([A-Za-z0-9_.-]+)\s+أضاف\s+@?([A-Za-z0-9_.-]+)\s+إلى المجموعة$/);
+  if (m) return { actor: m[1], action: "added", target: m[2] };
+  m = text.match(/^@?([A-Za-z0-9_.-]+)\s+طرد\s+@?([A-Za-z0-9_.-]+)\s+من المجموعة$/);
+  if (m) return { actor: m[1], action: "removed", target: m[2] };
+  m = text.match(/^@?([A-Za-z0-9_.-]+)\s+added\s+@?([A-Za-z0-9_.-]+)(?:\s+to\s+the\s+group)?$/i);
+  if (m) return { actor: m[1], action: "added", target: m[2] };
+  m = text.match(/^@?([A-Za-z0-9_.-]+)\s+removed\s+@?([A-Za-z0-9_.-]+)(?:\s+from\s+the\s+group)?$/i);
+  if (m) return { actor: m[1], action: "removed", target: m[2] };
+  return null;
+}
 function ForwardChatSheet({
   currentChat,
   message,
@@ -28316,7 +30999,7 @@ function ForwardChatSheet({
                 onClose();
               },
               children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: label, src: av, size: 40 }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: label, src: av, size: 40 }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "min-w-0 flex-1 truncate font-medium", children: label })
               ]
             },
@@ -28859,12 +31542,14 @@ function ChatListRowWithPeek({
   onStackDragEnd,
   onStackChromeHide,
   onStackChromeShow,
-  onRowOpenCommit
+  onRowOpenCommit,
+  onStackGestureArm
 }) {
   const { state, openOrCreateChat, sendMessage, toggleChatListPin, toggleChatMute, deleteChat, isGuest, joinChannel } = useApp();
   const t = useT();
   const [peekPx, setPeekPx] = reactExports.useState(0);
   const [cameraDraft, setCameraDraft] = reactExports.useState(null);
+  const [instagramCameraOpen, setInstagramCameraOpen] = reactExports.useState(false);
   const peekRef = reactExports.useRef(0);
   const cameraInputRef = reactExports.useRef(null);
   const capWidth = () => typeof window !== "undefined" ? Math.min(window.innerWidth, APP_COLUMN_MAX_PX) : APP_COLUMN_MAX_PX;
@@ -29086,7 +31771,7 @@ function ChatListRowWithPeek({
         } else if (cap > 0 && px > 0) {
           onStackDragEnd?.(chatRowOpenId, 0);
         } else if (cap > 0 && px < cap * PEEK_CAMERA_TAP_FRACTION && down && Date.now() - down.downAt < 520) {
-          cameraInputRef.current?.click();
+          setInstagramCameraOpen(true);
         }
         return;
       }
@@ -29094,7 +31779,7 @@ function ChatListRowWithPeek({
       const duration = Date.now() - down.downAt;
       const distSq = (e.clientX - down.x0) ** 2 + (e.clientY - down.y0) ** 2;
       if (duration < CAMERA_TAP_MAX_DURATION_MS && distSq < 200) {
-        cameraInputRef.current?.click();
+        setInstagramCameraOpen(true);
       }
     },
     [clearCameraLongPress, onRowOpenCommit, onStackDragEnd, chatRowOpenId]
@@ -29134,6 +31819,7 @@ function ChatListRowWithPeek({
   }, [onOpenChat, onRowOpenCommit, chatRowOpenId]);
   const onRowOpenPointerDown = (e) => {
     if (e.button !== 0) return;
+    onStackGestureArm?.();
     rowPointerEndedRef.current = false;
     setRowPressedVisual(true);
     rowOpenDownRef.current = { x0: e.clientX, y0: e.clientY, pointerId: e.pointerId };
@@ -29222,6 +31908,7 @@ function ChatListRowWithPeek({
       const px = Math.max(0, Math.min(cap, pull));
       const mode2 = Math.hypot(dx2, dy2) < 14 ? "tap" : "swipe-end";
       const vx = rowOpenVelocityRef.current;
+      rowOpenLastPullRef.current = px;
       if (onRowOpenCommit) {
         onRowOpenCommit(chatRowOpenId, px, mode2);
       } else if (mode2 === "tap") {
@@ -29508,35 +32195,30 @@ function ChatListRowWithPeek({
         }
       )
     ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      InstagramCamera,
+      {
+        open: instagramCameraOpen,
+        language: state.language,
+        onClose: () => setInstagramCameraOpen(false),
+        onCapture: (cap) => setCameraDraft({ kind: cap.kind, dataUrl: cap.dataUrl }),
+        onFallback: () => cameraInputRef.current?.click()
+      }
+    ),
     cameraDraft && /* @__PURE__ */ jsxRuntimeExports.jsx(
-      ChatCameraComposeModal,
+      CameraCaptureShareScreen,
       {
         draft: cameraDraft,
-        senderName: meUser?.username,
-        senderAvatar: meUser?.avatar,
-        onClose: () => setCameraDraft(null),
-        onSend: ({ type, content, viewOnce }) => {
-          const payload = {
-            type,
-            content,
-            ...viewOnce ? { viewOnce: true } : {}
-          };
-          if (c.isGroup || c.isChannel) {
-            sendMessage(c.id, payload);
-            onOpenChat(openChatIdFor(c, me.id));
-          } else if (otherId) {
-            const ch = openOrCreateChat(otherId);
-            if (!ch) {
-              if (isGuest) notifyGuestActionBlocked();
-              else window.alert("تعذّر فتح المحادثة.");
-              setCameraDraft(null);
-              return;
-            }
-            sendMessage(ch.id, payload);
-            onOpenChat(openChatIdFor(ch, me.id));
-          }
-          setCameraDraft(null);
-        }
+        language: state.language,
+        mode: "chat",
+        onSendToChat: (payload) => {
+          sendMessage(c.id, {
+            type: payload.type,
+            content: payload.content,
+            ...payload.shareText ? { shareText: payload.shareText } : {}
+          });
+        },
+        onClose: () => setCameraDraft(null)
       }
     )
   ] });
@@ -29575,6 +32257,9 @@ function ChatScreen({
   const stackTapTransitionRef = reactExports.useRef(false);
   const [stackClosingId, setStackClosingId] = reactExports.useState(null);
   const stackChromeHiddenRef = reactExports.useRef(false);
+  const groupSettingsStackProgressRef = reactExports.useRef(1);
+  const openChatThemePickerRef = reactExports.useRef(() => {
+  });
   const [stackChromeHidden, setStackChromeHidden] = reactExports.useState(false);
   const stackRoomDismissRef = reactExports.useRef(false);
   const stackCloseTimerRef = reactExports.useRef(null);
@@ -29591,6 +32276,29 @@ function ChatScreen({
   });
   const [stackGestureLocked, setStackGestureLocked] = reactExports.useState(false);
   const [stackRoomDismissDragging, setStackRoomDismissDragging] = reactExports.useState(false);
+  reactExports.useEffect(() => {
+    try {
+      window.dispatchEvent(
+        new CustomEvent("retweet-chat-create-sheet", {
+          detail: { open: !!showCreate }
+        })
+      );
+    } catch {
+    }
+    return () => {
+      try {
+        window.dispatchEvent(
+          new CustomEvent("retweet-chat-create-sheet", {
+            detail: { open: false }
+          })
+        );
+      } catch {
+      }
+    };
+  }, [showCreate]);
+  reactExports.useEffect(() => {
+    if (!openChat) setShowGroupSettings(false);
+  }, [openChat]);
   const stackLayers = reactExports.useCallback(
     () => ({
       inboxEl: stackInboxRef.current,
@@ -29860,7 +32568,12 @@ function ChatScreen({
     ]
   );
   const cancelStackDrag = reactExports.useCallback(() => {
-    if (stackTransitionLockRef.current && stackSwipeOpeningRef.current) return;
+    flushPendingStackDrag();
+    if (!stackDragChatId && !openChat && stackProgressRef.current < 0.02) {
+      releaseStackTransitionLock();
+      releaseChatChromeAfterGesture();
+      return;
+    }
     const gen = ++stackNavGenerationRef.current;
     stackTransitionLockRef.current = true;
     stackNavTargetRef.current = null;
@@ -29882,6 +32595,9 @@ function ChatScreen({
       releaseStackTransitionLock();
     }, SLIDE_DISMISS_MS);
   }, [
+    flushPendingStackDrag,
+    stackDragChatId,
+    openChat,
     publishStackProgressVisual,
     resetStackToInboxRest,
     showStackChrome,
@@ -29939,9 +32655,30 @@ function ChatScreen({
     onExitNavRevealProgress?.(null);
     onActiveChatChange?.(null);
   }, [releaseStackTransitionLock, resetStackToInboxRest, onExitNavRevealProgress, onActiveChatChange]);
+  const armStackListGesture = reactExports.useCallback(() => {
+    if ((stackGestureLocked || stackListGestureCommitRef.current) && !openChat && stackProgressRef.current < 0.98) {
+      releaseStackTransitionLock();
+      stackListGestureCommitRef.current = false;
+      if (stackProgressRef.current > 0.02) {
+        resetStackToInboxRest();
+      }
+    }
+  }, [openChat, releaseStackTransitionLock, resetStackToInboxRest]);
   const handleRowOpenCommit = reactExports.useCallback(
     (chatId, px, mode2) => {
-      if (stackListGestureCommitRef.current || stackTransitionLockRef.current) return;
+      flushPendingStackDrag();
+      if (stackListGestureCommitRef.current) return;
+      if (stackTransitionLockRef.current) {
+        const p = stackProgressRef.current;
+        if (openChat && p >= 0.98) return;
+        if (!openChat && p > 0.03 && p < 0.98) {
+          releaseStackTransitionLock();
+        } else if (p <= 0.03) {
+          releaseStackTransitionLock();
+        } else {
+          return;
+        }
+      }
       const canonical = resolveOpenChatId(chatId);
       if (mode2 === "tap") {
         stackOpenDragRef.current = false;
@@ -29960,7 +32697,16 @@ function ChatScreen({
       if (commit) commitStackOpen(canonical);
       else cancelStackDrag();
     },
-    [commitStackOpen, cancelStackDrag, openChatDirect, resolveOpenChatId, stackDragChatId]
+    [
+      flushPendingStackDrag,
+      commitStackOpen,
+      cancelStackDrag,
+      openChatDirect,
+      openChat,
+      resolveOpenChatId,
+      stackDragChatId,
+      releaseStackTransitionLock
+    ]
   );
   reactExports.useLayoutEffect(() => {
     try {
@@ -29986,11 +32732,13 @@ function ChatScreen({
     return () => ro.disconnect();
   }, []);
   reactExports.useLayoutEffect(() => {
+    if (showGroupSettings) return;
     if (stackOpenDragRef.current || stackDragChatId || stackClosingId || stackTapTransitionRef.current || stackRoomDismissRef.current || stackRoomDriveRef.current === "close" || stackGestureLocked || stackTransitionLockRef.current || stackSwipeOpeningRef.current) {
       return;
     }
     applyStackLayerTransforms(stackProgress, stackSpring);
   }, [
+    showGroupSettings,
     stackProgress,
     stackSpring,
     stackDragChatId,
@@ -30175,6 +32923,37 @@ function ChatScreen({
     ]
   );
   beginCloseChatThreadRef.current = beginCloseChatThread;
+  const flushPendingStackDrag = reactExports.useCallback(() => {
+    if (stackDragFrameRef.current) {
+      cancelAnimationFrame(stackDragFrameRef.current);
+      stackDragFrameRef.current = 0;
+    }
+    const pending = pendingStackDragRef.current;
+    if (!pending) return;
+    pendingStackDragRef.current = null;
+    const { chatId, px } = pending;
+    if (stackListGestureCommitRef.current || stackTransitionLockRef.current) return;
+    stackOpenDragRef.current = true;
+    stackRoomDriveRef.current = "open";
+    stackRoomDismissRef.current = false;
+    setStackClosingId(null);
+    setStackSpring(false);
+    hideStackChrome();
+    const canonical = resolveOpenChatId(chatId);
+    if (stackDragChatId !== canonical) setStackDragChatId(canonical);
+    let cap = stackCapRef.current;
+    if (!(cap > 0)) {
+      cap = readSafeStackCapPx(stackInboxRef.current, stackCapRef);
+      stackCapRef.current = cap;
+    }
+    const progress = cap > 0 ? px / cap : 0;
+    publishStackProgressVisual(progress, false);
+  }, [
+    stackDragChatId,
+    resolveOpenChatId,
+    publishStackProgressVisual,
+    hideStackChrome
+  ]);
   const applyStackDragVisual = reactExports.useCallback(
     (chatId, px) => {
       if (stackListGestureCommitRef.current || stackTransitionLockRef.current || stackSwipeOpeningRef.current) {
@@ -30220,11 +32999,12 @@ function ChatScreen({
     []
   );
   const onStackDragEnd = reactExports.useCallback(
-    (chatId, px) => {
-      if (stackListGestureCommitRef.current || stackTransitionLockRef.current) return;
+    (chatId, px, vx) => {
+      flushPendingStackDrag();
+      if (Number.isFinite(vx)) stackOpenVelocityRef.current = vx ?? 0;
       handleRowOpenCommit(chatId, px, "swipe-end");
     },
-    [handleRowOpenCommit]
+    [flushPendingStackDrag, handleRowOpenCommit]
   );
   reactExports.useLayoutEffect(() => {
     if (!openChat) {
@@ -30282,6 +33062,7 @@ function ChatScreen({
   }, []);
   reactExports.useEffect(() => {
     const recoverHalfOpen = () => {
+      flushPendingStackDrag();
       if (openChat || stackListGestureCommitRef.current) return;
       const p = stackProgressRef.current;
       if (p > 0.03 && p < 0.97 && (stackOpenDragRef.current || stackDragChatId)) {
@@ -30294,13 +33075,78 @@ function ChatScreen({
       document.removeEventListener("pointercancel", recoverHalfOpen, true);
       window.removeEventListener("blur", recoverHalfOpen);
     };
-  }, [openChat, stackDragChatId, cancelStackDrag]);
+  }, [openChat, stackDragChatId, cancelStackDrag, flushPendingStackDrag]);
+  reactExports.useEffect(() => {
+    const stuck = stackGestureLocked && !openChat && stackProgressRef.current < 0.98 || !!stackDragChatId && !openChat && stackProgressRef.current > 0.03 && stackProgressRef.current < 0.97;
+    if (!stuck) return;
+    const t2 = window.setTimeout(() => {
+      if (openChat && stackProgressRef.current >= 0.98) {
+        releaseStackTransitionLock();
+        return;
+      }
+      const id = stackDragChatId;
+      const p = stackProgressRef.current;
+      if (!id || p <= 0.03) {
+        releaseStackTransitionLock();
+        resetStackToInboxRest();
+        releaseChatChromeAfterGesture();
+        return;
+      }
+      if (p >= 0.97) {
+        commitStackOpen(id);
+        return;
+      }
+      if (p > 0.03 && p < 0.97) {
+        cancelStackDrag();
+      }
+    }, 420);
+    return () => window.clearTimeout(t2);
+  }, [
+    stackGestureLocked,
+    stackDragChatId,
+    openChat,
+    stackProgress,
+    commitStackOpen,
+    cancelStackDrag,
+    releaseStackTransitionLock,
+    resetStackToInboxRest,
+    releaseChatChromeAfterGesture
+  ]);
   const activeStackChatId = openChat ?? stackDragChatId ?? stackClosingId ?? null;
   const stackChatRaw = activeStackChatId ? findChatByOpenId(state.chats, activeStackChatId, me.id) : null;
   const stackChat = reactExports.useMemo(
     () => stackChatRaw ? normalizeChatRecord(stackChatRaw) : null,
     [stackChatRaw]
   );
+  const restoreChatStackAfterGroupSettings = reactExports.useCallback(() => {
+    if (!openChat) return;
+    const p = Math.max(
+      groupSettingsStackProgressRef.current,
+      stackProgressRef.current,
+      stackProgress,
+      0.98
+    );
+    stackProgressRef.current = p;
+    if (stackProgress < 0.98) setStackProgress(p);
+    stackRoomDismissRef.current = false;
+    stackRoomDriveRef.current = "idle";
+    stackOpenDragRef.current = false;
+    stackTransitionLockRef.current = false;
+    stackSwipeOpeningRef.current = false;
+    releaseStackTransitionLock();
+    applyStackLayerTransforms(p, false);
+    publishChatStackCssProgress(p);
+  }, [openChat, stackProgress, applyStackLayerTransforms, releaseStackTransitionLock]);
+  const closeGroupSettings = reactExports.useCallback(() => {
+    restoreChatStackAfterGroupSettings();
+    reactDomExports.flushSync(() => setShowGroupSettings(false));
+    requestAnimationFrame(() => restoreChatStackAfterGroupSettings());
+  }, [restoreChatStackAfterGroupSettings]);
+  reactExports.useLayoutEffect(() => {
+    if (showGroupSettings) return;
+    if (!openChat || !stackChat) return;
+    restoreChatStackAfterGroupSettings();
+  }, [showGroupSettings, openChat, stackChat, restoreChatStackAfterGroupSettings]);
   const stackRoomPreviewOnly = !!stackDragChatId && !openChat;
   const chatRoomDismissBlocked = stackRoomPreviewOnly || !!stackDragChatId || stackTapTransitionRef.current || stackGestureLocked && !stackRoomDismissDragging;
   const stackRoomForceScrollBottom = !!openChat && !stackDragChatId && stackProgress >= 0.98 && !stackTapTransitionRef.current;
@@ -30402,6 +33248,20 @@ function ChatScreen({
       return lastActivityAt(b) - lastActivityAt(a);
     });
   }, [filteredChats, me.id, me.pinnedChatIds, state.chats]);
+  const [lastStableChats, setLastStableChats] = reactExports.useState([]);
+  const [lastStableAt, setLastStableAt] = reactExports.useState(0);
+  reactExports.useEffect(() => {
+    if (sortedFilteredChats.length > 0) {
+      setLastStableChats(sortedFilteredChats);
+      setLastStableAt(Date.now());
+    }
+  }, [sortedFilteredChats]);
+  reactExports.useEffect(() => {
+    setLastStableChats([]);
+    setLastStableAt(0);
+  }, [me.id]);
+  const shouldHoldPreviousChats = !search.trim() && sortedFilteredChats.length === 0 && lastStableChats.length > 0 && Date.now() - lastStableAt < 8e3;
+  const renderedChats = shouldHoldPreviousChats ? lastStableChats : sortedFilteredChats;
   const stackChatOpenKey = stackChat ? openChatIdFor(stackChat, me.id) : null;
   reactExports.useCallback(
     () => !!openChat && !chatRoomDismissBlocked && !stackTransitionLockRef.current && !stackSwipeOpeningRef.current && !stackClosingId,
@@ -30455,7 +33315,7 @@ function ChatScreen({
     {
       ref: stackInboxRef,
       dir: isRtl ? "rtl" : "ltr",
-      className: "chat-inbox-pane relative z-[1] flex min-h-0 flex-1 flex-col overflow-hidden overscroll-none bg-background [transform:translateZ(0)]",
+      className: "chat-inbox-pane no-scrollbar relative z-[1] flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-none bg-background [transform:translateZ(0)]",
       style: stackInboxPointerEvents ? { pointerEvents: stackInboxPointerEvents } : void 0,
       children: [
         !hideInboxTopChrome && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "shrink-0 px-4 pb-2 pt-[max(0.75rem,max(0.75rem, var(--sat)))]", children: [
@@ -30649,8 +33509,8 @@ function ChatScreen({
             }
           )
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "chat-inbox-scroll no-scrollbar flex-1 overflow-y-auto overscroll-none", children: [
-          sortedFilteredChats.map((c) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "chat-inbox-scroll no-scrollbar", children: [
+          renderedChats.map((c) => /* @__PURE__ */ jsxRuntimeExports.jsx(
             ChatListRowWithPeek,
             {
               chat: c,
@@ -30661,16 +33521,17 @@ function ChatScreen({
               onStackDragEnd,
               onStackChromeHide: hideStackChrome,
               onStackChromeShow: showStackChrome,
-              onRowOpenCommit: handleRowOpenCommit
+              onRowOpenCommit: handleRowOpenCommit,
+              onStackGestureArm: armStackListGesture
             },
             c.id
           )),
-          sortedFilteredChats.length === 0 && !search.trim() && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col items-center justify-center py-16 gap-3 px-6 text-center", children: [
+          renderedChats.length === 0 && !search.trim() && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col items-center justify-center py-16 gap-3 px-6 text-center", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex h-16 w-16 items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-800", children: /* @__PURE__ */ jsxRuntimeExports.jsx(MessageCirclePlus, { size: 28, className: "text-zinc-400" }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[15px] font-semibold text-zinc-500 dark:text-zinc-400", children: t("noChats") }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[13px] text-zinc-400", children: isRtl ? "ابدأ محادثة جديدة" : "Start a new conversation" })
           ] }),
-          sortedFilteredChats.length === 0 && !!search.trim() && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "py-12 text-center text-[14px] text-zinc-400", children: isRtl ? "لا نتائج لـ «" + search + "»" : `No results for "${search}"` }),
+          renderedChats.length === 0 && !!search.trim() && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "py-12 text-center text-[14px] text-zinc-400", children: isRtl ? "لا نتائج لـ «" + search + "»" : `No results for "${search}"` }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-3", "aria-hidden": true })
         ] }),
         editingNote && /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -30839,20 +33700,6 @@ function ChatScreen({
       }
     );
   }
-  if (activeStackChatId && stackChat && showGroupSettings && openChat && (stackChat.isGroup || stackChat.isChannel))
-    return /* @__PURE__ */ jsxRuntimeExports.jsx(
-      GroupDetailsScreen,
-      {
-        chat: stackChat,
-        messages: stackChat.messages,
-        onBack: () => setShowGroupSettings(false),
-        onOpenProfile,
-        onCreateNewGroup: () => {
-          setShowGroupSettings(false);
-          setShowCreate("group");
-        }
-      }
-    );
   if (showRequests)
     return /* @__PURE__ */ jsxRuntimeExports.jsx(
       RequestsList,
@@ -30885,7 +33732,7 @@ function ChatScreen({
       {
         className: "fixed inset-x-0 z-[250] mx-auto max-w-md px-3 " + (hideInboxChrome ? "bottom-[max(0.75rem,var(--sab))]" : "bottom-[calc(5.5rem+var(--sab))]"),
         children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3 rounded-2xl border border-border bg-card p-3 shadow-lg", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: caller?.username || "?", src: caller?.avatar, size: 44 }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: caller?.username || "?", src: caller?.avatar, size: 44 }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1 text-start", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-sm font-semibold", children: [
               "مكالمة ",
@@ -30945,15 +33792,43 @@ function ChatScreen({
                 setShowCall(stackChat.id);
               } : () => {
               },
-              onOpenSettings: openChat ? () => setShowGroupSettings(true) : () => {
+              onOpenSettings: openChat ? () => {
+                groupSettingsStackProgressRef.current = Math.max(
+                  stackProgressRef.current,
+                  stackProgress,
+                  0.98
+                );
+                setShowGroupSettings(true);
+              } : () => {
               },
-              onOpenProfile
+              onOpenProfile,
+              registerOpenThemePicker: (open) => {
+                openChatThemePickerRef.current = open;
+              }
             },
             `${accountSessionKey}-${stackChat.id}`
           )
         }
       ) : null
-    ] })
+    ] }),
+    showGroupSettings && openChat && stackChat && (stackChat.isGroup || stackChat.isChannel) ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "pointer-events-auto fixed inset-0 z-[220] mx-auto flex max-w-md flex-col bg-background", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+      GroupDetailsScreen,
+      {
+        embeddedInChatStack: true,
+        chat: stackChat,
+        messages: stackChat.messages,
+        onBack: closeGroupSettings,
+        onOpenProfile,
+        onOpenChatTheme: () => {
+          closeGroupSettings();
+          window.setTimeout(() => openChatThemePickerRef.current(), 0);
+        },
+        onCreateNewGroup: () => {
+          closeGroupSettings();
+          setShowCreate("group");
+        }
+      }
+    ) }) : null
   ] });
 }
 function RequestsList({
@@ -30997,7 +33872,7 @@ function RequestsList({
             className: "flex w-full items-center gap-3 text-start touch-manipulation rounded-xl py-1 hover:bg-secondary/50",
             onClick: () => reactExports.startTransition(() => onOpenProfile(otherId)),
             children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: other?.username || "?", src: other?.avatar, size: 48 }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: other?.username || "?", src: other?.avatar, size: 48 }),
               /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1", children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "truncate font-semibold", children: [
                   "@",
@@ -31166,7 +34041,7 @@ function CreateGroup({ mode: mode2, onBack, onCreated }) {
     step === 1 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-3", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col items-center gap-2", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "relative cursor-pointer", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: name || "مجموعة", src: avatar, size: 96 }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: name || "مجموعة", src: avatar, size: 96 }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "absolute inset-0 flex items-center justify-center rounded-full bg-black/40 text-xs text-white opacity-0 hover:opacity-100", children: avatarBusy ? "…" : "صورة" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("input", { type: "file", accept: "image/*", className: "sr-only", onChange: onAvatarFile, disabled: avatarBusy })
         ] }),
@@ -31226,7 +34101,7 @@ function CreateGroup({ mode: mode2, onBack, onCreated }) {
           onClick: () => setSelected((s) => s.includes(u.id) ? s.filter((x) => x !== u.id) : [...s, u.id]),
           className: "flex w-full touch-manipulation items-center gap-3 rounded-2xl p-2.5 hover:bg-secondary active:bg-secondary/80",
           children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: u.username, src: u.avatar, size: 44 }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u.username, src: u.avatar, size: 44 }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1 text-start text-[15px] font-medium", children: [
               "@",
               u.username
@@ -31322,6 +34197,7 @@ function ChatRoom({
   onCall,
   onOpenSettings,
   onOpenProfile,
+  registerOpenThemePicker,
   embedInStack = false,
   stackFullyOpen = true,
   roomDismissBlocked = false,
@@ -31358,6 +34234,8 @@ function ChatRoom({
   const [showStickers, setShowStickers] = reactExports.useState(false);
   const [plusAttachOpen, setPlusAttachOpen] = reactExports.useState(false);
   const [theme, setTheme] = reactExports.useState("default");
+  const [showChatThemePicker, setShowChatThemePicker] = reactExports.useState(false);
+  const [wallpaperId, setWallpaperId] = reactExports.useState("default");
   const [recording, setRecording] = reactExports.useState(false);
   const [showPrivacyMenu, setShowPrivacyMenu] = reactExports.useState(false);
   const [hideReadStatus, setHideReadStatus] = reactExports.useState(false);
@@ -31372,6 +34250,13 @@ function ChatRoom({
   const sendChatId = reactExports.useMemo(() => chatMergeKey(chat, meId), [chat, meId]);
   const chatIdRef = reactExports.useRef(sendChatId);
   chatIdRef.current = sendChatId;
+  reactExports.useEffect(() => {
+    setWallpaperId(loadChatWallpaperForChat(chat, meId));
+  }, [sendChatId, chat.id, meId]);
+  const openThemePicker = reactExports.useCallback(() => setShowChatThemePicker(true), []);
+  reactExports.useEffect(() => {
+    registerOpenThemePicker?.(openThemePicker);
+  }, [registerOpenThemePicker, openThemePicker]);
   const dispatchSendRef = reactExports.useRef(
     () => false
   );
@@ -31405,7 +34290,15 @@ function ChatRoom({
   const other = otherId ? userById(state, otherId) : null;
   const title = chat.isGroup || chat.isChannel ? chat.name : "@" + (other?.username || "");
   const isMember = meId ? chat.members.includes(meId) : false;
-  const canPost = !chat.isChannel || (chat.hosts || []).includes(meId);
+  const memberRole = chat.memberRoles?.[meId] || (chat.ownerId === meId ? "owner" : (chat.admins || []).includes(meId) ? "admin" : "member");
+  const whoCanSend = chat.groupSettings?.whoCanSendMessages || "everyone";
+  const mutedUntil = chat.mutedUserIds?.[meId] || 0;
+  const isMutedNow = mutedUntil > Date.now();
+  const canPostByRole = chat.isGroup && !chat.isChannel ? whoCanSend === "admins" ? memberRole === "owner" || memberRole === "admin" : whoCanSend === "moderators" ? memberRole !== "member" : true : true;
+  const canPost = (!chat.isChannel || (chat.hosts || []).includes(meId)) && !isMutedNow && canPostByRole;
+  const muteRemainingMs = Math.max(0, mutedUntil - Date.now());
+  const muteRemainingText = muteRemainingMs > 0 ? muteRemainingMs > 864e5 ? `متبقي ${Math.ceil(muteRemainingMs / 864e5)} يوم` : muteRemainingMs > 36e5 ? `متبقي ${Math.ceil(muteRemainingMs / 36e5)} ساعة` : `متبقي ${Math.ceil(muteRemainingMs / 6e4)} دقيقة` : "";
+  const blockedComposerReason = !canPost ? isMutedNow ? `أنت مكتوم في هذه المجموعة. ${muteRemainingText}` : chat.isChannel ? t("onlyOwner") : whoCanSend === "admins" ? "الكتابة مقفلة للأعضاء — فقط الأدمن يقدر يكتب." : "لا تملك صلاحية الكتابة حالياً." : "";
   chat.isGroup && !chat.isChannel;
   const isDmRoom = !chat.isGroup && !chat.isChannel;
   const peerIsTyping = reactExports.useMemo(() => {
@@ -31486,16 +34379,16 @@ function ChatRoom({
   const [moreReactionEmoji, setMoreReactionEmoji] = reactExports.useState(false);
   const [forwardingMessage, setForwardingMessage] = reactExports.useState(null);
   const [cameraCompose, setCameraCompose] = reactExports.useState(null);
+  const [instagramCameraOpen, setInstagramCameraOpen] = reactExports.useState(false);
   const [drawComposeOpen, setDrawComposeOpen] = reactExports.useState(false);
   const [viewOnceOverlay, setViewOnceOverlay] = reactExports.useState(null);
   const [inlineMediaViewer, setInlineMediaViewer] = reactExports.useState(null);
   const [shareFeedOpen, setShareFeedOpen] = reactExports.useState(null);
   const messagesScrollRef = reactExports.useRef(null);
   const composerRef = reactExports.useRef(null);
-  useChatKeyboardInsets(true);
-  const vv = useVisualViewportLayout();
-  const keyboardOpen = vv.keyboardInset > 8;
-  const composerBottomPad = chatComposerBottomPadding(keyboardOpen);
+  const chatHeaderRef = reactExports.useRef(null);
+  const kbSnap = useChatKeyboardInsets(true);
+  const composerBottomPad = chatComposerBottomPadding(kbSnap.open);
   const stickToBottomRef = reactExports.useRef(true);
   const syncComposerDockHeight = reactExports.useCallback(() => {
     const el = composerRef.current;
@@ -31518,6 +34411,14 @@ function ChatRoom({
       el.scrollTop = top;
     }
   }, [syncComposerDockHeight]);
+  const onComposerFocus = reactExports.useCallback(() => {
+    stickToBottomRef.current = true;
+    try {
+      window.scrollTo(0, 0);
+    } catch {
+    }
+    requestAnimationFrame(() => scrollMessagesToBottom());
+  }, [scrollMessagesToBottom]);
   reactExports.useLayoutEffect(() => {
     const el = composerRef.current;
     if (!el) return;
@@ -31530,7 +34431,6 @@ function ChatRoom({
     return () => ro.disconnect();
   }, [
     chat.id,
-    keyboardOpen,
     showStickers,
     replyingTo,
     mentionPick,
@@ -31540,22 +34440,29 @@ function ChatRoom({
   ]);
   reactExports.useEffect(() => {
     if (typeof window === "undefined") return;
-    const vv2 = window.visualViewport;
     const sync = () => {
       syncComposerDockHeight();
       if (stickToBottomRef.current) scrollMessagesToBottom();
     };
-    vv2?.addEventListener("resize", sync, { passive: true });
-    vv2?.addEventListener("scroll", sync, { passive: true });
     window.addEventListener("resize", sync, { passive: true });
     window.addEventListener("orientationchange", sync, { passive: true });
+    window.addEventListener("retweet-chat-keyboard-sync", sync, { passive: true });
     return () => {
-      vv2?.removeEventListener("resize", sync);
-      vv2?.removeEventListener("scroll", sync);
       window.removeEventListener("resize", sync);
       window.removeEventListener("orientationchange", sync);
+      window.removeEventListener("retweet-chat-keyboard-sync", sync);
     };
   }, [syncComposerDockHeight, scrollMessagesToBottom]);
+  reactExports.useEffect(() => {
+    if (!kbSnap.open) return;
+    stickToBottomRef.current = true;
+    const t1 = requestAnimationFrame(() => scrollMessagesToBottom());
+    const t2 = window.setTimeout(() => scrollMessagesToBottom(), 120);
+    return () => {
+      cancelAnimationFrame(t1);
+      window.clearTimeout(t2);
+    };
+  }, [kbSnap.open, kbSnap.keyboardInset, scrollMessagesToBottom]);
   const scrollAnchorRef = reactExports.useRef({ chatId: "", msgCount: 0 });
   const cameraCaptureRef = reactExports.useRef(null);
   const galleryMediaInputRef = reactExports.useRef(null);
@@ -31797,7 +34704,7 @@ function ChatRoom({
       window.removeEventListener("resize", onViewportChange2);
       window.removeEventListener("retweet-chat-scroll-bottom", onScrollBottom);
     };
-  }, [embedInStack, forceScrollToBottom, vv.height, vv.offsetTop, scrollMessagesToBottom]);
+  }, [embedInStack, forceScrollToBottom, scrollMessagesToBottom]);
   reactExports.useLayoutEffect(() => {
     if (!forceScrollToBottom) return;
     stickToBottomRef.current = true;
@@ -31839,19 +34746,6 @@ function ChatRoom({
       });
     }
   }, []);
-  const prevKeyboardOpenRef = reactExports.useRef(false);
-  reactExports.useEffect(() => {
-    const justOpened = keyboardOpen && !prevKeyboardOpenRef.current;
-    prevKeyboardOpenRef.current = keyboardOpen;
-    if (!justOpened) return;
-    stickToBottomRef.current = true;
-    const scrollOnce = () => scrollMessagesToBottom();
-    scrollOnce();
-    requestAnimationFrame(() => {
-      scrollOnce();
-      requestAnimationFrame(scrollOnce);
-    });
-  }, [keyboardOpen, scrollMessagesToBottom]);
   const VANISH_PULL_NEED = 120;
   const VANISH_PULL_HIT_PX = 140;
   const isQuranChannel = chat.id === QURAN_CHANNEL_ID;
@@ -31862,10 +34756,14 @@ function ChatRoom({
   );
   const dmDir = chatDmLayoutDir(state.language);
   const dmRtl = chatDmIsRtl(state.language);
-  const igDmSurfaceStyle = reactExports.useMemo(
-    () => dmPalette ? { backgroundColor: dmPalette.surface } : void 0,
-    [dmPalette]
-  );
+  const activeWallpaper = reactExports.useMemo(() => getChatWallpaperTheme(wallpaperId), [wallpaperId]);
+  const chatWallpaperUrl = activeWallpaper.imagePath ? chatWallpaperAssetUrl(activeWallpaper.imagePath) : null;
+  const chromeOnWallpaper = !!chatWallpaperUrl && !isQuranChannel;
+  const wallpaperIconClass = "text-white/85 hover:bg-white/10 active:bg-white/15 transition-colors";
+  const igDmSurfaceStyle = reactExports.useMemo(() => {
+    if (chromeOnWallpaper) return void 0;
+    return dmPalette ? { backgroundColor: dmPalette.surface } : void 0;
+  }, [dmPalette, chromeOnWallpaper]);
   const peerOnline = reactExports.useMemo(() => {
     if (!useIgDm || !otherId) return false;
     const last = chat.lastOpenAtByUser?.[otherId] ?? 0;
@@ -31884,7 +34782,7 @@ function ChatRoom({
       showPeerAvatar: true
     }));
   }, [chatTimelineRows, windowedMessages]);
-  const themeBg = isQuranChannel ? "bg-black text-white" : useIgDm && dmPalette ? dmPalette.headerTitleClass : theme === "blue" ? "bg-blue-50 dark:bg-blue-950" : theme === "pink" ? "bg-pink-50 dark:bg-pink-950" : "bg-background";
+  const themeBg = isQuranChannel ? "bg-black text-white" : chromeOnWallpaper ? "text-white" : useIgDm && dmPalette ? dmPalette.headerTitleClass : theme === "blue" ? "bg-blue-50 dark:bg-blue-950" : theme === "pink" ? "bg-pink-50 dark:bg-pink-950" : "bg-background";
   const clearGalleryLongPress = reactExports.useCallback(() => {
     if (galleryLpTimerRef.current) {
       clearTimeout(galleryLpTimerRef.current);
@@ -32532,11 +35430,12 @@ function ChatRoom({
     });
   }, [readComposerBody, replyingTo, dispatchSend, clearComposer, syncComposerDockHeight, scrollMessagesToBottom]);
   const edgeSwipeBackBlocked = reactExports.useMemo(
-    () => !!messageContext || !!forwardingMessage || !!cameraCompose || drawComposeOpen || !!viewOnceOverlay || !!inlineMediaViewer || !!shareFeedOpen || showStickers || recording || showPrivacyMenu,
+    () => !!messageContext || !!forwardingMessage || !!cameraCompose || instagramCameraOpen || drawComposeOpen || !!viewOnceOverlay || !!inlineMediaViewer || !!shareFeedOpen || showStickers || recording || showPrivacyMenu,
     [
       messageContext,
       forwardingMessage,
       cameraCompose,
+      instagramCameraOpen,
       drawComposeOpen,
       viewOnceOverlay,
       inlineMediaViewer,
@@ -32567,7 +35466,7 @@ function ChatRoom({
     onStackProgress,
     resetKey: `${chat.id}-${embedInStack ? "stack" : "solo"}`,
     edgeTopInsetPx: CHAT_ROOM_HEADER_EDGE_INSET_PX,
-    edgeBottomInsetPx: keyboardOpen ? 48 : 0
+    edgeBottomInsetPx: 0
   });
   const chatDismissCtx = reactExports.useMemo(
     () => ({
@@ -32632,23 +35531,16 @@ function ChatRoom({
       ref: chatSwipeColumnRef,
       "data-chat-swipe-column": true,
       "data-chat-dismiss-rtl": "1",
-      className: (embedInStack ? "relative flex h-full min-h-0 w-full flex-col overflow-hidden overscroll-none pointer-events-auto touch-manipulation " : "fixed inset-x-0 z-[200] box-border flex justify-center overflow-hidden overscroll-none pointer-events-none touch-manipulation ") + (useIgDm ? "" : "bg-background"),
-      style: {
-        ...embedInStack ? {
-          position: "fixed",
-          left: 0,
-          right: 0,
-          zIndex: 210,
-          marginInline: "auto",
-          maxWidth: "28rem",
-          width: "100%"
-        } : {},
-        top: vv.offsetTop,
-        height: vv.height,
-        maxHeight: vv.height,
-        bottom: "auto",
+      className: (embedInStack ? "chat-room-viewport relative flex h-full min-h-0 w-full flex-col overflow-hidden overscroll-none pointer-events-auto touch-manipulation " : "chat-room-solo fixed inset-x-0 z-[200] box-border flex justify-center overflow-hidden overscroll-none pointer-events-none touch-manipulation ") + (useIgDm ? "" : "bg-background"),
+      style: embedInStack ? {
         ...!embedInStack ? panelDismissTouchStyle : {},
-        ...useIgDm && dmPalette ? igDmSurfaceStyle : {}
+        ...useIgDm && dmPalette && !chromeOnWallpaper ? igDmSurfaceStyle : {}
+      } : {
+        top: 0,
+        height: "100dvh",
+        maxHeight: "100dvh",
+        ...panelDismissTouchStyle,
+        ...useIgDm && dmPalette && !chromeOnWallpaper ? igDmSurfaceStyle : {}
       },
       ...{
         onPointerDownCapture: panelDismissDown,
@@ -32659,25 +35551,48 @@ function ChatRoom({
       },
       children: [
         !embedInStack && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { ...edgeStripProps, "data-chat-back-edge": true, "aria-label": "سحب للرجوع من اليمين" }),
+        chromeOnWallpaper && chatWallpaperUrl ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "div",
+            {
+              className: "pointer-events-none fixed inset-0 z-[208] mx-auto w-full max-w-md bg-cover bg-center bg-no-repeat",
+              style: { backgroundImage: `url(${chatWallpaperUrl})` },
+              "aria-hidden": true
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "div",
+            {
+              className: "pointer-events-none fixed inset-0 z-[208] mx-auto w-full max-w-md",
+              style: { backgroundColor: `rgba(0,0,0,${activeWallpaper.overlayOpacity ?? 0.4})` },
+              "aria-hidden": true
+            }
+          )
+        ] }) : null,
         /* @__PURE__ */ jsxRuntimeExports.jsx(SlideDismissContext.Provider, { value: chatDismissCtx, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
           "div",
           {
-            className: embedInStack ? "relative mx-auto h-full w-full min-w-0 max-w-md overflow-hidden overscroll-none pointer-events-auto" : "relative mx-auto h-full w-full min-w-0 max-w-md overflow-hidden overscroll-none pointer-events-auto",
+            className: embedInStack ? "relative z-[210] mx-auto h-full w-full min-w-0 max-w-md overflow-hidden overscroll-none pointer-events-auto" : "relative z-[210] mx-auto h-full w-full min-w-0 max-w-md overflow-hidden overscroll-none pointer-events-auto",
             children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
               "div",
               {
                 "data-chat-room": true,
                 className: "chat-no-select pointer-events-auto relative flex h-full min-h-0 max-h-full w-full flex-col overflow-hidden " + (embedInStack ? "" : "will-change-transform ") + themeBg,
-                style: { ...roomEnterStyle, ...igDmSurfaceStyle },
+                style: {
+                  ...roomEnterStyle,
+                  ...chromeOnWallpaper ? { background: "transparent" } : igDmSurfaceStyle,
+                  ...dmPalette && !chromeOnWallpaper ? { ["--chat-surface"]: dmPalette.surface } : {}
+                },
                 ...chatNoSelectCaptureHandlers,
                 children: [
                   /* @__PURE__ */ jsxRuntimeExports.jsxs(
                     "div",
                     {
+                      ref: chatHeaderRef,
                       dir: useIgDm ? dmDir : "rtl",
                       "data-chat-dismiss-handle": true,
-                      className: "relative z-40 flex shrink-0 items-center gap-2 px-3 py-3 pt-[max(0.75rem,var(--sat))] " + (isQuranChannel ? "bg-zinc-900 text-zinc-100 border-b border-zinc-700" : useIgDm && dmPalette ? "border-b border-transparent " + dmPalette.headerTitleClass : "border-b border-border bg-background"),
-                      style: useIgDm && !isQuranChannel ? {
+                      className: "sticky top-0 z-[260] flex w-full shrink-0 items-center gap-2 px-3 py-3 pt-[max(0.75rem,var(--sat))] " + (isQuranChannel ? "bg-zinc-900 text-zinc-100 border-b border-zinc-700" : chromeOnWallpaper ? "border-b border-white/10 bg-black/40 text-white backdrop-blur-xl" : useIgDm && dmPalette ? "border-b border-transparent " + dmPalette.headerTitleClass : "border-b border-border bg-background"),
+                      style: chromeOnWallpaper ? void 0 : useIgDm && !isQuranChannel ? {
                         ...igDmSurfaceStyle,
                         backdropFilter: "blur(24px) saturate(1.6)",
                         WebkitBackdropFilter: "blur(24px) saturate(1.6)",
@@ -32693,7 +35608,7 @@ function ChatRoom({
                               "data-no-dismiss-drag": true,
                               "data-chat-back-btn": true,
                               "aria-label": "رجوع",
-                              className: "relative z-[60] flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-full transition-[transform,background-color] duration-150 ease-out active:scale-[0.88] " + (useIgDm && dmPalette ? dmPalette.iconBtnClass : "text-foreground hover:bg-secondary active:bg-secondary/90"),
+                              className: "relative z-[60] flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-full transition-[transform,background-color] duration-150 ease-out active:scale-[0.88] " + (chromeOnWallpaper ? wallpaperIconClass : useIgDm && dmPalette ? dmPalette.iconBtnClass : "text-foreground hover:bg-secondary active:bg-secondary/90"),
                               onClick: (e) => {
                                 e.stopPropagation();
                                 fireRoomBack();
@@ -32724,7 +35639,7 @@ function ChatRoom({
                               className: "relative z-[10] flex min-w-0 flex-1 items-center gap-2 text-start justify-start",
                               children: [
                                 /* @__PURE__ */ jsxRuntimeExports.jsx(
-                                  Avatar$1,
+                                  Avatar,
                                   {
                                     name: chat.isGroup ? chat.name : other?.username || "?",
                                     src: chat.isGroup ? chat.avatar : other?.avatar,
@@ -32840,17 +35755,14 @@ function ChatRoom({
                             )
                           ] }),
                           (chat.isGroup || chat.isChannel) && /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onOpenSettings, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Settings, { size: 20 }) }),
-                          !useIgDm && !isQuranChannel && !chat.isGroup && !chat.isChannel && /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                            "select",
+                          !isQuranChannel && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                            "button",
                             {
-                              value: theme,
-                              onChange: (e) => setTheme(e.target.value),
-                              className: "rounded-full bg-secondary px-2 py-1 text-xs",
-                              children: [
-                                /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "default", children: "ثيم" }),
-                                /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "blue", children: "أزرق" }),
-                                /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "pink", children: "وردي" })
-                              ]
+                              type: "button",
+                              "aria-label": state.language === "en" ? "Chat theme" : "سمة المحادثة",
+                              className: "flex h-10 w-10 shrink-0 touch-manipulation items-center justify-center rounded-full " + (chromeOnWallpaper ? wallpaperIconClass : useIgDm && dmPalette ? dmPalette.iconBtnClass : "text-foreground hover:bg-secondary active:bg-secondary/90"),
+                              onClick: () => setShowChatThemePicker(true),
+                              children: /* @__PURE__ */ jsxRuntimeExports.jsx(Palette, { size: 20, strokeWidth: 1.75 })
                             }
                           )
                         ] })
@@ -32913,20 +35825,20 @@ function ChatRoom({
                       onPointerUp: handleVanishPullUp,
                       onPointerCancel: handleVanishPullUp,
                       dir: "ltr",
-                      className: "chat-scroll-pane chat-no-select no-scrollbar relative z-10 min-h-0 flex-1 touch-pan-y overscroll-none " + (drawComposeOpen ? "overflow-hidden " : "overflow-y-auto ") + (isQuranChannel ? "bg-zinc-950" : useIgDm ? "" : "bg-background"),
+                      className: "chat-scroll-pane chat-no-select no-scrollbar relative z-10 min-h-0 flex-1 touch-pan-y overscroll-none " + (drawComposeOpen ? "overflow-hidden " : "overflow-y-auto ") + (isQuranChannel ? "bg-zinc-950" : chromeOnWallpaper ? "bg-transparent" : useIgDm ? "" : "bg-background"),
                       style: {
                         scrollbarWidth: "none",
                         msOverflowStyle: "none",
                         overflowAnchor: "none",
-                        ...useIgDm && dmPalette ? igDmSurfaceStyle : {}
+                        ...useIgDm && dmPalette && !chromeOnWallpaper ? igDmSurfaceStyle : {}
                       },
                       children: [
                         /* @__PURE__ */ jsxRuntimeExports.jsxs(
                           "div",
                           {
-                            className: "flex min-h-full w-full flex-col justify-end gap-2 px-3 pt-2 " + (isQuranChannel ? "bg-zinc-950" : ""),
+                            className: "flex min-h-full w-full flex-col justify-end gap-2 px-3 pt-2 " + (isQuranChannel ? "bg-zinc-950" : chromeOnWallpaper ? "bg-transparent" : ""),
                             style: {
-                              paddingBottom: "8px"
+                              paddingBottom: "12px"
                             },
                             children: [
                               hasOlderMessages && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex w-full justify-center py-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[11px] text-muted-foreground opacity-60", children: "↑ مرّر للأعلى لتحميل رسائل أقدم" }) }),
@@ -32936,12 +35848,52 @@ function ChatRoom({
                                     "span",
                                     {
                                       className: "rounded-full px-3 py-1 text-[11px] font-medium",
-                                      style: dmPalette ? { backgroundColor: dmPalette.dayPillBg, color: dmPalette.dayPillText } : void 0,
+                                      style: chromeOnWallpaper ? { backgroundColor: "rgba(255,255,255,0.14)", color: "rgba(255,255,255,0.85)" } : dmPalette ? { backgroundColor: dmPalette.dayPillBg, color: dmPalette.dayPillText } : void 0,
                                       children: row.label
                                     }
                                   ) }, row.key);
                                 }
                                 const m = row.message;
+                                const groupSystemEvent = (chat.isGroup || chat.isChannel) && m.type === "text" ? parseGroupSystemEvent(messageContent(m)) : null;
+                                if (groupSystemEvent) {
+                                  const systemMuted = chromeOnWallpaper || dmPalette ? "text-white/70" : "text-muted-foreground";
+                                  const systemUserBtn = "font-semibold text-primary underline-offset-2 hover:underline active:opacity-80";
+                                  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex w-full justify-center px-3 py-3", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                                    "p",
+                                    {
+                                      className: "max-w-[94%] text-center text-[13px] leading-snug font-medium " + (chromeOnWallpaper || dmPalette ? "text-white/90" : "text-foreground/90"),
+                                      children: [
+                                        /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                                          "button",
+                                          {
+                                            type: "button",
+                                            className: systemUserBtn,
+                                            onClick: () => openMentionProfile(groupSystemEvent.actor),
+                                            children: [
+                                              "@",
+                                              groupSystemEvent.actor
+                                            ]
+                                          }
+                                        ),
+                                        " ",
+                                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: systemMuted, children: groupSystemEvent.action }),
+                                        " ",
+                                        /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                                          "button",
+                                          {
+                                            type: "button",
+                                            className: systemUserBtn,
+                                            onClick: () => openMentionProfile(groupSystemEvent.target),
+                                            children: [
+                                              "@",
+                                              groupSystemEvent.target
+                                            ]
+                                          }
+                                        )
+                                      ]
+                                    }
+                                  ) }, m.id);
+                                }
                                 const showPeerAvatar = row.showPeerAvatar;
                                 const mine = isOwnChatMessage(m.senderId, state);
                                 const senderProfile = userById(state, m.senderId);
@@ -33364,23 +36316,28 @@ function ChatRoom({
                       }
                     ) })
                   ] }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "chat-composer-spacer shrink-0", "aria-hidden": true }),
                   /* @__PURE__ */ jsxRuntimeExports.jsx(
                     "div",
                     {
                       ref: composerRef,
-                      className: "chat-composer-dock isolate",
+                      className: "chat-composer-dock isolate " + (chromeOnWallpaper ? "backdrop-blur-xl bg-black/30" : ""),
                       style: { ["--chat-composer-bottom-pad"]: composerBottomPad },
-                      children: !canPost ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      children: !canPost ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
                         "div",
                         {
                           className: "p-4 text-center text-sm border-t border-border pb-[var(--chat-composer-bottom-pad)]  " + (isQuranChannel ? "text-zinc-400 bg-zinc-900 border-zinc-700" : "text-muted-foreground bg-background"),
-                          children: t("onlyOwner")
+                          children: [
+                            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "inline-flex items-center gap-1.5 rounded-full bg-secondary px-3 py-1.5 text-xs font-semibold text-foreground", children: [
+                              /* @__PURE__ */ jsxRuntimeExports.jsx(Lock, { size: 14 }),
+                              "الكتابة مقفلة"
+                            ] }),
+                            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-sm", children: blockedComposerReason || t("onlyOwner") })
+                          ]
                         }
                       ) : /* @__PURE__ */ jsxRuntimeExports.jsxs(
                         "div",
                         {
-                          className: isQuranChannel ? "border-t border-zinc-700 bg-zinc-900" : useIgDm && dmPalette ? "bg-transparent" : "border-t border-border bg-background",
+                          className: isQuranChannel ? "border-t border-zinc-700 bg-zinc-900" : "bg-transparent",
                           children: [
                             replyingTo && /* @__PURE__ */ jsxRuntimeExports.jsx(
                               ChatComposerReplyBar,
@@ -33411,7 +36368,7 @@ function ChatRoom({
                                   className: "flex w-full items-center gap-2 rounded-xl px-2 py-2 text-sm hover:bg-secondary",
                                   onClick: () => pickMention(u.username),
                                   children: [
-                                    /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: u.username, src: u.avatar, size: 28 }),
+                                    /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u.username, src: u.avatar, size: 28 }),
                                     "@",
                                     u.username
                                   ]
@@ -33426,16 +36383,16 @@ function ChatRoom({
                                   e.preventDefault();
                                   submitTextMessage();
                                 },
-                                className: "chat-composer-bar px-3 pt-2 pb-2",
+                                className: "chat-composer-bar bg-transparent px-3 pt-2 pb-2",
                                 children: [
-                                  useIgDm ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { dir: dmDir, className: "relative flex min-h-[44px] items-end gap-2.5", children: [
+                                  useIgDm ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { dir: "ltr", className: "relative flex min-h-[44px] items-end gap-2.5", children: [
                                     /* @__PURE__ */ jsxRuntimeExports.jsxs(
                                       "div",
                                       {
-                                        dir: dmDir,
+                                        dir: "ltr",
                                         className: "flex min-h-[44px] min-w-0 flex-1 flex-nowrap items-center gap-0.5 rounded-[24px] px-2 py-1",
                                         style: dmPalette ? {
-                                          backgroundColor: dmPalette.composerField
+                                          backgroundColor: chromeOnWallpaper ? "rgba(255,255,255,0.12)" : dmPalette.composerField
                                         } : void 0,
                                         children: [
                                           !composerHasText && (recording ? /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -33512,7 +36469,7 @@ function ChatRoom({
                                               onChange: onComposerChange,
                                               mentionVariant: "composer",
                                               wrapperClassName: "chat-allow-select min-w-0 flex-1",
-                                              overlayClassName: "py-1.5 text-[15px] leading-5 " + (dmPalette ? dmPalette.composerTextClass : "text-white"),
+                                              overlayClassName: "py-1.5 text-[16px] leading-5 " + (dmPalette ? dmPalette.composerTextClass : "text-white"),
                                               onCompositionStart: () => {
                                                 composingRef.current = true;
                                               },
@@ -33526,13 +36483,10 @@ function ChatRoom({
                                                   submitTextMessage();
                                                 }
                                               },
-                                              onFocus: () => {
-                                                stickToBottomRef.current = true;
-                                                requestAnimationFrame(() => scrollMessagesToBottom());
-                                              },
+                                              onFocus: onComposerFocus,
                                               placeholder: t("typeMessage"),
                                               "aria-label": t("typeMessage"),
-                                              className: "chat-allow-select no-scrollbar min-h-[20px] min-w-0 max-h-[100px] flex-1 resize-none overflow-y-hidden py-1.5 text-[15px] leading-5 whitespace-pre-wrap break-words bg-transparent outline-none " + (dmPalette ? dmPalette.composerTextClass + " " + dmPalette.composerPlaceholderClass : "text-white caret-white placeholder:text-zinc-500"),
+                                              className: "chat-allow-select no-scrollbar min-h-[20px] min-w-0 max-h-[100px] flex-1 resize-none overflow-y-hidden py-1.5 text-[16px] leading-5 whitespace-pre-wrap break-words bg-transparent outline-none " + (dmPalette ? dmPalette.composerTextClass + " " + dmPalette.composerPlaceholderClass : "text-white caret-white placeholder:text-zinc-500"),
                                               style: { height: CHAT_COMPOSER_LINE_PX }
                                             }
                                           ),
@@ -33592,7 +36546,7 @@ function ChatRoom({
                                                 className: "flex w-full items-center gap-3 px-4 py-3 text-start text-[14px] font-medium transition-colors duration-100 " + (dmPalette?.attachMenuItemClass ?? "text-white hover:bg-white/10"),
                                                 onClick: () => {
                                                   setPlusAttachOpen(false);
-                                                  cameraCaptureRef.current?.click();
+                                                  setInstagramCameraOpen(true);
                                                 },
                                                 children: [
                                                   /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex h-7 w-7 items-center justify-center rounded-full bg-white/15", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Camera, { size: 15, strokeWidth: 2 }) }),
@@ -33774,7 +36728,7 @@ function ChatRoom({
                                               onChange: onComposerChange,
                                               mentionVariant: isQuranChannel ? "composerQuran" : "composer",
                                               wrapperClassName: "chat-allow-select min-w-0 flex-1",
-                                              overlayClassName: "py-1.5 text-[15px] leading-5 " + (isQuranChannel ? "text-emerald-50" : "text-zinc-900 dark:text-zinc-50"),
+                                              overlayClassName: "py-1.5 text-[16px] leading-5 " + (isQuranChannel ? "text-emerald-50" : "text-zinc-900 dark:text-zinc-50"),
                                               onCompositionStart: () => {
                                                 composingRef.current = true;
                                               },
@@ -33788,13 +36742,10 @@ function ChatRoom({
                                                   submitTextMessage();
                                                 }
                                               },
-                                              onFocus: () => {
-                                                stickToBottomRef.current = true;
-                                                requestAnimationFrame(() => scrollMessagesToBottom());
-                                              },
+                                              onFocus: onComposerFocus,
                                               placeholder: t("typeMessage"),
                                               "aria-label": t("typeMessage"),
-                                              className: "chat-allow-select no-scrollbar min-h-[20px] min-w-0 max-h-[100px] flex-1 resize-none overflow-y-hidden py-1.5 text-[15px] leading-5 whitespace-pre-wrap break-words outline-none " + (isQuranChannel ? "caret-emerald-200 placeholder:text-emerald-200/55" : "caret-zinc-800 placeholder:text-zinc-500/65 dark:caret-zinc-200 dark:placeholder:text-zinc-400/60"),
+                                              className: "chat-allow-select no-scrollbar min-h-[20px] min-w-0 max-h-[100px] flex-1 resize-none overflow-y-hidden py-1.5 text-[16px] leading-5 whitespace-pre-wrap break-words outline-none " + (isQuranChannel ? "caret-emerald-200 placeholder:text-emerald-200/55" : "caret-zinc-800 placeholder:text-zinc-500/65 dark:caret-zinc-200 dark:placeholder:text-zinc-400/60"),
                                               style: { height: CHAT_COMPOSER_LINE_PX }
                                             }
                                           ),
@@ -33843,7 +36794,7 @@ function ChatRoom({
                                                 className: "flex w-full items-center gap-3 px-4 py-3 text-start text-sm transition hover:bg-secondary " + (isQuranChannel ? "text-zinc-100" : ""),
                                                 onClick: () => {
                                                   setPlusAttachOpen(false);
-                                                  cameraCaptureRef.current?.click();
+                                                  setInstagramCameraOpen(true);
                                                 },
                                                 children: [
                                                   /* @__PURE__ */ jsxRuntimeExports.jsx(Camera, { size: 18 }),
@@ -33960,23 +36911,30 @@ function ChatRoom({
                       )
                     }
                   ),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    InstagramCamera,
+                    {
+                      open: instagramCameraOpen,
+                      language: state.language,
+                      onClose: () => setInstagramCameraOpen(false),
+                      onCapture: (cap) => setCameraCompose({ kind: cap.kind, dataUrl: cap.dataUrl }),
+                      onFallback: () => cameraCaptureRef.current?.click()
+                    }
+                  ),
                   cameraCompose && /* @__PURE__ */ jsxRuntimeExports.jsx(
-                    ChatCameraComposeModal,
+                    CameraCaptureShareScreen,
                     {
                       draft: cameraCompose,
-                      senderName: me.username,
-                      senderAvatar: me.avatar,
-                      onClose: () => setCameraCompose(null),
-                      onSend: ({ type, content, viewOnce }) => {
-                        const rt = replyingTo ? { id: replyingTo.id, content: chatReplyPreview(replyingTo), type: replyingTo.type } : void 0;
+                      language: state.language,
+                      mode: "chat",
+                      onSendToChat: (payload) => {
                         dispatchSend({
-                          type,
-                          content,
-                          ...viewOnce ? { viewOnce: true } : {},
-                          ...rt ? { replyTo: rt } : {}
+                          type: payload.type,
+                          content: payload.content,
+                          ...payload.shareText ? { shareText: payload.shareText } : {}
                         });
-                        setReplyingTo(null);
-                      }
+                      },
+                      onClose: () => setCameraCompose(null)
                     }
                   ),
                   viewOnceOverlay && /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -34008,7 +36966,21 @@ function ChatRoom({
                       onClose: () => setShareFeedOpen(null)
                     }
                   ),
-                  forwardingMessage && /* @__PURE__ */ jsxRuntimeExports.jsx(ForwardChatSheet, { currentChat: chat, message: forwardingMessage, me, onClose: () => setForwardingMessage(null) })
+                  forwardingMessage && /* @__PURE__ */ jsxRuntimeExports.jsx(ForwardChatSheet, { currentChat: chat, message: forwardingMessage, me, onClose: () => setForwardingMessage(null) }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    ChatThemePickerSheet,
+                    {
+                      open: showChatThemePicker,
+                      selectedId: wallpaperId,
+                      language: state.language,
+                      onClose: () => setShowChatThemePicker(false),
+                      onSelect: (id) => {
+                        setWallpaperId(id);
+                        saveChatWallpaperForChat(chat, meId, id);
+                        setShowChatThemePicker(false);
+                      }
+                    }
+                  )
                 ]
               }
             )
@@ -34443,50 +37415,6 @@ function BottomNavSheet({
     }
   ) });
 }
-const InstagramReelsIcon = reactExports.memo(function InstagramReelsIcon2({
-  className = "h-6 w-6 shrink-0",
-  strokeWidth = 2,
-  size
-}) {
-  const dim = size != null ? { width: size, height: size } : {};
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
-    "svg",
-    {
-      ...dim,
-      viewBox: "0 0 24 24",
-      fill: "none",
-      xmlns: "http://www.w3.org/2000/svg",
-      className,
-      "aria-hidden": true,
-      children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "rect",
-          {
-            x: "2.5",
-            y: "2.5",
-            width: "19",
-            height: "19",
-            rx: "5.5",
-            stroke: "currentColor",
-            strokeWidth,
-            fill: "none"
-          }
-        ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "path",
-          {
-            d: "M 9.5 8.5 L 9.5 15.5 L 15.5 12 Z",
-            stroke: "currentColor",
-            strokeWidth,
-            strokeLinejoin: "round",
-            strokeLinecap: "round",
-            fill: "none"
-          }
-        )
-      ]
-    }
-  );
-});
 const TRIANGLE = "M 6.25 4.75 H 17.75 C 20.75 4.75 21.35 5.5 19.85 8.25 L 13.75 19.25 C 12.5 21.25 11.5 21.25 10.25 19.25 L 4.15 8.25 C 2.65 5.5 3.25 4.75 6.25 4.75 Z";
 const DirectMessagesNavIcon = reactExports.memo(function DirectMessagesNavIcon2({
   className = "h-[26px] w-[26px] shrink-0",
@@ -34560,7 +37488,7 @@ function PostMediaNotesOverlay({
             e.stopPropagation();
             onOpenAuthor(nu.id);
           },
-          children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: nu.username, src: nu.avatar, size: 26 })
+          children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: nu.username, src: nu.avatar, size: 26 })
         }
       )
     ] }, n.id);
@@ -34620,6 +37548,9 @@ function ProfileTweetMedia({
   if (postMedia.hasImage && !postMedia.hasVideo) {
     return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-2.5 overflow-hidden rounded-2xl border border-border/50 bg-zinc-900/80", children: /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: postMedia.imageUrl, alt: "", className: "max-h-[min(420px,55vh)] w-full object-cover" }) });
   }
+  if (postMedia.hasAudio && post.audio) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-2.5 rounded-2xl border border-border/50 bg-card p-3", children: /* @__PURE__ */ jsxRuntimeExports.jsx(TweetVoicePlayer, { src: post.audio }) });
+  }
   if (postMedia.hasVideo) {
     return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "group relative mt-2.5 overflow-hidden rounded-2xl border border-border/50 bg-zinc-900", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -34663,6 +37594,16 @@ function ProfileTweetCard({
     () => state.posts.find((p) => p.id === post.id) ?? post,
     [state.posts, post]
   );
+  const safeLikes = Array.isArray(livePost.likes) ? livePost.likes : [];
+  const safeReposts = Array.isArray(livePost.reposts) ? livePost.reposts : [];
+  const safeComments = (Array.isArray(livePost.comments) ? livePost.comments : []).filter(
+    (c) => !!c && typeof c === "object" && typeof c.id === "string" && typeof c.userId === "string" && typeof c.text === "string"
+  ).map((c) => ({
+    id: c.id,
+    userId: c.userId,
+    text: c.text,
+    createdAt: typeof c.createdAt === "number" ? c.createdAt : Date.now()
+  }));
   const me = currentUser;
   const [shareOpen, setShareOpen] = reactExports.useState(false);
   const [commentsOpen, setCommentsOpen] = reactExports.useState(showCommentsDefault);
@@ -34705,7 +37646,7 @@ function ProfileTweetCard({
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-4 sm:gap-5", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", onClick: onLike, className: actionBtn, "aria-pressed": liked, children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(TweetHeartIcon, { liked }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: countCls(liked, "text-[var(--color-like,#ef4444)]"), children: livePost.likes.length })
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: countCls(liked, "text-[var(--color-like,#ef4444)]"), children: safeLikes.length })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(
             "button",
@@ -34716,13 +37657,13 @@ function ProfileTweetCard({
               "aria-expanded": commentsOpen,
               children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsx(TweetCommentIcon, {}),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: countCls(), children: livePost.comments.length })
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: countCls(), children: safeComments.length })
               ]
             }
           ),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", onClick: onRepost, className: actionBtn, "aria-pressed": reposted, children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(TweetRepostIcon, { reposted }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: countCls(reposted, "text-primary"), children: livePost.reposts.length })
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: countCls(reposted, "text-primary"), children: safeReposts.length })
           ] })
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => setShareOpen(true), className: actionBtn, "aria-label": "مشاركة", children: /* @__PURE__ */ jsxRuntimeExports.jsx(TweetShareIcon, {}) })
@@ -34734,10 +37675,10 @@ function ProfileTweetCard({
           className: "mt-3 space-y-2 border-t border-border/60 pt-3 scroll-mt-24",
           children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-xs font-semibold text-muted-foreground", children: t("comments") }),
-            livePost.comments.map((c) => {
+            safeComments.map((c) => {
               const u = users.find((x) => x.id === c.userId);
               return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-2 text-sm", dir: "ltr", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "shrink-0", onClick: () => u && onOpenProfile(u.id), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: u?.username || "?", src: u?.avatar, size: 26 }) }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "shrink-0", onClick: () => u && onOpenProfile(u.id), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u?.username || "?", src: u?.avatar, size: 26 }) }),
                 /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1", dir: "rtl", children: [
                   /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", className: "font-semibold", onClick: () => u && onOpenProfile(u.id), children: [
                     "@",
@@ -34761,7 +37702,7 @@ function ProfileTweetCard({
                 )
               ] }, c.id);
             }),
-            livePost.comments.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground", children: "—" }),
+            safeComments.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground", children: "—" }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs(
               "form",
               {
@@ -34825,8 +37766,18 @@ function ProfileFeedItem({
   const t = useT();
   const me = currentUser;
   const author = userById(state, post.userId);
-  const liked = livePost.likes.includes(me.id);
-  const reposted = livePost.reposts.includes(me.id);
+  const safeLikes = Array.isArray(livePost.likes) ? livePost.likes : [];
+  const safeReposts = Array.isArray(livePost.reposts) ? livePost.reposts : [];
+  const safeComments = (Array.isArray(livePost.comments) ? livePost.comments : []).filter(
+    (c) => !!c && typeof c === "object" && typeof c.id === "string" && typeof c.userId === "string" && typeof c.text === "string"
+  ).map((c) => ({
+    id: c.id,
+    userId: c.userId,
+    text: c.text,
+    createdAt: typeof c.createdAt === "number" ? c.createdAt : Date.now()
+  }));
+  const liked = safeLikes.includes(me.id);
+  const reposted = safeReposts.includes(me.id);
   const postKindAr = post.type === "tweet" ? "التغريدة" : post.type === "reel" ? "الريلز" : "المنشور";
   const displayType = reactExports.useMemo(
     () => resolvePostDisplayType(post),
@@ -34925,9 +37876,9 @@ function ProfileFeedItem({
             {
               liked,
               reposted,
-              likeCount: post.likes.length,
-              commentCount: post.comments.length,
-              repostCount: post.reposts.length,
+              likeCount: safeLikes.length,
+              commentCount: safeComments.length,
+              repostCount: safeReposts.length,
               onLike: () => reactExports.startTransition(() => toggleLike(post.id)),
               onComment: () => setCommentsOpen((o) => !o),
               onRepost: () => reactExports.startTransition(() => toggleRepost(post.id)),
@@ -34946,7 +37897,7 @@ function ProfileFeedItem({
         className: "space-y-2 border-t border-border/60 px-3 pb-4 pt-3 scroll-mt-24 ms-[3.25rem] me-3",
         children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-sm font-semibold", children: t("comments") }),
-          livePost.comments.map((c) => {
+          safeComments.map((c) => {
             const u = userById(state, c.userId);
             return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-2 text-sm", dir: "ltr", children: [
               /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -34955,7 +37906,7 @@ function ProfileFeedItem({
                   type: "button",
                   className: "shrink-0 rounded-full",
                   onClick: () => reactExports.startTransition(() => u && onOpenProfile(u.id, returnCtx(true))),
-                  children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: u?.username || "?", src: u?.avatar, size: 28 })
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u?.username || "?", src: u?.avatar, size: 28 })
                 }
               ),
               /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1", dir: "rtl", children: [
@@ -34989,7 +37940,7 @@ function ProfileFeedItem({
               )
             ] }, c.id);
           }),
-          livePost.comments.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground", children: "—" }),
+          safeComments.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground", children: "—" }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs(
             "form",
             {
@@ -35089,6 +38040,50 @@ function ProfilePostsFeedOverlay({
     ) }, p.id)) })
   ] }) }) });
 }
+const InstagramReelsIcon = reactExports.memo(function InstagramReelsIcon2({
+  className = "h-6 w-6 shrink-0",
+  strokeWidth = 2,
+  size
+}) {
+  const dim = size != null ? { width: size, height: size } : {};
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "svg",
+    {
+      ...dim,
+      viewBox: "0 0 24 24",
+      fill: "none",
+      xmlns: "http://www.w3.org/2000/svg",
+      className,
+      "aria-hidden": true,
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "rect",
+          {
+            x: "2.5",
+            y: "2.5",
+            width: "19",
+            height: "19",
+            rx: "5.5",
+            stroke: "currentColor",
+            strokeWidth,
+            fill: "none"
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "path",
+          {
+            d: "M 9.5 8.5 L 9.5 15.5 L 15.5 12 Z",
+            stroke: "currentColor",
+            strokeWidth,
+            strokeLinejoin: "round",
+            strokeLinecap: "round",
+            fill: "none"
+          }
+        )
+      ]
+    }
+  );
+});
 function FollowersFollowingScreen({
   userId,
   initialTab,
@@ -35131,7 +38126,7 @@ function FollowersFollowingScreen({
         onClick: () => onOpenProfile(x.id),
         className: "flex w-full items-center gap-3 border-b border-border/60 px-4 py-3 text-start hover:bg-secondary/50",
         children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: x.username, src: x.avatar, size: 44 }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: x.username, src: x.avatar, size: 44 }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1 font-semibold", children: [
               /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "truncate", children: [
@@ -39921,7 +42916,7 @@ ${profileUrl}`;
       /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: onClose, className: "p-2 rounded-full hover:bg-secondary", children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 20 }) })
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col items-center mb-6", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: user.username, src: user.avatar, size: 80 }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: user.username, src: user.avatar, size: 80 }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("h4", { className: "text-lg font-semibold mt-2", children: [
         "@",
         user.username
@@ -39977,7 +42972,7 @@ ${profileUrl}`;
             onClick: () => shareWithFriend(friend.id),
             className: "flex flex-col items-center gap-1 p-2 rounded-xl hover:bg-secondary",
             children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: friend.username, src: friend.avatar, size: 40 }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: friend.username, src: friend.avatar, size: 40 }),
               /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs truncate w-full text-center", children: friend.username })
             ]
           },
@@ -40562,7 +43557,7 @@ function ProfileScreen({
                 const req = userById(state, id);
                 if (!req) return null;
                 return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 flex-wrap", children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: req.username, src: req.avatar, size: 36 }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: req.username, src: req.avatar, size: 36 }),
                   /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1 min-w-0 text-start", children: [
                     /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "truncate text-sm font-semibold", children: userDisplayName(req) }),
                     /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "truncate text-xs text-muted-foreground", dir: "ltr", children: [
@@ -40676,7 +43671,7 @@ function ProfileScreen({
                     },
                     className: "shrink-0 flex flex-col items-center w-[4.75rem] active:opacity-90",
                     children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: sug.username, src: sug.avatar, size: 52 }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: sug.username, src: sug.avatar, size: 52 }),
                       /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[10px] font-semibold truncate w-full mt-1.5 leading-tight", children: userDisplayName(sug) }),
                       /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-[9px] text-muted-foreground truncate w-full leading-tight", dir: "ltr", children: [
                         "@",
@@ -40769,7 +43764,7 @@ function ProfileScreen({
           showFollowers === "followers" && u.displayFollowerCount != null && u.followers.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "px-3 py-8 text-center text-sm text-muted-foreground leading-relaxed", children: "يُعرض هنا العدد الإجمالي للمتابعين فقط؛ قائمة الأسماء غير متوفرة في النسخة التجريبية." }) : (showFollowers === "followers" ? u.followers : u.following).map((id) => {
             const x = userById(state, id);
             return x ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3 p-2", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: x.username, src: x.avatar }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: x.username, src: x.avatar }),
               /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1 min-w-0 text-start", children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "truncate text-sm font-semibold", children: userDisplayName(x) }),
                 /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "truncate text-xs text-muted-foreground", dir: "ltr", children: [
@@ -42771,6 +45766,7 @@ function StoriesArchiveScreen({ onBack }) {
 function AppErrorBoundaryLocal({ children, label }) {
   return /* @__PURE__ */ jsxRuntimeExports.jsx(AppErrorBoundary, { label, children });
 }
+const PRIVACY_POLICY_URL = `${VERCEL_SITE_URL}/privacy.html`;
 function SectionGap() {
   return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-2 shrink-0 bg-background", "aria-hidden": true });
 }
@@ -42833,6 +45829,80 @@ function SettingsRow({
     return /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick, className, children: body });
   }
   return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className, children: body });
+}
+function DeleteAccountPanel({
+  me,
+  onDone,
+  onBack
+}) {
+  const t = useT();
+  const [confirm2, setConfirm] = reactExports.useState("");
+  const [password, setPassword] = reactExports.useState("");
+  const [busy, setBusy] = reactExports.useState(false);
+  const submit = () => {
+    if (confirm2.trim() !== "DELETE") {
+      alert(t("deleteAccountConfirmLabel"));
+      return;
+    }
+    void (async () => {
+      setBusy(true);
+      try {
+        await ensureApiRuntimeConfig();
+        const token = ensureApiTokenMatchesUser(me.id) ?? getApiToken();
+        if (!apiBackendEnabled() || !token) {
+          alert(t("deleteAccountFailed"));
+          return;
+        }
+        const body = { confirm: "DELETE" };
+        if (password.trim()) body.password = password.trim();
+        const r2 = await apiDeleteAccount(token, body);
+        if (!r2.ok) {
+          alert(r2.error || t("deleteAccountFailed"));
+          return;
+        }
+        alert(t("deleteAccountDone"));
+        onDone();
+      } finally {
+        setBusy(false);
+      }
+    })();
+  };
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "settings-screen-root min-h-full w-full overflow-x-hidden bg-background pb-10", dir: "rtl", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsHeader, { title: t("deleteAccount"), onBack, navScope: "local" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mx-4 mt-4 space-y-3", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm leading-relaxed text-muted-foreground", children: t("deleteAccountHint") }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "input",
+        {
+          value: confirm2,
+          onChange: (e) => setConfirm(e.target.value),
+          placeholder: "DELETE",
+          autoCapitalize: "characters",
+          className: "w-full rounded-xl border border-border bg-input px-4 py-3 text-sm text-foreground"
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "input",
+        {
+          value: password,
+          onChange: (e) => setPassword(e.target.value),
+          type: "password",
+          placeholder: t("deleteAccountPassword"),
+          className: "w-full rounded-xl border border-border bg-input px-4 py-3 text-sm text-foreground"
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          type: "button",
+          disabled: busy,
+          onClick: submit,
+          className: "w-full rounded-xl bg-red-600 py-3 text-sm font-semibold text-white disabled:opacity-60",
+          children: busy ? "…" : t("deleteAccount")
+        }
+      )
+    ] })
+  ] });
 }
 function PlaceholderPanel({ title, hint, onBack }) {
   const t = useT();
@@ -42985,6 +46055,11 @@ function SettingsScreen({
   } = useApp();
   const [resyncBusy, setResyncBusy] = reactExports.useState(false);
   const [resyncMsg, setResyncMsg] = reactExports.useState(null);
+  const verifyDismissDragRef = React__default.useRef({
+    pointerId: null,
+    startY: 0,
+    dragging: false
+  });
   const t = useT();
   const me = currentUser;
   const [subView, setSubView] = reactExports.useState(null);
@@ -43069,10 +46144,24 @@ function SettingsScreen({
       archive: "archive",
       timeManagement: "timeManagement",
       closeFriends: "closeFriends",
-      notifications: "notificationsSettings"
+      notifications: "notificationsSettings",
+      deleteAccount: "deleteAccount"
     };
     return k && k in map ? t(map[k]) : "";
   };
+  if (subView === "deleteAccount") {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(
+      DeleteAccountPanel,
+      {
+        me,
+        onBack: () => setSubView(null),
+        onDone: () => {
+          logout();
+          onBack();
+        }
+      }
+    );
+  }
   if (subView === "saved") {
     return /* @__PURE__ */ jsxRuntimeExports.jsx(PlaceholderPanel, { title: t("saved"), hint: t("savedHint"), onBack: () => setSubView(null) });
   }
@@ -43129,10 +46218,35 @@ function SettingsScreen({
           }
         )
       ] }),
-      subView === "verify" ? /* @__PURE__ */ jsxRuntimeExports.jsx(AppErrorBoundaryLocal, { label: "verify-panel", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(VerificationRequestPanel, { onNeedSubscription: () => setSubView("subscription") }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(VerificationBadgeColorPicker, {})
-      ] }) }) : null,
+      subView === "verify" ? /* @__PURE__ */ jsxRuntimeExports.jsx(AppErrorBoundaryLocal, { label: "verify-panel", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "div",
+        {
+          onPointerDown: (e) => {
+            verifyDismissDragRef.current = { pointerId: e.pointerId, startY: e.clientY, dragging: true };
+          },
+          onPointerMove: (e) => {
+            const d = verifyDismissDragRef.current;
+            if (!d.dragging || d.pointerId !== e.pointerId) return;
+            const dy = e.clientY - d.startY;
+            if (dy > 120) {
+              d.dragging = false;
+              setSubView(null);
+            }
+          },
+          onPointerUp: (e) => {
+            const d = verifyDismissDragRef.current;
+            if (d.pointerId === e.pointerId) d.dragging = false;
+          },
+          onPointerCancel: (e) => {
+            const d = verifyDismissDragRef.current;
+            if (d.pointerId === e.pointerId) d.dragging = false;
+          },
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(VerificationRequestPanel, { onNeedSubscription: () => setSubView("subscription") }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(VerificationBadgeColorPicker, {})
+          ]
+        }
+      ) }) : null,
       subView === "adminVerify" ? /* @__PURE__ */ jsxRuntimeExports.jsx(AppErrorBoundaryLocal, { label: "admin-verify", children: /* @__PURE__ */ jsxRuntimeExports.jsx(AdminVerificationPanel, {}) }) : null,
       subView === "adminModeration" ? /* @__PURE__ */ jsxRuntimeExports.jsx(AppErrorBoundaryLocal, { label: "admin-moderation", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ModerationDashboard, {}) }) : null,
       subView === "closeFriends" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-2", children: [
@@ -43160,7 +46274,7 @@ function SettingsScreen({
     ] });
   }
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "settings-screen-root min-h-full w-full max-w-full overflow-x-hidden bg-background pb-10", dir: "rtl", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsHeader, { title: t("settingsActivity"), onBack }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsHeader, { title: t("settingsActivity"), onBack, navScope: "local" }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { dir: "rtl", className: "mx-4 mt-2 overflow-hidden rounded-2xl border border-border bg-card", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "border-b border-border px-4 py-4 text-start", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-[15px] font-semibold text-foreground", children: t("accountsCenter") }),
@@ -43298,7 +46412,27 @@ function SettingsScreen({
             }
           )
         }
-      )
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        SettingsRow,
+        {
+          icon: Shield,
+          label: t("privacyPolicy"),
+          chevron: true,
+          onClick: () => {
+            window.open(PRIVACY_POLICY_URL, "_blank", "noopener,noreferrer");
+          }
+        }
+      ),
+      apiBackendEnabled() && currentUser && !isGuestUserId(currentUser.id) ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+        SettingsRow,
+        {
+          icon: Trash2,
+          label: t("deleteAccount"),
+          chevron: true,
+          onClick: () => setSubView("deleteAccount")
+        }
+      ) : null
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(SectionGap, {}),
     /* @__PURE__ */ jsxRuntimeExports.jsx(SectionTitle, { children: t("blockedAccounts") }),
@@ -43673,12 +46807,18 @@ function CreateScreen({
   const [storyStickers, setStoryStickers] = reactExports.useState([]);
   const [storyExpiryHours, setStoryExpiryHours] = reactExports.useState(24);
   const [publishing, setPublishing] = reactExports.useState(false);
+  const [voicePicking, setVoicePicking] = reactExports.useState(false);
+  const [isVoiceMedia, setIsVoiceMedia] = reactExports.useState(false);
   const ent = getUserEntitlements(me);
   const postCharLimit = ent.postCharacterLimit;
   const storyFileRef = reactExports.useRef(null);
+  const fileInputRef = reactExports.useRef(null);
+  const audioInputRef = reactExports.useRef(null);
   const previewObjectUrlRef = reactExports.useRef(null);
   const reelPreviewVideoRef = reactExports.useRef(null);
   const [reelCover, setReelCover] = reactExports.useState("");
+  const reelMediaReady = type === "reel" && hasCreateAttachmentMedia(media, !!storyFileRef.current) && (storyFileRef.current?.type.startsWith("video/") || isVideoMediaRef(media));
+  const canPublish = !publishing && (type === "tweet" ? text.trim().length > 0 || hasCreateAttachmentMedia(media, !!storyFileRef.current) : hasCreateAttachmentMedia(media, !!storyFileRef.current) && (storyFileRef.current?.type.startsWith("video/") || isVideoMediaRef(media)));
   const revokePreviewUrl = () => {
     if (previewObjectUrlRef.current) {
       URL.revokeObjectURL(previewObjectUrlRef.current);
@@ -43700,6 +46840,9 @@ function CreateScreen({
   }, [initial2?.type, initial2?.media]);
   reactExports.useEffect(() => {
     if (type !== "story") setStoryStickers([]);
+  }, [type]);
+  reactExports.useEffect(() => {
+    if (type === "reel") setText("");
   }, [type]);
   reactExports.useEffect(() => () => revokePreviewUrl(), []);
   const onFile = (e) => {
@@ -43729,16 +46872,62 @@ function CreateScreen({
       setMedia(previewUrl);
       return;
     }
+    setIsVoiceMedia(false);
     storyFileRef.current = f;
     revokePreviewUrl();
     const r2 = new FileReader();
     r2.onload = () => setMedia(String(r2.result));
     r2.readAsDataURL(f);
   };
+  const openVoicePicker = () => {
+    if (voicePicking) return;
+    if (type !== "tweet") {
+      setType("tweet");
+      setReelCover("");
+    }
+    window.setTimeout(() => {
+      try {
+        audioInputRef.current?.click();
+      } catch {
+        alert("تعذر فتح مكتبة المقاطع");
+      }
+    }, 0);
+  };
+  const onVoiceMediaPick = (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    if (!isVoiceAttachFile(f)) {
+      alert("اختر مقطع فيديو أو ملف صوتي (m4a, mp3, mp4…)");
+      return;
+    }
+    void (async () => {
+      setVoicePicking(true);
+      try {
+        if (type !== "tweet") {
+          setType("tweet");
+          setReelCover("");
+        }
+        const compressed = await compressChatMediaFile(f);
+        setIsVoiceMedia(true);
+        storyFileRef.current = compressed;
+        revokePreviewUrl();
+        const previewUrl = URL.createObjectURL(compressed);
+        previewObjectUrlRef.current = previewUrl;
+        setMedia(previewUrl);
+      } catch (err) {
+        console.error("[create-voice]", err);
+        alert("تعذر تحميل المقطع — جرّب مقطعاً أقصر");
+      } finally {
+        setVoicePicking(false);
+      }
+    })();
+  };
   const submit = async () => {
     if (publishing) return;
     const pickedFile = storyFileRef.current;
     const isVideo = pickedFile?.type.startsWith("video/") || media.startsWith("data:video") || isVideoMediaRef(media);
+    const isAudio = isVoiceMedia || pickedFile?.type.startsWith("audio/") || isVoiceMedia && pickedFile?.type.startsWith("video/") || media.startsWith("data:audio") || isVoiceMedia && media.startsWith("blob:") || /\.(mp3|wav|ogg|m4a|aac)(\?|#|$)/i.test(media) || isVoiceMedia && /\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(media);
     if (type === "story") {
       setPublishing(true);
       const uploaded = pickedFile ? await uploadStoryFile(pickedFile) : await resolveStoryMediaForSave(media);
@@ -43778,7 +46967,8 @@ function CreateScreen({
     }
     const needsUpload = media.startsWith("data:") || media.startsWith("blob:");
     let videoUrl = isVideo && type !== "reel" ? media : "";
-    let imageUrl = !isVideo && type !== "reel" ? media || "" : "";
+    let imageUrl = !isVideo && !isAudio && type !== "reel" ? media || "" : "";
+    let audioUrl = isAudio && type !== "reel" ? media : "";
     if (type === "reel") {
       setPublishing(true);
       let coverUrl = reelCover ? resolveMediaUrl(reelCover) : "";
@@ -43848,6 +47038,53 @@ function CreateScreen({
         video: resolvedVideo,
         image: coverUrl && !isVideoMediaRef(coverUrl) ? coverUrl : "🎬"
       });
+    } else if (type === "tweet" && pickedFile && (isVoiceMedia || pickedFile.type.startsWith("audio/"))) {
+      setPublishing(true);
+      const token = getApiToken();
+      if (!token || !apiBackendEnabled()) {
+        setPublishing(false);
+        alert("رفع المقطع الصوتي يتطلب اتصال الخادم");
+        return;
+      }
+      let fileToUpload = pickedFile;
+      try {
+        fileToUpload = await compressChatMediaFile(pickedFile);
+      } catch {
+      }
+      const uploaded = await apiUploadMedia(token, fileToUpload, {
+        timeoutMs: 12e4,
+        voiceTweet: true
+      });
+      setPublishing(false);
+      if (!uploaded.ok) {
+        alert(uploaded.error);
+        return;
+      }
+      audioUrl = resolveMediaUrl(uploaded.url);
+      videoUrl = "";
+      imageUrl = "";
+    } else if (type === "tweet" && pickedFile && pickedFile.type.startsWith("video/") && !isVoiceMedia) {
+      setPublishing(true);
+      const token = getApiToken();
+      if (!token || !apiBackendEnabled()) {
+        setPublishing(false);
+        alert("رفع الفيديو يتطلب اتصال الخادم");
+        return;
+      }
+      let fileToUpload = pickedFile;
+      try {
+        fileToUpload = await compressChatMediaFile(pickedFile);
+      } catch {
+      }
+      const uploaded = await apiUploadMedia(token, fileToUpload, { timeoutMs: 12e4 });
+      setPublishing(false);
+      if (!uploaded.ok) {
+        alert(uploaded.error);
+        return;
+      }
+      videoUrl = resolveMediaUrl(uploaded.url);
+      audioUrl = "";
+      imageUrl = "";
     } else if (needsUpload && media?.startsWith("data:")) {
       setPublishing(true);
       const uploaded = await resolvePostMediaForSave(media);
@@ -43859,73 +47096,170 @@ function CreateScreen({
       const payload = storyPayloadFromUrl(uploaded.url);
       videoUrl = payload.video || (isVideo ? uploaded.url : "");
       imageUrl = payload.image || (!isVideo ? uploaded.url : imageUrl);
+      if (isAudio && !videoUrl) audioUrl = uploaded.url;
     }
     if (type === "reel") {
       onBack();
       return;
     } else if (type === "tweet") {
       createPost(
-        videoUrl ? { type: "tweet", text, video: videoUrl } : { type: "tweet", text, image: imageUrl || void 0 }
+        audioUrl ? { type: "tweet", text, audio: audioUrl } : videoUrl ? { type: "tweet", text, video: videoUrl } : { type: "tweet", text, image: imageUrl || void 0 }
       );
     }
     onBack();
   };
   const mutuals = me.following.filter((id) => isMutual(state, me.id, id));
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "p-4 space-y-4 pb-8", children: [
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "min-h-dvh bg-black text-white", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mx-auto max-w-md space-y-4 px-4 pb-[max(2rem,var(--sab))] pt-[max(1rem,var(--sat))]", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(SlideDismissBackButton, { onDismiss: onBack, disabled: publishing, children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowRight, {}) }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "font-bold", children: t("create") }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "button",
-        {
-          type: "button",
-          onClick: () => void submit(),
-          disabled: publishing,
-          className: "text-primary font-semibold disabled:opacity-50",
-          children: publishing ? "…" : t("publish")
-        }
-      )
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-center", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-3xl font-bold", children: t("create") }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-white/70", children: "حوّل فكرتك إلى محتوى مميز" })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-10 w-10", "aria-hidden": true })
     ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "grid grid-cols-3 gap-2", children: ["tweet", "reel", "story"].map((tp) => /* @__PURE__ */ jsxRuntimeExports.jsx(
-      "button",
-      {
-        type: "button",
-        onClick: () => setType(tp),
-        className: "py-2 rounded-2xl text-sm font-semibold " + (type === tp ? "bg-primary text-primary-foreground" : "bg-secondary"),
-        children: tp === "tweet" ? t("tweet") : tp === "reel" ? t("reels") : t("story")
-      },
-      tp
-    )) }),
-    type !== "story" && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative rounded-[22px] border border-white/35 bg-black/50 p-4 shadow-[0_0_0_1px_rgba(255,255,255,0.12),0_0_20px_rgba(255,255,255,0.08)]", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(
         MentionComposerField,
         {
           value: text,
           onChange: (v) => setText(v.slice(0, postCharLimit)),
-          rows: 5,
-          placeholder: type === "tweet" ? "بم تفكر؟" : "اكتب وصفاً للريلز (اختياري)...",
-          wrapperClassName: "rounded-2xl bg-input",
-          className: "w-full rounded-2xl px-4 py-3 text-[15px] leading-relaxed outline-none resize-none",
-          overlayClassName: "px-4 py-3 text-[15px] leading-relaxed"
+          rows: 6,
+          placeholder: type === "tweet" ? "بم تفكر؟" : reelMediaReady ? "اكتب وصف الريلز..." : "أضف مقطع ريلز أولاً ثم اكتب",
+          wrapperClassName: "rounded-2xl",
+          className: "w-full resize-none bg-transparent px-1 py-1 text-[21px] leading-8 outline-none " + (type === "reel" && !reelMediaReady ? "pointer-events-none text-white/45" : "text-white"),
+          overlayClassName: "px-1 py-1 text-[21px] leading-8 " + (type === "reel" && !reelMediaReady ? "text-white/45" : "text-white")
         }
       ),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-1 text-end text-xs text-muted-foreground", children: [
-        text.length,
-        "/",
-        postCharLimit
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-2 flex items-center justify-between text-sm", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-white/75", children: [
+          text.length,
+          "/",
+          postCharLimit
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Sparkles, { size: 20, className: "create-sparkle-float text-white/80" })
       ] })
     ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("label", { className: "text-sm text-muted-foreground", children: type === "reel" ? "فيديو أو صورة (مطلوب للريلز)" : t("attach") }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex justify-center", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "button",
+      {
+        type: "button",
+        onClick: () => void submit(),
+        disabled: !canPublish,
+        className: "inline-flex items-center gap-2 rounded-full border border-white/40 bg-black/70 px-8 py-3 text-2xl font-bold text-white shadow-[0_0_20px_rgba(255,255,255,0.12)] disabled:opacity-40",
+        children: publishing ? /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "inline-flex items-center gap-1", "aria-label": "جاري الرفع", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "h-2 w-2 rounded-full bg-white/90 animate-pulse" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "span",
+            {
+              className: "h-2 w-2 rounded-full bg-white/90 animate-pulse",
+              style: { animationDelay: "0.18s" }
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "span",
+            {
+              className: "h-2 w-2 rounded-full bg-white/90 animate-pulse",
+              style: { animationDelay: "0.36s" }
+            }
+          )
+        ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 22 }),
+          "انشر"
+        ] })
+      }
+    ) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 gap-3", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "button",
+        {
+          type: "button",
+          onClick: () => setType("reel"),
+          className: "rounded-3xl border p-4 text-start " + (type === "reel" ? "border-white/45 bg-white/[0.09]" : "border-white/15 bg-white/[0.03]"),
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Clapperboard, { className: "mb-2 text-white" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-3xl font-bold", children: "ريلز" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-white/70", children: "فيديو قصير مؤثر" })
+          ]
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "button",
+        {
+          type: "button",
+          onClick: () => setType("tweet"),
+          className: "rounded-3xl border p-4 text-start " + (type === "tweet" ? "border-white/45 bg-white/[0.09]" : "border-white/15 bg-white/[0.03]"),
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(SquarePen, { className: "mb-2 text-white" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-3xl font-bold", children: "تغريدة" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-white/70", children: "نص قصير ومباشر" })
+          ]
+        }
+      )
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-3xl border border-white/15 bg-white/[0.03] p-4", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex w-full items-center justify-between gap-3", children: [
+        type !== "reel" && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "button",
+          {
+            type: "button",
+            onClick: openVoicePicker,
+            disabled: voicePicking,
+            className: "inline-flex shrink-0 items-center gap-2 rounded-xl border border-white/25 bg-white/[0.08] px-3 py-2 text-sm font-semibold text-white disabled:opacity-50",
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Mic, { size: 16 }),
+              voicePicking ? "…" : "فويس"
+            ]
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "button",
+          {
+            type: "button",
+            onClick: () => fileInputRef.current?.click(),
+            className: "flex min-w-0 flex-1 items-center gap-3 text-start",
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-white", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Paperclip, {}) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-3xl font-bold", children: "إرفاق" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-white/70", children: type === "reel" ? "أضف مقطع فيديو للريلز" : "أضف صورة أو فيديو" })
+              ] })
+            ]
+          }
+        )
+      ] }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(
         "input",
         {
+          ref: fileInputRef,
           type: "file",
           accept: type === "reel" ? REEL_ACCEPT_VIDEO : "image/*,video/*",
           onChange: onFile,
-          className: "mt-1 block w-full text-sm"
+          className: "sr-only"
         }
       ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "input",
+        {
+          ref: audioInputRef,
+          type: "file",
+          accept: "video/*,audio/*",
+          onChange: onVoiceMediaPick,
+          className: "sr-only"
+        }
+      )
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-3xl border border-white/15 bg-white/[0.03] p-4", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-2 flex items-center gap-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Sparkles, { size: 18, className: "text-white/80" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-3xl font-bold", children: "أفكار ملهمة" })
+      ] }),
+      ["شارك نصيحة سريعة مع متابعينك", "اكتب عن لحظة ألهمتك اليوم", "ما رأيك في موضوع اليوم؟"].map((idea, i) => /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", className: "flex w-full items-center gap-3 border-white/10 py-3 text-start " + (i < 2 ? "border-b" : ""), children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-2xl text-white", children: "+" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-lg text-white/85", children: idea })
+      ] }, idea))
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
       type === "reel" && /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-1 text-xs text-muted-foreground leading-relaxed", children: [
         "عمودي 9:16 (1080×1920) · MP4 H.264 · حتى ",
         REEL_MAX_UPLOAD_MB,
@@ -43953,7 +47287,7 @@ function CreateScreen({
         ),
         /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "pointer-events-none absolute inset-y-0 end-0 w-[18%] border-s border-dashed border-white/25", "aria-hidden": true })
       ] }),
-      media && type !== "reel" && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-2 aspect-[9/16] max-h-[min(52vh,420px)] mx-auto bg-muted rounded-2xl overflow-hidden flex items-center justify-center", children: storyFileRef.current?.type.startsWith("video/") || isVideoMediaRef(media) ? /* @__PURE__ */ jsxRuntimeExports.jsx("video", { src: media, controls: true, className: "w-full h-full object-cover", playsInline: true }) : media.startsWith("data:image") || media.startsWith("blob:") || isRenderableMediaUrl(media) ? /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: media, className: "w-full h-full object-cover", alt: "" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-7xl", children: media }) }),
+      media && type !== "reel" && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-2 aspect-[9/16] max-h-[min(52vh,420px)] mx-auto bg-muted rounded-2xl overflow-hidden flex items-center justify-center", children: storyFileRef.current?.type.startsWith("video/") || isVideoMediaRef(media) ? /* @__PURE__ */ jsxRuntimeExports.jsx("video", { src: media, controls: true, className: "w-full h-full object-cover", playsInline: true }) : isVoiceMedia || storyFileRef.current?.type.startsWith("audio/") || storyFileRef.current?.type.startsWith("video/") || media.startsWith("data:audio") ? storyFileRef.current?.type.startsWith("video/") || isVoiceMedia && !storyFileRef.current?.type.startsWith("audio/") ? /* @__PURE__ */ jsxRuntimeExports.jsx("video", { src: media, controls: true, playsInline: true, className: "w-full h-full object-contain" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("audio", { src: media, controls: true, className: "w-full" }) : media.startsWith("data:image") || media.startsWith("blob:") || isRenderableMediaUrl(media) ? /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: media, className: "w-full h-full object-cover", alt: "" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-7xl", children: media }) }),
       type === "reel" && media && (storyFileRef.current?.type.startsWith("video/") || media.startsWith("blob:")) && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2 rounded-2xl bg-secondary/60 p-3", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs font-medium text-muted-foreground", children: "صورة الغلاف (1:1 في الملف الشخصي)" }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-wrap gap-2", children: [
@@ -44072,7 +47406,7 @@ function CreateScreen({
         ] })
       ] })
     ] })
-  ] });
+  ] }) });
 }
 function composeEventHandlers(originalEventHandler, ourEventHandler, { checkForDefaultPrevented = true } = {}) {
   return function handleEvent(event) {
@@ -47764,6 +51098,7 @@ function EditProfileScreen({ onBack }) {
   const [avatarModalOpen, setAvatarModalOpen] = reactExports.useState(false);
   const ent = getUserEntitlements(u);
   const save = async () => {
+    if (saving || avatarBusy) return;
     const trimmed = normalizeUsername(sanitizeUsernameInput(username));
     const usernameChanged = trimmed !== normalizeUsername(u.username);
     if (usernameChanged) {
@@ -47777,10 +51112,15 @@ function EditProfileScreen({ onBack }) {
         return;
       }
     }
-    const token = ensureApiTokenMatchesUser(u.id) ?? getApiToken();
-    if (apiBackendEnabled() && token) {
-      setSaving(true);
-      try {
+    setSaving(true);
+    try {
+      await ensureApiRuntimeConfig();
+      const token = ensureApiTokenMatchesUser(u.id) ?? getApiToken();
+      if (apiBackendEnabled() && !token) {
+        alert("انتهت جلستك — سجّل الدخول مرة أخرى ثم حاول الحفظ");
+        return;
+      }
+      if (apiBackendEnabled() && token) {
         if (usernameChanged && !isShortUsernameException(trimmed, u.id)) {
           const available = await apiIsUsernameAvailable(trimmed, u.id);
           if (!available) {
@@ -47808,7 +51148,7 @@ function EditProfileScreen({ onBack }) {
         const remote = await apiPatchProfile(token, profilePatch);
         if (!remote.ok) {
           alert(
-            remote.error === "unauthorized" || remote.error?.includes("401") ? "انتهت جلستك — سجّل الدخول مرة أخرى" : remote.error || "تعذر حفظ الملف الشخصي"
+            remote.error === "unauthorized" || remote.error?.includes("401") ? "انتهت جلستك — سجّل الدخول مرة أخرى" : remote.error || "تعذر حفظ الملف الشخصي — تحقق من الاتصال وحاول مرة أخرى"
           );
           return;
         }
@@ -47818,35 +51158,48 @@ function EditProfileScreen({ onBack }) {
             displayName: remote.user.displayName?.trim() || displayName.trim() || void 0,
             avatar: toStoredMediaRef(remote.user.avatar),
             bio: remote.user.bio ?? bio,
-            note: note.trim(),
-            profileLink: profileLink.trim()
+            note: remote.user.note ?? note.trim(),
+            profileLink: remote.user.profileLink ?? profileLink.trim()
           },
           { skipRemotePush: true }
         );
         setNote(note);
         onBack();
-      } catch (e) {
-        alert(
-          e instanceof Error && e.message.includes("fetch") ? "تعذر الاتصال بالخادم — تأكد من اتصالك وحاول مرة أخرى" : "حدث خطأ غير متوقع — حاول مرة أخرى"
-        );
-      } finally {
-        setSaving(false);
+        return;
       }
-      return;
+      updateProfile({
+        ...usernameChanged ? { username: trimmed } : {},
+        displayName: displayName.trim() || void 0,
+        bio,
+        avatar,
+        note: note.trim(),
+        profileLink: profileLink.trim()
+      });
+      setNote(note);
+      onBack();
+    } catch (e) {
+      alert(
+        e instanceof Error && e.message.includes("fetch") ? "تعذر الاتصال بالخادم — تأكد من اتصالك وحاول مرة أخرى" : "حدث خطأ غير متوقع — حاول مرة أخرى"
+      );
+    } finally {
+      setSaving(false);
     }
-    updateProfile({
-      ...usernameChanged ? { username: trimmed } : {},
-      displayName: displayName.trim() || void 0,
-      bio,
-      avatar,
-      profileLink: profileLink.trim()
-    });
-    setNote(note);
-    onBack();
   };
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "p-4 space-y-4", children: [
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative p-4 space-y-4", children: [
+    (saving || avatarBusy) && /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "div",
+      {
+        className: "fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm",
+        "aria-busy": "true",
+        "aria-live": "polite",
+        children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col items-center gap-3 rounded-2xl border border-border/60 bg-card px-8 py-7 shadow-xl", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(LoaderCircle, { className: "h-11 w-11 animate-spin text-primary", "aria-hidden": true }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm font-semibold text-foreground", children: avatarBusy && !saving ? "جاري رفع الصورة…" : "جاري حفظ البروفايل…" })
+        ] })
+      }
+    ),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(SlideDismissBackButton, { onDismiss: onBack, children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowRight, {}) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(SlideDismissBackButton, { onDismiss: onBack, disabled: saving || avatarBusy, children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowRight, {}) }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "font-bold", children: "تعديل البروفايل" }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(
         "button",
@@ -47854,13 +51207,16 @@ function EditProfileScreen({ onBack }) {
           type: "button",
           onClick: () => void save(),
           disabled: saving || avatarBusy,
-          className: "text-primary font-semibold disabled:opacity-50",
-          children: saving ? "…" : "حفظ"
+          className: "inline-flex min-w-[3.5rem] items-center justify-center gap-1.5 text-primary font-semibold disabled:opacity-50",
+          children: saving ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(LoaderCircle, { className: "h-4 w-4 animate-spin", "aria-hidden": true }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "حفظ" })
+          ] }) : "حفظ"
         }
       )
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col items-center gap-2", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => setAvatarModalOpen(true), className: "rounded-full", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: username, src: avatar, size: 100 }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => setAvatarModalOpen(true), className: "rounded-full", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: username, src: avatar, size: 100 }) }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(
         "button",
         {
@@ -48572,7 +51928,7 @@ function NotificationsPanel({
                   },
                   className: "-m-1 flex w-full items-center gap-3 rounded-xl p-1 text-start hover:bg-secondary/60",
                   children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: from?.username || "?", src: from?.avatar }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: from?.username || "?", src: from?.avatar }),
                     /* @__PURE__ */ jsxRuntimeExports.jsx(Icon2, { size: 18, className: iconClass }),
                     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1 text-sm", children: [
                       /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "font-semibold", children: [
@@ -48846,7 +52202,7 @@ function useNavDoubleTap(onSingle, onDouble) {
 function AppealFlow({
   banInfo,
   onBack,
-  onRestored
+  onSubmitted
 }) {
   const [step, setStep] = reactExports.useState("intro");
   const [emailHint, setEmailHint] = reactExports.useState("");
@@ -48892,6 +52248,7 @@ function AppealFlow({
       return;
     }
     setStep("done");
+    window.setTimeout(onSubmitted, 700);
   };
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-h-dvh flex-col bg-background", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 border-b border-border px-4 py-3", children: [
@@ -48994,40 +52351,28 @@ function AppealFlow({
 }
 function BanScreen({
   banInfo,
+  hasPendingAppeal = false,
+  onAppealSubmitted,
   onLogout
 }) {
   const [appeal, setAppeal] = reactExports.useState(false);
-  const [restored, setRestored] = reactExports.useState(false);
-  if (restored) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-h-dvh flex-col items-center justify-center bg-background px-6 text-center", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 animate-in zoom-in", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-4xl", children: "✓" }) }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "text-xl font-bold", children: "تم استعادة حسابك" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-sm text-muted-foreground", children: "يمكنك الآن استخدام التطبيق بشكل طبيعي." }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "button",
-        {
-          type: "button",
-          onClick: () => window.location.reload(),
-          className: "mt-8 w-full max-w-sm rounded-xl bg-primary py-3 font-semibold text-primary-foreground",
-          children: "متابعة"
-        }
-      )
-    ] });
-  }
-  if (appeal && banInfo.canAppeal) {
+  if (appeal && banInfo.canAppeal && !hasPendingAppeal) {
     return /* @__PURE__ */ jsxRuntimeExports.jsx(
       AppealFlow,
       {
         banInfo,
         onBack: () => setAppeal(false),
-        onRestored: () => setRestored(true)
+        onSubmitted: () => {
+          onAppealSubmitted?.();
+          setAppeal(false);
+        }
       }
     );
   }
   const permanent = banInfo.permanentlyDisabled || banInfo.accountStatus === "PERMANENTLY_BANNED";
   const bannedDate = new Date(banInfo.bannedAt).toLocaleDateString("ar");
   return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex min-h-dvh flex-col bg-background px-6 py-10", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center text-center", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar$1, { name: banInfo.username, src: banInfo.avatar, size: 88, className: "mb-4" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: banInfo.username, src: banInfo.avatar, size: 88, className: "mb-4" }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-lg font-bold", children: [
       "@",
       banInfo.username
@@ -49053,7 +52398,8 @@ function BanScreen({
         /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: new Date(banInfo.banExpiresAt).toLocaleString("ar") })
       ] })
     ] }),
-    banInfo.canAppeal && !permanent && /* @__PURE__ */ jsxRuntimeExports.jsx(
+    hasPendingAppeal && !permanent && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-6 w-full rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200", children: "طلب الطعن قيد الانتظار. لا يمكنك إرسال طعن جديد حتى يتم الرد من الدعم." }),
+    banInfo.canAppeal && !permanent && !hasPendingAppeal && /* @__PURE__ */ jsxRuntimeExports.jsx(
       "button",
       {
         type: "button",
@@ -49064,6 +52410,22 @@ function BanScreen({
     ),
     onLogout && /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onLogout, className: "mt-3 w-full text-sm text-muted-foreground", children: "تسجيل الخروج" })
   ] }) });
+}
+function AccountRestoredScreen({ onContinue }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-h-dvh flex-col items-center justify-center bg-background px-6 text-center", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-5 flex h-28 w-28 items-center justify-center rounded-full border-4 border-emerald-500/40 bg-emerald-500/15 text-emerald-500", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-6xl leading-none", children: "✓" }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "text-2xl font-extrabold", children: "تمت استعادة حسابك" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-sm text-muted-foreground", children: "تم قبول الطعن. يمكنك الآن استخدام الحساب بشكل طبيعي." }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "button",
+      {
+        type: "button",
+        onClick: onContinue,
+        className: "mt-8 w-full max-w-sm rounded-xl bg-primary py-3 font-semibold text-primary-foreground",
+        children: "متابعة"
+      }
+    )
+  ] });
 }
 const NAV_ICON = "pointer-events-none h-6 w-6 shrink-0 text-white";
 const NAV_MSG_ICON = "pointer-events-none h-[26px] w-[26px] shrink-0 text-white";
@@ -49084,6 +52446,8 @@ function App() {
   } = useApp();
   const t = useT();
   const [banInfo, setBanInfo] = reactExports.useState(null);
+  const [appealPending, setAppealPending] = reactExports.useState(false);
+  const [restoredAppealId, setRestoredAppealId] = reactExports.useState(null);
   const [tab, setTab] = reactExports.useState("home");
   const [modal, setModal] = reactExports.useState(null);
   const [createInitial, setCreateInitial] = reactExports.useState(null);
@@ -49102,6 +52466,12 @@ function App() {
   const [chatExitNavActive, setChatExitNavActive] = reactExports.useState(false);
   const [postDetailOpen, setPostDetailOpen] = reactExports.useState(false);
   const [reportSheetOpen, setReportSheetOpen2] = reactExports.useState(false);
+  const [reelsCommentsOpen, setReelsCommentsOpen] = reactExports.useState(false);
+  const [chatCreateSheetOpen, setChatCreateSheetOpen] = reactExports.useState(false);
+  const [cameraFullscreenOpen, setCameraFullscreenOpen] = reactExports.useState(false);
+  const [storyGalleryOpen, setStoryGalleryOpen] = reactExports.useState(false);
+  const [storyInstagramCameraOpen, setStoryInstagramCameraOpen] = reactExports.useState(false);
+  const [storyCameraDraft, setStoryCameraDraft] = reactExports.useState(null);
   const [showWelcome, setShowWelcome] = reactExports.useState(false);
   const [restorePostContext, setRestorePostContext] = reactExports.useState(null);
   const clearRestorePostContext = reactExports.useCallback(() => setRestorePostContext(null), []);
@@ -49116,12 +52486,63 @@ function App() {
     };
   }, []);
   reactExports.useEffect(() => {
+    const onCamOpen = () => setCameraFullscreenOpen(true);
+    const onCamClose = () => setCameraFullscreenOpen(false);
+    window.addEventListener("retweet-camera-open", onCamOpen);
+    window.addEventListener("retweet-camera-close", onCamClose);
+    return () => {
+      window.removeEventListener("retweet-camera-open", onCamOpen);
+      window.removeEventListener("retweet-camera-close", onCamClose);
+    };
+  }, []);
+  reactExports.useEffect(() => {
+    resetMediaChromeOverlays();
+  }, []);
+  const closeStoryGallery = reactExports.useCallback(() => {
+    setStoryGalleryOpen(false);
+    notifyStoryPickerClose();
+  }, []);
+  const openStoryGallery = reactExports.useCallback(() => {
+    if (isGuest) {
+      notifyGuestActionBlocked();
+      return;
+    }
+    setStoryGalleryOpen(true);
+    notifyStoryPickerOpen();
+  }, [isGuest]);
+  reactExports.useEffect(() => {
+    const onRequest = () => openStoryGallery();
+    window.addEventListener(STORY_GALLERY_OPEN_EVENT, onRequest);
+    return () => window.removeEventListener(STORY_GALLERY_OPEN_EVENT, onRequest);
+  }, [openStoryGallery]);
+  reactExports.useEffect(() => {
+    const onGoReels = () => setTab("reels");
+    window.addEventListener("retweet-go-reels", onGoReels);
+    return () => window.removeEventListener("retweet-go-reels", onGoReels);
+  }, []);
+  reactExports.useEffect(() => {
     const onReportSheet = (e) => {
       const open = e.detail?.open;
       setReportSheetOpen2(!!open);
     };
     window.addEventListener(REPORT_SHEET_OPEN_EVENT, onReportSheet);
     return () => window.removeEventListener(REPORT_SHEET_OPEN_EVENT, onReportSheet);
+  }, []);
+  reactExports.useEffect(() => {
+    const onReelsComments = (e) => {
+      const open = e.detail?.open;
+      setReelsCommentsOpen(!!open);
+    };
+    window.addEventListener("retweet-reels-comments-open", onReelsComments);
+    return () => window.removeEventListener("retweet-reels-comments-open", onReelsComments);
+  }, []);
+  reactExports.useEffect(() => {
+    const onChatCreateSheet = (e) => {
+      const open = e.detail?.open;
+      setChatCreateSheetOpen(!!open);
+    };
+    window.addEventListener("retweet-chat-create-sheet", onChatCreateSheet);
+    return () => window.removeEventListener("retweet-chat-create-sheet", onChatCreateSheet);
   }, []);
   reactExports.useEffect(() => {
     if (typeof window === "undefined") return;
@@ -49234,16 +52655,35 @@ function App() {
   reactExports.useEffect(() => {
     if (!currentUser || isGuest || !apiBackendEnabled()) {
       setBanInfo(null);
+      setAppealPending(false);
+      setRestoredAppealId(null);
       return;
     }
     void apiGetMyModerationStatus().then((r2) => {
-      if (r2.ok && r2.data.banInfo) setBanInfo(r2.data.banInfo);
-      else setBanInfo(null);
+      if (!r2.ok) {
+        setBanInfo(null);
+        setAppealPending(false);
+        setRestoredAppealId(null);
+        return;
+      }
+      setBanInfo(r2.data.banInfo ?? null);
+      setAppealPending(
+        !!r2.data.activeAppeal && (r2.data.activeAppeal.status === "pending" || r2.data.activeAppeal.status === "under_review")
+      );
+      const approvedId = r2.data.latestAppeal?.status === "approved" ? r2.data.latestAppeal.id : null;
+      if (approvedId) {
+        const shownKey = `retweet_restored_shown_${currentUser.id}_${approvedId}`;
+        const alreadyShown = localStorage.getItem(shownKey) === "1";
+        setRestoredAppealId(alreadyShown ? null : approvedId);
+      } else {
+        setRestoredAppealId(null);
+      }
     });
     const onMod = (e) => {
       const d = e.detail;
       if (d?.banInfo) setBanInfo(d.banInfo);
       if (d?.accountStatus === "ACTIVE") setBanInfo(null);
+      if (d?.accountStatus === "ACTIVE") setAppealPending(false);
     };
     window.addEventListener("retweet-account-moderation", onMod);
     return () => window.removeEventListener("retweet-account-moderation", onMod);
@@ -49728,20 +53168,48 @@ function App() {
     return /* @__PURE__ */ jsxRuntimeExports.jsx(AuthScreen, {});
   }
   if (accountSwitching) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(
       "div",
       {
-        className: "flex min-h-dvh flex-col items-center justify-center gap-3 bg-background px-6 text-center text-sm text-muted-foreground",
-        children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "font-medium text-foreground", children: "جاري تبديل الحساب…" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs", children: "يتم قطع الاتصال الآمن وتحميل بيانات الحساب الجديد" })
-        ]
+        className: "flex min-h-dvh flex-col items-center justify-center bg-black px-6",
+        children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-24 w-24 rounded-full border border-white/15 border-t-white/70 animate-spin" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "pointer-events-none absolute inset-0 flex items-center justify-center", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "img",
+            {
+              src: logo,
+              alt: "Retweet",
+              className: "h-14 w-14 select-none dark:invert animate-pulse",
+              draggable: false
+            }
+          ) })
+        ] })
       },
       `switch-${accountSessionKey}`
     );
   }
+  if (restoredAppealId && currentUser && !isGuest) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(
+      AccountRestoredScreen,
+      {
+        onContinue: () => {
+          const shownKey = `retweet_restored_shown_${currentUser.id}_${restoredAppealId}`;
+          localStorage.setItem(shownKey, "1");
+          setRestoredAppealId(null);
+        }
+      }
+    );
+  }
   if (banInfo && !isGuest) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx(BanScreen, { banInfo, onLogout: () => logout() });
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(
+      BanScreen,
+      {
+        banInfo,
+        hasPendingAppeal: appealPending,
+        onAppealSubmitted: () => setAppealPending(true),
+        onLogout: () => logout()
+      }
+    );
   }
   const unreadNotifs = (state.notifications ?? []).filter(
     (n) => n.userId === currentUser.id && !n.read && n.type !== "message"
@@ -49754,8 +53222,8 @@ function App() {
   !(viewProfileId && viewProfileId !== currentUser.id);
   const onProfileTab = tab === "profile" && !viewProfileId;
   const viewingOtherUserProfile = tab === "profile" && !!viewProfileId;
-  const hideAppHeader = tab === "chat" || tab === "search" || onProfileTab || viewingOtherUserProfile || storyFullscreen || postDetailOpen || settingsImmersive;
-  const hideBottomBar = immersiveOverlay && !chatExitNavActive || storyFullscreen || !!profileOverlayUserId || settingsImmersive || reportSheetOpen;
+  const hideAppHeader = tab === "chat" || tab === "search" || tab === "reels" || onProfileTab || viewingOtherUserProfile || storyFullscreen || postDetailOpen || settingsImmersive;
+  const hideBottomBar = immersiveOverlay && !chatExitNavActive || storyFullscreen || !!profileOverlayUserId || settingsImmersive || reportSheetOpen || reelsCommentsOpen || chatCreateSheetOpen || cameraFullscreenOpen || storyGalleryOpen;
   const showBottomNav = !hideBottomBar || chatExitNavActive;
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "div",
@@ -49829,7 +53297,15 @@ function App() {
               children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsx(NavBtn, { tabIndex: 0, onClick: () => onNavSelectIndex(0), children: /* @__PURE__ */ jsxRuntimeExports.jsx(House, { className: NAV_ICON, strokeWidth: 2 }) }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx(NavBtn, { tabIndex: 1, onClick: () => onNavSelectIndex(1), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Search, { className: NAV_ICON, strokeWidth: 2 }) }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(NavBtn, { tabIndex: 2, onClick: () => onNavSelectIndex(2), children: /* @__PURE__ */ jsxRuntimeExports.jsx(InstagramReelsIcon, { className: NAV_ICON, strokeWidth: 2 }) }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  NavBtn,
+                  {
+                    tabIndex: 2,
+                    suppressRowSelect: true,
+                    onClick: () => setStoryInstagramCameraOpen(true),
+                    children: /* @__PURE__ */ jsxRuntimeExports.jsx(Camera, { className: NAV_ICON, strokeWidth: 2 })
+                  }
+                ),
                 /* @__PURE__ */ jsxRuntimeExports.jsx(NavBtn, { tabIndex: 3, onClick: () => onNavSelectIndex(3), children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative", children: [
                   /* @__PURE__ */ jsxRuntimeExports.jsx(DirectMessagesNavIcon, { className: NAV_MSG_ICON, strokeWidth: 2 }),
                   unreadMessages > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -49848,7 +53324,7 @@ function App() {
                     onSingleTap: () => onNavSelectIndex(4),
                     onDoubleTap: handleProfileNavDoubleTap,
                     children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-                      Avatar$1,
+                      Avatar,
                       {
                         name: currentUser.username,
                         src: currentUser.avatar,
@@ -49930,7 +53406,13 @@ function App() {
         modal === "settings" && /* @__PURE__ */ jsxRuntimeExports.jsx(
           AppDismissSheet,
           {
-            onClose: () => setModal(null),
+            onClose: () => {
+              try {
+                document.documentElement.style.removeProperty(SETTINGS_DISMISS_PULL_CSS_VAR);
+              } catch {
+              }
+              setModal(null);
+            },
             overlayZIndex: 120,
             dismissPullCssVar: SETTINGS_DISMISS_PULL_CSS_VAR,
             darkPanelChrome: state.theme === "dark",
@@ -50060,7 +53542,43 @@ function App() {
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground mb-5", children: "تطبيق من تطوير و برمجه الشيخ/د/أ/ المهندس طارق الكثيري" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => setShowWelcome(false), className: "w-full bg-primary text-primary-foreground rounded-2xl py-2 font-semibold", children: "ابدأ الآن" })
-        ] }) })
+        ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          StoryGalleryPicker,
+          {
+            open: storyGalleryOpen,
+            language: state.language,
+            onClose: closeStoryGallery,
+            onOpenCamera: () => {
+              closeStoryGallery();
+              setStoryInstagramCameraOpen(true);
+            },
+            onPickDraft: (draft) => {
+              closeStoryGallery();
+              setStoryCameraDraft(draft);
+            }
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          InstagramCamera,
+          {
+            open: storyInstagramCameraOpen,
+            language: state.language,
+            onClose: () => setStoryInstagramCameraOpen(false),
+            onCapture: (cap) => {
+              setStoryInstagramCameraOpen(false);
+              setStoryCameraDraft({ kind: cap.kind, dataUrl: cap.dataUrl });
+            }
+          }
+        ),
+        storyCameraDraft && /* @__PURE__ */ jsxRuntimeExports.jsx(
+          CameraCaptureShareScreen,
+          {
+            draft: storyCameraDraft,
+            language: state.language,
+            onClose: () => setStoryCameraDraft(null)
+          }
+        )
       ]
     },
     accountSessionKey
@@ -50068,6 +53586,7 @@ function App() {
 }
 const NavBtn = reactExports.memo(function NavBtn2({
   tabIndex: tabIndex2 = 0,
+  suppressRowSelect = false,
   onClick,
   children
 }) {
@@ -50082,6 +53601,19 @@ const NavBtn = reactExports.memo(function NavBtn2({
       type: "button",
       "data-nav-tab-btn": true,
       "data-nav-tab-index": tabIndex2,
+      "data-nav-suppress-row-select": suppressRowSelect ? "true" : "false",
+      onPointerDown: (e) => {
+        if (!suppressRowSelect) return;
+        e.stopPropagation();
+      },
+      onPointerUp: (e) => {
+        if (!suppressRowSelect) return;
+        e.stopPropagation();
+      },
+      onPointerCancel: (e) => {
+        if (!suppressRowSelect) return;
+        e.stopPropagation();
+      },
       onClick: (e) => {
         e.stopPropagation();
         fire();
@@ -50191,7 +53723,27 @@ function WebAppRoot() {
     };
   }, []);
   if (!ready) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex min-h-dvh items-center justify-center bg-background text-sm text-muted-foreground", children: "جاري التحميل…" });
+    return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative flex min-h-dvh items-center justify-center overflow-hidden bg-background", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 bg-gradient-to-b from-background via-background to-black/10" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative z-10 flex flex-col items-center gap-5", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "img",
+            {
+              src: logo,
+              alt: "Retweet",
+              className: "h-20 w-20 rounded-2xl object-cover shadow-2xl ring-1 ring-white/10 animate-pulse"
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "absolute -inset-2 rounded-[1.15rem] border-2 border-primary/45 border-t-transparent animate-spin" })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1.5", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "h-2 w-2 rounded-full bg-primary/90 animate-bounce [animation-delay:-0.25s]" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "h-2 w-2 rounded-full bg-primary/75 animate-bounce [animation-delay:-0.125s]" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "h-2 w-2 rounded-full bg-primary/60 animate-bounce" })
+        ] })
+      ] })
+    ] });
   }
   if (apiMissing || !apiBackendEnabled()) {
     const retry = () => {

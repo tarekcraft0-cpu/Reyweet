@@ -85,12 +85,15 @@ export function normalizePostMedia(post: Pick<Post, "image" | "video" | "audio" 
   const posterUrl =
     imageUrl && isRenderableMediaUrl(imageUrl) ? imageUrl : "";
 
+  const voiceTweet = post.type === "tweet" && !!audioRaw;
+
   const normalized = {
     imageUrl,
     videoUrl,
     posterUrl,
     hasImage: !!imageUrl && isRenderableMediaUrl(imageUrl) && !isVideoMediaRef(imageRaw),
-    hasVideo: !!videoRaw && isVideoMediaRef(videoRaw) && !!videoUrl,
+    hasVideo:
+      !voiceTweet && !!videoRaw && isVideoMediaRef(videoRaw) && !!videoUrl,
     hasAudio:
       !!audioRaw &&
       (isRenderableMediaUrl(audioUrl) || isVoicePlaybackVideoSrc(audioRaw)),

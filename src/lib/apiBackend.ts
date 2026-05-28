@@ -388,6 +388,8 @@ export type ApiSearchUser = {
   displayName?: string;
   avatar: string;
   bio?: string;
+  note?: string;
+  profileLink?: string;
   verified?: boolean;
   /** حساب خاص — يُرجَع من نهايات المستخدم العامة */
   isPrivate?: boolean;
@@ -933,6 +935,7 @@ export async function apiPatchProfile(
     phone?: string;
   },
 ): Promise<{ ok: true; user: ApiSearchUser } | { ok: false; error: string }> {
+  await ensureApiRuntimeConfig();
   const res = await apiFetch("/v1/me/profile", {
     method: "PATCH",
     token,
@@ -970,6 +973,7 @@ export async function apiUploadMedia(
     storyVideo?: boolean;
     reelVideo?: boolean;
     avatarAnimated?: boolean;
+    voiceTweet?: boolean;
   },
 ): Promise<{ ok: true; url: string; posterUrl?: string } | { ok: false; error: string }> {
   await ensureApiRuntimeConfig();
@@ -987,6 +991,7 @@ export async function apiUploadMedia(
   if (opts?.storyVideo) q.push("story=1");
   if (opts?.reelVideo) q.push("reel=1");
   if (opts?.avatarAnimated) q.push("avatar=1");
+  if (opts?.voiceTweet) q.push("voice=1");
   const uploadPath = `/v1/media/upload${q.length ? `?${q.join("&")}` : ""}`;
   const fd = new FormData();
   fd.append("file", file);

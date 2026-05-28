@@ -21,7 +21,7 @@ import {
 } from "@/lib/apiBackend";
 import { toStoredMediaRef } from "@/lib/mediaUrl";
 import { Avatar } from "../Avatar";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Loader2 } from "lucide-react";
 import { SlideDismissBackButton } from "../SlideDismissShell";
 import { MentionComposerField } from "../MentionComposerField";
 
@@ -119,6 +119,7 @@ export function EditProfileScreen({ onBack }: { onBack: () => void }) {
   };
 
   const save = async () => {
+    if (saving || avatarBusy) return;
     const trimmed = normalizeUsername(sanitizeUsernameInput(username));
     const usernameChanged = trimmed !== normalizeUsername(u.username);
     if (usernameChanged) {
@@ -132,10 +133,18 @@ export function EditProfileScreen({ onBack }: { onBack: () => void }) {
         return;
       }
     }
-    const token = ensureApiTokenMatchesUser(u.id) ?? getApiToken();
-    if (apiBackendEnabled() && token) {
-      setSaving(true);
-      try {
+
+    setSaving(true);
+    try {
+      await ensureApiRuntimeConfig();
+      const token = ensureApiTokenMatchesUser(u.id) ?? getApiToken();
+
+      if (apiBackendEnabled() && !token) {
+        alert("انتهت جلستك — سجّل الدخول مرة أخرى ثم حاول الحفظ");
+        return;
+      }
+
+      if (apiBackendEnabled() && token) {
         if (usernameChanged && !isShortUsernameException(trimmed, u.id)) {
           const available = await apiIsUsernameAvailable(trimmed, u.id);
           if (!available) {
@@ -165,7 +174,7 @@ export function EditProfileScreen({ onBack }: { onBack: () => void }) {
           alert(
             remote.error === "unauthorized" || remote.error?.includes("401")
               ? "انتهت جلستك — سجّل الدخول مرة أخرى"
-              : remote.error || "تعذر حفظ الملف الشخصي",
+              : remote.error || "تعذر حفظ الملف الشخصي — تحقق من الاتصال وحاول مرة أخرى",
           );
           return;
         }
@@ -175,39 +184,56 @@ export function EditProfileScreen({ onBack }: { onBack: () => void }) {
             displayName: remote.user.displayName?.trim() || displayName.trim() || undefined,
             avatar: toStoredMediaRef(remote.user.avatar),
             bio: remote.user.bio ?? bio,
-            note: note.trim(),
-            profileLink: profileLink.trim(),
+            note: remote.user.note ?? note.trim(),
+            profileLink: remote.user.profileLink ?? profileLink.trim(),
           },
           { skipRemotePush: true },
         );
         setNote(note);
         onBack();
-      } catch (e) {
-        alert(
-          e instanceof Error && e.message.includes("fetch")
-            ? "تعذر الاتصال بالخادم — تأكد من اتصالك وحاول مرة أخرى"
-            : "حدث خطأ غير متوقع — حاول مرة أخرى",
-        );
-      } finally {
-        setSaving(false);
+        return;
       }
-      return;
+
+      updateProfile({
+        ...(usernameChanged ? { username: trimmed } : {}),
+        displayName: displayName.trim() || undefined,
+        bio,
+        avatar,
+        note: note.trim(),
+        profileLink: profileLink.trim(),
+      });
+      setNote(note);
+      onBack();
+    } catch (e) {
+      alert(
+        e instanceof Error && e.message.includes("fetch")
+          ? "تعذر الاتصال بالخادم — تأكد من اتصالك وحاول مرة أخرى"
+          : "حدث خطأ غير متوقع — حاول مرة أخرى",
+      );
+    } finally {
+      setSaving(false);
     }
-    updateProfile({
-      ...(usernameChanged ? { username: trimmed } : {}),
-      displayName: displayName.trim() || undefined,
-      bio,
-      avatar,
-      profileLink: profileLink.trim(),
-    });
-    setNote(note);
-    onBack();
   };
 
   return (
-    <div className="p-4 space-y-4">
+    <div className="relative p-4 space-y-4">
+      {(saving || avatarBusy) && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          aria-busy="true"
+          aria-live="polite"
+        >
+          <div className="flex flex-col items-center gap-3 rounded-2xl border border-border/60 bg-card px-8 py-7 shadow-xl">
+            <Loader2 className="h-11 w-11 animate-spin text-primary" aria-hidden />
+            <p className="text-sm font-semibold text-foreground">
+              {avatarBusy && !saving ? "جاري رفع الصورة…" : "جاري حفظ البروفايل…"}
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
-        <SlideDismissBackButton onDismiss={onBack}>
+        <SlideDismissBackButton onDismiss={onBack} disabled={saving || avatarBusy}>
           <ArrowRight />
         </SlideDismissBackButton>
         <h2 className="font-bold">تعديل البروفايل</h2>
@@ -215,9 +241,16 @@ export function EditProfileScreen({ onBack }: { onBack: () => void }) {
           type="button"
           onClick={() => void save()}
           disabled={saving || avatarBusy}
-          className="text-primary font-semibold disabled:opacity-50"
+          className="inline-flex min-w-[3.5rem] items-center justify-center gap-1.5 text-primary font-semibold disabled:opacity-50"
         >
-          {saving ? "…" : "حفظ"}
+          {saving ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+              <span>حفظ</span>
+            </>
+          ) : (
+            "حفظ"
+          )}
         </button>
       </div>
 

@@ -81,6 +81,14 @@ function ProfileTweetMedia({
     );
   }
 
+  if (postMedia.hasAudio && post.audio) {
+    return (
+      <div className="mt-2.5 rounded-2xl border border-border/50 bg-card p-3">
+        <TweetVoicePlayer src={post.audio} />
+      </div>
+    );
+  }
+
   if (postMedia.hasVideo) {
     return (
       <div className="group relative mt-2.5 overflow-hidden rounded-2xl border border-border/50 bg-zinc-900">
@@ -97,14 +105,6 @@ function ProfileTweetMedia({
             <Play size={28} fill="currentColor" className="ms-0.5" />
           </span>
         </span>
-      </div>
-    );
-  }
-
-  if (postMedia.hasAudio) {
-    return (
-      <div className="mt-2.5 rounded-2xl border border-border/50 bg-card p-3">
-        <TweetVoicePlayer src={post.audio!} />
       </div>
     );
   }

@@ -2450,9 +2450,7 @@ export function AppProvider({
       nextForRemote = reconcileOwnedAccountProfiles(next);
       return nextForRemote;
     });
-    if (!nextForRemote || !apiBackendEnabled()) return;
-    const token = getApiToken();
-    if (!token) return;
+    if (!nextForRemote) return;
     const meId = nextForRemote.currentUserId;
     const meRow = nextForRemote.users.find(u => u.id === meId);
     if (meId && meRow) {
@@ -2466,11 +2464,14 @@ export function AppProvider({
         });
       }
     }
+    if (!apiBackendEnabled()) return;
+    const token = getApiToken();
+    if (!token) return;
     if (opts?.skipRemotePush) {
       profileSaveBusyRef.current = true;
       window.setTimeout(() => {
         profileSaveBusyRef.current = false;
-      }, avatarOnlyBusy ? 8000 : 2500);
+      }, avatarOnlyBusy ? 8000 : 5000);
       return;
     }
     if (opts?.commitRemote) {
@@ -2478,7 +2479,7 @@ export function AppProvider({
       void pushRemoteAppState(token, nextForRemote);
       window.setTimeout(() => {
         profileSaveBusyRef.current = false;
-      }, avatarOnlyBusy ? 8000 : 2500);
+      }, avatarOnlyBusy ? 8000 : 5000);
       return;
     }
     void pushRemoteAppState(token, nextForRemote);
