@@ -90,3 +90,44 @@ export function isStaleMobileApiUrl(url: string): boolean {
   if (u.startsWith("http://") && !isPrivateApiUrl(u)) return true;
   return false;
 }
+
+/** عنوان لا يصلح للصفحة الحالية (LAN على الإنتاج، HTTP من HTTPS، VPS مباشر على Vercel) */
+export function isBlockedApiUrl(url: string): boolean {
+  const u = url.trim();
+  if (!u) return false;
+  if (isNativeCapacitorShell()) {
+    return isPrivateApiUrl(u) || isStaleMobileApiUrl(u);
+  }
+  if (typeof window === "undefined") return false;
+  if (window.location.protocol === "https:" && u.startsWith("http://")) return true;
+  if (isPrivateApiUrl(u)) {
+    if (isPublicAppHost()) return true;
+    try {
+      const apiHost = new URL(u).hostname;
+      if (isLanOrLocalHostname(apiHost) && isLanOrLocalHostname(window.location.hostname)) {
+        return false;
+      }
+    } catch {
+      /* ignore */
+    }
+    return true;
+  }
+  if (isPublicAppHost() && !isVpsProductionHost() && isProductionVpsApiUrl(u)) return true;
+  return false;
+}
+
+/** عنوان API آمن بعد رفض العناوين المحظورة */
+export function sanitizeApiBaseUrl(candidate: string): string {
+  const u = candidate.trim().replace(/\/$/, "");
+  if (!u || isBlockedApiUrl(u)) {
+    if (isNativeCapacitorShell()) return VERCEL_SITE_URL;
+    if (typeof window !== "undefined") {
+      const path = window.location.pathname || "";
+      if (isVpsProductionHost() || (isPublicAppHost() && path.startsWith("/app"))) {
+        return "";
+      }
+    }
+    return VERCEL_SITE_URL;
+  }
+  return u;
+}

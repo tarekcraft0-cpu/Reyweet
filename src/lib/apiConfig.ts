@@ -3,6 +3,7 @@
  */
 import {
   isLanOrLocalHostname,
+  isBlockedApiUrl,
   isNativeCapacitorShell,
   isPrivateApiUrl,
   isProductionVpsApiUrl,
@@ -11,6 +12,7 @@ import {
   isTunnelPublicHost,
   isVpsProductionHost,
   PRODUCTION_VPS_API,
+  sanitizeApiBaseUrl,
   VERCEL_SITE_URL,
 } from "./apiUrlPolicy";
 
@@ -110,8 +112,7 @@ function readCachedApiUrl(): string {
     if (!raw) return "";
     const u = trimUrl((JSON.parse(raw) as { apiUrl?: string }).apiUrl);
     if (!u || (isPublicAppHost() && isPrivateApiUrl(u))) return "";
-    /** عنوان LAN من التطوير لا يعمل خارج شبكة المنزل على iOS */
-    if (isNativeCapacitorShell() && (isPrivateApiUrl(u) || isStaleMobileApiUrl(u))) return "";
+    if (isBlockedApiUrl(u)) return "";
     return u;
   } catch {
     return "";
@@ -166,7 +167,7 @@ export function clearStaleApiConfig(): void {
       localStorage.removeItem(API_RUNTIME_KEY);
       return;
     }
-    if (isNativeCapacitorShell() && (isStaleMobileApiUrl(u) || isPrivateApiUrl(u))) {
+    if (isBlockedApiUrl(u)) {
       localStorage.removeItem(API_RUNTIME_KEY);
       return;
     }
@@ -270,7 +271,7 @@ async function loadConfigFileUrls(): Promise<string[]> {
 
 function persistAbsolute(url: string): void {
   if (!url || typeof window === "undefined") return;
-  if (isNativeCapacitorShell() && (isPrivateApiUrl(url) || isStaleMobileApiUrl(url))) return;
+  if (isBlockedApiUrl(url)) return;
   try {
     localStorage.setItem(API_RUNTIME_KEY, JSON.stringify({ apiUrl: url }));
   } catch {
@@ -332,7 +333,8 @@ export async function ensureApiRuntimeConfig(): Promise<string> {
   }
 
   if (resolvedMode !== "unset") {
-    return resolvedMode === "relative" ? "" : resolvedAbsoluteUrl;
+    const cached = resolvedMode === "relative" ? "" : resolvedAbsoluteUrl;
+    return sanitizeApiBaseUrl(cached);
   }
 
   /** iOS/Android — HTTPS Vercel (API مطلق — لا يعتمد على server.url) */
@@ -371,10 +373,13 @@ export async function ensureApiRuntimeConfig(): Promise<string> {
 
   const fileUrls = await loadConfigFileUrls();
 
-  /** Vercel — API عبر بروكسي نفس النطاق (HTTPS → VPS) */
+  /** Vercel / HTTPS — API عبر نفس النطاق (بروكسي → VPS) */
   if (isPublicAppHost() && onAppPath() && !isVpsProductionHost()) {
     const r = await resolveSameOriginApi();
     if (r !== null) return r;
+    resolvedMode = "relative";
+    resolvedAbsoluteUrl = "";
+    return "";
   }
 
   if (isPublicAppHost() && onAppPath()) {
@@ -449,11 +454,12 @@ export async function ensureApiRuntimeConfig(): Promise<string> {
   }
 
   const hit = await firstReachableApiUrl(ordered);
-  if (hit) {
-    resolvedMode = "absolute";
-    resolvedAbsoluteUrl = hit;
-    persistAbsolute(hit);
-    return hit;
+  if (hit && !isBlockedApiUrl(hit)) {
+    const safe = sanitizeApiBaseUrl(hit);
+    resolvedMode = safe ? "absolute" : "relative";
+    resolvedAbsoluteUrl = safe;
+    if (safe) persistAbsolute(safe);
+    return safe;
   }
 
   if (onAppPath() && isTunnelPublicHost()) {
@@ -462,11 +468,12 @@ export async function ensureApiRuntimeConfig(): Promise<string> {
   }
 
   const injectedFallback = readInjectedApiUrl();
-  if (injectedFallback && (await probeUrl(injectedFallback))) {
-    resolvedMode = "absolute";
-    resolvedAbsoluteUrl = injectedFallback;
-    persistAbsolute(injectedFallback);
-    return injectedFallback;
+  if (injectedFallback && !isBlockedApiUrl(injectedFallback) && (await probeUrl(injectedFallback))) {
+    const safe = sanitizeApiBaseUrl(injectedFallback);
+    resolvedMode = safe ? "absolute" : "relative";
+    resolvedAbsoluteUrl = safe;
+    if (safe) persistAbsolute(safe);
+    return safe;
   }
 
   resolvedMode = "relative";
@@ -476,9 +483,9 @@ export async function ensureApiRuntimeConfig(): Promise<string> {
 
 export function peekApiBaseUrl(): string {
   if (resolvedMode === "relative") return "";
-  if (resolvedMode === "absolute") return resolvedAbsoluteUrl;
+  if (resolvedMode === "absolute") return sanitizeApiBaseUrl(resolvedAbsoluteUrl);
   const cached = readCachedApiUrl();
-  if (cached) return cached;
+  if (cached) return sanitizeApiBaseUrl(cached);
   if (useViteDevProxy()) return "";
   if (isVpsProductionHost() && onAppPath()) return "";
   if (useUnifiedLocalServer() || (onAppPath() && isTunnelPublicHost())) return "";

@@ -13,6 +13,7 @@ import {
   isPublicAppHost,
   isStaleMobileApiUrl,
   isVpsProductionHost,
+  sanitizeApiBaseUrl,
   VERCEL_SITE_URL,
 } from "./apiUrlPolicy";
 import { formatFetchError, logApi, redactBody, shouldLogApi } from "./apiDebug";
@@ -47,12 +48,8 @@ export function getApiBaseUrl(): string {
   } catch {
     /* ignore */
   }
-  let base = (raw.replace(/\/$/, "") || fromPeek).replace(/\/$/, "");
-  if (
-    useMobileBase &&
-    isNativeCapacitorShell() &&
-    (!base || isPrivateApiUrl(base) || isStaleMobileApiUrl(base))
-  ) {
+  const base = sanitizeApiBaseUrl((raw.replace(/\/$/, "") || fromPeek).replace(/\/$/, ""));
+  if (useMobileBase && isNativeCapacitorShell() && !base) {
     return VERCEL_SITE_URL;
   }
   return base;
@@ -990,76 +987,65 @@ export async function apiUploadMedia(
     avatarAnimated?: boolean;
   },
 ): Promise<{ ok: true; url: string; posterUrl?: string } | { ok: false; error: string }> {
-  const base = (await ensureApiRuntimeConfig()).replace(/\/$/, "");
-  if (!base) {
+  await ensureApiRuntimeConfig();
+  if (!hasApiBackendConnection()) {
     return {
       ok: false,
       error: isNativeCapacitorShell()
         ? "الخادم غير متصل — تحقق من الإنترنت"
-        : "الخادم غير متصل — تأكد أن API يعمل (npm run api:tunnel)",
+        : import.meta.env.DEV
+          ? "الخادم غير متصل — شغّل: npm run backend:dev"
+          : "الخادم غير متصل — تحقق من اتصال الإنترنت",
     };
   }
-  let uploadPath = "/v1/media/upload";
   const q: string[] = [];
   if (opts?.storyVideo) q.push("story=1");
   if (opts?.reelVideo) q.push("reel=1");
   if (opts?.avatarAnimated) q.push("avatar=1");
-  if (q.length) uploadPath += `?${q.join("&")}`;
-  const url = `${base}${uploadPath}`;
+  const uploadPath = `/v1/media/upload${q.length ? `?${q.join("&")}` : ""}`;
   const fd = new FormData();
   fd.append("file", file);
-  const ctl = new AbortController();
-  const timeoutMs = opts?.timeoutMs ?? API_FETCH_TIMEOUT_MS;
-  const timer = setTimeout(() => ctl.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-      body: fd,
-      signal: ctl.signal,
-      cache: "no-store",
-    });
-    const data = (await res.json().catch(() => ({}))) as {
-      url?: string;
-      posterUrl?: string;
-      error?: string;
-    };
-    if (res.status === 413) {
-      return {
-        ok: false,
-        error: opts?.reelVideo
-          ? "الملف كبير جداً — الحد 500 ميجا للريلز"
-          : "الملف كبير جداً — جرّب فيديو أقصر (دقيقة) أو صورة أخف",
-      };
-    }
-    if (!res.ok || !data.url) {
-      const err = data.error || "";
-      if (/compress|ضغط/i.test(err)) {
-        return { ok: false, error: "تعذر ضغط الملف — جرّب صيغة MP4 أو JPG" };
-      }
-      return {
-        ok: false,
-        error: err || (file.type.startsWith("video/") ? "فشل رفع الفيديو" : "فشل رفع الصورة"),
-      };
-    }
-    return { ok: true, url: data.url, posterUrl: data.posterUrl };
-  } catch (e) {
-    const aborted = e instanceof Error && e.name === "AbortError";
+  const res = await apiFetch(uploadPath, {
+    method: "POST",
+    token,
+    body: fd,
+    timeoutMs: opts?.timeoutMs ?? API_FETCH_TIMEOUT_MS,
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    url?: string;
+    posterUrl?: string;
+    error?: string;
+    detail?: { url?: string };
+  };
+  if (res.status === 413) {
     return {
       ok: false,
-      error: aborted
-        ? file.type.startsWith("video/")
-          ? opts?.reelVideo
-            ? "انتهت مهلة رفع الريل — جرّب شبكة أسرع أو مقطعاً أقصر"
-            : "انتهت مهلة رفع الفيديو — جرّب شبكة أسرع أو مقطعاً أقصر"
-          : "انتهت مهلة رفع الملف — جرّب مرة أخرى"
-        : isNativeCapacitorShell()
-          ? `تعذر الاتصال بالخادم (${base}) — تحقق من الإنترنت وحاول مرة أخرى`
-          : "تعذر الاتصال بالخادم — تأكد أن npm run api:tunnel يعمل على جهازك",
+      error: opts?.reelVideo
+        ? "الملف كبير جداً — الحد 500 ميجا للريلز"
+        : "الملف كبير جداً — جرّب فيديو أقصر (دقيقة) أو صورة أخف",
     };
-  } finally {
-    clearTimeout(timer);
   }
+  if (res.status === 503 || res.status === 504) {
+    return {
+      ok: false,
+      error:
+        data.error ||
+        (import.meta.env.DEV
+          ? "تعذر الاتصال بالخادم — شغّل: npm run backend:dev"
+          : "تعذر الاتصال بالخادم — تحقق من الإنترنت وحاول مرة أخرى"),
+    };
+  }
+  if (!res.ok || !data.url) {
+    const err = data.error || "";
+    if (/compress|ضغط/i.test(err)) {
+      return { ok: false, error: "تعذر ضغط الملف — جرّب صيغة MP4 أو JPG" };
+    }
+    return {
+      ok: false,
+      error: err || (file.type.startsWith("video/") ? "فشل رفع الفيديو" : "فشل رفع الصورة"),
+    };
+  }
+  return { ok: true, url: data.url, posterUrl: data.posterUrl };
 }
 
 export async function apiFetchChatMessages(token: string, chatId: ID): Promise<Message[]> {

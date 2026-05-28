@@ -67,13 +67,22 @@ export default defineConfig(({ mode }) => {
     .trim()
     .replace(/\/$/, "");
   const viteApi = (env.VITE_API_URL || process.env.VITE_API_URL || "").trim().replace(/\/$/, "");
+  const vercelSite = "https://reyweet.vercel.app";
 
   let apiUrl = "";
   if (onVercel) {
     apiUrl = publicApi || defaults.apiUrl;
     if (!apiUrl && viteApi && !isPrivateApiUrl(viteApi)) apiUrl = viteApi;
   } else {
-    apiUrl = viteApi || publicApi || defaults.apiUrl;
+    apiUrl = publicApi || defaults.apiUrl || viteApi;
+    /** لا نُضمّن HTTP VPS في بناء الويب — يُحظر من HTTPS (mixed content) */
+    if (
+      apiUrl.startsWith("http://") &&
+      !isPrivateApiUrl(apiUrl) &&
+      apiUrl !== "http://localhost:3000"
+    ) {
+      apiUrl = publicApi || defaults.apiUrl || vercelSite;
+    }
   }
   const supabaseUrl = apiUrl
     ? ""
@@ -89,7 +98,6 @@ export default defineConfig(({ mode }) => {
       ).trim();
 
   const capacitorNative = process.env.CAPACITOR_NATIVE === "1";
-  const vercelSite = "https://reyweet.vercel.app";
 
   /** iOS/Android — لا نُضمّن localhost من .env أبداً */
   if (capacitorNative) {
