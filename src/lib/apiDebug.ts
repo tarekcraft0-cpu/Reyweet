@@ -1,22 +1,13 @@
 /**
  * تسجيل طلبات API — مفيد على iOS (Safari Web Inspector → Console).
  */
-import { Capacitor } from "@capacitor/core";
-import { isNativeCapacitorShell } from "./apiUrlPolicy";
-
 const PREFIX = "[Retweet API]";
 
 export function shouldLogApi(): boolean {
   if (import.meta.env.DEV) return true;
   if (typeof window === "undefined") return false;
   const w = window as Window & { __RETWEET_API_DEBUG__?: boolean };
-  if (w.__RETWEET_API_DEBUG__ === true) return true;
-  try {
-    if (Capacitor.isNativePlatform()) return true;
-  } catch {
-    /* ignore */
-  }
-  return isNativeCapacitorShell();
+  return w.__RETWEET_API_DEBUG__ === true;
 }
 
 export function logApi(

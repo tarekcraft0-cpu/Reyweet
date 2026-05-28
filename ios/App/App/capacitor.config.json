@@ -2,5 +2,7 @@
   "appId": "com.reyweet.app",
   "appName": "Reyweet",
   "webDir": "public",
-  "packageClassList": []
+  "packageClassList": [
+    "KeyboardPlugin"
+  ]
 }

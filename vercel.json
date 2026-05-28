@@ -17,7 +17,9 @@
     { "source": "/app", "destination": "/app/index.html" },
     { "source": "/app/", "destination": "/app/index.html" },
     { "source": "/app/:path((?!.*\\.).*)", "destination": "/app/index.html" },
-    { "source": "/downloads/:path*", "destination": "/public/downloads/:path*" }
+    { "source": "/downloads/:path*", "destination": "/public/downloads/:path*" },
+    { "source": "/privacy", "destination": "/privacy.html" },
+    { "source": "/privacy.html", "destination": "/privacy.html" }
   ],
   "headers": [
     {

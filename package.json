@@ -14,6 +14,8 @@
     "test:verification": "node --import tsx --test src/lib/verificationEntitlements.test.ts",
     "format": "prettier --write .",
     "ios:prepare": "node scripts/prepare-capacitor-ios.mjs",
+    "mobile:verify": "node scripts/verify-mobile-app.mjs",
+    "appstore:verify": "node scripts/verify-app-store-ready.mjs",
     "ios:verify-bundle": "node scripts/verify-ios-api-bundle.mjs",
     "ios:sync": "node scripts/prepare-capacitor-ios.mjs",
     "ios:icon": "node scripts/sync-ios-app-icon.mjs",

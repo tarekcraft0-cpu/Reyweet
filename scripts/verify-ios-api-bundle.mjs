@@ -20,10 +20,10 @@ function fail(msg) {
   process.exit(1);
 }
 
+/** Production gate: iOS bundle first, then dist (spa-dist may be stale between builds). */
 const paths = [
-  path.join(root, "spa-dist", "index.html"),
-  path.join(root, "dist", "index.html"),
   path.join(root, "ios", "App", "App", "public", "index.html"),
+  path.join(root, "dist", "index.html"),
 ];
 
 let checked = 0;
@@ -43,6 +43,9 @@ for (const p of paths) {
   }
   if (!html.includes("__RETWEET_NATIVE_SHELL__")) {
     fail(`${rel} بدون __RETWEET_NATIVE_SHELL__ — شغّل scripts/prepare-capacitor-ios.mjs`);
+  }
+  if (/__RETWEET_API_DEBUG__\s*=\s*true/.test(html)) {
+    fail(`${rel} يحتوي __RETWEET_API_DEBUG__ — أزل CAPACITOR_API_DEBUG من بناء الإنتاج`);
   }
   const cfg = path.join(path.dirname(p), "web-auth-config.json");
   if (fs.existsSync(cfg)) {

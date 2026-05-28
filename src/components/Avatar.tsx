@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { resolveMediaUrl } from "@/lib/mediaUrl";
+import { getMediaServingOrigin, resolveMediaUrl } from "@/lib/mediaUrl";
 import { isVideoMediaRef } from "@/lib/postMedia";
 import { DEFAULT_AVATAR_DATA_URI } from "@/lib/defaultAvatar";
 import { useEffect, useMemo, useState } from "react";
@@ -34,8 +34,8 @@ export function Avatar({ name = "?", src, size = 40, className, ring, ringSeen }
     const resolved = resolveMediaUrl(src);
     if (resolved) return resolved;
     const raw = src?.trim() || "";
-    if (raw.startsWith("/media/") && typeof window !== "undefined") {
-      return `${window.location.origin.replace(/\/$/, "")}${raw}`;
+    if (raw.startsWith("/media/") || raw.startsWith("/stickers/") || raw.startsWith("/public/")) {
+      return `${getMediaServingOrigin().replace(/\/$/, "")}${raw}`;
     }
     return resolved;
   }, [src]);

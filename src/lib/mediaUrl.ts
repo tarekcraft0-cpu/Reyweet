@@ -2,11 +2,14 @@ import { peekApiBaseUrl } from "./apiConfig";
 import { getApiBaseUrl } from "./apiBackend";
 import {
   isLanOrLocalHostname,
+  isNativeCapacitorShell,
   isPrivateApiUrl,
   isPublicAppHost,
+  isStaleMobileApiUrl,
   isTunnelPublicHost,
   isVpsProductionHost,
   PRODUCTION_VPS_HOST,
+  VERCEL_SITE_URL,
 } from "./apiUrlPolicy";
 
 /** وسائط يمكن عرضها في <img> أو <video> (وليس نصاً خاماً) */
@@ -48,27 +51,50 @@ function pageOriginForMedia(): string {
   return window.location.origin.replace(/\/$/, "");
 }
 
-function getMediaResolveBase(): string {
-  if (typeof window !== "undefined" && isPublicAppHost() && !isVpsProductionHost()) {
-    return pageOriginForMedia();
-  }
-  const fromApi = getApiBaseUrl() || peekApiBaseUrl();
-  if (fromApi?.trim()) return coerceMediaBaseForHttpsPage(fromApi.trim());
-  if (typeof window !== "undefined") {
+/**
+ * منشأ عرض الملفات (/media/ …) — على iOS/Capacitor لا نستخدم capacitor://localhost
+ * بل عنوان API الإنتاج (Vercel HTTPS) المحقون في index.html.
+ */
+export function getMediaServingOrigin(): string {
+  if (typeof window === "undefined") return VERCEL_SITE_URL;
+
+  if (isNativeCapacitorShell()) {
     const w = window as Window & { __RETWEET_API_URL__?: string };
     const injected = w.__RETWEET_API_URL__?.trim().replace(/\/$/, "");
-    if (injected && !isPrivateApiUrl(injected))
-      return coerceMediaBaseForHttpsPage(injected);
+    if (injected && !isPrivateApiUrl(injected) && !isStaleMobileApiUrl(injected)) {
+      return injected;
+    }
+    const fromApi = (getApiBaseUrl() || peekApiBaseUrl() || "").replace(/\/$/, "");
+    if (fromApi && !isPrivateApiUrl(fromApi) && !isStaleMobileApiUrl(fromApi)) return fromApi;
+    return VERCEL_SITE_URL;
   }
-  return pageOriginForMedia();
+
+  if (isPublicAppHost() && !isVpsProductionHost()) {
+    return pageOriginForMedia() || VERCEL_SITE_URL;
+  }
+
+  const fromApi = getApiBaseUrl() || peekApiBaseUrl();
+  if (fromApi?.trim()) return coerceMediaBaseForHttpsPage(fromApi.trim());
+  const injected = (window as Window & { __RETWEET_API_URL__?: string }).__RETWEET_API_URL__?.trim();
+  if (injected && !isPrivateApiUrl(injected)) return coerceMediaBaseForHttpsPage(injected);
+  return pageOriginForMedia() || VERCEL_SITE_URL;
+}
+
+function getMediaResolveBase(): string {
+  return getMediaServingOrigin();
+}
+
+function isServerMediaPath(path: string): boolean {
+  return (
+    path.startsWith("/media/") ||
+    path.startsWith("/stickers/") ||
+    path.startsWith("/public/")
+  );
 }
 
 function resolveServerMediaPath(pathnameOnly: string, search: string): string {
-  const origin = pageOriginForMedia();
-  if (origin) return `${origin}${pathnameOnly}${search}`;
-  const base = getMediaResolveBase().replace(/\/$/, "");
-  if (base) return `${base}${pathnameOnly}${search}`;
-  return `${pathnameOnly}${search}`;
+  const base = getMediaServingOrigin().replace(/\/$/, "");
+  return `${base}${pathnameOnly}${search}`;
 }
 
 /** يحوّل روابط قديمة (نفق/localhost) إلى مسار /media/ ثم يضيف عنوان API الحالي */
@@ -94,7 +120,7 @@ export function normalizeMediaRef(src: string | undefined | null): string {
     }
   }
 
-  if (path.startsWith("/media/")) {
+  if (isServerMediaPath(path)) {
     const search = path.includes("?") ? path.slice(path.indexOf("?")) : "";
     const pathnameOnly = path.split("?")[0] ?? path;
     return resolveServerMediaPath(pathnameOnly, search);
@@ -107,32 +133,29 @@ export function normalizeMediaRef(src: string | undefined | null): string {
       if (isPrivateApiUrl(v)) return "";
       if (isTunnelPublicHost(u.hostname) || /\.trycloudflare\.com$/i.test(u.hostname)) return "";
 
-      /** ميديا من السيرفر — دائماً عبر منشأ الصفحة (يتجنّب mixed content على HTTPS) */
-      if (u.pathname.startsWith("/media/")) {
+      /** ميديا من السيرفر — على الويب عبر منشأ الصفحة؛ على iOS عبر Vercel API */
+      if (isServerMediaPath(u.pathname)) {
         return resolveServerMediaPath(u.pathname, u.search || "");
       }
 
-      /** روابط مخزَّنة تشير إلى الـ VPS مباشرة — نمرِّرها على بروكسي الصفحة */
-      if (u.hostname === PRODUCTION_VPS_HOST) {
-        const origin = pageOriginForMedia();
-        if (
-          origin &&
-          (u.pathname.startsWith("/media/") ||
-            u.pathname.startsWith("/stickers/") ||
-            u.pathname.startsWith("/app/") ||
-            u.pathname.startsWith("/public/"))
-        ) {
-          return `${origin}${u.pathname}${u.search || ""}`;
-        }
+      /** روابط مخزَّنة تشير إلى الـ VPS مباشرة — نمرِّرها على بروكسي الإنتاج */
+      if (u.hostname === PRODUCTION_VPS_HOST && isServerMediaPath(u.pathname)) {
+        return resolveServerMediaPath(u.pathname, u.search || "");
       }
 
       const h = u.hostname;
-      if (typeof window !== "undefined" && h === window.location.hostname)
-        return `${u.origin}${u.pathname}${u.search || ""}`;
+      if (!isNativeCapacitorShell()) {
+        if (typeof window !== "undefined" && h === window.location.hostname)
+          return `${u.origin}${u.pathname}${u.search || ""}`;
+      }
       if (h === "reyweet.vercel.app" || h.endsWith(".vercel.app"))
         return `${u.origin}${u.pathname}${u.search || ""}`;
       /** https خارجي (صور روابط خارجية إن وُجدت) */
       if (u.protocol === "https:") return `${u.origin}${u.pathname}${u.search || ""}`;
+      /** http قديم على iOS — إن كان مسار ميديا نعيده عبر HTTPS Vercel */
+      if (isNativeCapacitorShell() && u.pathname.startsWith("/media/")) {
+        return resolveServerMediaPath(u.pathname, u.search || "");
+      }
       /** http قديم بدون /media/ — يُحظر على صفحات HTTPS */
       return "";
     } catch {

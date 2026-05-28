@@ -1,8 +1,87 @@
-# Codemagic — Reyweet iOS (Capacitor)
-# OTA من الموقع يتطلب IPA موقّعاً → workflow: retweet-ios-ota-signed
-# بدون توقيع (للتجربة فقط): retweet-ios-capacitor-ipa
+# Codemagic — Reyweet iOS (Capacitor hybrid mobile app)
+# App Store: retweet-ios-app-store
+# OTA من الموقع: retweet-ios-ota-signed
+# بدون توقيع (تجربة): retweet-ios-capacitor-ipa
 
 workflows:
+  # ─── Apple App Store (TestFlight / App Store Connect) ───
+  retweet-ios-app-store:
+    name: Reyweet iOS — App Store IPA
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+
+    environment:
+      node: v22.11.0
+      xcode: latest
+      cocoapods: default
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.reyweet.app
+      vars:
+        BUNDLE_ID: com.reyweet.app
+        CAPACITOR_WEB_APP_URL: https://reyweet.vercel.app/app
+        CAPACITOR_API_URL: https://reyweet.vercel.app
+        RETWEET_PUBLIC_API_URL: https://reyweet.vercel.app
+        XCODE_SCHEME: App
+        XCODE_WORKSPACE: ios/App/App.xcworkspace
+
+    scripts:
+      - name: Install Node dependencies
+        script: |
+          set -e
+          cd "$CM_BUILD_DIR"
+          npm ci
+
+      - name: Prepare Capacitor + SPA (bundled mobile)
+        script: |
+          set -e
+          cd "$CM_BUILD_DIR"
+          if [ -n "$RETWEET_PUBLIC_API_URL" ]; then
+            echo "$RETWEET_PUBLIC_API_URL" > PUBLIC_API_URL.txt
+          fi
+          export CAPACITOR_WEB_APP_URL="${CAPACITOR_WEB_APP_URL:-https://reyweet.vercel.app/app}"
+          export CAPACITOR_API_URL="${CAPACITOR_API_URL:-https://reyweet.vercel.app}"
+          export RETWEET_PUBLIC_API_URL="${RETWEET_PUBLIC_API_URL:-https://reyweet.vercel.app}"
+          export CAPACITOR_NATIVE=1
+          node scripts/prepare-capacitor-ios.mjs
+          npm run ios:icon
+          node scripts/verify-ios-api-bundle.mjs
+          node scripts/verify-mobile-app.mjs
+          node scripts/verify-app-store-ready.mjs
+
+      - name: CocoaPods
+        script: |
+          set -e
+          cd "$CM_BUILD_DIR/ios/App"
+          pod install
+
+      - name: Code signing setup (App Store)
+        script: |
+          set -e
+          keychain initialize
+          app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
+          keychain add-certificates
+          xcode-project use-profiles
+
+      - name: Build App Store IPA
+        script: |
+          set -e
+          cd "$CM_BUILD_DIR"
+          xcode-project build-ipa \
+            --workspace "$XCODE_WORKSPACE" \
+            --scheme "$XCODE_SCHEME"
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - ios-app.config.json
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+        beta_groups:
+          - Internal Testers
+
   # ─── التثبيت من الموقع (Safari → تثبيت على iPhone) — يحتاج Apple Developer في Codemagic ───
   retweet-ios-ota-signed:
     name: Reyweet iOS — Signed OTA IPA

@@ -101,6 +101,13 @@ const dict = {
     archiveEmptyDetail: "عند انتهاء صلاحية قصة (بعد ٢٤ ساعة) تُنقل تلقائياً إلى هنا.",
     storiesArchive: "أرشيف القصص",
     addToCloseFriends: "إضافة",
+    privacyPolicy: "سياسة الخصوصية",
+    deleteAccount: "حذف الحساب",
+    deleteAccountHint: "سيُحذف حسابك وجميع منشوراتك ورسائلك نهائياً. لا يمكن التراجع.",
+    deleteAccountConfirmLabel: "اكتب DELETE للتأكيد",
+    deleteAccountPassword: "كلمة المرور",
+    deleteAccountDone: "تم حذف الحساب",
+    deleteAccountFailed: "تعذر حذف الحساب",
   },
   en: {
     home: "Home", search: "Search", reels: "Reels", chat: "Messages", profile: "Profile",
@@ -201,6 +208,13 @@ const dict = {
     archiveEmptyDetail: "When a story expires after 24 hours, it moves here automatically.",
     storiesArchive: "Stories archive",
     addToCloseFriends: "Add",
+    privacyPolicy: "Privacy Policy",
+    deleteAccount: "Delete account",
+    deleteAccountHint: "Your account, posts, and messages will be permanently deleted. This cannot be undone.",
+    deleteAccountConfirmLabel: "Type DELETE to confirm",
+    deleteAccountPassword: "Password",
+    deleteAccountDone: "Account deleted",
+    deleteAccountFailed: "Could not delete account",
   },
 } as const;
 

@@ -1,0 +1,5 @@
+/* Arabic permission dialogs */
+"NSCameraUsageDescription" = "يحتاج Reyweet إلى الكاميرا لالتقاط الصور والفيديو في المحادثات والقصص.";
+"NSMicrophoneUsageDescription" = "يحتاج Reyweet إلى الميكروفون لتسجيل الفيديو مع الصوت.";
+"NSPhotoLibraryUsageDescription" = "يحتاج Reyweet إلى الوصول للصور لمشاركة الصور والفيديو.";
+"NSPhotoLibraryAddUsageDescription" = "يحفظ Reyweet الصور والفيديو التي تلتقطها في مكتبتك عند اختيارك ذلك.";

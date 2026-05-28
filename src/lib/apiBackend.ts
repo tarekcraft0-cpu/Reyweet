@@ -960,6 +960,22 @@ export async function apiPatchProfile(
   return { ok: true, user: data.user };
 }
 
+export async function apiDeleteAccount(
+  token: string,
+  body: { confirm: "DELETE"; password?: string },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const res = await apiFetch("/v1/me/account", {
+    method: "DELETE",
+    body: JSON.stringify(body),
+    token,
+  });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    return { ok: false, error: data.error || "تعذر حذف الحساب" };
+  }
+  return { ok: true };
+}
+
 export async function apiUploadMedia(
   token: string,
   file: File,

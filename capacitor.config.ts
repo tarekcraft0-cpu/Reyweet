@@ -1,13 +1,26 @@
-import { CapacitorConfig } from '@capacitor/cli';
+import type { CapacitorConfig } from "@capacitor/cli";
 
+/**
+ * Reyweet mobile app (iOS / Android).
+ * Web UI is built with `npm run build:spa` and copied to `dist/` by `npm run ios:prepare`.
+ * Do not set `server.url` for production — assets must be bundled inside the native binary.
+ */
 const config: CapacitorConfig = {
   appId: "com.reyweet.app",
-  appName: 'Reyweet',
-  webDir: 'dist',
+  appName: "Reyweet",
+  webDir: "dist",
   plugins: {
     Keyboard: {
-      resize: 'none',
+      resize: "none",
     },
+  },
+  ios: {
+    contentInset: "never",
+    scrollEnabled: false,
+    allowsLinkPreview: false,
+  },
+  android: {
+    allowMixedContent: false,
   },
 };
 

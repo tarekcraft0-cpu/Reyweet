@@ -5,11 +5,13 @@ import { ensureApiTokenMatchesUser } from "@/lib/accountSessions";
 import { isGuestUserId } from "@/lib/guestUser";
 import {
   apiBackendEnabled,
+  apiDeleteAccount,
   apiPatchProfile,
   ensureApiRuntimeConfig,
   getApiToken,
   pushRemoteAppState,
 } from "@/lib/apiBackend";
+import { VERCEL_SITE_URL } from "@/lib/apiUrlPolicy";
 import { getUserEntitlements } from "@/lib/verificationEntitlements";
 import { apiAdminMe } from "@/lib/verificationApi";
 import { VerificationSubscriptionScreen } from "../verification/VerificationSubscriptionScreen";
@@ -43,6 +45,7 @@ import {
   Moon,
   Shield,
   Sun,
+  Trash2,
   UserCircle,
   Users,
   UsersRound,
@@ -65,7 +68,10 @@ type SubView =
   | "archive"
   | "timeManagement"
   | "closeFriends"
-  | "notifications";
+  | "notifications"
+  | "deleteAccount";
+
+const PRIVACY_POLICY_URL = `${VERCEL_SITE_URL}/privacy.html`;
 
 function SectionGap() {
   return <div className="h-2 shrink-0 bg-background" aria-hidden />;
@@ -156,6 +162,81 @@ function SettingsRow({
     );
   }
   return <div className={className}>{body}</div>;
+}
+
+function DeleteAccountPanel({
+  me,
+  onDone,
+  onBack,
+}: {
+  me: User;
+  onDone: () => void;
+  onBack: () => void;
+}) {
+  const t = useT();
+  const [confirm, setConfirm] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = () => {
+    if (confirm.trim() !== "DELETE") {
+      alert(t("deleteAccountConfirmLabel"));
+      return;
+    }
+    void (async () => {
+      setBusy(true);
+      try {
+        await ensureApiRuntimeConfig();
+        const token = ensureApiTokenMatchesUser(me.id) ?? getApiToken();
+        if (!apiBackendEnabled() || !token) {
+          alert(t("deleteAccountFailed"));
+          return;
+        }
+        const body: { confirm: "DELETE"; password?: string } = { confirm: "DELETE" };
+        if (password.trim()) body.password = password.trim();
+        const r = await apiDeleteAccount(token, body);
+        if (!r.ok) {
+          alert(r.error || t("deleteAccountFailed"));
+          return;
+        }
+        alert(t("deleteAccountDone"));
+        onDone();
+      } finally {
+        setBusy(false);
+      }
+    })();
+  };
+
+  return (
+    <div className="settings-screen-root min-h-full w-full overflow-x-hidden bg-background pb-10" dir="rtl">
+      <SettingsHeader title={t("deleteAccount")} onBack={onBack} navScope="local" />
+      <div className="mx-4 mt-4 space-y-3">
+        <p className="text-sm leading-relaxed text-muted-foreground">{t("deleteAccountHint")}</p>
+        <input
+          value={confirm}
+          onChange={e => setConfirm(e.target.value)}
+          placeholder="DELETE"
+          autoCapitalize="characters"
+          className="w-full rounded-xl border border-border bg-input px-4 py-3 text-sm text-foreground"
+        />
+        <input
+          value={password}
+          onChange={e => setPassword(e.target.value)}
+          type="password"
+          placeholder={t("deleteAccountPassword")}
+          className="w-full rounded-xl border border-border bg-input px-4 py-3 text-sm text-foreground"
+        />
+        <button
+          type="button"
+          disabled={busy}
+          onClick={submit}
+          className="w-full rounded-xl bg-red-600 py-3 text-sm font-semibold text-white disabled:opacity-60"
+        >
+          {busy ? "…" : t("deleteAccount")}
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function PlaceholderPanel({ title, hint, onBack }: { title: string; hint: string; onBack: () => void }) {
@@ -417,9 +498,23 @@ export function SettingsScreen({
       timeManagement: "timeManagement",
       closeFriends: "closeFriends",
       notifications: "notificationsSettings",
+      deleteAccount: "deleteAccount",
     };
     return k && k in map ? t(map[k as keyof typeof map]) : "";
   };
+
+  if (subView === "deleteAccount") {
+    return (
+      <DeleteAccountPanel
+        me={me}
+        onBack={() => setSubView(null)}
+        onDone={() => {
+          logout();
+          onBack();
+        }}
+      />
+    );
+  }
 
   if (subView === "saved") {
     return <PlaceholderPanel title={t("saved")} hint={t("savedHint")} onBack={() => setSubView(null)} />;
@@ -681,6 +776,22 @@ export function SettingsScreen({
             />
           }
         />
+        <SettingsRow
+          icon={Shield}
+          label={t("privacyPolicy")}
+          chevron
+          onClick={() => {
+            window.open(PRIVACY_POLICY_URL, "_blank", "noopener,noreferrer");
+          }}
+        />
+        {apiBackendEnabled() && currentUser && !isGuestUserId(currentUser.id) ? (
+          <SettingsRow
+            icon={Trash2}
+            label={t("deleteAccount")}
+            chevron
+            onClick={() => setSubView("deleteAccount")}
+          />
+        ) : null}
       </SettingsCard>
 
       <SectionGap />

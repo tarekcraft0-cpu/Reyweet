@@ -1644,6 +1644,29 @@ app.post("/v1/users/:targetId/visit", authMiddleware, async (req, res) => {
   }
 });
 
+const deleteAccountSchema = z.object({
+  confirm: z.literal("DELETE"),
+  password: z.string().min(1).max(128).optional(),
+});
+
+app.delete("/v1/me/account", authMiddleware, async (req, res) => {
+  const userId = (req as Request & { userId: string }).userId;
+  const parsed = deleteAccountSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "أكّد الحذف بكتابة DELETE" });
+  const user = await getUserById(userId);
+  if (!user) return res.status(404).json({ error: "not found" });
+  if (user.passwordHash) {
+    const pwd = parsed.data.password?.trim() || "";
+    if (!pwd) return res.status(400).json({ error: "أدخل كلمة المرور لتأكيد الحذف" });
+    const ok = await bcrypt.compare(pwd, user.passwordHash);
+    if (!ok) return res.status(400).json({ error: "كلمة المرور غير صحيحة" });
+  }
+  const { deleteUserAccount } = await import("./lib/deleteUserAccount.js");
+  const result = await deleteUserAccount(userId);
+  if (!result.ok) return res.status(result.status).json({ error: result.error });
+  return res.json({ ok: true });
+});
+
 app.put("/v1/me/password", authMiddleware, async (req, res) => {
   const userId = (req as Request & { userId: string }).userId;
   const parsed = pwdChangeSchema.safeParse(req.body);

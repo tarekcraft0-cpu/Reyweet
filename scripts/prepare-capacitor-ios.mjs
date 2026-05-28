@@ -51,7 +51,10 @@ function injectNativeShellIndex(indexPath) {
   if (!html.includes("native-no-select-bootstrap.js")) {
     html = html.replace("</head>", `${bootstrap}\n</head>`);
   }
-  const tag = `<script>window.__RETWEET_NATIVE_SHELL__=true;window.__RETWEET_NO_SELECT_BOOT__=true;window.__RETWEET_API_DEBUG__=true;window.__RETWEET_API_URL__=${JSON.stringify(apiUrl)};document.documentElement.classList.add("retweet-native-shell");window.dispatchEvent(new Event("retweet-api-config-ready"));</script>`;
+  const apiDebug =
+    process.env.CAPACITOR_API_DEBUG === "1" || process.env.NODE_ENV === "development";
+  const debugPart = apiDebug ? "window.__RETWEET_API_DEBUG__=true;" : "";
+  const tag = `<script>window.__RETWEET_NATIVE_SHELL__=true;window.__RETWEET_NO_SELECT_BOOT__=true;${debugPart}window.__RETWEET_API_URL__=${JSON.stringify(apiUrl)};document.documentElement.classList.add("retweet-native-shell");window.dispatchEvent(new Event("retweet-api-config-ready"));</script>`;
   html = html.replace(/<script>window\.__RETWEET[^<]*<\/script>\s*/gi, "");
   html = html.replace(/<html([^>]*)>/i, (m, attrs) => {
     if (/retweet-native-shell/i.test(attrs)) return m;
@@ -107,20 +110,18 @@ fs.writeFileSync(
   "utf8",
 );
 
-const capConfigTs = [
-  "import { CapacitorConfig } from '@capacitor/cli';",
-  "",
-  "const config: CapacitorConfig = {",
-  `  appId: ${JSON.stringify(appId)},`,
-  "  appName: 'Reyweet',",
-  "  webDir: 'dist',",
-  "};",
-  "",
-  "export default config;",
-  "",
-].join("\n");
-fs.writeFileSync(path.join(root, "capacitor.config.ts"), capConfigTs, "utf8");
-console.log("  ✓ capacitor.config.ts (bundled — بدون server.url)");
+/** Keep repo capacitor.config.ts (plugins, ios scroll/keyboard). Only patch appId if overridden. */
+const capConfigPath = path.join(root, "capacitor.config.ts");
+if (!fs.existsSync(capConfigPath)) {
+  console.warn("  ⚠ capacitor.config.ts missing — run from repo root");
+} else if (appId !== "com.reyweet.app") {
+  let ts = fs.readFileSync(capConfigPath, "utf8");
+  ts = ts.replace(/appId:\s*["'][^"']+["']/, `appId: ${JSON.stringify(appId)}`);
+  fs.writeFileSync(capConfigPath, ts, "utf8");
+  console.log(`  ✓ capacitor.config.ts (appId → ${appId})`);
+} else {
+  console.log("  ✓ capacitor.config.ts (bundled mobile — unchanged)");
+}
 
 const distDir = path.join(root, "dist");
 if (fs.existsSync(spaDist)) {
@@ -157,17 +158,51 @@ fs.writeFileSync(
   "utf8",
 );
 
-const iosCapJson = path.join(root, "ios", "App", "App", "capacitor.config.json");
-if (fs.existsSync(iosCapJson)) {
-  const capJson = {
-    appId,
-    appName: "Reyweet",
-    webDir: "public",
-    packageClassList: [],
-  };
+/** Merge metadata only — never wipe packageClassList (Capacitor native plugins). */
+function patchIosEmbeddedCapConfig() {
+  const iosCapJson = path.join(root, "ios", "App", "App", "capacitor.config.json");
+  if (!fs.existsSync(iosCapJson)) return;
+  let capJson = {};
+  try {
+    capJson = JSON.parse(fs.readFileSync(iosCapJson, "utf8"));
+  } catch {
+    capJson = {};
+  }
+  capJson.appId = appId;
+  capJson.appName = "Reyweet";
+  capJson.webDir = "public";
+  if (!Array.isArray(capJson.packageClassList)) {
+    capJson.packageClassList = [];
+  }
+  const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+  const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+  if (deps["@capacitor/keyboard"] && !capJson.packageClassList.includes("KeyboardPlugin")) {
+    capJson.packageClassList.push("KeyboardPlugin");
+  }
   fs.writeFileSync(iosCapJson, JSON.stringify(capJson, null, 2) + "\n", "utf8");
-  console.log("  ✓ ios/App/App/capacitor.config.json");
+  console.log(
+    `  ✓ ios/App/App/capacitor.config.json (plugins: ${capJson.packageClassList.length})`,
+  );
 }
+
+function ensureCapacitorIosPods() {
+  const podfile = path.join(root, "ios", "App", "Podfile");
+  if (!fs.existsSync(podfile)) return;
+  let pod = fs.readFileSync(podfile, "utf8");
+  const keyboardLine =
+    "  pod 'CapacitorKeyboard', :path => '../../node_modules/@capacitor/keyboard'";
+  if (!pod.includes("CapacitorKeyboard")) {
+    pod = pod.replace(
+      /pod 'CapacitorCordova'[^\n]+\n/,
+      (m) => `${m}${keyboardLine}\n`,
+    );
+    fs.writeFileSync(podfile, pod, "utf8");
+    console.log("  ✓ Podfile (+ CapacitorKeyboard)");
+  }
+}
+
+patchIosEmbeddedCapConfig();
+ensureCapacitorIosPods();
 
 const configJson = {
   webAppUrl: `${webAppUrl}/`,
