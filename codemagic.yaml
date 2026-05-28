@@ -75,12 +75,13 @@ workflows:
       - build/ios/ipa/*.ipa
       - ios-app.config.json
 
-    publishing:
-      app_store_connect:
-        auth: integration
-        submit_to_testflight: true
-        beta_groups:
-          - Internal Testers
+    # لا publishing هنا — Codemagic يتطلب integrations → app_store_connect في الواجهة.
+    # حمّل الـ IPA يدوياً: Xcode → Transporter، أو أضف القسم أدناه بعد ربط ASC:
+    #
+    # publishing:
+    #   app_store_connect:
+    #     auth: integration   # Team settings → Integrations → App Store Connect
+    #     submit_to_testflight: true
 
   # ─── التثبيت من الموقع (Safari → تثبيت على iPhone) — يحتاج Apple Developer في Codemagic ───
   retweet-ios-ota-signed:

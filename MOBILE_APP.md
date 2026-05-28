@@ -49,7 +49,9 @@ npm run ios:open
 # Xcode: Product → Archive → Distribute → App Store Connect
 ```
 
-Or trigger **Reyweet iOS — App Store IPA** on Codemagic (requires App Store Connect API key in team settings).
+Or trigger **Reyweet iOS — App Store IPA** on Codemagic, then download the `.ipa` artifact and upload via **Transporter** or Xcode.
+
+Optional: in Codemagic **Team settings → Integrations → App Store Connect**, then uncomment `publishing` in `codemagic.yaml` for automatic TestFlight upload.
 
 ## After code changes
 
