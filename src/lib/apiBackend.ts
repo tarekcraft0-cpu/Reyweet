@@ -47,8 +47,12 @@ export function getApiBaseUrl(): string {
   } catch {
     /* ignore */
   }
-  const base = (raw.replace(/\/$/, "") || fromPeek).replace(/\/$/, "");
-  if (useMobileBase && !base && isNativeCapacitorShell()) {
+  let base = (raw.replace(/\/$/, "") || fromPeek).replace(/\/$/, "");
+  if (
+    useMobileBase &&
+    isNativeCapacitorShell() &&
+    (!base || isPrivateApiUrl(base) || isStaleMobileApiUrl(base))
+  ) {
     return VERCEL_SITE_URL;
   }
   return base;
@@ -986,12 +990,13 @@ export async function apiUploadMedia(
     avatarAnimated?: boolean;
   },
 ): Promise<{ ok: true; url: string; posterUrl?: string } | { ok: false; error: string }> {
-  await ensureApiRuntimeConfig();
-  const base = getApiBaseUrl().replace(/\/$/, "");
+  const base = (await ensureApiRuntimeConfig()).replace(/\/$/, "");
   if (!base) {
     return {
       ok: false,
-      error: "الخادم غير متصل — تأكد أن API يعمل (npm run api:tunnel)",
+      error: isNativeCapacitorShell()
+        ? "الخادم غير متصل — تحقق من الإنترنت"
+        : "الخادم غير متصل — تأكد أن API يعمل (npm run api:tunnel)",
     };
   }
   let uploadPath = "/v1/media/upload";
@@ -1048,7 +1053,9 @@ export async function apiUploadMedia(
             ? "انتهت مهلة رفع الريل — جرّب شبكة أسرع أو مقطعاً أقصر"
             : "انتهت مهلة رفع الفيديو — جرّب شبكة أسرع أو مقطعاً أقصر"
           : "انتهت مهلة رفع الملف — جرّب مرة أخرى"
-        : "تعذر الاتصال بالخادم — تأكد أن npm run api:tunnel يعمل على جهازك",
+        : isNativeCapacitorShell()
+          ? `تعذر الاتصال بالخادم (${base}) — تحقق من الإنترنت وحاول مرة أخرى`
+          : "تعذر الاتصال بالخادم — تأكد أن npm run api:tunnel يعمل على جهازك",
     };
   } finally {
     clearTimeout(timer);

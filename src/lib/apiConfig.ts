@@ -110,6 +110,8 @@ function readCachedApiUrl(): string {
     if (!raw) return "";
     const u = trimUrl((JSON.parse(raw) as { apiUrl?: string }).apiUrl);
     if (!u || (isPublicAppHost() && isPrivateApiUrl(u))) return "";
+    /** عنوان LAN من التطوير لا يعمل خارج شبكة المنزل على iOS */
+    if (isNativeCapacitorShell() && (isPrivateApiUrl(u) || isStaleMobileApiUrl(u))) return "";
     return u;
   } catch {
     return "";
@@ -164,7 +166,7 @@ export function clearStaleApiConfig(): void {
       localStorage.removeItem(API_RUNTIME_KEY);
       return;
     }
-    if (isNativeCapacitorShell() && isStaleMobileApiUrl(u)) {
+    if (isNativeCapacitorShell() && (isStaleMobileApiUrl(u) || isPrivateApiUrl(u))) {
       localStorage.removeItem(API_RUNTIME_KEY);
       return;
     }
@@ -268,6 +270,7 @@ async function loadConfigFileUrls(): Promise<string[]> {
 
 function persistAbsolute(url: string): void {
   if (!url || typeof window === "undefined") return;
+  if (isNativeCapacitorShell() && (isPrivateApiUrl(url) || isStaleMobileApiUrl(url))) return;
   try {
     localStorage.setItem(API_RUNTIME_KEY, JSON.stringify({ apiUrl: url }));
   } catch {
