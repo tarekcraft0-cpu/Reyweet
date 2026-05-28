@@ -159,6 +159,10 @@ export function clearStaleApiConfig(): void {
       localStorage.removeItem(API_RUNTIME_KEY);
       return;
     }
+    if (/\.trycloudflare\.com/i.test(u) && isPublicAppHost()) {
+      localStorage.removeItem(API_RUNTIME_KEY);
+      return;
+    }
     if (
       isLanOrLocalHostname(window.location.hostname) &&
       !isNativeCapacitorShell() &&
@@ -433,6 +437,7 @@ export async function ensureApiRuntimeConfig(): Promise<string> {
   for (const raw of candidates) {
     const u = trimUrl(raw);
     if (!u || seen.has(u)) continue;
+    if (isBlockedApiUrl(u)) continue;
     if (isPublicAppHost() && isPrivateApiUrl(u)) continue;
     if (
       isPublicAppHost() &&

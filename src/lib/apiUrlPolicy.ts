@@ -81,11 +81,23 @@ export function isNativeCapacitorShell(): boolean {
   }
 }
 
-/** عناوين API قديمة/محظورة على iOS (HTTP VPS أو نفق منتهي) */
+/** نفق Cloudflare مؤقت — يُرفض إلا إذا الصفحة على نفس النفق (تطوير نشط) */
+export function isExpiredTunnelApiUrl(url: string): boolean {
+  const u = url.trim();
+  if (!u || !/\.trycloudflare\.com/i.test(u)) return false;
+  if (typeof window === "undefined") return true;
+  try {
+    return new URL(u).origin !== window.location.origin;
+  } catch {
+    return true;
+  }
+}
+
+/** عناوين API قديمة (نفق منتهٍ، HTTP VPS على HTTPS، إلخ) */
 export function isStaleMobileApiUrl(url: string): boolean {
   const u = url.trim();
   if (!u) return false;
-  if (/\.trycloudflare\.com/i.test(u)) return true;
+  if (isExpiredTunnelApiUrl(u)) return true;
   if (isProductionVpsApiUrl(u)) return true;
   if (u.startsWith("http://") && !isPrivateApiUrl(u)) return true;
   return false;
@@ -113,6 +125,7 @@ export function isBlockedApiUrl(url: string): boolean {
     return true;
   }
   if (isPublicAppHost() && !isVpsProductionHost() && isProductionVpsApiUrl(u)) return true;
+  if (isExpiredTunnelApiUrl(u)) return true;
   return false;
 }
 

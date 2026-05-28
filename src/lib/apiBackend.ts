@@ -35,15 +35,13 @@ export function getApiBaseUrl(): string {
     useMobileBase =
       Capacitor.isNativePlatform() ||
       (typeof window !== "undefined" && isReactNativeWebView());
-    if (useMobileBase) {
-      raw =
-        (import.meta.env.VITE_API_URL_MOBILE as string | undefined)?.trim() ||
-        (import.meta.env.VITE_API_URL as string | undefined)?.trim() ||
-        "";
-      if (raw && (isPrivateApiUrl(raw) || isStaleMobileApiUrl(raw))) {
-        logApi("mobile-api-url-rejected", { raw, reason: "private-or-stale" });
-        raw = "";
-      }
+    raw =
+      (import.meta.env.VITE_API_URL_MOBILE as string | undefined)?.trim() ||
+      (import.meta.env.VITE_API_URL as string | undefined)?.trim() ||
+      "";
+    if (raw && (isPrivateApiUrl(raw) || isStaleMobileApiUrl(raw))) {
+      logApi("api-url-rejected", { raw, reason: "private-or-stale" });
+      raw = "";
     }
   } catch {
     /* ignore */
