@@ -1047,6 +1047,7 @@ function ChatListRowWithPeek({
   onStackChromeHide,
   onStackChromeShow,
   onRowOpenCommit,
+  onStackGestureArm,
 }: {
   chat: Chat;
   me: { id: string };
@@ -1060,6 +1061,8 @@ function ChatListRowWithPeek({
   onStackChromeShow?: () => void;
   /** مسار واحد لإنهاء السحب/النقر — يمنع فتح مكرر */
   onRowOpenCommit?: (chatId: string, px: number, mode: "tap" | "swipe-end") => void;
+  /** يحرّر قفل سحب عالق قبل لمسة جديدة */
+  onStackGestureArm?: () => void;
 }) {
   const { state, openOrCreateChat, sendMessage, toggleChatListPin, toggleChatMute, deleteChat, isGuest, joinChannel } = useApp();
   const t = useT();
@@ -1374,6 +1377,7 @@ function ChatListRowWithPeek({
 
   const onRowOpenPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
+    onStackGestureArm?.();
     rowPointerEndedRef.current = false;
     setRowPressedVisual(true);
     rowOpenDownRef.current = { x0: e.clientX, y0: e.clientY, pointerId: e.pointerId };
@@ -1468,6 +1472,7 @@ function ChatListRowWithPeek({
       const px = Math.max(0, Math.min(cap, pull));
       const mode = Math.hypot(dx, dy) < 14 ? "tap" : "swipe-end";
       const vx = rowOpenVelocityRef.current;
+      rowOpenLastPullRef.current = px;
       if (onRowOpenCommit) {
         onRowOpenCommit(chatRowOpenId, px, mode);
       } else if (mode === "tap") {
@@ -2510,7 +2515,12 @@ export function ChatScreen({
   );
 
   const cancelStackDrag = useCallback(() => {
-    if (stackTransitionLockRef.current && stackSwipeOpeningRef.current) return;
+    flushPendingStackDrag();
+    if (!stackDragChatId && !openChat && stackProgressRef.current < 0.02) {
+      releaseStackTransitionLock();
+      releaseChatChromeAfterGesture();
+      return;
+    }
     const gen = ++stackNavGenerationRef.current;
     stackTransitionLockRef.current = true;
     stackNavTargetRef.current = null;
@@ -2532,6 +2542,9 @@ export function ChatScreen({
       releaseStackTransitionLock();
     }, SLIDE_DISMISS_MS);
   }, [
+    flushPendingStackDrag,
+    stackDragChatId,
+    openChat,
     publishStackProgressVisual,
     resetStackToInboxRest,
     showStackChrome,
@@ -2596,9 +2609,35 @@ export function ChatScreen({
     onActiveChatChange?.(null);
   }, [releaseStackTransitionLock, resetStackToInboxRest, onExitNavRevealProgress, onActiveChatChange]);
 
+  const armStackListGesture = useCallback(() => {
+    if (
+      (stackGestureLocked || stackListGestureCommitRef.current) &&
+      !openChat &&
+      stackProgressRef.current < 0.98
+    ) {
+      releaseStackTransitionLock();
+      stackListGestureCommitRef.current = false;
+      if (stackProgressRef.current > 0.02) {
+        resetStackToInboxRest();
+      }
+    }
+  }, [openChat, releaseStackTransitionLock, resetStackToInboxRest]);
+
   const handleRowOpenCommit = useCallback(
     (chatId: string, px: number, mode: "tap" | "swipe-end") => {
-      if (stackListGestureCommitRef.current || stackTransitionLockRef.current) return;
+      flushPendingStackDrag();
+      if (stackListGestureCommitRef.current) return;
+      if (stackTransitionLockRef.current) {
+        const p = stackProgressRef.current;
+        if (openChat && p >= 0.98) return;
+        if (!openChat && p > 0.03 && p < 0.98) {
+          releaseStackTransitionLock();
+        } else if (p <= 0.03) {
+          releaseStackTransitionLock();
+        } else {
+          return;
+        }
+      }
       const canonical = resolveOpenChatId(chatId);
       if (mode === "tap") {
         stackOpenDragRef.current = false;
@@ -2617,7 +2656,16 @@ export function ChatScreen({
       if (commit) commitStackOpen(canonical);
       else cancelStackDrag();
     },
-    [commitStackOpen, cancelStackDrag, openChatDirect, resolveOpenChatId, stackDragChatId],
+    [
+      flushPendingStackDrag,
+      commitStackOpen,
+      cancelStackDrag,
+      openChatDirect,
+      openChat,
+      resolveOpenChatId,
+      stackDragChatId,
+      releaseStackTransitionLock,
+    ],
   );
 
   useLayoutEffect(() => {
@@ -2861,6 +2909,38 @@ export function ChatScreen({
   );
   beginCloseChatThreadRef.current = beginCloseChatThread;
 
+  const flushPendingStackDrag = useCallback(() => {
+    if (stackDragFrameRef.current) {
+      cancelAnimationFrame(stackDragFrameRef.current);
+      stackDragFrameRef.current = 0;
+    }
+    const pending = pendingStackDragRef.current;
+    if (!pending) return;
+    pendingStackDragRef.current = null;
+    const { chatId, px } = pending;
+    if (stackListGestureCommitRef.current || stackTransitionLockRef.current) return;
+    stackOpenDragRef.current = true;
+    stackRoomDriveRef.current = "open";
+    stackRoomDismissRef.current = false;
+    setStackClosingId(null);
+    setStackSpring(false);
+    hideStackChrome();
+    const canonical = resolveOpenChatId(chatId);
+    if (stackDragChatId !== canonical) setStackDragChatId(canonical);
+    let cap = stackCapRef.current;
+    if (!(cap > 0)) {
+      cap = readSafeStackCapPx(stackInboxRef.current, stackCapRef);
+      stackCapRef.current = cap;
+    }
+    const progress = cap > 0 ? px / cap : 0;
+    publishStackProgressVisual(progress, false);
+  }, [
+    stackDragChatId,
+    resolveOpenChatId,
+    publishStackProgressVisual,
+    hideStackChrome,
+  ]);
+
   const applyStackDragVisual = useCallback(
     (chatId: string, px: number) => {
       if (stackListGestureCommitRef.current || stackTransitionLockRef.current || stackSwipeOpeningRef.current) {
@@ -2909,11 +2989,12 @@ export function ChatScreen({
   );
 
   const onStackDragEnd = useCallback(
-    (chatId: string, px: number) => {
-      if (stackListGestureCommitRef.current || stackTransitionLockRef.current) return;
+    (chatId: string, px: number, vx?: number) => {
+      flushPendingStackDrag();
+      if (Number.isFinite(vx)) stackOpenVelocityRef.current = vx ?? 0;
       handleRowOpenCommit(chatId, px, "swipe-end");
     },
-    [handleRowOpenCommit],
+    [flushPendingStackDrag, handleRowOpenCommit],
   );
 
   useLayoutEffect(() => {
@@ -2975,6 +3056,7 @@ export function ChatScreen({
   /** منع التعليق بنصف انتقال بعد pointercancel أو فقدان اللمس */
   useEffect(() => {
     const recoverHalfOpen = () => {
+      flushPendingStackDrag();
       if (openChat || stackListGestureCommitRef.current) return;
       const p = stackProgressRef.current;
       if (p > 0.03 && p < 0.97 && (stackOpenDragRef.current || stackDragChatId)) {
@@ -2987,7 +3069,47 @@ export function ChatScreen({
       document.removeEventListener("pointercancel", recoverHalfOpen, true);
       window.removeEventListener("blur", recoverHalfOpen);
     };
-  }, [openChat, stackDragChatId, cancelStackDrag]);
+  }, [openChat, stackDragChatId, cancelStackDrag, flushPendingStackDrag]);
+
+  /** إذا علِق القفل أو السحب بنصف شاشة — إنهاء تلقائي */
+  useEffect(() => {
+    const stuck =
+      (stackGestureLocked && !openChat && stackProgressRef.current < 0.98) ||
+      (!!stackDragChatId && !openChat && stackProgressRef.current > 0.03 && stackProgressRef.current < 0.97);
+    if (!stuck) return;
+    const t = window.setTimeout(() => {
+      if (openChat && stackProgressRef.current >= 0.98) {
+        releaseStackTransitionLock();
+        return;
+      }
+      const id = stackDragChatId;
+      const p = stackProgressRef.current;
+      if (!id || p <= 0.03) {
+        releaseStackTransitionLock();
+        resetStackToInboxRest();
+        releaseChatChromeAfterGesture();
+        return;
+      }
+      if (p >= 0.97) {
+        commitStackOpen(id);
+        return;
+      }
+      if (p > 0.03 && p < 0.97) {
+        cancelStackDrag();
+      }
+    }, 420);
+    return () => window.clearTimeout(t);
+  }, [
+    stackGestureLocked,
+    stackDragChatId,
+    openChat,
+    stackProgress,
+    commitStackOpen,
+    cancelStackDrag,
+    releaseStackTransitionLock,
+    resetStackToInboxRest,
+    releaseChatChromeAfterGesture,
+  ]);
 
   const activeStackChatId = openChat ?? stackDragChatId ?? stackClosingId ?? null;
   const stackChatRaw = activeStackChatId ? findChatByOpenId(state.chats, activeStackChatId, me.id) : null;
@@ -3512,6 +3634,7 @@ export function ChatScreen({
             onStackChromeHide={hideStackChrome}
             onStackChromeShow={showStackChrome}
             onRowOpenCommit={handleRowOpenCommit}
+            onStackGestureArm={armStackListGesture}
           />
         ))}
 
@@ -5802,7 +5925,7 @@ function ChatRoom({
       className={
         (embedInStack
           ? "chat-room-viewport relative flex h-full min-h-0 w-full flex-col overflow-hidden overscroll-none pointer-events-auto touch-manipulation "
-          : "fixed inset-x-0 z-[200] box-border flex justify-center overflow-hidden overscroll-none pointer-events-none touch-manipulation ") +
+          : "chat-room-solo fixed inset-x-0 z-[200] box-border flex justify-center overflow-hidden overscroll-none pointer-events-none touch-manipulation ") +
         (useIgDm ? "" : "bg-background")
       }
       style={

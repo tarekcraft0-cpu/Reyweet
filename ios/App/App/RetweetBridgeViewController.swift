@@ -9,6 +9,8 @@ import WebKit
 class RetweetBridgeViewController: CAPBridgeViewController, WKUIDelegate, WKNavigationDelegate {
     private weak var configuredWebView: WKWebView?
     private var menuHideObserver: NSObjectProtocol?
+    private var webViewKeyboardLayoutInstalled = false
+    private var lastSyncedKeyboardInset: CGFloat = -1
 
     private static let noSelectInjectScript: String = """
     (function(){
@@ -77,6 +79,7 @@ class RetweetBridgeViewController: CAPBridgeViewController, WKUIDelegate, WKNavi
         super.capacitorDidLoad()
         applyGlobalTextMenuGuards()
         applyWebViewGuards()
+        installWebViewKeyboardLayoutIfNeeded()
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -87,6 +90,7 @@ class RetweetBridgeViewController: CAPBridgeViewController, WKUIDelegate, WKNavi
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        installWebViewKeyboardLayoutIfNeeded()
         syncSafeAreaInsetsToWebView()
     }
 
@@ -95,10 +99,45 @@ class RetweetBridgeViewController: CAPBridgeViewController, WKUIDelegate, WKNavi
         syncSafeAreaInsetsToWebView()
     }
 
-    /** يمرّر safe area من UIKit إلى CSS — WKWebView لا يوفّر env() بشكل موثوق مع contentInsetAdjustmentBehavior = .never */
+    /** ارتفاع الكيبورد فوق أسفل الشاشة — يُزامَن مع CSS للتمرير داخل الويب */
+    @available(iOS 15.0, *)
+    private func keyboardOverlapHeight() -> CGFloat {
+        let kbFrame = view.keyboardLayoutGuide.layoutFrame
+        guard kbFrame.height > 0.5 else { return 0 }
+        return max(0, view.bounds.maxY - kbFrame.minY)
+    }
+
+    /**
+     * iOS 15+ — يربط WKWebView بـ keyboardLayoutGuide (بديل موثوق لـ resize:none في Capacitor).
+     * شريط الكتابة في الويب يبقى أسفل منطقة العرض المرئية المُصغَّرة.
+     */
+    private func installWebViewKeyboardLayoutIfNeeded() {
+        guard #available(iOS 15.0, *), let wv = webView, !webViewKeyboardLayoutInstalled else { return }
+        webViewKeyboardLayoutInstalled = true
+
+        wv.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            wv.topAnchor.constraint(equalTo: view.topAnchor),
+            wv.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            wv.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            wv.bottomAnchor.constraint(equalTo: view.keyboardLayoutGuide.topAnchor),
+        ])
+    }
+
+    /** يمرّر safe area + ارتفاع الكيبورد من UIKit إلى CSS */
     private func syncSafeAreaInsetsToWebView() {
         guard let wv = webView else { return }
         let i = view.safeAreaInsets
+        let kbInset: CGFloat
+        if #available(iOS 15.0, *) {
+            kbInset = keyboardOverlapHeight()
+        } else {
+            kbInset = 0
+        }
+        let layoutActive = kbInset > 0.5
+        let kbChanged = abs(kbInset - lastSyncedKeyboardInset) > 0.5
+        lastSyncedKeyboardInset = kbInset
+
         let js = """
         (function(){
           var r=document.documentElement;
@@ -106,7 +145,10 @@ class RetweetBridgeViewController: CAPBridgeViewController, WKUIDelegate, WKNavi
           r.style.setProperty('--retweet-safe-bottom','\(i.bottom)px');
           r.style.setProperty('--retweet-safe-left','\(i.left)px');
           r.style.setProperty('--retweet-safe-right','\(i.right)px');
+          r.style.setProperty('--retweet-keyboard-inset','\(kbInset)px');
+          r.classList.toggle('retweet-native-keyboard-layout',\(layoutActive));
           try{window.dispatchEvent(new Event('retweet-safe-area-change'));}catch(e){}
+          \(kbChanged ? "try{window.dispatchEvent(new Event('retweet-keyboard-layout-change'));}catch(e){}" : "")
         })();
         """
         wv.evaluateJavaScript(js, completionHandler: nil)
@@ -157,6 +199,7 @@ class RetweetBridgeViewController: CAPBridgeViewController, WKUIDelegate, WKNavi
         }
 
         injectNoSelectScript(into: wv)
+        installWebViewKeyboardLayoutIfNeeded()
     }
 
     private func injectNoSelectScript(into webView: WKWebView) {

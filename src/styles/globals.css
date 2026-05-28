@@ -103,13 +103,17 @@
   max-height: 100dvh;
 }
 
+html.retweet-native-shell .chat-room-stack {
+  max-height: 100%;
+}
+
 /** ═══ تحسينات أداء المحادثة ═══ */
 
 /* منطقة التمرير — لا تمتد تحت شريط الكتابة (يُحجز الارتفاع عبر .chat-composer-spacer) */
 .chat-scroll-pane {
   will-change: scroll-position;
   -webkit-overflow-scrolling: touch;
-  scroll-padding-bottom: calc(12px + var(--chat-composer-h, 0px));
+  scroll-padding-bottom: var(--chat-scroll-padding-bottom, calc(12px + var(--chat-composer-h, 0px)));
   overflow-x: clip;
   overflow-y: auto;
   overscroll-behavior-y: contain;
@@ -227,25 +231,32 @@ html.retweet-native-shell {
   --sab: max(env(safe-area-inset-bottom, 0px), var(--retweet-safe-bottom, 0px));
   --sal: max(env(safe-area-inset-left, 0px), var(--retweet-safe-left, 0px));
   --sar: max(env(safe-area-inset-right, 0px), var(--retweet-safe-right, 0px));
-  height: 100dvh;
-  max-height: 100dvh;
+  /* 100% يتبع ارتفاع WKWebView بعد keyboardLayoutGuide — ليس 100dvh */
+  height: 100%;
+  max-height: 100%;
+  min-height: 100%;
   overflow: hidden;
   overscroll-behavior: none;
 }
 
 html.retweet-native-shell body,
 html.retweet-native-shell #root {
-  height: 100dvh;
-  max-height: 100dvh;
-  min-height: 100dvh;
-  min-height: -webkit-fill-available;
+  height: 100%;
+  max-height: 100%;
+  min-height: 100%;
   box-sizing: border-box;
   overflow: hidden;
   overscroll-behavior: none;
 }
 
-html.retweet-native-shell .chat-room-stack {
-  max-height: calc(100dvh - var(--sat) - var(--sab));
+/* UIKit يصغّر WKWebView — لا نرفع الشريط مرة ثانية عبر margin */
+html.retweet-native-shell.retweet-native-keyboard-layout .chat-composer-dock {
+  margin-bottom: 0;
+}
+
+html.retweet-native-shell .chat-room-solo {
+  height: 100% !important;
+  max-height: 100% !important;
 }
 
 /**
