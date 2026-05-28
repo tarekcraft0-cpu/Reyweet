@@ -3,6 +3,7 @@ let nativeKeyboardPx = 0;
 let engineRefs = 0;
 let rafLoop = 0;
 let nativeListenersReady = false;
+let nativeBridgeTeardown: (() => void) | null = null;
 
 export type ChatKeyboardSnapshot = {
   keyboardInset: number;
@@ -29,14 +30,22 @@ export function readChatKeyboardSnapshot(): ChatKeyboardSnapshot {
   };
 }
 
+function dispatchKeyboardSync() {
+  try {
+    window.dispatchEvent(new Event("retweet-chat-keyboard-sync"));
+  } catch {
+    /* ignore */
+  }
+}
+
 function applyChatKeyboardCss() {
   const snap = readChatKeyboardSnapshot();
   const root = document.documentElement;
   root.style.setProperty("--vv-height", `${snap.vvHeight}px`);
   root.style.setProperty("--vv-offset-top", `${snap.vvOffsetTop}px`);
   root.style.setProperty("--vv-keyboard-inset", `${snap.keyboardInset}px`);
-  root.style.setProperty("--chat-composer-bottom", "0px");
-  root.style.setProperty("--chat-sab-effective", "var(--sab)");
+  root.style.setProperty("--chat-sab-effective", snap.open ? "0px" : "var(--sab)");
+  root.classList.toggle("chat-keyboard-open", snap.open);
   return snap;
 }
 
@@ -52,12 +61,45 @@ function scheduleRafLoop() {
 
 function onViewportChange() {
   const snap = applyChatKeyboardCss();
+  dispatchKeyboardSync();
   if (snap.open) scheduleRafLoop();
 }
 
 async function ensureNativeKeyboardBridge() {
   if (nativeListenersReady) return;
   nativeListenersReady = true;
+  try {
+    const [{ Keyboard }, { Capacitor }] = await Promise.all([
+      import("@capacitor/keyboard"),
+      import("@capacitor/core"),
+    ]);
+    if (!Capacitor.isNativePlatform()) return;
+
+    const onShow = (info: { keyboardHeight?: number }) => {
+      nativeKeyboardPx = Math.max(0, Math.round(info.keyboardHeight ?? 0));
+      const snap = applyChatKeyboardCss();
+      dispatchKeyboardSync();
+      if (snap.open) scheduleRafLoop();
+    };
+    const onHide = () => {
+      nativeKeyboardPx = 0;
+      applyChatKeyboardCss();
+      dispatchKeyboardSync();
+    };
+
+    const handles = await Promise.all([
+      Keyboard.addListener("keyboardWillShow", onShow),
+      Keyboard.addListener("keyboardDidShow", onShow),
+      Keyboard.addListener("keyboardWillHide", onHide),
+      Keyboard.addListener("keyboardDidHide", onHide),
+    ]);
+
+    nativeBridgeTeardown = () => {
+      void Promise.all(handles.map(h => h.remove())).catch(() => undefined);
+    };
+  } catch {
+    /* متصفح / ويب */
+  }
 }
 
 /**
@@ -89,13 +131,19 @@ export function mountChatKeyboardEngine(): () => void {
     if (rafLoop) cancelAnimationFrame(rafLoop);
     rafLoop = 0;
     nativeKeyboardPx = 0;
+    nativeListenersReady = false;
+    nativeBridgeTeardown?.();
+    nativeBridgeTeardown = null;
     vv?.removeEventListener("resize", onViewportChange);
     vv?.removeEventListener("scroll", onViewportChange);
     window.removeEventListener("resize", onViewportChange);
     window.removeEventListener("orientationchange", onViewportChange);
     window.removeEventListener("retweet-safe-area-change", onSafeArea);
     const root = document.documentElement;
-    root.style.removeProperty("--chat-composer-bottom");
+    root.style.removeProperty("--vv-keyboard-inset");
+    root.style.removeProperty("--vv-height");
+    root.style.removeProperty("--vv-offset-top");
     root.style.removeProperty("--chat-sab-effective");
+    root.classList.remove("chat-keyboard-open");
   };
 }

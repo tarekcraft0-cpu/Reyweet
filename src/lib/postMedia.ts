@@ -1,5 +1,6 @@
 import type { Post } from "./types";
 import { isRenderableMediaUrl, resolveMediaUrl } from "./mediaUrl";
+import { isVoicePlaybackVideoSrc } from "./voiceMedia";
 
 const POST_PLACEHOLDER_MEDIA = new Set(["🖼️", "📝", "🎬"]);
 
@@ -35,7 +36,9 @@ export function hasCreateAttachmentMedia(media: string, hasFile?: boolean): bool
   if (hasFile) return true;
   const m = media.trim();
   if (!m || CREATE_PLACEHOLDER_MEDIA.has(m)) return false;
-  if (m.startsWith("data:video/") || m.startsWith("data:image/")) return true;
+  if (m.startsWith("data:video/") || m.startsWith("data:image/") || m.startsWith("data:audio/")) {
+    return true;
+  }
   if (m.startsWith("blob:")) return true;
   if (isVideoMediaRef(m)) return true;
   return isRenderableMediaUrl(m);
@@ -88,7 +91,9 @@ export function normalizePostMedia(post: Pick<Post, "image" | "video" | "audio" 
     posterUrl,
     hasImage: !!imageUrl && isRenderableMediaUrl(imageUrl) && !isVideoMediaRef(imageRaw),
     hasVideo: !!videoRaw && isVideoMediaRef(videoRaw) && !!videoUrl,
-    hasAudio: !!audioRaw && isRenderableMediaUrl(audioUrl),
+    hasAudio:
+      !!audioRaw &&
+      (isRenderableMediaUrl(audioUrl) || isVoicePlaybackVideoSrc(audioRaw)),
     audioUrl,
     emojiFallback:
       (!imageUrl && !videoUrl && imageRaw && !isRenderableMediaUrl(imageRaw)

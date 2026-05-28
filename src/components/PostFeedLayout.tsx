@@ -6,6 +6,7 @@ import type { Post } from "@/lib/types";
 import type { User } from "@/lib/types";
 import { userDisplayName } from "@/lib/userDisplay";
 import { postShowsFeedMedia, type NormalizedPostMedia } from "@/lib/postMedia";
+import { TweetVoicePlayer } from "./TweetVoicePlayer";
 
 /** محاذاة عربية ثابتة — لا نستخدم dir=auto حتى لا يقلب الإطار حسب لغة النص */
 export const FEED_POST_DIR = "rtl" as const;
@@ -257,7 +258,7 @@ export function PostFeedMediaBlock({
           " mb-1 rounded-2xl border border-border/60 bg-card p-3"
         }
       >
-        <audio src={postMedia.audioUrl} controls preload="none" className="w-full" />
+        <TweetVoicePlayer src={post.audio!} />
       </div>
     );
   }

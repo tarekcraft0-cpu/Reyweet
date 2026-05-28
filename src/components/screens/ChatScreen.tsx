@@ -57,6 +57,8 @@ import { ChatNoteReplyBubble, ChatStoryReplyStack } from "../chat/ChatReplyConte
 import { ChatSwipeMessageRow } from "../chat/ChatSwipeMessageRow";
 import { ChatMessageStatus, ChatListOutgoingStatusIcon } from "../chat/ChatMessageStatus";
 import { flushTypingStop, scheduleTypingPulse } from "@/lib/chatRealtimeExtras";
+import { useChatKeyboardInsets } from "@/hooks/useChatKeyboardInsets";
+import { chatComposerBottomPadding } from "@/hooks/useVisualViewportLayout";
 import { compressChatMediaFile } from "@/lib/chatMediaCompress";
 import { isOwnChatMessage, resolveActiveViewerId } from "@/lib/chatViewer";
 import { messageContent, normalizeChatRecord } from "@/lib/chatNormalize";
@@ -4488,8 +4490,8 @@ function ChatRoom({
   const messagesScrollRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
   const chatHeaderRef = useRef<HTMLDivElement>(null);
-  /** Instagram: الغرفة ثابتة بارتفاع الشاشة — يتحرك شريط الكتابة فقط مع الكيبورد */
-  const composerBottomPad = "var(--sab)";
+  const kbSnap = useChatKeyboardInsets(true);
+  const composerBottomPad = chatComposerBottomPadding(kbSnap.open);
 
   /** false عندما يمرّر المستخدم لأعلى لقراءة قديم — لا نعيده للأسفل تلقائياً عند وصول رسالة جديدة */
   const stickToBottomRef = useRef(true);
@@ -4556,11 +4558,24 @@ function ChatRoom({
     };
     window.addEventListener("resize", sync, { passive: true });
     window.addEventListener("orientationchange", sync, { passive: true });
+    window.addEventListener("retweet-chat-keyboard-sync", sync, { passive: true });
     return () => {
       window.removeEventListener("resize", sync);
       window.removeEventListener("orientationchange", sync);
+      window.removeEventListener("retweet-chat-keyboard-sync", sync);
     };
   }, [syncComposerDockHeight, scrollMessagesToBottom]);
+
+  useEffect(() => {
+    if (!kbSnap.open) return;
+    stickToBottomRef.current = true;
+    const t1 = requestAnimationFrame(() => scrollMessagesToBottom());
+    const t2 = window.setTimeout(() => scrollMessagesToBottom(), 120);
+    return () => {
+      cancelAnimationFrame(t1);
+      window.clearTimeout(t2);
+    };
+  }, [kbSnap.open, kbSnap.keyboardInset, scrollMessagesToBottom]);
   const scrollAnchorRef = useRef({ chatId: "", msgCount: 0 });
   const cameraCaptureRef = useRef<HTMLInputElement>(null);
   const galleryMediaInputRef = useRef<HTMLInputElement>(null);

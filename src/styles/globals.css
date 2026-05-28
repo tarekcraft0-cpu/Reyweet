@@ -109,7 +109,7 @@
 .chat-scroll-pane {
   will-change: scroll-position;
   -webkit-overflow-scrolling: touch;
-  scroll-padding-bottom: 12px;
+  scroll-padding-bottom: calc(12px + var(--chat-composer-h, 0px));
   overflow-x: clip;
   overflow-y: auto;
   overscroll-behavior-y: contain;
@@ -141,21 +141,23 @@
   transform-origin: center;
 }
 
-/* شريط الكتابة — ملتصق بالكيبورد (Instagram DM) */
+/* شريط الكتابة — يرتفع مع الكيبورد (Capacitor resize:none + --vv-keyboard-inset) */
 .chat-composer-dock {
   position: relative;
   z-index: 24;
+  flex-shrink: 0;
   margin-inline: 0;
   max-width: none;
   width: 100%;
   /* ترتيب ثابت: حقل الكتابة ثم زر + على اليمين (خاص / قروب) */
   direction: ltr;
-  bottom: auto;
-  padding-bottom: var(--sab);
+  margin-bottom: var(--vv-keyboard-inset, 0px);
+  padding-bottom: var(--chat-sab-effective, var(--sab));
   background: transparent;
   box-shadow: none;
   transform: translateZ(0);
-  will-change: auto;
+  transition: margin-bottom 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+  will-change: margin-bottom;
   pointer-events: auto;
   touch-action: auto;
 }

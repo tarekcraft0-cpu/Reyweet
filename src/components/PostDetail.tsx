@@ -12,6 +12,7 @@ import { VerifiedMarkForUser } from "./VerifiedBadge";
 import type { MediaNote, Post, ProfileHomeSurface, ProfileReturnContext } from "@/lib/types";
 import { NoteReplySheet } from "./NoteReplySheet";
 import { isRenderableMediaUrl, resolveMediaUrl } from "@/lib/mediaUrl";
+import { TweetVoicePlayer } from "./TweetVoicePlayer";
 import { renderMentionHashtagNodes, createMentionRenderer } from "@/lib/renderMentionHashtagText";
 
 interface Props {
@@ -274,7 +275,7 @@ export function PostDetail({ post: postProp, onBack, onOpenProfile, onOpenChat, 
       {post.audio && (
         <div className="px-4 pt-3">
           {isRenderableMediaUrl(post.audio) ? (
-            <audio src={resolveMediaUrl(post.audio)} controls preload="none" className="w-full" />
+            <TweetVoicePlayer src={post.audio} />
           ) : (
             <div className="rounded-xl border border-border bg-card px-3 py-2 text-sm text-muted-foreground">
               مقطع صوتي

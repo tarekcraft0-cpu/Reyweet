@@ -22,6 +22,8 @@ import {
   validateReelVideoFile,
 } from "@/lib/reelMedia";
 import { REEL_ACCEPT_VIDEO, REEL_MAX_UPLOAD_MB } from "@/lib/reelsSpec";
+import { compressChatMediaFile } from "@/lib/chatMediaCompress";
+import { isVoiceAttachFile } from "@/lib/voiceMedia";
 import { MentionComposerField } from "../MentionComposerField";
 import { ArrowRight, Clapperboard, Mic, Paperclip, PenSquare, Plus, Sparkles } from "lucide-react";
 
@@ -50,6 +52,8 @@ export function CreateScreen({
   const [storyStickers, setStoryStickers] = useState<StorySticker[]>([]);
   const [storyExpiryHours, setStoryExpiryHours] = useState<24 | 48 | 72>(24);
   const [publishing, setPublishing] = useState(false);
+  const [voicePicking, setVoicePicking] = useState(false);
+  const [isVoiceMedia, setIsVoiceMedia] = useState(false);
   const ent = getUserEntitlements(me);
   const postCharLimit = ent.postCharacterLimit;
   const storyFileRef = useRef<File | null>(null);
@@ -130,6 +134,7 @@ export function CreateScreen({
       return;
     }
 
+    setIsVoiceMedia(false);
     storyFileRef.current = f;
     revokePreviewUrl();
     const r = new FileReader();
@@ -137,22 +142,50 @@ export function CreateScreen({
     r.readAsDataURL(f);
   };
 
-  const onAudioFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    if (!f.type.startsWith("audio/")) {
-      alert("اختر ملف صوتي صالح");
-      return;
-    }
+  const openVoicePicker = () => {
+    if (voicePicking) return;
     if (type !== "tweet") {
       setType("tweet");
       setReelCover("");
     }
-    storyFileRef.current = f;
-    revokePreviewUrl();
-    const r = new FileReader();
-    r.onload = () => setMedia(String(r.result));
-    r.readAsDataURL(f);
+    window.setTimeout(() => {
+      try {
+        audioInputRef.current?.click();
+      } catch {
+        alert("تعذر فتح مكتبة المقاطع");
+      }
+    }, 0);
+  };
+
+  const onVoiceMediaPick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    if (!isVoiceAttachFile(f)) {
+      alert("اختر مقطع فيديو أو ملف صوتي (m4a, mp3, mp4…)");
+      return;
+    }
+    void (async () => {
+      setVoicePicking(true);
+      try {
+        if (type !== "tweet") {
+          setType("tweet");
+          setReelCover("");
+        }
+        const compressed = await compressChatMediaFile(f);
+        setIsVoiceMedia(true);
+        storyFileRef.current = compressed;
+        revokePreviewUrl();
+        const previewUrl = URL.createObjectURL(compressed);
+        previewObjectUrlRef.current = previewUrl;
+        setMedia(previewUrl);
+      } catch (err) {
+        console.error("[create-voice]", err);
+        alert("تعذر تحميل المقطع — جرّب مقطعاً أقصر");
+      } finally {
+        setVoicePicking(false);
+      }
+    })();
   };
 
   const submit = async () => {
@@ -161,10 +194,13 @@ export function CreateScreen({
     const isVideo =
       pickedFile?.type.startsWith("video/") || media.startsWith("data:video") || isVideoMediaRef(media);
     const isAudio =
+      isVoiceMedia ||
       pickedFile?.type.startsWith("audio/") ||
+      (isVoiceMedia && pickedFile?.type.startsWith("video/")) ||
       media.startsWith("data:audio") ||
+      (isVoiceMedia && media.startsWith("blob:")) ||
       /\.(mp3|wav|ogg|m4a|aac)(\?|#|$)/i.test(media) ||
-      media.includes("/media/videos/");
+      (isVoiceMedia && /\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(media));
     if (type === "story") {
       setPublishing(true);
       const uploaded = pickedFile
@@ -285,7 +321,13 @@ export function CreateScreen({
         video: resolvedVideo,
         image: coverUrl && !isVideoMediaRef(coverUrl) ? coverUrl : "🎬",
       });
-    } else if (type === "tweet" && pickedFile?.type.startsWith("audio/")) {
+    } else if (
+      type === "tweet" &&
+      pickedFile &&
+      (pickedFile.type.startsWith("audio/") ||
+        pickedFile.type.startsWith("video/") ||
+        isVoiceMedia)
+    ) {
       setPublishing(true);
       const token = getApiToken();
       if (!token || !apiBackendEnabled()) {
@@ -293,7 +335,13 @@ export function CreateScreen({
         alert("رفع المقطع الصوتي يتطلب اتصال الخادم");
         return;
       }
-      const uploaded = await apiUploadMedia(token, pickedFile);
+      let fileToUpload = pickedFile;
+      try {
+        fileToUpload = await compressChatMediaFile(pickedFile);
+      } catch {
+        /* use original */
+      }
+      const uploaded = await apiUploadMedia(token, fileToUpload, { timeoutMs: 120_000 });
       setPublishing(false);
       if (!uploaded.ok) {
         alert(uploaded.error);
@@ -439,11 +487,12 @@ export function CreateScreen({
             {type !== "reel" && (
               <button
                 type="button"
-                onClick={() => audioInputRef.current?.click()}
-                className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-white/25 bg-white/[0.08] px-3 py-2 text-sm font-semibold text-white"
+                onClick={openVoicePicker}
+                disabled={voicePicking}
+                className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-white/25 bg-white/[0.08] px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
               >
                 <Mic size={16} />
-                فويس
+                {voicePicking ? "…" : "فويس"}
               </button>
             )}
             <button
@@ -472,8 +521,8 @@ export function CreateScreen({
           <input
             ref={audioInputRef}
             type="file"
-            accept="audio/*"
-            onChange={onAudioFile}
+            accept="video/*,audio/*"
+            onChange={onVoiceMediaPick}
             className="sr-only"
           />
         </div>
@@ -521,8 +570,16 @@ export function CreateScreen({
           <div className="mt-2 aspect-[9/16] max-h-[min(52vh,420px)] mx-auto bg-muted rounded-2xl overflow-hidden flex items-center justify-center">
             {storyFileRef.current?.type.startsWith("video/") || isVideoMediaRef(media) ? (
               <video src={media} controls className="w-full h-full object-cover" playsInline />
-            ) : storyFileRef.current?.type.startsWith("audio/") || media.startsWith("data:audio") ? (
-              <audio src={media} controls className="w-full" />
+            ) : isVoiceMedia ||
+              storyFileRef.current?.type.startsWith("audio/") ||
+              storyFileRef.current?.type.startsWith("video/") ||
+              media.startsWith("data:audio") ? (
+              storyFileRef.current?.type.startsWith("video/") ||
+              (isVoiceMedia && !storyFileRef.current?.type.startsWith("audio/")) ? (
+                <video src={media} controls playsInline className="w-full h-full object-contain" />
+              ) : (
+                <audio src={media} controls className="w-full" />
+              )
             ) : media.startsWith("data:image") || media.startsWith("blob:") || isRenderableMediaUrl(media) ? (
               <img src={media} className="w-full h-full object-cover" alt="" />
             ) : (

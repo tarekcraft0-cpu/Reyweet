@@ -3,6 +3,7 @@ import { Play, AtSign, Trash2 } from "lucide-react";
 import { Avatar } from "../Avatar";
 import { ShareSheet } from "../ShareSheet";
 import { FeedPostColumnShell, ProfilePostMetaRow } from "../PostFeedLayout";
+import { TweetVoicePlayer } from "../TweetVoicePlayer";
 import type { Post, User } from "@/lib/types";
 import { formatRelativeTime } from "@/lib/formatRelativeTime";
 import { normalizePostMedia, type NormalizedPostMedia } from "@/lib/postMedia";
@@ -103,7 +104,7 @@ function ProfileTweetMedia({
   if (postMedia.hasAudio) {
     return (
       <div className="mt-2.5 rounded-2xl border border-border/50 bg-card p-3">
-        <audio src={postMedia.audioUrl} controls preload="none" className="w-full" />
+        <TweetVoicePlayer src={post.audio!} />
       </div>
     );
   }
