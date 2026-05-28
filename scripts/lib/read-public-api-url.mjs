@@ -19,6 +19,34 @@ export function shouldUseVercelApiProxy(backendUrl) {
   );
 }
 
+/** نفق Cloudflare مؤقت — لا يُنشر في bundle الإنتاج */
+export function isTunnelApiUrl(url) {
+  return /\.trycloudflare\.com/i.test(String(url || "").trim());
+}
+
+/** Backend لبروكسي Vercel (rewrites → VPS) — ليس نفقاً منتهياً */
+export function resolveVpsBackendUrl(raw) {
+  const u = String(raw || "")
+    .trim()
+    .replace(/\/$/, "");
+  if (!u || isTunnelApiUrl(u)) return PRODUCTION_VPS_API;
+  if (shouldUseVercelApiProxy(u)) return u;
+  if (u.startsWith("http://109.199.111.29") || u === PRODUCTION_VPS_API) return PRODUCTION_VPS_API;
+  if (u.startsWith("http://") && !/localhost|127\.0\.0\.1|192\.168\./i.test(u)) return u;
+  return PRODUCTION_VPS_API;
+}
+
+/** عنوان API في الواجهة (SPA) — دائماً reyweet.vercel.app على الإنتاج */
+export function resolveWebFrontendApiUrl(raw) {
+  const u = String(raw || "")
+    .trim()
+    .replace(/\/$/, "");
+  if (!u || isTunnelApiUrl(u)) return VERCEL_SITE_URL;
+  if (shouldUseVercelApiProxy(u) || u.startsWith("http://")) return VERCEL_SITE_URL;
+  if (u.includes("reyweet.vercel.app") || u.endsWith(".vercel.app")) return VERCEL_SITE_URL;
+  return VERCEL_SITE_URL;
+}
+
 export function readPublicApiUrl() {
   const apiFile = path.join(root, "PUBLIC_API_URL.txt");
   if (fs.existsSync(apiFile)) {
@@ -27,20 +55,24 @@ export function readPublicApiUrl() {
       .split(/\r?\n/)
       .map(l => l.trim())
       .find(l => l.startsWith("http"));
-    if (line) return line.replace(/\/$/, "");
+    if (line) {
+      const u = line.replace(/\/$/, "");
+      if (!isTunnelApiUrl(u)) return u;
+    }
   }
 
   const fromEnv = (process.env.RETWEET_PUBLIC_API_URL || process.env.RETWEET_STABLE_URL || "")
     .trim()
     .replace(/\/$/, "");
-  if (fromEnv) return fromEnv;
+  if (fromEnv && !isTunnelApiUrl(fromEnv)) return fromEnv;
 
   const envPath = path.join(root, ".env");
   if (fs.existsSync(envPath)) {
     const text = fs.readFileSync(envPath, "utf8");
     for (const key of ["RETWEET_PUBLIC_API_URL", "RETWEET_STABLE_URL"]) {
       const m = text.match(new RegExp(`^${key}=(.+)$`, "m"));
-      if (m?.[1]?.trim()) return m[1].trim().replace(/\/$/, "");
+      const v = m?.[1]?.trim().replace(/\/$/, "");
+      if (v && !isTunnelApiUrl(v)) return v;
     }
   }
 
@@ -51,7 +83,7 @@ export function readPublicApiUrl() {
       .split(/\r?\n/)
       .map(l => l.trim())
       .find(l => l.startsWith("http"));
-    if (line) return line.replace(/\/$/, "");
+    if (line && !isTunnelApiUrl(line)) return line.replace(/\/$/, "");
   }
 
   /** أنشئ PUBLIC_API_URL.txt عبر npm run contabo:deploy ثم npm run vercel:deploy */

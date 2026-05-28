@@ -8,6 +8,9 @@ import path from "node:path";
 import {
   PRODUCTION_VPS_API,
   readPublicApiUrl,
+  resolveVpsBackendUrl,
+  resolveWebFrontendApiUrl,
+  isTunnelApiUrl,
   shouldUseVercelApiProxy,
   VERCEL_SITE_URL,
 } from "./lib/read-public-api-url.mjs";
@@ -77,23 +80,25 @@ const envApi = sameOrigin
       .replace(/\/$/, "");
 const repoApi = readRepoApiUrl();
 const backendFromEnv = (process.env.RETWEET_BACKEND_URL || "").trim().replace(/\/$/, "");
-const backendApiUrl = (
+const backendRaw = (
   backendFromEnv ||
   readPublicApiUrl() ||
   PRODUCTION_VPS_API ||
   envApi ||
   repoApi
 ).replace(/\/$/, "");
+const backendApiUrl = resolveVpsBackendUrl(backendRaw);
 const vercelSite = (process.env.RETWEET_VERCEL_SITE_URL || VERCEL_SITE_URL).replace(/\/$/, "");
-/** HTTPS على Vercel — بروكسي API/WebSocket إلى VPS HTTP (افتراضي) */
-const useApiProxy = shouldUseVercelApiProxy(backendApiUrl);
-const apiUrl = useApiProxy ? vercelSite : backendApiUrl;
-const siteUrl = useApiProxy ? vercelSite : backendApiUrl;
+/** HTTPS على Vercel — بروكسي API/WebSocket إلى VPS (لا نفق trycloudflare في bundle) */
+const useApiProxy =
+  shouldUseVercelApiProxy(backendApiUrl) || isTunnelApiUrl(backendRaw) || process.env.VERCEL === "1";
+const apiUrl = resolveWebFrontendApiUrl(backendRaw);
+const siteUrl = vercelSite;
 const webAppUrl = `${vercelSite}/app/`;
 
-if (repoApi && envApi && repoApi !== envApi) {
+if (isTunnelApiUrl(envApi) || isTunnelApiUrl(backendFromEnv)) {
   console.warn(
-    `prepare-vercel-static: repo API (${repoApi}) overrides stale Vercel env (${envApi})`,
+    "prepare-vercel-static: تجاهل نفق trycloudflare من env — الواجهة تستخدم reyweet.vercel.app",
   );
 }
 if (useApiProxy) {
@@ -163,13 +168,12 @@ for (const rel of appCandidates) {
     "utf8",
   );
   const indexPath = path.join(appDest, "index.html");
-  if (apiUrl && existsSync(indexPath)) {
+  if (existsSync(indexPath)) {
     let html = readFileSync(indexPath, "utf8");
+    html = html.replace(/<script>window\.__RETWEET_API_URL__=[^<]*<\/script>\s*/gi, "");
     const tag = `<script>window.__RETWEET_API_URL__=${JSON.stringify(apiUrl)};</script>`;
-    if (!html.includes("__RETWEET_API_URL__")) {
-      html = html.replace("</head>", `${tag}\n</head>`);
-      writeFileSync(indexPath, html, "utf8");
-    }
+    html = html.replace("</head>", `${tag}\n</head>`);
+    writeFileSync(indexPath, html, "utf8");
   }
   break;
 }

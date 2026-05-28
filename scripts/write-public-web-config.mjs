@@ -7,20 +7,23 @@ import { fileURLToPath } from "node:url";
 import {
   PRODUCTION_VPS_API,
   readPublicApiUrl,
+  resolveVpsBackendUrl,
+  resolveWebFrontendApiUrl,
+  isTunnelApiUrl,
   shouldUseVercelApiProxy,
   VERCEL_SITE_URL,
 } from "./lib/read-public-api-url.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
-const backendUrl = readPublicApiUrl() || PRODUCTION_VPS_API;
-const vercelSite = VERCEL_SITE_URL;
-const useProxy = shouldUseVercelApiProxy(backendUrl);
-const apiUrl = useProxy ? vercelSite : backendUrl;
-const siteUrl = useProxy ? vercelSite : backendUrl;
-const webAppUrl = `${vercelSite}/app/`;
+const backendRaw = readPublicApiUrl() || PRODUCTION_VPS_API;
+const backendUrl = resolveVpsBackendUrl(backendRaw);
+const useProxy = shouldUseVercelApiProxy(backendUrl) || isTunnelApiUrl(backendRaw);
+const apiUrl = resolveWebFrontendApiUrl(backendRaw);
+const siteUrl = VERCEL_SITE_URL;
+const webAppUrl = `${VERCEL_SITE_URL}/app/`;
 
 if (useProxy) {
-  console.log(`  (بروكسي Vercel: ${vercelSite} → ${backendUrl})`);
+  console.log(`  (بروكسي Vercel: ${VERCEL_SITE_URL} → ${backendUrl})`);
 } else {
   console.log(`  (اتصال مباشر: ${backendUrl})`);
 }
