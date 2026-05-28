@@ -124,6 +124,17 @@ function onAppPath(): boolean {
   return (window.location.pathname || "").startsWith("/app");
 }
 
+/** API عبر نفس المنفذ/النطاق (بروكسي Vite أو Vercel → VPS) — base فارغ مسموح */
+export function canUseSameOriginApi(): boolean {
+  if (typeof window === "undefined") return false;
+  if (!onAppPath()) return false;
+  if (import.meta.env.DEV && useViteDevProxy()) return true;
+  if (isVpsProductionHost()) return true;
+  if (isPublicAppHost() && !isVpsProductionHost()) return true;
+  if (useUnifiedLocalServer()) return true;
+  return false;
+}
+
 /** خادم موحّد: landing + API على :3000 أو نفق trycloudflare (نفس الأصل) */
 function useUnifiedLocalServer(): boolean {
   if (typeof window === "undefined") return false;
@@ -319,18 +330,20 @@ export async function ensureApiRuntimeConfig(): Promise<string> {
     }
     if (injected?.startsWith("http") && !skipInjected) {
       const u = injected.replace(/\/$/, "");
-      if (!(isPublicAppHost() && isPrivateApiUrl(u))) {
+      if (!isBlockedApiUrl(u) && !(isPublicAppHost() && isPrivateApiUrl(u))) {
         if (isPublicAppHost() && onAppPath()) {
-          resolvedMode = "absolute";
-          resolvedAbsoluteUrl = u;
-          persistAbsolute(u);
-          return u;
+          const safe = sanitizeApiBaseUrl(u);
+          resolvedMode = safe ? "absolute" : "relative";
+          resolvedAbsoluteUrl = safe;
+          if (safe) persistAbsolute(safe);
+          return safe;
         }
         if (await probeUrl(u)) {
-          resolvedMode = "absolute";
-          resolvedAbsoluteUrl = u;
-          persistAbsolute(u);
-          return u;
+          const safe = sanitizeApiBaseUrl(u);
+          resolvedMode = safe ? "absolute" : "relative";
+          resolvedAbsoluteUrl = safe;
+          if (safe) persistAbsolute(safe);
+          return safe;
         }
       }
     }

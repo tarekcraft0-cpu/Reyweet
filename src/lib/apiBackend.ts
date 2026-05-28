@@ -2,6 +2,7 @@ import { Capacitor } from "@capacitor/core";
 import { isolateUsersForAccountCache, snapshotAccountIdsForOwner } from "./accountSessions";
 import type { AppState, Chat, ID, Message, User } from "./types";
 import {
+  canUseSameOriginApi,
   defaultDevApiUrl,
   ensureApiRuntimeConfig,
   peekApiBaseUrl,
@@ -56,25 +57,10 @@ export function getApiBaseUrl(): string {
 /** اتصال فعلي بخادم Retweet API (نفق / LAN / بروكسي التطوير) */
 export function hasApiBackendConnection(): boolean {
   if (getApiBaseUrl().length > 0) return true;
+  if (canUseSameOriginApi()) return true;
   if (typeof window !== "undefined") {
     const injected = (window as Window & { __RETWEET_API_URL__?: string }).__RETWEET_API_URL__;
     if (injected?.startsWith("http")) return true;
-    /** منفذ Vite (:3077 / :3080) — بروكسي /health و /v1 حتى على `/` وليس `/app` فقط */
-    if (useViteDevProxy()) {
-      return true;
-    }
-    /** VPS — الواجهة والـ API على نفس الأصل (nginx) */
-    if (isVpsProductionHost() && (window.location.pathname || "").startsWith("/app")) {
-      return true;
-    }
-    /** Vercel — API عبر بروكسي نفس النطاق */
-    if (
-      isPublicAppHost() &&
-      !isVpsProductionHost() &&
-      (window.location.pathname || "").startsWith("/app")
-    ) {
-      return true;
-    }
     /** iOS/Android — API عبر Vercel HTTPS */
     if (isNativeCapacitorShell()) {
       return true;
@@ -154,7 +140,8 @@ export async function apiFetch(
     useViteDevProxy() &&
     typeof window !== "undefined" &&
     (window.location.pathname || "").startsWith("/app");
-  if (!base && !devProxy) {
+  const sameOrigin = canUseSameOriginApi();
+  if (!base && !devProxy && !sameOrigin) {
     return new Response(
       JSON.stringify({
         error: isPublicAppHost()
