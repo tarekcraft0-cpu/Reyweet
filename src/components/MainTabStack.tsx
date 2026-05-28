@@ -2,6 +2,7 @@ import {
   memo,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ReactNode,
@@ -116,7 +117,7 @@ export function MainTabStack({
 
   const settledIndex = tabIndex(activeTab);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setVisited(prev => {
       if (prev.has(activeTab)) return prev;
       const next = new Set(prev);
@@ -125,7 +126,6 @@ export function MainTabStack({
     });
   }, [activeTab]);
 
-  /** تغيير التبويب من الشريط السفلي — إلغاء سحب عالق يُخفي كل الشاشات */
   useEffect(() => {
     dragRef.current = null;
     setDragIndex(null);

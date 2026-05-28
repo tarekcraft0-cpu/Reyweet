@@ -2410,6 +2410,38 @@ export function ChatScreen({
     [state.chats, me.id],
   );
 
+  const flushPendingStackDrag = useCallback(() => {
+    if (stackDragFrameRef.current) {
+      cancelAnimationFrame(stackDragFrameRef.current);
+      stackDragFrameRef.current = 0;
+    }
+    const pending = pendingStackDragRef.current;
+    if (!pending) return;
+    pendingStackDragRef.current = null;
+    const { chatId, px } = pending;
+    if (stackListGestureCommitRef.current || stackTransitionLockRef.current) return;
+    stackOpenDragRef.current = true;
+    stackRoomDriveRef.current = "open";
+    stackRoomDismissRef.current = false;
+    setStackClosingId(null);
+    setStackSpring(false);
+    hideStackChrome();
+    const canonical = resolveOpenChatId(chatId);
+    if (stackDragChatId !== canonical) setStackDragChatId(canonical);
+    let cap = stackCapRef.current;
+    if (!(cap > 0)) {
+      cap = readSafeStackCapPx(stackInboxRef.current, stackCapRef);
+      stackCapRef.current = cap;
+    }
+    const progress = cap > 0 ? px / cap : 0;
+    publishStackProgressVisual(progress, false);
+  }, [
+    stackDragChatId,
+    resolveOpenChatId,
+    publishStackProgressVisual,
+    hideStackChrome,
+  ]);
+
   const isChatThreadFullyOpen = useCallback(
     (id: string) =>
       openChat === id && !stackDragChatId && !stackClosingId && stackProgressRef.current >= 0.98,
@@ -2908,38 +2940,6 @@ export function ChatScreen({
     ],
   );
   beginCloseChatThreadRef.current = beginCloseChatThread;
-
-  const flushPendingStackDrag = useCallback(() => {
-    if (stackDragFrameRef.current) {
-      cancelAnimationFrame(stackDragFrameRef.current);
-      stackDragFrameRef.current = 0;
-    }
-    const pending = pendingStackDragRef.current;
-    if (!pending) return;
-    pendingStackDragRef.current = null;
-    const { chatId, px } = pending;
-    if (stackListGestureCommitRef.current || stackTransitionLockRef.current) return;
-    stackOpenDragRef.current = true;
-    stackRoomDriveRef.current = "open";
-    stackRoomDismissRef.current = false;
-    setStackClosingId(null);
-    setStackSpring(false);
-    hideStackChrome();
-    const canonical = resolveOpenChatId(chatId);
-    if (stackDragChatId !== canonical) setStackDragChatId(canonical);
-    let cap = stackCapRef.current;
-    if (!(cap > 0)) {
-      cap = readSafeStackCapPx(stackInboxRef.current, stackCapRef);
-      stackCapRef.current = cap;
-    }
-    const progress = cap > 0 ? px / cap : 0;
-    publishStackProgressVisual(progress, false);
-  }, [
-    stackDragChatId,
-    resolveOpenChatId,
-    publishStackProgressVisual,
-    hideStackChrome,
-  ]);
 
   const applyStackDragVisual = useCallback(
     (chatId: string, px: number) => {
