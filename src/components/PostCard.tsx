@@ -44,7 +44,10 @@ function PostCardInner({
   const [noteToReply, setNoteToReply] = useState<MediaNote | null>(null);
   const lang = state.language;
   const author = userById(state, post.userId);
-  const postMedia = useMemo(() => normalizePostMedia(post), [post.image, post.video, post.type]);
+  const postMedia = useMemo(
+    () => normalizePostMedia(post),
+    [post.image, post.video, post.audio, post.type],
+  );
   const displayType = useMemo(
     () => resolvePostDisplayType(post),
     [post.type, post.image, post.video, post.text],
@@ -168,13 +171,13 @@ function PostCardInner({
           </PostFeedCaption>
         )}
 
-        {showFeedMedia ? (
+        {showFeedMedia && !isAudioOnlyMedia ? (
           <LazyInView minHeight={mediaLazyMinH} rootMargin="320px 0px">
             {mediaBlock}
           </LazyInView>
-        ) : (
+        ) : showFeedMedia ? (
           mediaBlock
-        )}
+        ) : null}
 
         <PostFeedActions
           liked={liked}

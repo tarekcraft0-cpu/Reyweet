@@ -229,15 +229,10 @@ export function PostFeedMediaBlock({
     );
   }
 
-  if (postMedia.hasAudio && post.audio) {
+  if (postMedia.hasAudio && postMedia.audioUrl) {
     return (
-      <div
-        className={
-          (profileInset ? "mx-0 w-full" : "mx-4 w-[calc(100%-2rem)]") +
-          " mb-1 rounded-2xl border border-border/60 bg-card p-3"
-        }
-      >
-        <TweetVoicePlayer src={post.audio} />
+      <div className={(profileInset ? "mx-0 w-full shrink-0" : "mx-4 w-[calc(100%-2rem)] shrink-0") + " mb-1"}>
+        <TweetVoicePlayer src={postMedia.audioUrl} />
       </div>
     );
   }

@@ -81,10 +81,10 @@ function ProfileTweetMedia({
     );
   }
 
-  if (postMedia.hasAudio && post.audio) {
+  if (postMedia.hasAudio && postMedia.audioUrl) {
     return (
-      <div className="mt-2.5 rounded-2xl border border-border/50 bg-card p-3">
-        <TweetVoicePlayer src={post.audio} />
+      <div className="mt-2.5 shrink-0">
+        <TweetVoicePlayer src={postMedia.audioUrl} />
       </div>
     );
   }

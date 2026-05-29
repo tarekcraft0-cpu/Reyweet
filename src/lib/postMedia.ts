@@ -81,11 +81,13 @@ export function normalizePostMedia(post: Pick<Post, "image" | "video" | "audio" 
   const imageUrl =
     imageRaw && !isVideoMediaRef(imageRaw) ? resolveMediaUrl(imageRaw) : "";
   const videoUrl = videoRaw ? resolveMediaUrl(videoRaw) : "";
-  const audioUrl = audioRaw ? resolveMediaUrl(audioRaw) : "";
   const posterUrl =
     imageUrl && isRenderableMediaUrl(imageUrl) ? imageUrl : "";
 
-  const voiceTweet = post.type === "tweet" && !!audioRaw;
+  const voiceTweet =
+    !!audioRaw || (post.type === "tweet" && isVoicePlaybackVideoSrc(videoRaw) && !imageRaw);
+  const voiceSrc =
+    audioRaw || (voiceTweet && isVoicePlaybackVideoSrc(videoRaw) ? videoRaw : "");
 
   const normalized = {
     imageUrl,
@@ -95,9 +97,9 @@ export function normalizePostMedia(post: Pick<Post, "image" | "video" | "audio" 
     hasVideo:
       !voiceTweet && !!videoRaw && isVideoMediaRef(videoRaw) && !!videoUrl,
     hasAudio:
-      !!audioRaw &&
-      (isRenderableMediaUrl(audioUrl) || isVoicePlaybackVideoSrc(audioRaw)),
-    audioUrl,
+      !!voiceSrc &&
+      (isRenderableMediaUrl(resolveMediaUrl(voiceSrc)) || isVoicePlaybackVideoSrc(voiceSrc)),
+    audioUrl: voiceSrc,
     emojiFallback:
       (!imageUrl && !videoUrl && imageRaw && !isRenderableMediaUrl(imageRaw)
         ? imageRaw

@@ -34,7 +34,7 @@ export function LazyInView({
   }, [rootMargin, visible]);
 
   return (
-    <div ref={ref} className={minHeight}>
+    <div ref={ref} className={visible ? undefined : minHeight}>
       {visible ? children : (fallback ?? <div className={"w-full " + minHeight + " bg-muted/30"} />)}
     </div>
   );
