@@ -18,6 +18,7 @@ const SNAP_RATIO = 0.22;
 const VELOCITY_SNAP = 0.35;
 const TAB_TRANSITION_MS = 260;
 const TAB_EASE = "cubic-bezier(0.215, 0.61, 0.355, 1)";
+const TAB_COUNT = PAGER_TAB_CHAIN.length;
 
 function tabIndex(tab: PagerTab): number {
   return PAGER_TAB_CHAIN.indexOf(tab);
@@ -161,6 +162,12 @@ export function MainTabStack({
     }
   }, [markNeighborVisited]);
 
+  const clearTabDrag = useCallback(() => {
+    dragRef.current = null;
+    setDragIndex(null);
+    setAnimating(false);
+  }, []);
+
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
       if (!swipeEnabled || e.button !== 0) return;
@@ -258,10 +265,7 @@ export function MainTabStack({
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
-        onLostPointerCapture={() => {
-          dragRef.current = null;
-          setDragIndex(null);
-        }}
+        onLostPointerCapture={clearTabDrag}
       >
         {PAGER_TAB_CHAIN.map(id => (
           <KeepAlivePanel
