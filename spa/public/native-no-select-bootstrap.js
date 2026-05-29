@@ -5,6 +5,40 @@
   "use strict";
   if (typeof document === "undefined") return;
 
+  /** إذا index.html محفوظ في الكاش ويشير لحزمة JS قديمة — جلب HTML حي وإعادة تحميل /app/ */
+  (function ensureFreshAppBundle() {
+    if (window.__RETWEET_BUNDLE_GUARD__) return;
+    window.__RETWEET_BUNDLE_GUARD__ = 1;
+    try {
+      var q = location.search || "";
+      if (/[?&](force|_b|_)=\d+/.test(q)) return;
+      var mod = document.querySelector('script[type="module"][src*="/assets/index-"]');
+      if (!mod) return;
+      var mine = mod.getAttribute("src") || "";
+      if (!mine) return;
+      var knownBroken = /index-DtMhfcKB|index-CXgAWalW|index-C54KUatj/i;
+      if (knownBroken.test(mine)) {
+        location.replace(location.origin + "/app/?force=" + Date.now());
+        return;
+      }
+      fetch(location.origin + "/app/index.html", { cache: "no-store" })
+        .then(function (r) {
+          return r.text();
+        })
+        .then(function (html) {
+          var m = html.match(/\/assets\/(index-[A-Za-z0-9_-]+\.js)/);
+          if (!m || !m[1]) return;
+          if (mine.indexOf(m[1]) >= 0) return;
+          location.replace(location.origin + "/app/?force=" + Date.now());
+        })
+        .catch(function () {
+          /* ignore */
+        });
+    } catch (e) {
+      /* ignore */
+    }
+  })();
+
   window.__RETWEET_NO_SELECT_BOOT__ = true;
   document.documentElement.classList.add("retweet-native-shell");
 

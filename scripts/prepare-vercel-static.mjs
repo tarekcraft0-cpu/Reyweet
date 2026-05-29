@@ -179,7 +179,12 @@ for (const rel of appCandidates) {
     const buildId = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 12) || String(Date.now());
     const apiTag = `<script>window.__RETWEET_API_URL__=${JSON.stringify(apiUrl)};</script>`;
     const buildTag = `<script>window.__RETWEET_APP_BUILD__=${JSON.stringify(buildId)};</script>`;
-    const cacheBustTag = `<script>(function(){try{var k="retweet_app_build",b=window.__RETWEET_APP_BUILD__||"";var s=localStorage.getItem(k);if(s&&b&&s!==b&&!/force=\\d+/.test(location.search)){localStorage.setItem(k,b);location.replace("/app/?force="+Date.now());return}if(b)localStorage.setItem(k,b)}catch(e){}})();</script>`;
+    const cacheBustTag = `<script>(function(){try{var k="retweet_app_build",b=window.__RETWEET_APP_BUILD__||"";var s=localStorage.getItem(k);if(s&&b&&s!==b&&!/[?&](force|_b|_)=\\d+/.test(location.search)){localStorage.setItem(k,b);location.replace("/app/?force="+Date.now());return}if(b)localStorage.setItem(k,b)}catch(e){}})();</script>`;
+    const bootV = buildId.slice(0, 8);
+    html = html.replace(
+      /src="\/app\/native-no-select-bootstrap\.js(\?[^"]*)?"/,
+      `src="/app/native-no-select-bootstrap.js?v=${bootV}"`,
+    );
     html = html.replace("</head>", `${apiTag}\n${buildTag}\n${cacheBustTag}\n</head>`);
     writeFileSync(indexPath, html, "utf8");
   }
@@ -257,6 +262,13 @@ const siteVercel = {
     },
     {
       source: "/app/",
+      headers: [
+        { key: "Cache-Control", value: "no-store, no-cache, must-revalidate" },
+        { key: "Pragma", value: "no-cache" },
+      ],
+    },
+    {
+      source: "/app/native-no-select-bootstrap.js",
       headers: [
         { key: "Cache-Control", value: "no-store, no-cache, must-revalidate" },
         { key: "Pragma", value: "no-cache" },

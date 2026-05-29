@@ -22,6 +22,18 @@ export function WebAppRoot() {
   const [apiMissing, setApiMissing] = useState(false);
 
   useEffect(() => {
+    try {
+      const url = new URL(window.location.href);
+      if (url.searchParams.has("force") || url.searchParams.has("_b") || url.searchParams.has("_")) {
+        url.searchParams.delete("force");
+        url.searchParams.delete("_b");
+        url.searchParams.delete("_");
+        const next = url.pathname + (url.search || "") + url.hash;
+        window.history.replaceState(null, "", next || "/app/");
+      }
+    } catch {
+      /* ignore */
+    }
     installNativeTextSelectionGuard();
     warmGlobalPointerBackRouter();
     clearStaleApiConfig();
