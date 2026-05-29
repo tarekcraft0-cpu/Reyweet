@@ -1011,6 +1011,12 @@ const CAMERA_LONG_PRESS_MS = 240;
 const CAMERA_TAP_MAX_DURATION_MS = CAMERA_LONG_PRESS_MS - 45;
 /** بعد هذا الجذب نحو عرض الشاشة نفعّل المعاينة فوراً (بدون انتظار الضغط المطوّل) */
 const CAMERA_EARLY_PULL_PX = 16;
+/** سحب يسار→يمين لبدء فتح المحادثة — أقل من هذا = ضغطة فقط (تفاعل بصري بدون فتح فوري) */
+const ROW_OPEN_ARM_PX = 14;
+/** أقصى حركة تُعتبر «نقرة» وليس سحباً */
+const ROW_TAP_MAX_MOVE_PX = 12;
+/** نقرة قصيرة جداً (لمس عرضي) لا تفتح المحادثة */
+const ROW_TAP_MIN_HOLD_MS = 90;
 /** نسبة من عرض عمود التطبيق تكفي لفتح المحادثة عند رفع الإصبع (كان ~97% من العرض الكامل) */
 const PEEK_OPEN_CHAT_FRACTION = 0.5;
 /** أقل من هذا + إيماءة قصيرة نفتح التقاط الكاميرا */
@@ -1109,7 +1115,7 @@ function ChatListRowWithPeek({
   const cameraPeekArmedRef = useRef(false);
   const cameraDownRef = useRef<{ x0: number; y0: number; pointerId: number; downAt: number } | null>(null);
   const cameraBtnRef = useRef<HTMLButtonElement | null>(null);
-  const rowOpenDownRef = useRef<{ x0: number; y0: number; pointerId: number } | null>(null);
+  const rowOpenDownRef = useRef<{ x0: number; y0: number; pointerId: number; downAt: number } | null>(null);
   const rowOpenArmedRef = useRef(false);
   const rowOpenLastPullRef = useRef(0);
   const rowOpenVelocityRef = useRef(0);
@@ -1366,22 +1372,17 @@ function ChatListRowWithPeek({
     return Math.max(0, e.clientX - down.x0);
   };
 
-  const openChatFromRowTap = useCallback(() => {
-    try {
-      (navigator as Navigator & { vibrate?: (n: number | number[]) => boolean }).vibrate?.(10);
-    } catch {
-      /* ignore */
-    }
-    if (onRowOpenCommit) onRowOpenCommit(chatRowOpenId, 0, "tap");
-    else onOpenChat(chatRowOpenId);
-  }, [onOpenChat, onRowOpenCommit, chatRowOpenId]);
-
   const onRowOpenPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
     onStackGestureArm?.();
     rowPointerEndedRef.current = false;
     setRowPressedVisual(true);
-    rowOpenDownRef.current = { x0: e.clientX, y0: e.clientY, pointerId: e.pointerId };
+    rowOpenDownRef.current = {
+      x0: e.clientX,
+      y0: e.clientY,
+      pointerId: e.pointerId,
+      downAt: Date.now(),
+    };
     rowOpenArmedRef.current = false;
     try {
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -1407,7 +1408,7 @@ function ChatListRowWithPeek({
     }
     const pull = rowOpenPullPx(e);
     if (!rowOpenArmedRef.current) {
-      if (pull < 8 || dx <= 0) return;
+      if (pull < ROW_OPEN_ARM_PX || dx <= 0) return;
       if (Math.abs(dy) > Math.abs(dx) * 1.2 && dy * dy > 64) {
         rowOpenDownRef.current = null;
         setRowPressedVisual(false);
@@ -1466,18 +1467,13 @@ function ChatListRowWithPeek({
       /* ignore */
     }
     if (armed && down) {
-      const dx = e.clientX - down.x0;
-      const dy = e.clientY - down.y0;
       const cap = capWidth();
       const pull = rowOpenPullPx(e);
       const px = Math.max(0, Math.min(cap, pull));
-      const mode = Math.hypot(dx, dy) < 14 ? "tap" : "swipe-end";
       const vx = rowOpenVelocityRef.current;
       rowOpenLastPullRef.current = px;
       if (onRowOpenCommit) {
-        onRowOpenCommit(chatRowOpenId, px, mode);
-      } else if (mode === "tap") {
-        openChatFromRowTap();
+        onRowOpenCommit(chatRowOpenId, px, "swipe-end");
       } else {
         onStackDragEnd?.(chatRowOpenId, px, vx);
       }
@@ -1486,9 +1482,19 @@ function ChatListRowWithPeek({
     if (!down || down.pointerId !== e.pointerId) return;
     const dx = e.clientX - down.x0;
     const dy = e.clientY - down.y0;
-    if (Math.hypot(dx, dy) < 14) {
+    const holdMs = Date.now() - down.downAt;
+    if (
+      Math.hypot(dx, dy) < ROW_TAP_MAX_MOVE_PX &&
+      holdMs >= ROW_TAP_MIN_HOLD_MS &&
+      holdMs < 520
+    ) {
+      try {
+        navigator.vibrate?.(8);
+      } catch {
+        /* ignore */
+      }
       if (onRowOpenCommit) onRowOpenCommit(chatRowOpenId, 0, "tap");
-      else openChatFromRowTap();
+      else startTransition(() => onOpenChat(chatRowOpenId));
     } else {
       onStackChromeShow?.();
     }
@@ -1917,7 +1923,7 @@ function ChatListRowWithPeek({
             onClick={e => {
               e.stopPropagation();
               if (skipAvatarClickRef.current) return;
-              openChatFromRowTap();
+              if (otherId) startTransition(() => onOpenProfile(otherId));
             }}
           >
             <RSocialAvatar name={displayName} src={avatarSrc} size={58} />
@@ -1933,9 +1939,8 @@ function ChatListRowWithPeek({
           {/* [B] Name + preview — Center, swipe-to-open */}
           <button
             type="button"
-            className="flex min-w-0 flex-1 touch-none flex-col justify-center gap-[5px] text-start outline-none select-none"
+            className="flex min-w-0 flex-1 touch-none flex-col justify-center gap-[5px] text-start outline-none select-none active:opacity-90"
             style={{ paddingTop: "16px", paddingBottom: "16px", paddingInlineEnd: "8px", touchAction: "none" }}
-            onClick={() => { if (skipAvatarClickRef.current) return; openChatFromRowTap(); }}
             onPointerDown={onRowOpenPointerDown}
             onPointerMove={onRowOpenPointerMove}
             onPointerUp={onRowOpenPointerEnd}
