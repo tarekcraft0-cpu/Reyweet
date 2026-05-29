@@ -1011,12 +1011,10 @@ const CAMERA_LONG_PRESS_MS = 240;
 const CAMERA_TAP_MAX_DURATION_MS = CAMERA_LONG_PRESS_MS - 45;
 /** بعد هذا الجذب نحو عرض الشاشة نفعّل المعاينة فوراً (بدون انتظار الضغط المطوّل) */
 const CAMERA_EARLY_PULL_PX = 16;
-/** سحب يسار→يمين لبدء فتح المحادثة — أقل من هذا = ضغطة فقط (تفاعل بصري بدون فتح فوري) */
-const ROW_OPEN_ARM_PX = 14;
+/** سحب يسار→يمين لبدء فتح المحادثة */
+const ROW_OPEN_ARM_PX = 10;
 /** أقصى حركة تُعتبر «نقرة» وليس سحباً */
-const ROW_TAP_MAX_MOVE_PX = 12;
-/** نقرة قصيرة جداً (لمس عرضي) لا تفتح المحادثة */
-const ROW_TAP_MIN_HOLD_MS = 90;
+const ROW_TAP_MAX_MOVE_PX = 18;
 /** نسبة من عرض عمود التطبيق تكفي لفتح المحادثة عند رفع الإصبع (كان ~97% من العرض الكامل) */
 const PEEK_OPEN_CHAT_FRACTION = 0.5;
 /** أقل من هذا + إيماءة قصيرة نفتح التقاط الكاميرا */
@@ -1121,8 +1119,23 @@ function ChatListRowWithPeek({
   const rowOpenVelocityRef = useRef(0);
   const rowOpenMoveSampleRef = useRef({ x: 0, t: 0 });
   const rowPointerEndedRef = useRef(false);
+  const rowOpenCommittedRef = useRef(false);
   const rowShellRef = useRef<HTMLDivElement>(null);
   const chatRowOpenId = openChatIdFor(c, me.id);
+
+  const commitRowOpen = useCallback(
+    (px: number, mode: "tap" | "swipe-end") => {
+      if (rowOpenCommittedRef.current) return;
+      rowOpenCommittedRef.current = true;
+      window.setTimeout(() => {
+        rowOpenCommittedRef.current = false;
+      }, 450);
+      if (onRowOpenCommit) onRowOpenCommit(chatRowOpenId, px, mode);
+      else if (mode === "tap") startTransition(() => onOpenChat(chatRowOpenId));
+      else onStackDragEnd?.(chatRowOpenId, px, rowOpenVelocityRef.current);
+    },
+    [onRowOpenCommit, onOpenChat, onStackDragEnd, chatRowOpenId],
+  );
 
   const setRowPressedVisual = (pressed: boolean) => {
     const el = rowShellRef.current;
@@ -1374,8 +1387,10 @@ function ChatListRowWithPeek({
 
   const onRowOpenPointerDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return;
+    e.stopPropagation();
     onStackGestureArm?.();
     rowPointerEndedRef.current = false;
+    rowOpenCommittedRef.current = false;
     setRowPressedVisual(true);
     rowOpenDownRef.current = {
       x0: e.clientX,
@@ -1401,8 +1416,7 @@ function ChatListRowWithPeek({
         rowOpenArmedRef.current = false;
         rowOpenDownRef.current = null;
         setRowPressedVisual(false);
-        if (onRowOpenCommit) onRowOpenCommit(chatRowOpenId, rowOpenLastPullRef.current, "swipe-end");
-        else onStackDragEnd?.(chatRowOpenId, rowOpenLastPullRef.current);
+        commitRowOpen(rowOpenLastPullRef.current, "swipe-end");
       }
       return;
     }
@@ -1431,8 +1445,7 @@ function ChatListRowWithPeek({
         rowOpenDownRef.current = null;
         setRowPressedVisual(false);
         const abortPx = rowOpenLastPullRef.current;
-        if (onRowOpenCommit) onRowOpenCommit(chatRowOpenId, abortPx, "swipe-end");
-        else onStackDragEnd?.(chatRowOpenId, abortPx);
+        commitRowOpen(abortPx, "swipe-end");
         return;
       }
       if (e.cancelable) e.preventDefault();
@@ -1472,35 +1485,27 @@ function ChatListRowWithPeek({
       const px = Math.max(0, Math.min(cap, pull));
       const vx = rowOpenVelocityRef.current;
       rowOpenLastPullRef.current = px;
-      if (onRowOpenCommit) {
-        onRowOpenCommit(chatRowOpenId, px, "swipe-end");
-      } else {
-        onStackDragEnd?.(chatRowOpenId, px, vx);
-      }
+      commitRowOpen(px, "swipe-end");
       return;
     }
     if (!down || down.pointerId !== e.pointerId) return;
     const dx = e.clientX - down.x0;
     const dy = e.clientY - down.y0;
-    const holdMs = Date.now() - down.downAt;
-    if (
-      Math.hypot(dx, dy) < ROW_TAP_MAX_MOVE_PX &&
-      holdMs >= ROW_TAP_MIN_HOLD_MS &&
-      holdMs < 520
-    ) {
+    if (Math.hypot(dx, dy) < ROW_TAP_MAX_MOVE_PX) {
       try {
         navigator.vibrate?.(8);
       } catch {
         /* ignore */
       }
-      if (onRowOpenCommit) onRowOpenCommit(chatRowOpenId, 0, "tap");
-      else startTransition(() => onOpenChat(chatRowOpenId));
+      commitRowOpen(0, "tap");
     } else {
       onStackChromeShow?.();
     }
   };
 
-  const onRowOpenPointerCancel = () => {
+  const onRowOpenPointerCancel = (e?: React.PointerEvent) => {
+    const down = rowOpenDownRef.current;
+    if (e && down && down.pointerId !== e.pointerId) return;
     const wasArmed = rowOpenArmedRef.current;
     const px = rowOpenLastPullRef.current;
     rowOpenDownRef.current = null;
@@ -1509,8 +1514,11 @@ function ChatListRowWithPeek({
     rowOpenVelocityRef.current = 0;
     setRowPressedVisual(false);
     if (wasArmed) {
-      if (onRowOpenCommit) onRowOpenCommit(chatRowOpenId, px, "swipe-end");
-      else onStackDragEnd?.(chatRowOpenId, px, 0);
+      commitRowOpen(px, "swipe-end");
+    } else if (down && !rowOpenCommittedRef.current) {
+      const holdMs = Date.now() - down.downAt;
+      if (holdMs < 600) commitRowOpen(0, "tap");
+      else onStackChromeShow?.();
     } else {
       onStackChromeShow?.();
     }
@@ -1910,16 +1918,16 @@ function ChatListRowWithPeek({
           className="relative z-20 flex flex-row items-center bg-background transition-[background-color] duration-100"
           style={{ minHeight: "84px" }}
           title={t("chatRowLongPressHint")}
-          onPointerDown={onAvatarPointerDown}
-          onPointerMove={onAvatarPointerMove}
-          onPointerUp={onAvatarPointerEnd}
-          onPointerLeave={onAvatarPointerEnd}
-          onPointerCancel={onAvatarPointerEnd}
         >
           {/* [A] Avatar — FAR RIGHT in RTL / FAR LEFT in LTR */}
           <div
             className="relative shrink-0 flex items-center justify-center touch-manipulation"
             style={{ paddingInlineStart: "14px", paddingInlineEnd: "12px", paddingTop: "10px", paddingBottom: "10px" }}
+            onPointerDown={onAvatarPointerDown}
+            onPointerMove={onAvatarPointerMove}
+            onPointerUp={onAvatarPointerEnd}
+            onPointerLeave={onAvatarPointerEnd}
+            onPointerCancel={onAvatarPointerEnd}
             onClick={e => {
               e.stopPropagation();
               if (skipAvatarClickRef.current) return;
@@ -1945,7 +1953,11 @@ function ChatListRowWithPeek({
             onPointerMove={onRowOpenPointerMove}
             onPointerUp={onRowOpenPointerEnd}
             onPointerCancel={onRowOpenPointerCancel}
-            onPointerLeave={onRowOpenPointerCancel}
+            onClick={e => {
+              e.stopPropagation();
+              if (skipAvatarClickRef.current || rowOpenArmedRef.current) return;
+              if (!rowOpenCommittedRef.current) commitRowOpen(0, "tap");
+            }}
           >
             <div className="flex min-w-0 items-center gap-1.5">
               {c.isChannel && <Megaphone size={12} className="shrink-0 text-muted-foreground" aria-hidden />}
@@ -2728,6 +2740,7 @@ export function ChatScreen({
       if (mode === "tap") {
         stackOpenDragRef.current = false;
         stackSwipeOpeningRef.current = false;
+        releaseStackTransitionLock();
         if (stackDragChatId) {
           commitStackOpen(canonical);
           return;
