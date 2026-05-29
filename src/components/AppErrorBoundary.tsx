@@ -46,9 +46,19 @@ export class AppErrorBoundary extends Component<Props, State> {
             <button
               type="button"
               className="rounded-2xl border border-border bg-background px-6 py-3 text-sm font-medium text-foreground"
-              onClick={() => window.location.reload()}
+              onClick={() => {
+                try {
+                  if ("caches" in window) {
+                    void caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k))));
+                  }
+                } catch {
+                  /* ignore */
+                }
+                const base = `${window.location.origin}/app/`;
+                window.location.replace(`${base}?force=${Date.now()}`);
+              }}
             >
-              تحديث الصفحة
+              تحديث الصفحة (بدون كاش)
             </button>
             <button
               type="button"

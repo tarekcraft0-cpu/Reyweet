@@ -84,11 +84,18 @@ const apiDirect = PUBLIC_API.replace(/\/$/, "");
 const indexLocal = path.join(spaDir, "index.html");
 if (existsSync(indexLocal)) {
   let html = readFileSync(indexLocal, "utf8");
-  const tag = `<script>window.__RETWEET_API_URL__=${JSON.stringify(apiDirect)};</script>`;
-  if (!html.includes("__RETWEET_API_URL__")) {
-    html = html.replace("</head>", `${tag}\n</head>`);
-    writeFileSync(indexLocal, html, "utf8");
-  }
+  html = html.replace(/<script>window\.__RETWEET_API_URL__=[^<]*<\/script>\s*/gi, "");
+  html = html.replace(/<script>window\.__RETWEET_APP_BUILD__=[^<]*<\/script>\s*/gi, "");
+  html = html.replace(
+    /<script>\s*\(function\(\)\{[\s\S]*?retweet_app_build[\s\S]*?\}\)\(\);\s*<\/script>\s*/gi,
+    "",
+  );
+  const buildId = String(Date.now());
+  const apiTag = `<script>window.__RETWEET_API_URL__=${JSON.stringify(apiDirect)};</script>`;
+  const buildTag = `<script>window.__RETWEET_APP_BUILD__=${JSON.stringify(buildId)};</script>`;
+  const cacheBustTag = `<script>(function(){try{var k="retweet_app_build",b=window.__RETWEET_APP_BUILD__||"";var s=localStorage.getItem(k);if(s&&b&&s!==b&&!/force=\\d+/.test(location.search)){localStorage.setItem(k,b);location.replace("/app/?force="+Date.now());return}if(b)localStorage.setItem(k,b)}catch(e){}})();</script>`;
+  html = html.replace("</head>", `${apiTag}\n${buildTag}\n${cacheBustTag}\n</head>`);
+  writeFileSync(indexLocal, html, "utf8");
 }
 
 const webAuth = JSON.stringify(

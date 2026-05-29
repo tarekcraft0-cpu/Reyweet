@@ -146,7 +146,7 @@ writeFileSync(
   "utf8",
 );
 
-const appDest = path.join(outDir, "app");
+const appDest = path.join(siteOutDir, "app");
 const appCandidates = ["spa-dist", "dist/client", "dist", ".output/public"];
 for (const rel of appCandidates) {
   const src = path.join(root, rel);
@@ -171,8 +171,16 @@ for (const rel of appCandidates) {
   if (existsSync(indexPath)) {
     let html = readFileSync(indexPath, "utf8");
     html = html.replace(/<script>window\.__RETWEET_API_URL__=[^<]*<\/script>\s*/gi, "");
-    const tag = `<script>window.__RETWEET_API_URL__=${JSON.stringify(apiUrl)};</script>`;
-    html = html.replace("</head>", `${tag}\n</head>`);
+    html = html.replace(/<script>window\.__RETWEET_APP_BUILD__=[^<]*<\/script>\s*/gi, "");
+    html = html.replace(
+      /<script>\s*\(function\(\)\{[\s\S]*?retweet_app_build[\s\S]*?\}\)\(\);\s*<\/script>\s*/gi,
+      "",
+    );
+    const buildId = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 12) || String(Date.now());
+    const apiTag = `<script>window.__RETWEET_API_URL__=${JSON.stringify(apiUrl)};</script>`;
+    const buildTag = `<script>window.__RETWEET_APP_BUILD__=${JSON.stringify(buildId)};</script>`;
+    const cacheBustTag = `<script>(function(){try{var k="retweet_app_build",b=window.__RETWEET_APP_BUILD__||"";var s=localStorage.getItem(k);if(s&&b&&s!==b&&!/force=\\d+/.test(location.search)){localStorage.setItem(k,b);location.replace("/app/?force="+Date.now());return}if(b)localStorage.setItem(k,b)}catch(e){}})();</script>`;
+    html = html.replace("</head>", `${apiTag}\n${buildTag}\n${cacheBustTag}\n</head>`);
     writeFileSync(indexPath, html, "utf8");
   }
   break;
@@ -238,6 +246,20 @@ const siteVercel = {
       headers: [
         { key: "Content-Type", value: "application/json; charset=utf-8" },
         { key: "Cache-Control", value: "no-store, max-age=0" },
+      ],
+    },
+    {
+      source: "/app/index.html",
+      headers: [
+        { key: "Cache-Control", value: "no-store, no-cache, must-revalidate" },
+        { key: "Pragma", value: "no-cache" },
+      ],
+    },
+    {
+      source: "/app/",
+      headers: [
+        { key: "Cache-Control", value: "no-store, no-cache, must-revalidate" },
+        { key: "Pragma", value: "no-cache" },
       ],
     },
   ],
