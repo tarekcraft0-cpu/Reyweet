@@ -339,11 +339,12 @@ export function ReelsScreen({
     refreshFromServer();
   }, [refreshFromServer, isTabActive]);
 
-  /* منع overscroll على الصفحة */
+  /* منع overscroll على الصفحة — فقط أثناء عرض تبويب الريلز */
   useEffect(() => {
+    if (!isTabActive) return;
     document.documentElement.classList.add("retweet-overscroll-lock");
     return () => document.documentElement.classList.remove("retweet-overscroll-lock");
-  }, []);
+  }, [isTabActive]);
 
   /* Pull to refresh */
   useEffect(() => {

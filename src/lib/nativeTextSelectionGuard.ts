@@ -165,6 +165,11 @@ function injectNoSelectStyles(): void {
 }
 
 /** iOS: منع بدء التحديد عند الضغط المطوّل بدون سحب (مع السماح بالتمرير بعد ~12px) */
+function isAndroidTouchDevice(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return /Android/i.test(navigator.userAgent);
+}
+
 function installTouchSelectionBlocker(): void {
   let startX = 0;
   let startY = 0;
@@ -207,12 +212,18 @@ function installTouchSelectionBlocker(): void {
       if (isNativeLongPressTarget(e.target)) return;
       const dx = Math.abs(e.touches[0].clientX - startX);
       const dy = Math.abs(e.touches[0].clientY - startY);
+      // سحب عمودي واضح — لا نمنع التمرير (Android/WebView حساس لـ preventDefault)
+      if (dy > dx && dy > 4) {
+        touchMoved = true;
+        stopRaf();
+        return;
+      }
       if (dx > 12 || dy > 12) {
         touchMoved = true;
         stopRaf();
         return;
       }
-      if (!touchMoved) {
+      if (!touchMoved && !isAndroidTouchDevice()) {
         e.preventDefault();
         clearNativeSelection();
       }

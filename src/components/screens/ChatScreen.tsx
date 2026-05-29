@@ -10,6 +10,7 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 import { useLockPageScroll } from "@/hooks/useLockPageScroll";
+import { useIsTabActive } from "@/lib/tabActiveContext";
 import {
   useSlideDismissBack,
   APP_COLUMN_MAX_PX,
@@ -2148,6 +2149,7 @@ export function ChatScreen({
   const [profileNoteReplyDraft, setProfileNoteReplyDraft] = useState("");
   const t = useT();
   const me = currentUser!;
+  const chatTabActive = useIsTabActive("chat");
   const [openChat, setOpenChat] = useState<string | null>(() => initialChatId ?? null);
   const [showRequests, setShowRequests] = useState(false);
   const [showCreate, setShowCreate] = useState<null | "menu" | "group" | "channel">(null);
@@ -3214,7 +3216,15 @@ export function ChatScreen({
     onActiveChatChange?.(openChat);
   }, [openChat, onActiveChatChange]);
 
-  useLockPageScroll(!!openChat || !!stackDragChatId || !!stackClosingId);
+  useLockPageScroll(
+    chatTabActive && (!!openChat || !!stackDragChatId || !!stackClosingId),
+  );
+
+  useEffect(() => {
+    if (chatTabActive) return;
+    if (stackDragChatId) setStackDragChatId(null);
+    if (stackClosingId) setStackClosingId(null);
+  }, [chatTabActive, stackDragChatId, stackClosingId]);
 
   useEffect(() => {
     const onRing = (e: Event) => {

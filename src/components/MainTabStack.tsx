@@ -10,7 +10,10 @@ import {
 import { TabActiveContext } from "@/lib/tabActiveContext";
 import { PAGER_TAB_CHAIN, type PagerTab } from "./MainTabPager";
 
-const TAB_COUNT = PAGER_TAB_CHAIN.length;
+const TAB_AXIS_LOCK_PX = 10;
+const TAB_HORIZONTAL_RATIO = 1.4;
+const TAB_VERTICAL_RATIO = 1.08;
+const TAB_HORIZONTAL_MIN_PX = 14;
 const SNAP_RATIO = 0.22;
 const VELOCITY_SNAP = 0.35;
 const TAB_TRANSITION_MS = 260;
@@ -186,13 +189,13 @@ export function MainTabStack({
       const adx = Math.abs(e.clientX - d.startX);
       const ady = Math.abs(e.clientY - d.startY);
       if (!d.axis) {
-        if (adx < 8 && ady < 8) return;
-        if (ady > adx * 1.15) {
+        if (adx < TAB_AXIS_LOCK_PX && ady < TAB_AXIS_LOCK_PX) return;
+        if (ady > adx * TAB_VERTICAL_RATIO) {
           dragRef.current = null;
           setDragIndex(null);
           return;
         }
-        if (adx > ady * 1.05) {
+        if (adx >= TAB_HORIZONTAL_MIN_PX && adx > ady * TAB_HORIZONTAL_RATIO) {
           d.axis = "x";
           try {
             e.currentTarget.setPointerCapture(e.pointerId);
@@ -223,7 +226,9 @@ export function MainTabStack({
       if (!d || e.pointerId !== d.pointerId) return;
       dragRef.current = null;
       try {
-        e.currentTarget.releasePointerCapture(e.pointerId);
+        if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+          e.currentTarget.releasePointerCapture(e.pointerId);
+        }
       } catch {
         /* ignore */
       }
@@ -253,6 +258,10 @@ export function MainTabStack({
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
+        onLostPointerCapture={() => {
+          dragRef.current = null;
+          setDragIndex(null);
+        }}
       >
         {PAGER_TAB_CHAIN.map(id => (
           <KeepAlivePanel

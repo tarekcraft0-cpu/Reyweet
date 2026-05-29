@@ -52,11 +52,19 @@ export function BottomNavTabRow({
   );
 
   useEffect(() => {
-    return () => {
-      windowDragCleanupRef.current?.();
-      windowDragCleanupRef.current = null;
+    const resetDrag = () => {
+      dragRef.current = null;
+      isDraggingRef.current = false;
+      clearWindowDragListeners();
     };
-  }, []);
+    window.addEventListener("blur", resetDrag);
+    document.addEventListener("visibilitychange", resetDrag);
+    return () => {
+      window.removeEventListener("blur", resetDrag);
+      document.removeEventListener("visibilitychange", resetDrag);
+      clearWindowDragListeners();
+    };
+  }, [clearWindowDragListeners]);
 
   const shouldSuppressNavTap = useCallback(
     () => shouldSuppressTap() || Date.now() < suppressUntilRef.current,
@@ -124,7 +132,6 @@ export function BottomNavTabRow({
       const onMove = (ev: PointerEvent) => {
         if (ev.pointerType === "mouse" && ev.buttons === 0) return;
         handlePointerMove(ev.clientX, ev.pointerId, rowEl);
-        if (isDraggingRef.current) ev.preventDefault();
       };
       const onEnd = (ev: PointerEvent) => {
         try {

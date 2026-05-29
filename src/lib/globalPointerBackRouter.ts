@@ -79,10 +79,17 @@ function installDocumentRouter() {
     layer?.onPointerUp(e);
   };
 
+  const resetActivePointer = () => {
+    activePointerId = null;
+    activeLayerId = null;
+  };
+
   document.addEventListener("pointerdown", onDown, { capture: true, passive: false });
   document.addEventListener("pointermove", onMove, { capture: true, passive: false });
   document.addEventListener("pointerup", onUp, { capture: true });
   document.addEventListener("pointercancel", onUp, { capture: true });
+  window.addEventListener("blur", resetActivePointer);
+  document.addEventListener("visibilitychange", resetActivePointer);
 }
 
 /**

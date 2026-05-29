@@ -75,6 +75,7 @@
   var startY = 0;
   var touchMoved = false;
   var rafId = 0;
+  var isAndroid = /Android/i.test(typeof navigator !== "undefined" ? navigator.userAgent : "");
 
   function stopRaf() {
     if (rafId) {
@@ -110,12 +111,17 @@
       if (allowTarget(e.target) || longPressTarget(e.target)) return;
       var dx = Math.abs(e.touches[0].clientX - startX);
       var dy = Math.abs(e.touches[0].clientY - startY);
+      if (dy > dx && dy > 4) {
+        touchMoved = true;
+        stopRaf();
+        return;
+      }
       if (dx > 12 || dy > 12) {
         touchMoved = true;
         stopRaf();
         return;
       }
-      if (!touchMoved) {
+      if (!touchMoved && !isAndroid) {
         e.preventDefault();
         clearSelection();
       }
