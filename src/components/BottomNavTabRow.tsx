@@ -51,6 +51,11 @@ export function BottomNavTabRow({
     isDraggingRef,
   );
 
+  const clearWindowDragListeners = useCallback(() => {
+    windowDragCleanupRef.current?.();
+    windowDragCleanupRef.current = null;
+  }, []);
+
   useEffect(() => {
     const resetDrag = () => {
       dragRef.current = null;
@@ -76,11 +81,6 @@ export function BottomNavTabRow({
   }, [onSuppressTapChange, shouldSuppressNavTap]);
 
   const items = Children.toArray(children);
-
-  const clearWindowDragListeners = useCallback(() => {
-    windowDragCleanupRef.current?.();
-    windowDragCleanupRef.current = null;
-  }, []);
 
   const finishDragSession = useCallback(
     (clientX: number, pointerId: number, targetEl: HTMLElement | null) => {
