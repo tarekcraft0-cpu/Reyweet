@@ -136,6 +136,8 @@ function PostCardInner({
     ) : null;
 
   const showFeedMedia = postShowsFeedMedia({ ...post, type: displayType });
+  const isAudioOnlyMedia =
+    postMedia.hasAudio && !postMedia.hasImage && !postMedia.hasVideo;
   const mediaLazyMinH =
     postMedia.hasVideo || displayType === "reel" ? "min-h-[12rem]" : "min-h-[12rem]";
 
