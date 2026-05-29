@@ -9,8 +9,9 @@ import { emitToUsers } from "./realtimeSocket.js";
 // ──────────────────────────────────────────
 // أبعاد الطاولة (وحدات منطقية)
 // ──────────────────────────────────────────
-export const TABLE_W = 800;
-export const TABLE_H = 400;
+/** طاولة عمودية (طولية) مثل ألعاب البلياردو على الجوال */
+export const TABLE_W = 400;
+export const TABLE_H = 800;
 export const BALL_R = 12;
 export const POCKET_R = 20;
 
@@ -71,11 +72,18 @@ const chatRoomIndex = new Map<string, string>();
 function initBalls(): BallState[] {
   const balls: BallState[] = [];
 
-  // كرة الـ cue (بيضاء)
-  balls.push({ id: 0, x: 200, y: TABLE_H / 2, vx: 0, vy: 0, pocketed: false });
+  // كرة الضرب (بيضاء) — أسفل الطاولة قرب اللاعب
+  balls.push({
+    id: 0,
+    x: TABLE_W / 2,
+    y: TABLE_H - 130,
+    vx: 0,
+    vy: 0,
+    pocketed: false,
+  });
 
-  // ترتيب مثلث البلياردو (15 كرة)
-  const apex = { x: 560, y: TABLE_H / 2 };
+  // مثلث الكرات — أعلى الطاولة
+  const apex = { x: TABLE_W / 2, y: 145 };
   const positions = buildTriangle(apex);
   // ترتيب قياسي: 8 في المنتصف، تشابك صلبة/مخططة
   const standardOrder = [1, 9, 2, 10, 8, 3, 11, 4, 12, 5, 13, 6, 14, 7, 15];
@@ -96,12 +104,13 @@ function initBalls(): BallState[] {
 function buildTriangle(apex: { x: number; y: number }): { x: number; y: number }[] {
   const rows = 5;
   const d = BALL_R * 2 + 0.5;
+  const rowStep = d * Math.sin(Math.PI / 3);
   const positions: { x: number; y: number }[] = [];
   for (let row = 0; row < rows; row++) {
     for (let col = 0; col <= row; col++) {
       positions.push({
-        x: apex.x + row * d * Math.cos(Math.PI / 6),
-        y: apex.y + (col - row / 2) * d,
+        x: apex.x + (col - row / 2) * d,
+        y: apex.y + row * rowStep,
       });
     }
   }
@@ -198,8 +207,8 @@ export function applyShot(
     const cue = room.balls.find(b => b.id === 0);
     if (cue) {
       cue.pocketed = false;
-      cue.x = 200;
-      cue.y = TABLE_H / 2;
+      cue.x = TABLE_W / 2;
+      cue.y = TABLE_H - 130;
       cue.vx = 0;
       cue.vy = 0;
     }
