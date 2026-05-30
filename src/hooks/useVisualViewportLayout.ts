@@ -19,9 +19,9 @@ function readVisualViewportLayout(): VisualViewportLayout {
   };
 }
 
-/** padding سفلي للمُلحق — safe-area فقط عند إغلاق الكيبورد */
-export function chatComposerBottomPadding(keyboardOpen: boolean): string {
-  return keyboardOpen ? "0px" : "var(--chat-sab-effective, var(--sab))";
+/** padding سفلي للمُلحق — safe-area داخل .chat-composer-bar وليس فراغاً تحت الشريط */
+export function chatComposerBottomPadding(_keyboardOpen: boolean): string {
+  return "0px";
 }
 
 /**

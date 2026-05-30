@@ -104,7 +104,9 @@
 }
 
 html.retweet-native-shell .chat-room-stack {
-  max-height: calc(100dvh - var(--sat) - var(--sab));
+  /* لا نطرح --sab هنا — الشريط يجلس فوق منطقة الـ home indicator داخلياً */
+  max-height: 100dvh;
+  height: 100%;
 }
 
 /** ═══ تحسينات أداء المحادثة ═══ */
@@ -342,32 +344,28 @@ html.retweet-native-shell .chat-room-stack {
   flex-shrink: 0;
 }
 
-/* الرسائل + شريط الكتابة — يرتفعان معاً فوق الكيبورد */
+/* الرسائل — تملأ المساحة؛ شريط الكتابة مثبت أسفل الغرفة */
 .chat-bottom-lift {
   flex: 1 1 0%;
   min-height: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  will-change: transform;
 }
 
-html.chat-keyboard-open [data-chat-room] .chat-bottom-lift {
-  transform: translate3d(0, calc(-1 * var(--vv-keyboard-inset, 0px)), 0);
-  transition: transform 0.12s cubic-bezier(0.32, 0.72, 0, 1);
-}
-
-/* شريط الكتابة — في تدفق الطبيعي أسفل الرسائل (داخل chat-bottom-lift) */
+/* شريط الكتابة — ملاصق لأسفل الشاشة (safe-area داخل الشريط وليس فراغاً أبيض تحته) */
 .chat-composer-dock {
-  position: relative;
+  position: sticky;
+  bottom: 0;
   z-index: 24;
   flex-shrink: 0;
+  margin-top: auto;
   margin-inline: 0;
   max-width: none;
   width: 100%;
   direction: ltr;
   margin-bottom: 0;
-  padding-bottom: var(--chat-sab-effective, var(--sab));
+  padding-bottom: 0;
   background: transparent;
   box-shadow: none;
   pointer-events: auto;
@@ -375,13 +373,26 @@ html.chat-keyboard-open [data-chat-room] .chat-bottom-lift {
 }
 
 html.chat-keyboard-open [data-chat-room] .chat-composer-dock {
-  padding-bottom: 0 !important;
-  margin-bottom: 0 !important;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: var(--vv-keyboard-inset, 0px);
+  z-index: 280;
+  margin: 0 auto;
+  max-width: 28rem;
+  width: 100%;
+  padding-bottom: 0;
+  background: var(--chat-surface, hsl(var(--background)));
+  transition: bottom 0.12s cubic-bezier(0.32, 0.72, 0, 1);
 }
 
-html.chat-keyboard-open .chat-composer-bar {
+html.chat-keyboard-open [data-chat-room] .chat-composer-bar {
   padding-top: 0.375rem !important;
-  padding-bottom: 0 !important;
+  padding-bottom: 0.25rem !important;
+}
+
+html:not(.chat-keyboard-open) [data-chat-room] .chat-composer-bar {
+  padding-bottom: max(0.5rem, var(--chat-sab-effective, var(--sab))) !important;
 }
 
 .chat-composer-dock .chat-composer-bar,

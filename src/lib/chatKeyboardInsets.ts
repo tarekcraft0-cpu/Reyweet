@@ -45,14 +45,10 @@ export function readChatKeyboardSnapshot(): ChatKeyboardSnapshot {
   const vvInset = computeVisualViewportKeyboardInset(layoutH, vvHeight, vvOffsetTop);
   const nativeCssInset = readNativeKeyboardInsetFromCss();
 
-  let keyboardInset = vvInset;
-  if (useNativeKeyboardHeight && nativeKeyboardPx > 0) {
+  /** iOS/Capacitor: نأخذ الأكبر بين visualViewport وارتفاع الكيبورد الأصلي — min كان يترك فراغاً بين الشريط والكيبورد */
+  let keyboardInset = Math.max(vvInset, nativeKeyboardPx, nativeCssInset);
+  if (keyboardInset < 8 && useNativeKeyboardHeight && nativeKeyboardPx > 0) {
     keyboardInset = nativeKeyboardPx;
-  } else if (nativeKeyboardPx > 0 && vvInset > 0) {
-    /** تجنّب max المبالغ فيه — يوسّع الفراغ بين الشريط والكيبورد */
-    keyboardInset = Math.min(vvInset, nativeKeyboardPx);
-  } else {
-    keyboardInset = Math.max(vvInset, nativeKeyboardPx, nativeCssInset);
   }
   return {
     keyboardInset,
@@ -78,10 +74,9 @@ function applyChatKeyboardCss() {
   root.style.setProperty("--vv-keyboard-inset", `${snap.keyboardInset}px`);
   root.style.setProperty("--chat-sab-effective", snap.open ? "0px" : "var(--sab)");
   root.classList.toggle("chat-keyboard-open", snap.open);
-  /** مع رفع chat-bottom-lift لا نضيف ارتفاع الكيبورد — فقط مساحة الشريط */
   const scrollPad = snap.open
-    ? "calc(8px + var(--chat-composer-h, 72px))"
-    : "calc(12px + var(--chat-composer-h, 0px))";
+    ? "calc(4px + var(--chat-composer-h, 72px))"
+    : "calc(8px + var(--chat-composer-h, 72px))";
   root.style.setProperty("--chat-scroll-padding-bottom", scrollPad);
   return snap;
 }

@@ -1,10 +1,10 @@
-import { r as reactExports, a2 as getAugmentedNamespace, S as getDefaultExportFromCjs, W as jsxRuntimeExports, V as React__default, a3 as React } from "./server-D_NeUWUL.js";
+import { r as reactExports, a2 as getAugmentedNamespace, S as getDefaultExportFromCjs, W as jsxRuntimeExports, V as React__default, a3 as React } from "./server-Gng79oXN.js";
 import require$$0 from "fs";
 import require$$1 from "url";
-import { n as notImplementedClass, a as notImplemented } from "./worker-entry-CELnSaxb.js";
+import { n as notImplementedClass, a as notImplemented } from "./worker-entry-D4gFMffl.js";
 import require$$3 from "http";
 import require$$4 from "https";
-import { r as reactDomExports, R as ReactDOM } from "./router-D5VxWWOw.js";
+import { r as reactDomExports, R as ReactDOM } from "./router-jBaH-NZX.js";
 import require$$0$1 from "util";
 import require$$1$1 from "stream";
 import require$$1$2 from "zlib";
@@ -2085,7 +2085,8 @@ async function apiFetch$1(path, init = {}) {
   if (t) headers.set("Authorization", `Bearer ${t}`);
   try {
     const fp = await getOrCreateDeviceFingerprint();
-    if (fp) headers.set("X-Device-Fingerprint", fp);
+    const crossOrigin = typeof window !== "undefined" && !!base && !url2.startsWith(window.location.origin);
+    if (fp && !crossOrigin) headers.set("X-Device-Fingerprint", fp);
   } catch {
   }
   const method = (init.method || "GET").toUpperCase();
@@ -29175,13 +29176,9 @@ function readChatKeyboardSnapshot() {
   const vvOffsetTop = vv ? Math.round(vv.offsetTop) : 0;
   const vvInset = computeVisualViewportKeyboardInset(layoutH, vvHeight, vvOffsetTop);
   const nativeCssInset = readNativeKeyboardInsetFromCss();
-  let keyboardInset = vvInset;
-  if (useNativeKeyboardHeight && nativeKeyboardPx > 0) {
+  let keyboardInset = Math.max(vvInset, nativeKeyboardPx, nativeCssInset);
+  if (keyboardInset < 8 && useNativeKeyboardHeight && nativeKeyboardPx > 0) {
     keyboardInset = nativeKeyboardPx;
-  } else if (nativeKeyboardPx > 0 && vvInset > 0) {
-    keyboardInset = Math.min(vvInset, nativeKeyboardPx);
-  } else {
-    keyboardInset = Math.max(vvInset, nativeKeyboardPx, nativeCssInset);
   }
   return {
     keyboardInset,
@@ -29204,7 +29201,7 @@ function applyChatKeyboardCss() {
   root.style.setProperty("--vv-keyboard-inset", `${snap.keyboardInset}px`);
   root.style.setProperty("--chat-sab-effective", snap.open ? "0px" : "var(--sab)");
   root.classList.toggle("chat-keyboard-open", snap.open);
-  const scrollPad = snap.open ? "calc(8px + var(--chat-composer-h, 72px))" : "calc(12px + var(--chat-composer-h, 0px))";
+  const scrollPad = snap.open ? "calc(4px + var(--chat-composer-h, 72px))" : "calc(8px + var(--chat-composer-h, 72px))";
   root.style.setProperty("--chat-scroll-padding-bottom", scrollPad);
   return snap;
 }
@@ -29217,7 +29214,7 @@ async function ensureNativeKeyboardBridge() {
   nativeListenersReady = true;
   try {
     const [{ Keyboard }, { Capacitor: Capacitor2 }] = await Promise.all([
-      import("./index-DnONLyIX.js"),
+      import("./index-BZeTmH_7.js"),
       Promise.resolve().then(() => index$1)
     ]);
     if (!Capacitor2.isNativePlatform()) return;
@@ -29318,8 +29315,8 @@ function useChatKeyboardInsets(enabled) {
   }, [enabled]);
   return snap;
 }
-function chatComposerBottomPadding(keyboardOpen) {
-  return keyboardOpen ? "0px" : "var(--chat-sab-effective, var(--sab))";
+function chatComposerBottomPadding(_keyboardOpen) {
+  return "0px";
 }
 const MAX_IMAGE_EDGE = 1280;
 const IMAGE_JPEG_QUALITY = 0.82;
@@ -36924,7 +36921,7 @@ function ChatRoom({
     if (!el || typeof window === "undefined") return;
     const rect = el.getBoundingClientRect();
     const kbOpen = typeof document !== "undefined" && document.documentElement.classList.contains("chat-keyboard-open");
-    const h = Math.ceil(rect.height) + (kbOpen ? 2 : 8);
+    const h = Math.ceil(rect.height) + (kbOpen ? 0 : 4);
     if (h > 0) {
       document.documentElement.style.setProperty("--chat-composer-h", `${h}px`);
     }

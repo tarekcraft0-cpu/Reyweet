@@ -4880,7 +4880,7 @@ function ChatRoom({
     const kbOpen =
       typeof document !== "undefined" &&
       document.documentElement.classList.contains("chat-keyboard-open");
-    const h = Math.ceil(rect.height) + (kbOpen ? 2 : 8);
+    const h = Math.ceil(rect.height) + (kbOpen ? 0 : 4);
     if (h > 0) {
       document.documentElement.style.setProperty("--chat-composer-h", `${h}px`);
     }
