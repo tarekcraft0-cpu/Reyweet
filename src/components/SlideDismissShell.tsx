@@ -222,6 +222,8 @@ export type AppDismissSheetProps = UseSlideDismissBackOptions & {
   panelSwipeDismiss?: boolean;
   dismissPullCssVar?: string;
   darkPanelChrome?: boolean;
+  /** انزلاق عند الفتح من يمين الشاشة (RTL) */
+  animateOnMount?: boolean;
 };
 
 /**
@@ -238,6 +240,7 @@ export function AppDismissSheet({
   enabled = true,
   blocked = false,
   edgeBottomInsetPx,
+  animateOnMount = false,
 }: AppDismissSheetProps) {
   const pullVar = dismissPullCssVar ?? (panelSwipeDismiss ? GENERIC_DISMISS_PULL_CSS_VAR : undefined);
   const isDarkChrome =
@@ -249,6 +252,7 @@ export function AppDismissSheet({
     dismissPullCssVar: pullVar,
     panelSwipeDismiss,
     edgeBottomInsetPx,
+    animateOnMount,
   });
   const panelTouchStyle = panelSwipeProps.style;
   const panelPointerHandlers = panelSwipeProps.onPointerDown

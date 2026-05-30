@@ -136,6 +136,8 @@ export async function buildMinimalAppState(currentUserId: string): Promise<AppSt
       founderOfficialLabel: u.founderOfficialLabel,
       appOfficialVerified: u.appOfficialVerified === true,
       appOfficialLabel: u.appOfficialLabel,
+      supportOfficialVerified: u.supportOfficialVerified === true,
+      supportOfficialLabel: u.supportOfficialLabel,
       note: u.note,
       phone: u.phone || undefined,
       profileLink: u.profileLink || u.officialSiteUrl || undefined,

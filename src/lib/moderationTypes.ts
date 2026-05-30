@@ -51,6 +51,7 @@ export type ModeratorRole =
 export type ModeratorActionType =
   | "ignore"
   | "warn"
+  | "ban"
   | "temp_ban"
   | "perm_ban"
   | "shadow_ban"
@@ -83,6 +84,9 @@ export interface ModerationReport {
   updatedAt: number;
   assignedModeratorId?: ID;
   linkedReportIds?: string[];
+  /** يُملأ من API الإشراف */
+  reportedUsername?: string;
+  reporterUsername?: string;
 }
 
 export interface UserViolation {
@@ -95,6 +99,19 @@ export interface UserViolation {
   at: number;
   moderatorId: ID;
 }
+
+/** إشعار يُعرض مرة واحدة داخل التطبيق (استعادة، تحذير، …) */
+export type ModerationUserNotice = {
+  id: string;
+  kind: "account_restored" | "warning";
+  titleAr: string;
+  messageAr: string;
+  /** فئة المخالفة (مثل التحرش، سبام، …) */
+  guidelineAr?: string;
+  /** ما الذي فعلته / تفاصيل المخالفة */
+  reasonDetail?: string;
+  createdAt: number;
+};
 
 export interface UserModerationState {
   userId: ID;
@@ -109,6 +126,8 @@ export interface UserModerationState {
   violations: UserViolation[];
   deviceFingerprints: string[];
   ipAddresses: string[];
+  /** إشعار لم يُعرض بعد — يُمسح بعد تأكيد المستخدم */
+  pendingNotice?: ModerationUserNotice;
   updatedAt: number;
 }
 
@@ -125,6 +144,8 @@ export interface ModerationAppeal {
   updatedAt: number;
   reviewedBy?: ID;
   reviewNote?: string;
+  /** يُملأ من API الإشراف */
+  username?: string;
 }
 
 export const REPORT_CATEGORIES: {

@@ -63,6 +63,15 @@ export function applyAuthoritativeProfile(base: User, server: Partial<User> & { 
   });
 }
 
+/** لا نمسح قائمة الحظر المحلية بلقطة سيرفر قديمة بلا blocked */
+export function mergeBlockedFromServer(prev?: ID[], incoming?: ID[]): ID[] {
+  const p = prev ?? [];
+  const i = incoming ?? [];
+  if (p.length > i.length) return p;
+  if (i.length > p.length) return i;
+  return i;
+}
+
 /** دمج حالة السيرفر — المتابعات من الاستجابة دائماً (حتى لو فارغة بعد إلغاء متابعة) */
 export function mergeUserFromServer(prev: User | undefined, incoming: User): User {
   if (!prev) return { ...incoming, password: "" };
@@ -97,6 +106,8 @@ export function mergeUserFromServer(prev: User | undefined, incoming: User): Use
     followRequestOut: Array.isArray(incoming.followRequestOut)
       ? incoming.followRequestOut
       : prev.followRequestOut,
+    blocked: mergeBlockedFromServer(prev.blocked, incoming.blocked),
+    closeFriends: Array.isArray(incoming.closeFriends) ? incoming.closeFriends : prev.closeFriends,
   };
 }
 

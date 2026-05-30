@@ -123,6 +123,7 @@ export async function upsertPostOnServer(ownerId: string, post: Post): Promise<P
   const comments = rowComments(row);
   const saved = await persistPostRow(row, comments);
   await patchOwnerSnapshotPost(ownerId, saved);
+  broadcastPostUpdate(saved, ownerId);
   broadcastSseEvent("sync_hint", { kind: "feed", postId: saved.id, fromUserId: ownerId });
   return saved;
 }

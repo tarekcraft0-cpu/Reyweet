@@ -1,6 +1,15 @@
 import type { ID, User } from "./types";
 import { isFounderAccount } from "./founderAccount";
+import {
+  SUPPORT_OFFICIAL_ACCOUNT_ID,
+  SUPPORT_OFFICIAL_USERNAME,
+} from "./supportOfficialAccount";
 import { getUserIdForReservedShortUsername, isShortUsernameException } from "./shortUsernameAccounts";
+
+const SYSTEM_RESERVED_USERNAMES: Record<string, string> = {
+  [SUPPORT_OFFICIAL_USERNAME]: SUPPORT_OFFICIAL_ACCOUNT_ID,
+  retweet: "u_official_retweet",
+};
 
 export const USERNAME_RE = /^[a-z0-9_]{3,30}$/;
 
@@ -34,6 +43,9 @@ export function validateUsernameFormat(username: string, userId?: ID): string | 
   if (!USERNAME_RE.test(t)) {
     return "يُسمح بـ a-z و 0-9 و _ فقط — بدون عربي أو أحرف كبيرة أو رموز";
   }
+  const norm = normalizeUsername(t);
+  const owner = SYSTEM_RESERVED_USERNAMES[norm];
+  if (owner && userId !== owner) return "هذا الاسم محجوز لحساب رسمي في التطبيق";
   return null;
 }
 

@@ -73,6 +73,7 @@ const KeepAlivePanel = memo(function KeepAlivePanel({
             ? `transform ${TAB_TRANSITION_MS}ms ${TAB_EASE}`
             : "none",
         visibility: showPanel ? "visible" : "hidden",
+        contentVisibility: isSettled ? "visible" : "hidden",
         pointerEvents: isSettled && !isDragging ? "auto" : "none",
         zIndex: isSettled ? 10 : isDragging && near ? 5 : 0,
       }}

@@ -6,7 +6,11 @@ import {
   canViewProfile,
   canViewPrivatePosts,
   userHasVisibleStories,
+  isMutual,
+  theyFollowViewer,
+  userIsFollowing,
 } from "@/lib/store";
+import { profilePostAuthorIds } from "@/lib/founderAccount";
 import {
   apiBackendEnabled,
   apiFetchUserById,
@@ -33,7 +37,9 @@ import { RSocialAvatar } from "../rsocial/RSocialAvatar";
 import { VerifiedMarkForUser } from "../VerifiedBadge";
 import { FounderOfficialBanner } from "../FounderOfficialBanner";
 import { AppOfficialBanner } from "../AppOfficialBanner";
+import { SupportOfficialBanner } from "../SupportOfficialBanner";
 import { SafetyActionSheet } from "../moderation/SafetyActionSheet";
+import { BlockConfirmSheet, type BlockConfirmMode } from "../moderation/BlockConfirmSheet";
 import { ReportFlowSheet } from "../moderation/ReportFlowSheet";
 import { BannedProfileView } from "../moderation/BannedProfileView";
 import { apiFetchBannedUserPreview } from "@/lib/moderationApi";
@@ -138,7 +144,7 @@ export function ProfileScreen({
     state,
     currentUser,
     toggleFollow,
-    toggleBlock,
+    toggleBlockWithSync,
     addHighlight,
     recordProfileVisit,
     acceptFollowRequest,
@@ -146,10 +152,19 @@ export function ProfileScreen({
     isGuest,
     refreshSocialRelation,
     mergeDiscoveredUsers,
+    refreshProfilePostsFromServer,
   } = useApp();
   const t = useT();
   const rawU = userById(state, userId);
   const u = rawU ? withFounderProfileFields(rawU) : null;
+  const profileAuthorIds = useMemo(
+    () => new Set(profilePostAuthorIds(userId, rawU ?? u)),
+    [userId, rawU, u],
+  );
+  const postByProfileAuthor = useMemo(
+    () => (p: Post) => profileAuthorIds.has(p.userId),
+    [profileAuthorIds],
+  );
   const [tab, setTab] = useState<ProfileGridTab>("all");
   const [profileFeed, setProfileFeed] = useState<null | { orderedIds: string[]; initialIndex: number; gridTab: ProfileGridTab; scrollToComments?: boolean }>(null);
   const [showFollowers, setShowFollowers] = useState<"followers" | "following" | null>(null);
@@ -157,6 +172,7 @@ export function ProfileScreen({
   const [safetyOpen, setSafetyOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [profileBanned, setProfileBanned] = useState(false);
+  const [blockConfirmOpen, setBlockConfirmOpen] = useState(false);
 
   useEffect(() => {
     if (!userId || userId === currentUser?.id || !apiBackendEnabled()) {
@@ -216,12 +232,12 @@ export function ProfileScreen({
       const gridTab =
         (d.profileGridTab as string) === "posts" ? ("all" as ProfileGridTab) : d.profileGridTab;
       if (gridTab === "all")
-        list = sortProfilePostsNewestFirst(state.posts.filter(p => p.userId === userId));
+        list = sortProfilePostsNewestFirst(state.posts.filter(postByProfileAuthor));
       else if (gridTab === "tweets")
-        list = sortProfilePostsNewestFirst(state.posts.filter(p => p.userId === userId && isDisplayTweet(p)));
+        list = sortProfilePostsNewestFirst(state.posts.filter(p => postByProfileAuthor(p) && isDisplayTweet(p)));
       else if (gridTab === "reposts")
-        list = sortProfilePostsNewestFirst(state.posts.filter(p => p.reposts.includes(userId)));
-      else list = sortProfilePostsNewestFirst(state.posts.filter(p => p.userId === userId && isReelFeedPost(p)));
+        list = sortProfilePostsNewestFirst(state.posts.filter(p => p.reposts.some(id => profileAuthorIds.has(id))));
+      else list = sortProfilePostsNewestFirst(state.posts.filter(p => postByProfileAuthor(p) && isReelFeedPost(p)));
       const orderedIds = list.map(p => p.id);
       const idx = orderedIds.indexOf(d.postId);
       setTab(gridTab);
@@ -236,7 +252,7 @@ export function ProfileScreen({
     };
     window.addEventListener("retweet-restore-profile-feed", h);
     return () => window.removeEventListener("retweet-restore-profile-feed", h);
-  }, [userId, state.posts, state.users]);
+  }, [userId, state.posts, state.users, postByProfileAuthor, profileAuthorIds]);
 
   const myStoriesSorted = useMemo(() => {
     if (!currentUser) return [];
@@ -253,20 +269,21 @@ export function ProfileScreen({
   }, [state.users, userId, socialHydratedAt]);
 
   const myAllFeed = useMemo(
-    () => sortProfilePostsNewestFirst(state.posts.filter(p => p.userId === userId)),
-    [state.posts, userId],
+    () => sortProfilePostsNewestFirst(state.posts.filter(postByProfileAuthor)),
+    [state.posts, postByProfileAuthor],
   );
   const myTweets = useMemo(
-    () => sortProfilePostsNewestFirst(state.posts.filter(p => p.userId === userId && isDisplayTweet(p))),
-    [state.posts, userId],
+    () => sortProfilePostsNewestFirst(state.posts.filter(p => postByProfileAuthor(p) && isDisplayTweet(p))),
+    [state.posts, postByProfileAuthor],
   );
   const myReposts = useMemo(
-    () => sortProfilePostsNewestFirst(state.posts.filter(p => p.reposts.includes(userId))),
-    [state.posts, userId],
+    () =>
+      sortProfilePostsNewestFirst(state.posts.filter(p => p.reposts.some(id => profileAuthorIds.has(id)))),
+    [state.posts, profileAuthorIds],
   );
   const myReels = useMemo(
-    () => sortProfilePostsNewestFirst(state.posts.filter(p => p.userId === userId && isReelFeedPost(p))),
-    [state.posts, userId],
+    () => sortProfilePostsNewestFirst(state.posts.filter(p => postByProfileAuthor(p) && isReelFeedPost(p))),
+    [state.posts, postByProfileAuthor],
   );
   const tabPosts =
     tab === "all" ? myAllFeed : tab === "tweets" ? myTweets : tab === "reposts" ? myReposts : myReels;
@@ -282,6 +299,11 @@ export function ProfileScreen({
     visitRecordedFor.current = null;
     setTab("all");
   }, [userId]);
+
+  useEffect(() => {
+    if (!userId || !apiBackendEnabled() || !getApiToken()) return;
+    void refreshProfilePostsFromServer(userId);
+  }, [userId, refreshProfilePostsFromServer]);
 
   useEffect(() => {
     const usr = userById(state, userId);
@@ -358,10 +380,11 @@ export function ProfileScreen({
   }
   const canView = canViewProfile(state, currentUser?.id || null, u.id);
   const canSeePrivateContent = canViewPrivatePosts(state, currentUser?.id || null, u.id);
-  const isFollowing = currentUser?.following.includes(u.id);
-  const isFollowedBy = !!(currentUser && u.followers.includes(currentUser.id));
+  const isFollowing = !!(currentUser && userIsFollowing(state, currentUser.id, u.id));
+  const theyFollowMe = !!(currentUser && theyFollowViewer(state, currentUser.id, u.id));
+  const isMutualFollow = !!(currentUser && isMutual(state, currentUser.id, u.id));
   const pendingFollowOut = !!(currentUser?.followRequestOut || []).includes(u.id);
-  const showFollowBack = !isMe && isFollowedBy && !isFollowing && !pendingFollowOut;
+  const showFollowBack = !isMe && theyFollowMe && !isFollowing && !pendingFollowOut;
   const isBlocked = currentUser?.blocked.includes(u.id);
   const isHiddenByBlock = !!(currentUser && currentUser.blocked.includes(u.id));
   /** صاحب الملف يرى تبويبي الإعجابات والمحفوظات دائماً؛ الزائر يرونهما فقط إذا لم يخفِهما المستخدم */
@@ -398,9 +421,8 @@ export function ProfileScreen({
             setMenuOpen(false);
             return;
           }
-          toggleBlock(u.id);
           setMenuOpen(false);
-          alert(isBlocked ? t("unblock") : t("blocked"));
+          setBlockConfirmOpen(true);
         }}
         className="w-full text-start px-3 py-2.5 hover:bg-secondary text-destructive text-sm border-t border-border"
       >
@@ -443,15 +465,17 @@ export function ProfileScreen({
     </>
   );
 
-  const followLabel = isFollowing
-    ? t("following")
-    : pendingFollowOut
-      ? "طلب مرسل"
-      : showFollowBack
-        ? t("followBack")
-        : u.isPrivate
-          ? "طلب متابعة"
-          : t("follow");
+  const followLabel = isMutualFollow
+    ? t("mutualFriends")
+    : isFollowing
+      ? t("followingDone")
+      : pendingFollowOut
+        ? "طلب مرسل"
+        : showFollowBack
+          ? t("followBack")
+          : u.isPrivate
+            ? "طلب متابعة"
+            : t("follow");
 
   const openHighlight = (h: HighlightEntry) => {
     let slides = h.slides?.length ? [...h.slides] : [];
@@ -705,6 +729,7 @@ export function ProfileScreen({
 
         <FounderOfficialBanner user={u} />
         <AppOfficialBanner user={u} />
+        <SupportOfficialBanner user={u} />
 
         <div className="mt-2 flex items-start gap-2">
           <div className="flex-1 min-w-0">
@@ -785,7 +810,13 @@ export function ProfileScreen({
 
         {isMe ? (
           <div className="flex gap-2 mt-4">
-            <button onClick={onEdit} className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 py-2.5 rounded-xl font-semibold text-sm">Edit Profile</button>
+            <button
+              type="button"
+              onClick={() => onEdit?.()}
+              className="flex-1 touch-manipulation bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 py-2.5 rounded-xl font-semibold text-sm transition active:scale-[0.98] active:opacity-90"
+            >
+              {t("edit")}
+            </button>
             <button onClick={shareProfile} className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 py-2.5 rounded-xl font-semibold text-sm">Share Profile</button>
           </div>
         ) : (
@@ -1063,6 +1094,23 @@ export function ProfileScreen({
         targetType="user"
       />
 
+      <BlockConfirmSheet
+        open={blockConfirmOpen && !isMe}
+        onClose={() => setBlockConfirmOpen(false)}
+        username={u.username}
+        mode={(isBlocked ? "unblock" : "block") as BlockConfirmMode}
+        onConfirm={async () => {
+          if (isGuest) {
+            notifyGuestActionBlocked();
+            return { ok: false, error: "سجّل الدخول أولاً" };
+          }
+          const wasBlocked = !!currentUser?.blocked.includes(u.id);
+          const r = await toggleBlockWithSync(u.id);
+          if (r.ok && wasBlocked) refreshSocialRelation(u.id);
+          return r;
+        }}
+      />
+
       {safetyOpen && !isMe && (
         <SafetyActionSheet
           reportedUserId={u.id}
@@ -1075,8 +1123,8 @@ export function ProfileScreen({
               notifyGuestActionBlocked();
               return;
             }
-            toggleBlock(u.id);
-            alert(isBlocked ? t("unblock") : t("blocked"));
+            setSafetyOpen(false);
+            setBlockConfirmOpen(true);
           }}
           onRestrict={() => alert("تم تقييد الحساب محلياً")}
           onMute={() => alert("تم كتم إشعارات هذا الحساب")}

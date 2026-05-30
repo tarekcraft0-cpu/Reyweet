@@ -1,7 +1,9 @@
 import type { ModeratorRole } from "../../../src/lib/moderationTypes.js";
 import { isPlatformAdmin } from "../lib/verificationAdmin.js";
 
-const DEFAULT_INTERNAL_IDS = ["u_founder_tareqf"];
+import { SUPPORT_OFFICIAL_ACCOUNT_ID } from "../../../src/lib/supportOfficialAccount.js";
+
+const DEFAULT_INTERNAL_IDS = ["u_founder_tareqf", SUPPORT_OFFICIAL_ACCOUNT_ID];
 
 export function getModeratorRole(userId: string): ModeratorRole | null {
   const internal = (process.env.INTERNAL_TRUSTED_USER_IDS || "")

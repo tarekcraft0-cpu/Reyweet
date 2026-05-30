@@ -1,4 +1,10 @@
 import { isReservedShortUsername, isShortUsernameException } from "./shortUsernameAccounts.js";
+import { SUPPORT_OFFICIAL_ACCOUNT_ID, SUPPORT_OFFICIAL_USERNAME } from "../../../src/lib/supportOfficialAccount.js";
+
+const SYSTEM_RESERVED_USERNAMES: Record<string, string> = {
+  [SUPPORT_OFFICIAL_USERNAME]: SUPPORT_OFFICIAL_ACCOUNT_ID,
+  retweet: "u_official_retweet",
+};
 
 /** أحرف إنجليزية صغيرة وأرقام وشرطة سفلية فقط */
 export const USERNAME_PATTERN = /^[a-z0-9_]{3,30}$/;
@@ -25,6 +31,9 @@ export function validateUsernameFormat(username: string, userId?: string): strin
   if (!USERNAME_PATTERN.test(t)) {
     return "يُسمح بـ a-z و 0-9 و _ فقط — بدون عربي أو أحرف كبيرة أو رموز";
   }
+  const norm = normalizeUsername(t);
+  const owner = SYSTEM_RESERVED_USERNAMES[norm];
+  if (owner && userId !== owner) return "هذا الاسم محجوز لحساب رسمي في التطبيق";
   return null;
 }
 

@@ -1,6 +1,8 @@
 import type { UserRow } from "../db/engine.js";
 
-const DEFAULT_ADMIN_IDS = ["u_founder_tareqf"];
+import { SUPPORT_OFFICIAL_ACCOUNT_ID } from "../../../src/lib/supportOfficialAccount.js";
+
+const DEFAULT_ADMIN_IDS = ["u_founder_tareqf", SUPPORT_OFFICIAL_ACCOUNT_ID];
 
 export function getAdminUserIds(): string[] {
   const raw = process.env.ADMIN_USER_IDS?.trim();

@@ -93,6 +93,12 @@ import type { UserRow } from "./db/engine.js";
 import { rateLimitClientKey, rateLimitHit } from "./lib/rateLimit.js";
 import { createCorsOriginChecker } from "./lib/corsOrigin.js";
 import {
+  getDeviceFingerprintFromRequest,
+  getDeviceLabelFromRequest,
+  needsLoginEmailOtp,
+  trustDeviceForUser,
+} from "./lib/loginSecurity.js";
+import {
   compressAndSaveVideo,
   isDataUrl,
   processDataUrl,
@@ -226,6 +232,8 @@ function publicUserPayload(user: UserRow) {
     founderOfficialLabel: user.founderOfficialLabel,
     appOfficialVerified: user.appOfficialVerified === true,
     appOfficialLabel: user.appOfficialLabel,
+    supportOfficialVerified: user.supportOfficialVerified === true,
+    supportOfficialLabel: user.supportOfficialLabel,
     isSubscribed: user.isSubscribed === true,
     subscriptionPlan: user.subscriptionPlan,
     subscriptionExpiresAt: user.subscriptionExpiresAt,
@@ -283,6 +291,54 @@ function maskEmail(email: string): string {
   return `${show}***@${domain}`;
 }
 
+async function respondLoginRequiresOtp(
+  user: UserRow,
+  res: Response,
+  otpReason: "two_factor" | "new_device" | "policy",
+): Promise<Response> {
+  if (!isSmtpConfigured()) {
+    return res.status(503).json({
+      error: "إرسال البريد غير مُعدّ — لا يمكن إرسال كود التحقق",
+    });
+  }
+  const code = generateOtpDigits();
+  const codeHash = await bcrypt.hash(code, 10);
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+  const key = loginOtpKey(user.id);
+  await deleteOtpsForUser(key, "login");
+  await createOtp({ userId: key, purpose: "login", codeHash, expiresAt });
+  const mail = await sendOtpEmail(
+    user.email,
+    "رمز تسجيل الدخول — Retweet",
+    code,
+    "تسجيل الدخول",
+  );
+  if (!mail.sent) {
+    return res.status(503).json({
+      error: mail.error || "تعذر إرسال كود التحقق — راجع إعدادات البريد",
+    });
+  }
+  return res.json({
+    requiresOtp: true,
+    emailHint: maskEmail(user.email),
+    otpReason,
+  });
+}
+
+async function finishAuthLogin(
+  user: UserRow,
+  req: Request,
+  res: Response,
+  deviceFingerprint: string,
+  deviceLabel: string,
+): Promise<Response> {
+  const bannedRes = await loginBanResponse(user, res);
+  if (bannedRes) return bannedRes;
+  await trustDeviceForUser(user.id, deviceFingerprint, deviceLabel, req);
+  const token = signAccessToken(user.id);
+  return res.json({ token, user: authUserPayload(user) });
+}
+
 function publicAppUrl(): string {
   const raw =
     process.env.PUBLIC_APP_URL?.trim() ||
@@ -317,6 +373,8 @@ const signupVerifyRequestSchema = z.object({
 const loginSchema = z.object({
   identifier: z.string().min(1),
   password: z.string().min(1),
+  deviceFingerprint: z.string().max(128).optional(),
+  deviceLabel: z.string().max(120).optional(),
 });
 
 function sanitizeStateForStorage(state: AppState): AppState {
@@ -404,6 +462,9 @@ app.post("/auth/register", async (req, res) => {
     appTheme: "light",
     appLanguage: "ar",
   });
+  const regFp = getDeviceFingerprintFromRequest(req, req.body as { deviceFingerprint?: string });
+  const regLabel = getDeviceLabelFromRequest(req, req.body as { deviceLabel?: string });
+  if (regFp) await trustDeviceForUser(user.id, regFp, regLabel, req);
   const token = signAccessToken(user.id);
   notifyUserRegistered(user);
   return res.json({ token, user: authUserPayload(user) });
@@ -427,38 +488,20 @@ app.post("/auth/login", async (req, res) => {
     }
     return res.status(401).json({ error: "بيانات خاطئة" });
   }
-  if (isLoginOtpRequired()) {
-    const code = generateOtpDigits();
-    const codeHash = await bcrypt.hash(code, 10);
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
-    const key = loginOtpKey(user.id);
-    await deleteOtpsForUser(key, "login");
-    await createOtp({ userId: key, purpose: "login", codeHash, expiresAt });
-    const mail = await sendOtpEmail(
-      user.email,
-      "رمز تسجيل الدخول — Retweet",
-      code,
-      "تسجيل الدخول",
-    );
-    if (!mail.sent) {
-      return res.status(503).json({
-        error: mail.error || "تعذر إرسال كود التحقق — راجع إعدادات البريد",
-      });
-    }
-    return res.json({
-      requiresOtp: true,
-      emailHint: maskEmail(user.email),
-    });
+  const deviceFp = getDeviceFingerprintFromRequest(req, parsed.data);
+  const deviceLabel = getDeviceLabelFromRequest(req, parsed.data);
+  const otpCheck = needsLoginEmailOtp(user, deviceFp, isLoginOtpRequired());
+  if (otpCheck.required) {
+    return respondLoginRequiresOtp(user, res, otpCheck.reason ?? "policy");
   }
-  const bannedRes = await loginBanResponse(user, res);
-  if (bannedRes) return bannedRes;
-  const token = signAccessToken(user.id);
-  return res.json({ token, user: authUserPayload(user) });
+  return finishAuthLogin(user, req, res, deviceFp, deviceLabel);
 });
 
 const verifyLoginSchema = z.object({
   identifier: z.string().min(1),
   code: z.string().min(4).max(12),
+  deviceFingerprint: z.string().max(128).optional(),
+  deviceLabel: z.string().max(120).optional(),
 });
 
 app.post("/auth/verify-login", async (req, res) => {
@@ -475,10 +518,9 @@ app.post("/auth/verify-login", async (req, res) => {
   const match = await bcrypt.compare(parsed.data.code.trim(), otp.codeHash);
   if (!match) return res.status(400).json({ error: "كود التحقق غير صحيح" });
   await deleteOtpsForUser(loginOtpKey(user.id), "login");
-  const bannedRes = await loginBanResponse(user, res);
-  if (bannedRes) return bannedRes;
-  const token = signAccessToken(user.id);
-  return res.json({ token, user: authUserPayload(user) });
+  const deviceFp = getDeviceFingerprintFromRequest(req, parsed.data);
+  const deviceLabel = getDeviceLabelFromRequest(req, parsed.data);
+  return finishAuthLogin(user, req, res, deviceFp, deviceLabel);
 });
 
 function googleAudiences(): string[] {
@@ -510,7 +552,11 @@ async function uniqueUsernameFromEmail(emailNorm: string): Promise<string> {
   return `${base.slice(0, 18)}_${crypto.randomBytes(3).toString("hex")}`.slice(0, 30);
 }
 
-const googleAuthSchema = z.object({ idToken: z.string().min(20) });
+const googleAuthSchema = z.object({
+  idToken: z.string().min(20),
+  deviceFingerprint: z.string().max(128).optional(),
+  deviceLabel: z.string().max(120).optional(),
+});
 
 app.post("/auth/google", async (req, res) => {
   const audiences = googleAudiences();
@@ -540,10 +586,16 @@ app.post("/auth/google", async (req, res) => {
     return res.status(401).json({ error: "رمز Google غير صالح أو منتهي" });
   }
 
+  const deviceFp = getDeviceFingerprintFromRequest(req, parsed.data);
+  const deviceLabel = getDeviceLabelFromRequest(req, parsed.data);
+
   const byGoogle = await findUserByGoogleId(sub);
   if (byGoogle) {
-    const token = signAccessToken(byGoogle.id);
-    return res.json({ token, user: authUserPayload(byGoogle) });
+    const otpCheck = needsLoginEmailOtp(byGoogle, deviceFp, isLoginOtpRequired());
+    if (otpCheck.required) {
+      return respondLoginRequiresOtp(byGoogle, res, otpCheck.reason ?? "policy");
+    }
+    return finishAuthLogin(byGoogle, req, res, deviceFp, deviceLabel);
   }
 
   const byEmail = await findUserByEmailOrUsername(emailNorm);
@@ -556,8 +608,12 @@ app.post("/auth/google", async (req, res) => {
       avatar:
         byEmail.avatar || picture || DEFAULT_AVATAR_DATA_URI,
     });
-    const token = signAccessToken(user!.id);
-    return res.json({ token, user: authUserPayload(user!) });
+    const linked = user!;
+    const otpCheck = needsLoginEmailOtp(linked, deviceFp, isLoginOtpRequired());
+    if (otpCheck.required) {
+      return respondLoginRequiresOtp(linked, res, otpCheck.reason ?? "policy");
+    }
+    return finishAuthLogin(linked, req, res, deviceFp, deviceLabel);
   }
 
   const rounds = Math.min(14, Math.max(10, Number(process.env.BCRYPT_ROUNDS || 12)));
@@ -736,6 +792,14 @@ app.get("/v1/app-state", authMiddleware, async (req, res) => {
   return res.json({ state: coerceAppStateForClient(state as AppState) });
 });
 
+app.get("/v1/feed/posts", authMiddleware, async (req, res) => {
+  setNoStoreApi(res);
+  const viewerId = (req as Request & { userId: string }).userId;
+  const { buildHomeFeedForViewer } = await import("./lib/homeFeed.js");
+  const { posts, users } = await buildHomeFeedForViewer(viewerId);
+  return res.json({ posts, users, fetchedAt: Date.now() });
+});
+
 app.get("/v1/users/search", authMiddleware, async (req, res) => {
   setNoStoreApi(res);
   const q = String(req.query.q ?? "").trim();
@@ -791,6 +855,20 @@ app.get("/v1/users/by-username/:username", authMiddleware, async (req, res) => {
   if (!row) return res.status(404).json({ error: "not found" });
   setNoStoreApi(res);
   return res.json({ user: await publicUserPayloadWithSocial(row) });
+});
+
+app.get("/v1/users/:userId/posts", authMiddleware, async (req, res) => {
+  setNoStoreApi(res);
+  const profileUserId = String(req.params.userId ?? "").trim();
+  if (!profileUserId) return res.status(400).json({ error: "invalid id" });
+  const viewerId = (req as Request & { userId: string }).userId;
+  const row = await getUserById(profileUserId);
+  if (!row && profileUserId !== "u_t_account") {
+    return res.status(404).json({ error: "not found" });
+  }
+  const { buildUserPostsForViewer } = await import("./lib/userPosts.js");
+  const { posts, users } = await buildUserPostsForViewer(profileUserId, viewerId);
+  return res.json({ posts, users, fetchedAt: Date.now() });
 });
 
 app.get("/v1/users/:userId", authMiddleware, async (req, res) => {
@@ -916,6 +994,7 @@ app.put("/v1/app-state", authMiddleware, async (req, res) => {
     const cleanWithProfiles = await mergeDbUsersIntoAppState(clean);
     /** لقطة العميل قد تكون أقدم من posts.json — ندمج المنشورات من القرص قبل الحفظ */
     let snapshotReady = await mergeDbPostsIntoAppState(cleanWithProfiles);
+    snapshotReady = await mergeSocialGraphIntoAppState(snapshotReady);
     snapshotReady = await hydrateChatsFromUserMessages(snapshotReady, userId);
     snapshotReady = await hydrateStateWithMessages(snapshotReady, userId);
     const { sanitizeCorruptHiddenMessages } = await import("./lib/sanitizeHiddenMessages.js");
@@ -994,6 +1073,24 @@ app.post("/v1/social/follow-request/decline", authMiddleware, async (req, res) =
   }
 });
 
+app.post("/v1/social/block/sever", authMiddleware, async (req, res) => {
+  const me = (req as Request & { userId: string }).userId;
+  const parsed = socialTargetSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "targetUserId مطلوب" });
+  const targetId = parsed.data.targetUserId.trim();
+  if (targetId === me) return res.status(400).json({ error: "لا يمكن حظر نفسك" });
+  try {
+    const { severSocialForBlock } = await import("./lib/socialActions.js");
+    const { getSocialRelation } = await import("./lib/socialGraph.js");
+    await severSocialForBlock(me, targetId);
+    setNoStoreApi(res);
+    return res.json({ ok: true, relation: await getSocialRelation(me, targetId) });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "فشل فصل المتابعة";
+    return res.status(400).json({ error: msg });
+  }
+});
+
 const createPostSchema = z.object({
   id: z.string().min(1).max(80),
   type: z.enum(["post", "tweet", "reel"]),
@@ -1005,7 +1102,9 @@ const createPostSchema = z.object({
 });
 
 app.post("/v1/posts", authMiddleware, async (req, res) => {
-  const userId = (req as Request & { userId: string }).userId;
+  const rawOwnerId = (req as Request & { userId: string }).userId;
+  const { resolveCanonicalPostOwnerId } = await import("./lib/founderLegacy.js");
+  const userId = resolveCanonicalPostOwnerId(rawOwnerId);
   const parsed = createPostSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "بيانات المنشور غير صالحة" });
   try {
@@ -1815,6 +1914,8 @@ registerVerificationRoutes(app, authMiddleware, broadcastProfileUpdated);
 
 const { registerGameRoutes } = await import("./routes/gameRoutes.js");
 registerGameRoutes(app, authMiddleware);
+const { registerSecurityRoutes } = await import("./routes/securityRoutes.js");
+registerSecurityRoutes(app, authMiddleware);
 if (isSmtpConfigured()) {
   const smtpCheck = await verifySmtpConnection();
   if (smtpCheck.ok) {

@@ -112,12 +112,13 @@ export async function countRecentReportsByReporter(reporterId: string, sinceMs: 
   return db.reports.filter(r => r.reporterId === reporterId && r.createdAt >= sinceMs).length;
 }
 
+/** يمنع النقر المزدوج فقط — نفس البلاغ خلال ثوانٍ قليلة */
 export async function findDuplicateReport(
   reporterId: string,
   reportedUserId: string,
   category: string,
   targetId?: string,
-  withinMs = 24 * 60 * 60 * 1000,
+  withinMs = 90 * 1000,
 ): Promise<ModerationReport | null> {
   const db = await readJson<ReportsDb>(REPORTS_FILE, { reports: [] });
   const since = Date.now() - withinMs;
@@ -127,7 +128,7 @@ export async function findDuplicateReport(
         r.reporterId === reporterId &&
         r.reportedUserId === reportedUserId &&
         r.category === category &&
-        r.targetId === targetId &&
+        (r.targetId || undefined) === (targetId || undefined) &&
         r.createdAt >= since,
     ) ?? null
   );
@@ -152,6 +153,17 @@ export async function saveUserModerationState(state: UserModerationState): Promi
   const db = await readJson<UserStatesDb>(USER_STATES_FILE, { users: {} });
   db.users[state.userId] = { ...state, updatedAt: Date.now() };
   await writeJsonAtomic(USER_STATES_FILE, db);
+}
+
+export async function dismissUserModerationNotice(
+  userId: string,
+  noticeId: string,
+): Promise<boolean> {
+  const state = await getUserModerationState(userId);
+  if (!state.pendingNotice || state.pendingNotice.id !== noticeId) return false;
+  state.pendingNotice = undefined;
+  await saveUserModerationState(state);
+  return true;
 }
 
 export async function saveAppeal(appeal: ModerationAppeal): Promise<void> {

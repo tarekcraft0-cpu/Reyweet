@@ -5,6 +5,7 @@ import {
 } from "./devSeedRestore";
 import { getUserEntitlements, isStoryStillActive } from "./verificationEntitlements";
 import { AppLanguageCtx } from "./languageContext";
+import { TypingCtx } from "./typingContext";
 import {
   createContext,
   startTransition,
@@ -71,6 +72,35 @@ function mergeHiddenMessageIdsByUser(
   return { ...(b || {}), ...(a || {}), [ownerId]: merged };
 }
 
+/** سحب الفيد من الخادم مباشرة — يتجاوز لقطة localStorage القديمة */
+function mergePostsServerAuthoritative(localPosts: Post[], remotePosts: Post[]): Post[] {
+  pruneLocalRemoveMaps();
+  const remoteById = new Map(remotePosts.map(p => [p.id, p]));
+  const merged: Post[] = [];
+  for (const p of remotePosts) {
+    if (locallyRemovedPostIds.has(p.id)) continue;
+    merged.push(p);
+  }
+  for (const p of localPosts) {
+    if (remoteById.has(p.id) || locallyRemovedPostIds.has(p.id)) continue;
+    merged.push(p);
+  }
+  return merged.sort((a, b) => b.createdAt - a.createdAt);
+}
+
+function mergeHomeFeedIntoState(
+  state: AppState,
+  feed: { posts: Post[]; users: User[] },
+): AppState {
+  const posts = mergePostsServerAuthoritative(state.posts || [], feed.posts || []);
+  const usersById = new Map(state.users.map(u => [u.id, u]));
+  for (const u of feed.users || []) {
+    const prev = usersById.get(u.id);
+    usersById.set(u.id, prev ? mergeUserFromServer(prev, u) : { ...u, password: "" });
+  }
+  return { ...state, posts, users: [...usersById.values()] };
+}
+
 function mergePostsPreservingLocalDeletes(localPosts: Post[], remotePosts: Post[]): Post[] {
   const now = Date.now();
   pruneLocalRemoveMaps(now);
@@ -122,8 +152,11 @@ import {
   apiDeclineFollowRequest,
   apiGetSocialRelation,
   apiToggleFollow,
+  apiSeverSocialOnBlock,
   ensureApiRuntimeConfig,
   pullRemoteAppState,
+  apiFetchHomeFeed,
+  apiFetchUserPosts,
   pushRemoteAppState,
   apiCreateStory,
   apiRequestPasswordReset,
@@ -206,12 +239,16 @@ import {
   getPublicProfileOverlay,
   patchPublicProfileSocial,
 } from "./publicProfileCache";
-import { withFounderProfileFields } from "./founderAccount";
+import { FOUNDER_ACCOUNT_ID, withFounderProfileFields } from "./founderAccount";
 import {
   OFFICIAL_APP_ACCOUNT_ID,
   createOfficialAppSeedUser,
   withOfficialAppProfileFields,
 } from "./officialAppAccount";
+import {
+  createSupportOfficialSeedUser,
+  withSupportOfficialProfileFields,
+} from "./supportOfficialAccount";
 import { toStoredMediaRef } from "./mediaUrl";
 import { DEFAULT_AVATAR_DATA_URI } from "./defaultAvatar";
 import { isUsernameTaken, normalizeUsername, validateUsernameFormat } from "./usernameRules";
@@ -349,13 +386,19 @@ function stripLegacyFounderFromState(s: AppState): AppState {
     });
 
   const posts = (s.posts || [])
-    .filter(p => stripUser(p.userId))
     .map(p => ({
       ...p,
+      userId: p.userId === LEGACY_FOUNDER_USER_ID ? FOUNDER_ACCOUNT_ID : p.userId,
       likes: (p.likes || []).filter(stripUser),
       reposts: (p.reposts || []).filter(stripUser),
-      comments: (p.comments || []).filter(c => stripUser(c.userId)),
-    }));
+      comments: (p.comments || [])
+        .filter(c => stripUser(c.userId))
+        .map(c => ({
+          ...c,
+          userId: c.userId === LEGACY_FOUNDER_USER_ID ? FOUNDER_ACCOUNT_ID : c.userId,
+        })),
+    }))
+    .filter(p => stripUser(p.userId));
 
   const stories = (s.stories || [])
     .filter(st => stripUser(st.userId))
@@ -441,6 +484,7 @@ const seedUsers: User[] = [
     bio: "بوت طارق رمدي — أدعية وتذكير",
   }),
   createOfficialAppSeedUser(mkUser),
+  createSupportOfficialSeedUser(mkUser),
 ];
 
 const seedPosts: Post[] = [
@@ -529,6 +573,29 @@ const devSeedBundle: DevSeedBundle = {
   stickers: initial.stickers,
   quranChat: initial.chats[0]!,
 };
+
+/** يزيل المتابعة وطلبات المتابعة بين محظور ومحظور */
+function applyBlockedSocialFiltersToUsers(users: User[]): User[] {
+  const byId = new Map(users.map(u => [u.id, { ...u }]));
+  for (const u of users) {
+    for (const bid of u.blocked || []) {
+      const me = byId.get(u.id);
+      const other = byId.get(bid);
+      if (!me) continue;
+      me.following = (me.following || []).filter(id => id !== bid);
+      me.followers = (me.followers || []).filter(id => id !== bid);
+      me.followRequestOut = (me.followRequestOut || []).filter(id => id !== bid);
+      me.followRequestIn = (me.followRequestIn || []).filter(id => id !== bid);
+      if (other) {
+        other.following = (other.following || []).filter(id => id !== u.id);
+        other.followers = (other.followers || []).filter(id => id !== u.id);
+        other.followRequestOut = (other.followRequestOut || []).filter(id => id !== u.id);
+        other.followRequestIn = (other.followRequestIn || []).filter(id => id !== u.id);
+      }
+    }
+  }
+  return [...byId.values()];
+}
 
 /**
  * يضمن وجود الحسابات والقنوات المدمجة (بوت القرآن وقناة القرآن)
@@ -690,8 +757,13 @@ export function normalizePersistedAppState(merged: AppState): AppState {
     appOfficialVerified: u.appOfficialVerified === true,
     appOfficialLabel:
       typeof u.appOfficialLabel === "string" ? u.appOfficialLabel : undefined,
+    supportOfficialVerified: u.supportOfficialVerified === true,
+    supportOfficialLabel:
+      typeof u.supportOfficialLabel === "string" ? u.supportOfficialLabel : undefined,
     };
-  }).map((u: User) => withOfficialAppProfileFields(withFounderProfileFields(u)));
+  }).map((u: User) =>
+    withSupportOfficialProfileFields(withOfficialAppProfileFields(withFounderProfileFields(u))),
+  );
   m.stories = (m.stories || []).map((st: StoryItem) => {
     const createdAt =
       typeof st.createdAt === "number"
@@ -742,6 +814,8 @@ export function normalizePersistedAppState(merged: AppState): AppState {
       users: stripOtherOwnedAccountsFromUsers(m.currentUserId, m.users),
     };
   }
+
+  m = { ...m, users: applyBlockedSocialFiltersToUsers(m.users) };
 
   return m;
 }
@@ -800,7 +874,9 @@ function hydrateSwitchedAccountState(
     : undefined;
   try {
     let next = remote
-      ? refreshOwnedUsersInState(buildMultiAccountState(userId, remote, base))
+      ? refreshOwnedUsersInState(
+          buildMultiAccountState(userId, remote, base, undefined, { serverAuthoritative: true }),
+        )
       : refreshOwnedUsersInState(
           reconcileOwnedAccountProfiles(
             ensureAuthUserInState(
@@ -1099,10 +1175,9 @@ function buildMultiAccountState(
   }
   const localPostsById = new Map<ID, Post>();
   for (const p of localPostSources) localPostsById.set(p.id, p);
-  const mergedPosts = mergePostsPreservingLocalDeletes(
-    [...localPostsById.values()],
-    primaryNorm.posts || [],
-  );
+  const mergedPosts = opts?.serverAuthoritative
+    ? mergePostsServerAuthoritative([...localPostsById.values()], primaryNorm.posts || [])
+    : mergePostsPreservingLocalDeletes([...localPostsById.values()], primaryNorm.posts || []);
 
   return scopeAppStateToAccount(
     resolvedId,
@@ -1160,7 +1235,7 @@ async function applyApiAuthSuccess(
     return { ok: false, error: "تعذر تحميل الحساب من الخادم" };
   }
 
-  let next = buildMultiAccountState(user.id, remote, previous, user);
+  let next = buildMultiAccountState(user.id, remote, previous, user, { serverAuthoritative: true });
   const directory = await apiFetchUserDirectory();
   if (directory.length) {
     const byId = new Map(next.users.map((u) => [u.id, u]));
@@ -1172,10 +1247,13 @@ async function applyApiAuthSuccess(
     next = normalizePersistedAppState({ ...next, users: [...byId.values()] });
   }
   saveAccountStateCache(user.id, next);
+  const { markServerHydrated } = await import("./remotePushGate");
+  markServerHydrated(user.id, next);
   logAuthRoute("login-apply-success", {
     userId: user.id,
     currentUserId: next.currentUserId,
     usersCount: next.users.length,
+    postsCount: next.posts?.length ?? 0,
   });
   return { ok: true, state: next };
 }
@@ -1195,7 +1273,13 @@ interface Ctx {
   login: (data: {
     username: string;
     password: string;
-  }) => Promise<{ ok: boolean; error?: string; requiresOtp?: boolean; emailHint?: string }>;
+  }) => Promise<{
+    ok: boolean;
+    error?: string;
+    requiresOtp?: boolean;
+    emailHint?: string;
+    otpReason?: string;
+  }>;
   verifyLogin: (data: { username: string; code: string }) => Promise<{ ok: boolean; error?: string }>;
   resetPasswordForUser: (
     userId: ID,
@@ -1238,6 +1322,7 @@ interface Ctx {
   declineFollowRequest: (fromId: ID) => void;
   joinChannel: (chatId: ID) => void;
   toggleBlock: (userId: ID) => void;
+  toggleBlockWithSync: (userId: ID) => Promise<{ ok: true } | { ok: false; error: string }>;
   toggleCloseFriend: (userId: ID) => void;
   createPost: (p: { type: Post["type"]; text: string; image?: string; video?: string; audio?: string }) => void;
   toggleLike: (postId: ID) => void;
@@ -1337,7 +1422,10 @@ interface Ctx {
   /** جلب كل الحسابات من users.json على الخادم ودمجها محلياً */
   refreshUserDirectory: () => Promise<void>;
   /** جلب الحالة من الخادم فوراً (متابعات، ستوريات، رسائل) */
-  refreshFromServer: () => void;
+  refreshFromServer: (opts?: { urgent?: boolean }) => void;
+  refreshFeedFromServer: () => Promise<void>;
+  /** منشورات بروفايل مستخدم آخر (أو ذاتك) من posts.json على الخادم */
+  refreshProfilePostsFromServer: (profileUserId: ID) => Promise<void>;
   /** مسح الكاش المحلي للحساب ثم جلب أحدث نسخة من الخادم */
   hardResyncFromServer: () => Promise<{ ok: boolean; error?: string }>;
   refreshSocialRelation: (targetUserId: ID) => void;
@@ -1354,6 +1442,9 @@ function applySocialRelationToState(
   peerId: ID,
   rel: SocialRelation,
 ): AppState {
+  const meRow = state.users.find(u => u.id === meId);
+  if (meRow?.blocked.includes(peerId)) return state;
+
   const next: AppState = {
     ...state,
     users: state.users.map(u => {
@@ -1637,8 +1728,10 @@ export function AppProvider({
   const fullPullPendingRef = useRef(false);
   const fullPullTimerRef = useRef<number | null>(null);
   const remoteSyncTimerRef = useRef<number | null>(null);
-  const MIN_FULL_PULL_MS = 18_000;
-  const MIN_URGENT_PULL_MS = 500;
+  const MIN_FULL_PULL_MS = 8_000;
+  const MIN_URGENT_PULL_MS = 600;
+  const feedPullDebounceRef = useRef<number | null>(null);
+  const urgentPullRef = useRef(false);
 
   const pullSocialState = useCallback(async () => {
     if (!apiBackendEnabled()) return;
@@ -1648,7 +1741,10 @@ export function AppProvider({
     const remote = await pullRemoteAppState(token);
     if (!remote) return;
     setStateRaw(s =>
-      preserveResolvedFollowRequestNotifications(s, buildMultiAccountState(activeId, remote, s)),
+      preserveResolvedFollowRequestNotifications(
+        s,
+        buildMultiAccountState(activeId, remote, s, undefined, { serverAuthoritative: true }),
+      ),
     );
   }, [setStateRaw]);
 
@@ -1761,7 +1857,9 @@ export function AppProvider({
   useEffect(() => {
     if (persistTimerRef.current) window.clearTimeout(persistTimerRef.current);
     persistTimerRef.current = window.setTimeout(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
       const write = () => {
+        if (typeof document !== "undefined" && document.hidden) return;
         try {
           const uid = stateRef.current.currentUserId;
           const snap = stateRef.current;
@@ -1779,11 +1877,11 @@ export function AppProvider({
         }
       };
       if (typeof window.requestIdleCallback === "function") {
-        window.requestIdleCallback(write, { timeout: 4000 });
+        window.requestIdleCallback(write, { timeout: 6000 });
       } else {
         write();
       }
-    }, 2000);
+    }, 4500);
     return () => {
       if (persistTimerRef.current) window.clearTimeout(persistTimerRef.current);
     };
@@ -1827,7 +1925,9 @@ export function AppProvider({
             migrateLegacyApiToken(activeId, me.username, me.email);
             syncActiveApiToken(activeId, token);
           }
-          const merged = buildMultiAccountState(activeId, remote, s);
+          const merged = buildMultiAccountState(activeId, remote, s, undefined, {
+            serverAuthoritative: true,
+          });
           const meRow = merged.users.find(u => u.id === activeId);
           const sess = meRow ? getAccountSession(activeId) : null;
           if (meRow && sess) {
@@ -1918,7 +2018,7 @@ export function AppProvider({
                 avatar: meta.avatar,
               }
             : undefined;
-          return buildMultiAccountState(activeId, remote, s, apiUser);
+          return buildMultiAccountState(activeId, remote, s, apiUser, { serverAuthoritative: true });
         });
       } finally {
         if (!cancelled) sessionRepairBusy.current = false;
@@ -2006,6 +2106,7 @@ export function AppProvider({
       const applied = await applyApiAuthSuccess(reg.token, reg.user, stateRef.current, adding);
       if (!applied.ok) return { ok: false, error: applied.error };
       setStateRaw(applied.state);
+      void import("./feedVisibility").then(({ requestAuthFeedRefresh }) => requestAuthFeedRefresh());
       return { ok: true, userId: reg.userId };
     }
 
@@ -2054,6 +2155,7 @@ export function AppProvider({
           ok: true,
           requiresOtp: true,
           emailHint: r.emailHint,
+          otpReason: r.otpReason,
         };
       }
       const adding =
@@ -2061,6 +2163,7 @@ export function AppProvider({
       const applied = await applyApiAuthSuccess(r.token, r.user, stateRef.current, adding);
       if (!applied.ok) return { ok: false, error: applied.error };
       setStateRaw(applied.state);
+      void import("./feedVisibility").then(({ requestAuthFeedRefresh }) => requestAuthFeedRefresh());
       return { ok: true };
     }
 
@@ -2101,6 +2204,7 @@ export function AppProvider({
     const applied = await applyApiAuthSuccess(r.token, r.user, stateRef.current, adding);
     if (!applied.ok) return { ok: false, error: applied.error };
     setStateRaw(applied.state);
+    void import("./feedVisibility").then(({ requestAuthFeedRefresh }) => requestAuthFeedRefresh());
     return { ok: true };
   };
 
@@ -2687,41 +2791,117 @@ export function AppProvider({
       };
     });
 
-  const toggleBlock = (userId: ID) =>
-    setState((s) => {
-      if (!s.currentUserId || isGuestUserId(s.currentUserId) || s.currentUserId === userId)
-        return s;
-      const meId = s.currentUserId;
-      const meRow = s.users.find((u) => u.id === meId);
-      const blocking = !!(meRow && !meRow.blocked.includes(userId));
-      return {
-        ...s,
-        users: s.users.map((u) => {
-          if (u.id === meId) {
-            const b = blocking ? [...u.blocked, userId] : u.blocked.filter((x) => x !== userId);
-            const following = blocking ? u.following.filter((x) => x !== userId) : u.following;
-            const followRequestOut = blocking
-              ? (u.followRequestOut || []).filter((x) => x !== userId)
-              : u.followRequestOut || [];
-            const followRequestIn = blocking
-              ? (u.followRequestIn || []).filter((x) => x !== userId)
-              : u.followRequestIn || [];
-            return { ...u, blocked: b, following, followRequestOut, followRequestIn };
+  const applyBlockToggleToState = (s: AppState, userId: ID): AppState | null => {
+    if (!s.currentUserId || isGuestUserId(s.currentUserId) || s.currentUserId === userId) return null;
+    const meId = s.currentUserId;
+    const meRow = s.users.find((u) => u.id === meId);
+    const blocking = !!(meRow && !meRow.blocked.includes(userId));
+    let next = {
+      ...s,
+      users: s.users.map((u) => {
+        if (u.id === meId) {
+          const b = blocking ? [...u.blocked, userId] : u.blocked.filter((x) => x !== userId);
+          if (!blocking) {
+            return { ...u, blocked: b };
           }
-          if (u.id === userId) {
-            const followers = blocking ? u.followers.filter((x) => x !== meId) : u.followers;
-            const followRequestIn = blocking
-              ? (u.followRequestIn || []).filter((x) => x !== meId)
-              : u.followRequestIn || [];
-            const followRequestOut = blocking
-              ? (u.followRequestOut || []).filter((x) => x !== meId)
-              : u.followRequestOut || [];
-            return { ...u, followers, followRequestIn, followRequestOut };
-          }
-          return u;
-        }),
-      };
+          return {
+            ...u,
+            blocked: b,
+            following: u.following.filter((x) => x !== userId),
+            followers: u.followers.filter((x) => x !== userId),
+            followRequestOut: (u.followRequestOut || []).filter((x) => x !== userId),
+            followRequestIn: (u.followRequestIn || []).filter((x) => x !== userId),
+            closeFriends: (u.closeFriends || []).filter((x) => x !== userId),
+          };
+        }
+        if (u.id === userId && blocking) {
+          return {
+            ...u,
+            following: u.following.filter((x) => x !== meId),
+            followers: u.followers.filter((x) => x !== meId),
+            followRequestIn: (u.followRequestIn || []).filter((x) => x !== meId),
+            followRequestOut: (u.followRequestOut || []).filter((x) => x !== meId),
+          };
+        }
+        return u;
+      }),
+    };
+    const byId = new Map(next.users.map(u => [u.id, u]));
+    const me = byId.get(meId);
+    if (me && blocking) {
+      const other = byId.get(userId);
+      if (other) {
+        byId.set(userId, {
+          ...other,
+          following: other.following.filter((x) => x !== meId),
+          followers: other.followers.filter((x) => x !== meId),
+          followRequestIn: (other.followRequestIn || []).filter((x) => x !== meId),
+          followRequestOut: (other.followRequestOut || []).filter((x) => x !== meId),
+        });
+      }
+      next = { ...next, users: [...byId.values()] };
+    }
+    return next;
+  };
+
+  const toggleBlock = (userId: ID) => {
+    let nextState: AppState | null = null;
+    setStateRaw((s) => {
+      const next = applyBlockToggleToState(s, userId);
+      if (!next) return s;
+      nextState = next;
+      return next;
     });
+    if (nextState?.currentUserId) {
+      saveAccountStateCache(nextState.currentUserId, nextState);
+      pushSnapshotNow(nextState);
+    }
+  };
+
+  const toggleBlockWithSync: Ctx["toggleBlockWithSync"] = async (userId) => {
+    const meId = stateRef.current.currentUserId;
+    if (!meId || isGuestUserId(meId)) {
+      return { ok: false, error: "لا يمكن تنفيذ الحظر" };
+    }
+    const meRow = stateRef.current.users.find(u => u.id === meId);
+    const blocking = !!(meRow && !meRow.blocked.includes(userId));
+    const prevState = stateRef.current;
+    let nextState: AppState | null = null;
+    setStateRaw((s) => {
+      const next = applyBlockToggleToState(s, userId);
+      if (!next) return s;
+      nextState = next;
+      return next;
+    });
+    if (!nextState?.currentUserId) {
+      return { ok: false, error: "لا يمكن تنفيذ الحظر" };
+    }
+    saveAccountStateCache(nextState.currentUserId, nextState);
+    pushSnapshotNow(nextState);
+
+    const token = getApiToken();
+    if (!apiBackendEnabled() || !token || isGuestUserId(meId)) {
+      return { ok: true };
+    }
+    ensureApiTokenMatchesUser(meId);
+    if (blocking) {
+      const severed = await apiSeverSocialOnBlock(token, userId);
+      if (!severed.ok) {
+        setStateRaw(() => prevState);
+        saveAccountStateCache(meId, prevState);
+        pushSnapshotNow(prevState);
+        return { ok: false, error: severed.error || "فشل فصل المتابعة" };
+      }
+    }
+    const pushed = await pushRemoteAppState(token, nextState, { force: true });
+    if (!pushed) {
+      setStateRaw(() => prevState);
+      saveAccountStateCache(meId, prevState);
+      pushSnapshotNow(prevState);
+      return { ok: false, error: "تعذر حفظ الحظر — تحقق من الاتصال وأعد المحاولة" };
+    }
+    return { ok: true };
+  };
 
   const toggleCloseFriend = (userId: ID) =>
     setState((s) => {
@@ -2780,15 +2960,27 @@ export function AppProvider({
     pushSnapshotNow(nextState);
     const token = getApiToken();
     if (token && apiBackendEnabled() && created?.userId === nextState.currentUserId) {
-      void apiUpsertPost(token, {
-        id: created.id,
-        type: created.type,
-        text: created.text,
-        image: created.image,
-        video: created.video,
-        audio: created.audio,
-        createdAt: created.createdAt,
-      });
+      void (async () => {
+        const payload = {
+          id: created.id,
+          type: created.type,
+          text: created.text,
+          image: created.image,
+          video: created.video,
+          audio: created.audio,
+          createdAt: created.createdAt,
+        };
+        let saved = await apiUpsertPost(token, payload);
+        if (!saved.ok) {
+          await new Promise(r => window.setTimeout(r, 400));
+          saved = await apiUpsertPost(token, payload);
+        }
+        if (saved.ok) {
+          void import("./feedVisibility").then(({ requestAuthFeedRefresh }) => requestAuthFeedRefresh());
+        } else {
+          console.warn("[Retweet] apiUpsertPost failed:", saved.error);
+        }
+      })();
     }
     window.setTimeout(() => {
       socialSyncBusyRef.current = false;
@@ -4675,6 +4867,8 @@ export function AppProvider({
           founderOfficialLabel: u.founderOfficialLabel,
           appOfficialVerified: u.appOfficialVerified,
           appOfficialLabel: u.appOfficialLabel,
+          supportOfficialVerified: u.supportOfficialVerified,
+          supportOfficialLabel: u.supportOfficialLabel,
           isPrivate: u.isPrivate,
           followers: u.followers,
           following: u.following,
@@ -4695,13 +4889,7 @@ export function AppProvider({
   const refreshUserDirectory = useCallback(async () => {
     if (!apiBackendEnabled() || !getApiToken()) return;
     if (isGuestUserId(stateRef.current.currentUserId)) return;
-    if (
-      hydrateRemoteBusy.current ||
-      groupSyncBusyRef.current ||
-      socialSyncBusyRef.current ||
-      profileSaveBusyRef.current
-    )
-      return;
+    if (hydrateRemoteBusy.current || groupSyncBusyRef.current) return;
     const rows = await apiFetchUserDirectory();
     if (!rows.length) return;
     for (const row of rows) cachePublicProfileFromApi(row);
@@ -4747,15 +4935,18 @@ export function AppProvider({
     if (storyPublishBusyRef.current) return;
     if (!opts?.urgent && socialSyncBusyRef.current) return;
     if (!apiBackendEnabled() || !getApiToken() || isGuestUserId(stateRef.current.currentUserId)) return;
+    if (opts?.urgent) urgentPullRef.current = true;
 
     const runPull = () => {
+      const urgent = urgentPullRef.current;
+      urgentPullRef.current = false;
       if (
         hydrateRemoteBusy.current ||
         groupSyncBusyRef.current ||
         messageSendBusyRef.current ||
-        socialSyncBusyRef.current ||
+        (!urgent && socialSyncBusyRef.current) ||
         storyPublishBusyRef.current ||
-        profileSaveBusyRef.current
+        (!urgent && profileSaveBusyRef.current)
       ) {
         fullPullPendingRef.current = false;
         return;
@@ -4798,6 +4989,15 @@ export function AppProvider({
             return next;
           });
         });
+        void refreshUserDirectory();
+        void (async () => {
+          const feed = await apiFetchHomeFeed(token);
+          if (feed.ok) {
+            startTransition(() => {
+              setStateRaw(s => mergeHomeFeedIntoState(s, feed));
+            });
+          }
+        })();
       })();
     };
 
@@ -4818,7 +5018,63 @@ export function AppProvider({
       runPull,
       minGap - (now - lastFullPullAtRef.current),
     );
-  }, [setStateRaw]);
+  }, [setStateRaw, refreshUserDirectory]);
+
+  const refreshFeedFromServer = useCallback(async () => {
+    if (!apiBackendEnabled() || !getApiToken() || isGuestUserId(stateRef.current.currentUserId)) return;
+    const token = getApiToken()!;
+    const feed = await apiFetchHomeFeed(token);
+    if (!feed.ok) return;
+    startTransition(() => {
+      setStateRaw(s => mergeHomeFeedIntoState(s, feed));
+    });
+    void refreshUserDirectory();
+  }, [setStateRaw, refreshUserDirectory]);
+
+  const refreshProfilePostsFromServer = useCallback(
+    async (profileUserId: ID) => {
+      if (!apiBackendEnabled() || !getApiToken() || isGuestUserId(stateRef.current.currentUserId)) return;
+      const token = getApiToken()!;
+      const res = await apiFetchUserPosts(token, profileUserId);
+      if (!res.ok) return;
+      startTransition(() => {
+        setStateRaw(s => {
+          const posts = mergePostsPreservingLocalDeletes(s.posts || [], res.posts || []);
+          const usersById = new Map(s.users.map(u => [u.id, u]));
+          for (const u of res.users || []) {
+            const prev = usersById.get(u.id);
+            usersById.set(u.id, prev ? mergeUserFromServer(prev, u) : { ...u, password: "" });
+          }
+          return { ...s, posts, users: [...usersById.values()] };
+        });
+      });
+    },
+    [setStateRaw],
+  );
+
+  const scheduleFeedPull = useCallback(() => {
+    if (feedPullDebounceRef.current != null) window.clearTimeout(feedPullDebounceRef.current);
+    feedPullDebounceRef.current = window.setTimeout(() => {
+      feedPullDebounceRef.current = null;
+      void refreshFeedFromServer();
+    }, 350);
+  }, [refreshFeedFromServer]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onAuthFeed = () => {
+      void refreshFeedFromServer();
+      refreshFromServer({ urgent: true });
+    };
+    void import("./feedVisibility").then(({ AUTH_FEED_REFRESH_EVENT }) => {
+      window.addEventListener(AUTH_FEED_REFRESH_EVENT, onAuthFeed);
+    });
+    return () => {
+      void import("./feedVisibility").then(({ AUTH_FEED_REFRESH_EVENT }) => {
+        window.removeEventListener(AUTH_FEED_REFRESH_EVENT, onAuthFeed);
+      });
+    };
+  }, [refreshFromServer, refreshFeedFromServer]);
 
   const refreshSocialRelation = useCallback(
     (targetUserId: ID) => {
@@ -5075,23 +5331,32 @@ export function AppProvider({
             }
             incoming = { ...existing, ...incoming };
           }
-          const scopedChat = scopeAppStateToAccount(meId, {
-            ...s,
-            chats: [
-              {
-                ...chat,
-                messages: mergeChatMessages(chat.messages || [], [
-                  normalizeChatMessage(incoming) ?? incoming,
-                ]),
-              },
-            ],
-          }).chats[0];
-          if (!scopedChat) return s;
-          const updated: Chat = {
-            ...scopedChat,
+          const mergedMsgs = mergeChatMessages(chat.messages || [], [
+            normalizeChatMessage(incoming) ?? incoming,
+          ]);
+          const updatedRaw: Chat = {
+            ...chat,
+            messages: mergedMsgs,
             request: payload.request === true ? true : chat.request,
           };
+          const scopedChat = scopeAppStateToAccount(meId, {
+            ...s,
+            chats: [updatedRaw],
+          }).chats[0];
+          if (!scopedChat) return s;
+          const updated: Chat = { ...scopedChat, request: updatedRaw.request };
           const mergeKey = chatMergeKey(updated, meId);
+          const chatIdx = s.chats.findIndex(
+            c =>
+              c.id === chat!.id ||
+              c.id === updated.id ||
+              chatMergeKey(c, meId) === mergeKey,
+          );
+          if (chatIdx >= 0) {
+            const nextChats = s.chats.slice();
+            nextChats[chatIdx] = { ...updated, id: mergeKey };
+            return { ...s, chats: nextChats };
+          }
           const deduped = s.chats.filter(
             c =>
               c.id !== chat!.id &&
@@ -5187,6 +5452,11 @@ export function AppProvider({
             ),
           };
         });
+        void (async () => {
+          const row = await apiFetchUserById(patch.userId);
+          if (row) mergeDiscoveredUsers([userFromSearchResult(row)]);
+        })();
+        scheduleFeedPull();
         return;
       }
       if (event === "group:updated") {
@@ -5219,10 +5489,12 @@ export function AppProvider({
       }
       if (event === "sync_hint") {
         const kind = (data as { kind?: string })?.kind;
-        if (kind === "chats" || kind === "feed" || kind === "story" || kind === "profile") {
-          if (!profileSaveBusyRef.current) {
-            refreshFromServer({ urgent: kind === "feed" || kind === "story" });
-          }
+        if (kind === "feed" || kind === "story") {
+          scheduleFeedPull();
+          return;
+        }
+        if (kind === "chats" || kind === "profile") {
+          if (!profileSaveBusyRef.current) refreshFromServer({ urgent: false });
           return;
         }
         if (!socialSyncBusyRef.current) scheduleRemoteSync();
@@ -5315,35 +5587,47 @@ export function AppProvider({
         }));
       }
     });
-  }, [state.currentUserId, mergeDiscoveredUsers, scheduleRemoteSync, refreshFromServer, setState]);
+  }, [
+    state.currentUserId,
+    mergeDiscoveredUsers,
+    scheduleRemoteSync,
+    refreshFromServer,
+    scheduleFeedPull,
+    setState,
+  ]);
 
   useEffect(() => {
     if (!apiBackendEnabled() || !getApiToken() || isGuestUserId(state.currentUserId)) return;
     const id = window.setInterval(() => {
-      if (document.visibilityState === "visible") scheduleRemoteSync();
-    }, 120_000);
+      if (document.visibilityState !== "visible") return;
+      scheduleFeedPull();
+      scheduleRemoteSync();
+    }, 45_000);
     return () => window.clearInterval(id);
-  }, [state.currentUserId, scheduleRemoteSync]);
+  }, [state.currentUserId, scheduleRemoteSync, scheduleFeedPull]);
 
   useEffect(() => {
     if (!apiBackendEnabled() || !getApiToken() || isGuestUserId(state.currentUserId)) return;
     void refreshUserDirectory();
     const id = window.setInterval(() => {
       if (document.visibilityState === "visible") void refreshUserDirectory();
-    }, 300_000);
+    }, 90_000);
     return () => window.clearInterval(id);
   }, [state.currentUserId, refreshUserDirectory]);
 
-  const value: Ctx = {
-    state,
+  const ctxActionsRef = useRef({} as Omit<
+    Ctx,
+    "state" | "currentUser" | "isGuest" | "accountSwitching" | "accountSessionKey" | "typingUserByChatId"
+  >);
+  ctxActionsRef.current = {
     setState,
-    currentUser,
-    isGuest,
     enterGuestBrowseMode,
     exitGuestBrowseMode,
     mergeDiscoveredUsers,
     refreshUserDirectory,
     refreshFromServer,
+    refreshFeedFromServer,
+    refreshProfilePostsFromServer,
     hardResyncFromServer,
     refreshSocialRelation,
     signup,
@@ -5356,8 +5640,6 @@ export function AppProvider({
     changeOwnPassword,
     logout,
     switchAccount,
-    accountSwitching,
-    accountSessionKey,
     removeAccount,
     updateProfile,
     toggleFollow,
@@ -5365,6 +5647,7 @@ export function AppProvider({
     declineFollowRequest,
     joinChannel,
     toggleBlock,
+    toggleBlockWithSync,
     toggleCloseFriend,
     createPost,
     toggleLike,
@@ -5415,7 +5698,6 @@ export function AppProvider({
     addMediaNote,
     markChatOpened,
     markChatRead,
-    typingUserByChatId,
     replyToMediaNoteAsDm,
     replyToProfileNoteAsDm,
     recordProfileVisit,
@@ -5423,6 +5705,19 @@ export function AppProvider({
     answerStoryQuiz,
     rateStorySlider,
   };
+
+  const value = useMemo<Ctx>(
+    () => ({
+      state,
+      currentUser,
+      isGuest,
+      accountSwitching,
+      accountSessionKey,
+      typingUserByChatId: {} as Record<ID, ID>,
+      ...ctxActionsRef.current,
+    }),
+    [state, currentUser, isGuest, accountSwitching, accountSessionKey],
+  );
 
   const uiLang: "ar" | "en" =
     state.language === "en" &&
@@ -5433,16 +5728,21 @@ export function AppProvider({
 
   return (
     <AppLanguageCtx.Provider value={uiLang}>
-      <AppCtx.Provider value={value}>{children}</AppCtx.Provider>
+      <TypingCtx.Provider value={typingUserByChatId}>
+        <AppCtx.Provider value={value}>{children}</AppCtx.Provider>
+      </TypingCtx.Provider>
     </AppLanguageCtx.Provider>
   );
 }
 
-export function useApp() {
+export function useApp(): Ctx {
   const ctx = useContext(AppCtx);
   if (!ctx) throw new Error("يجب استخدام التطبيق داخل مزوّد الحالة (AppProvider)");
   return ctx;
 }
+
+/** حالة «يكتب» فقط — لا تُعيد رسم المكوّنات التي لا تعرض مؤشر الكتابة */
+export { useTypingUsers } from "./typingContext";
 
 export function userById(state: AppState, id: ID) {
   const u = resolveUserProfile(state, id);
@@ -5462,6 +5762,17 @@ export function isMutual(state: AppState, a: ID, b: ID) {
   const ua = userById(state, a);
   const ub = userById(state, b);
   return !!(ua && ub && ua.following.includes(b) && ub.following.includes(a));
+}
+
+/** هل `followerId` يتابع `followeeId` (من قائمة following وليس followers) */
+export function userIsFollowing(state: AppState, followerId: ID, followeeId: ID): boolean {
+  const u = userById(state, followerId);
+  return !!(u && u.following.includes(followeeId));
+}
+
+/** هل الطرف الآخر يتابع المشاهد */
+export function theyFollowViewer(state: AppState, viewerId: ID, otherId: ID): boolean {
+  return userIsFollowing(state, otherId, viewerId);
 }
 
 export function canViewProfile(state: AppState, viewerId: ID | null, targetId: ID): boolean {

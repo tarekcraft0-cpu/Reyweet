@@ -5,7 +5,7 @@ const dict = {
   ar: {
     home: "الرئيسية", search: "البحث", reels: "ريلز", chat: "الرسائل", profile: "البروفايل",
     settings: "الإعدادات", notifications: "الإشعارات", create: "إنشاء", post: "منشور", tweet: "تغريدة", story: "ستوري",
-    follow: "متابعة", following: "متابَع", followBack: "رد المتابعة", followers: "متابعون", followsCount: "يتابع", message: "رسالة",
+    follow: "متابعة", following: "متابَع", followingDone: "تمت المتابعة", mutualFriends: "أصدقاء", followBack: "رد المتابعة", followers: "متابعون", followsCount: "يتابع", message: "رسالة",
     edit: "تعديل البروفايل", share: "مشاركة البروفايل", block: "حظر", unblock: "إلغاء الحظر",
     private: "حساب خاص", darkMode: "الوضع الليلي", language: "اللغة", logout: "تسجيل الخروج",
     accountInfo: "معلومات الحساب", changePwd: "تغيير كلمة المرور", help: "مركز المساعدة", about: "عن التطبيق",
@@ -112,7 +112,7 @@ const dict = {
   en: {
     home: "Home", search: "Search", reels: "Reels", chat: "Messages", profile: "Profile",
     settings: "Settings", notifications: "Notifications", create: "Create", post: "Post", tweet: "Tweet", story: "Story",
-    follow: "Follow", following: "Following", followBack: "Follow back", followers: "Followers", followsCount: "Following", message: "Message",
+    follow: "Follow", following: "Following", followingDone: "Following", mutualFriends: "Friends", followBack: "Follow back", followers: "Followers", followsCount: "Following", message: "Message",
     edit: "Edit Profile", share: "Share Profile", block: "Block", unblock: "Unblock",
     private: "Private Account", darkMode: "Dark Mode", language: "Language", logout: "Log out",
     accountInfo: "Account Info", changePwd: "Change Password", help: "Help Center", about: "About",

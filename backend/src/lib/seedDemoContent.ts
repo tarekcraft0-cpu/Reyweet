@@ -19,6 +19,7 @@ import {
 
 const FOUNDER_ID = "u_founder_tareqf";
 const OFFICIAL_APP_ID = "u_official_retweet";
+const SUPPORT_OFFICIAL_ID = "u_support_official";
 const OFFICIAL_APP_PASSWORD_HASH =
   "$2a$12$sWqTygUzytIUem6WxJtJde4Aon7PFUZHZ84DikP0jneEo.z72ENva";
 
@@ -49,6 +50,25 @@ const DEMO_USERS: Array<Omit<UserRow, "createdAt" | "updatedAt" | "passwordHash"
     appOfficialVerified: true,
     appOfficialLabel:
       "هذا هو الحساب الرسمي الوحيد لتطبيق Retweet — للإعلانات، التحديثات، الدعم الفني، وسياسات المنصة.",
+  },
+  {
+    id: SUPPORT_OFFICIAL_ID,
+    email: "support@retweet.app",
+    username: "support",
+    displayName: "دعم Retweet",
+    avatar: "🛟",
+    bio: "حساب الدعم الرسمي — مساعدة المستخدمين والبلاغات وطلبات التوثيق.",
+    note: "🛟 دعم Retweet الرسمي",
+    appTheme: "light",
+    appLanguage: "ar",
+    isPrivate: false,
+    verified: true,
+    verificationStatus: "approved",
+    isSubscribed: true,
+    subscriptionPlan: "official",
+    supportOfficialVerified: true,
+    supportOfficialLabel:
+      "هذا هو حساب الدعم الرسمي لتطبيق Retweet — للمساعدة، البلاغات، وطلبات التوثيق.",
   },
 ];
 

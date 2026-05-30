@@ -4,11 +4,12 @@ import {
   useState,
   useCallback,
   useMemo,
+  useRef,
   startTransition,
   type CSSProperties,
 } from "react";
 import { AppDismissSheet, SlideDismissBackButton } from "./SlideDismissShell";
-import { SETTINGS_DISMISS_PULL_CSS_VAR } from "@/lib/navigationDismiss";
+import { blurActiveElement, SETTINGS_DISMISS_PULL_CSS_VAR } from "@/lib/navigationDismiss";
 import { useGlobalOverlayBack } from "@/hooks/useGlobalOverlayBack";
 import { type PagerTab } from "./MainTabPager";
 import { MainTabStack } from "./MainTabStack";
@@ -86,10 +87,18 @@ import {
 } from "@/lib/accountSessions";
 import { useNavDoubleTap } from "@/hooks/useNavDoubleTap";
 import logo from "@/assets/logo.png";
-import { BanScreen } from "./moderation/BanScreen";
-import { apiGetMyModerationStatus } from "@/lib/moderationApi";
+import { ModerationGateShell } from "./moderation/ModerationGateShell";
+import { apiDismissModerationNotice, apiGetMyModerationStatus } from "@/lib/moderationApi";
 import type { BanInfo } from "@/lib/moderationBanTypes";
-import { AccountRestoredScreen } from "./moderation/AccountRestoredScreen";
+import {
+  ACCOUNT_MODERATION_EVENT,
+  dispatchAccountModeration,
+  hasModerationNoticeBeenShown,
+  isBannedAccountStatus,
+  markModerationNoticeShown,
+  type AccountModerationEventDetail,
+} from "@/lib/accountModerationBridge";
+import type { ModerationUserNotice } from "@/lib/moderationTypes";
 
 type Tab = "home" | "search" | "reels" | "chat" | "profile";
 type Modal = null | "settings" | "create" | "edit" | "switcher" | "addAccount" | "notifications" | "visitors";
@@ -111,8 +120,13 @@ export function App() {
   } = useApp();
   const t = useT();
   const [banInfo, setBanInfo] = useState<BanInfo | null>(null);
+  const [banPresentation, setBanPresentation] = useState<"gate" | "overlay" | null>(null);
+  const moderationReadyRef = useRef(false);
+  const hadActiveAppRef = useRef(false);
   const [appealPending, setAppealPending] = useState(false);
-  const [restoredAppealId, setRestoredAppealId] = useState<string | null>(null);
+  const [pendingModerationNotice, setPendingModerationNotice] = useState<ModerationUserNotice | null>(
+    null,
+  );
   const [tab, setTab] = useState<Tab>("home");
   const [modal, setModal] = useState<Modal>(null);
   const [createInitial, setCreateInitial] = useState<CreateScreenInitial | null>(null);
@@ -134,6 +148,7 @@ export function App() {
   const [chatHideBottomNav, setChatHideBottomNav] = useState(false);
   /** سحب خروج المحادثة نشط — التقدّم في NAV_HIDE_PROGRESS_CSS_VAR (بدون setState كل إطار) */
   const [chatExitNavActive, setChatExitNavActive] = useState(false);
+  const chatExitNavActiveRef = useRef(false);
   const [postDetailOpen, setPostDetailOpen] = useState(false);
   const [reportSheetOpen, setReportSheetOpen] = useState(false);
   const [reelsCommentsOpen, setReelsCommentsOpen] = useState(false);
@@ -348,42 +363,168 @@ export function App() {
     void switchAccount(peerId);
   }, [isGuest, accountSwitching, currentUser, switchAccount]);
 
+  const showModerationNoticeIfNeeded = useCallback(
+    (notice: ModerationUserNotice | null | undefined, userId: string) => {
+      if (!notice?.id || hasModerationNoticeBeenShown(userId, notice.id)) {
+        setPendingModerationNotice(null);
+        return;
+      }
+      setPendingModerationNotice(notice);
+      if (notice.kind === "account_restored" || notice.kind === "warning") {
+        setBanInfo(null);
+        setBanPresentation(null);
+      }
+    },
+    [],
+  );
+
+  const applyActiveBan = useCallback(
+    (info: BanInfo) => {
+      setAppealPending(false);
+      setPendingModerationNotice(null);
+      setBanInfo(info);
+      setBanPresentation(
+        moderationReadyRef.current && hadActiveAppRef.current ? "overlay" : "gate",
+      );
+      try {
+        window.dispatchEvent(new CustomEvent("retweet-close-modals"));
+      } catch {
+        /* ignore */
+      }
+    },
+    [],
+  );
+
   useEffect(() => {
     if (!currentUser || isGuest || !apiBackendEnabled()) {
+      moderationReadyRef.current = false;
+      hadActiveAppRef.current = false;
       setBanInfo(null);
+      setBanPresentation(null);
       setAppealPending(false);
-      setRestoredAppealId(null);
+      setPendingModerationNotice(null);
       return;
     }
     void apiGetMyModerationStatus().then(r => {
+      moderationReadyRef.current = true;
       if (!r.ok) {
         setBanInfo(null);
+        setBanPresentation(null);
         setAppealPending(false);
-        setRestoredAppealId(null);
+        setPendingModerationNotice(null);
+        hadActiveAppRef.current = true;
         return;
       }
-      setBanInfo(r.data.banInfo ?? null);
+      if (
+        r.data.pendingNotice &&
+        !hasModerationNoticeBeenShown(currentUser.id, r.data.pendingNotice.id)
+      ) {
+        showModerationNoticeIfNeeded(r.data.pendingNotice, currentUser.id);
+        setAppealPending(false);
+        hadActiveAppRef.current = true;
+        return;
+      }
+      if (r.data.banInfo && isBannedAccountStatus(r.data.accountStatus)) {
+        applyActiveBan(r.data.banInfo);
+        return;
+      }
+      setBanInfo(null);
+      setBanPresentation(null);
+      setPendingModerationNotice(null);
       setAppealPending(
         !!r.data.activeAppeal &&
           (r.data.activeAppeal.status === "pending" || r.data.activeAppeal.status === "under_review"),
       );
-      const approvedId = r.data.latestAppeal?.status === "approved" ? r.data.latestAppeal.id : null;
-      if (approvedId) {
-        const shownKey = `retweet_restored_shown_${currentUser.id}_${approvedId}`;
-        const alreadyShown = localStorage.getItem(shownKey) === "1";
-        setRestoredAppealId(alreadyShown ? null : approvedId);
-      } else {
-        setRestoredAppealId(null);
-      }
+      hadActiveAppRef.current = true;
     });
-    const onMod = (e: Event) => {
-      const d = (e as CustomEvent).detail as { banInfo?: BanInfo; accountStatus?: string };
-      if (d?.banInfo) setBanInfo(d.banInfo);
-      if (d?.accountStatus === "ACTIVE") setBanInfo(null);
-      if (d?.accountStatus === "ACTIVE") setAppealPending(false);
+    const applyModeration = async (d: AccountModerationEventDetail) => {
+      if (d.pendingNotice) {
+        showModerationNoticeIfNeeded(d.pendingNotice, currentUser.id);
+        try {
+          window.dispatchEvent(new CustomEvent("retweet-close-modals"));
+        } catch {
+          /* ignore */
+        }
+        return;
+      }
+
+      if (d.restored || d.appealApproved) {
+        setAppealPending(false);
+        const notice =
+          d.pendingNotice ??
+          (await apiGetMyModerationStatus().then(s => (s.ok ? s.data.pendingNotice : null)));
+        if (notice) {
+          showModerationNoticeIfNeeded(notice, currentUser.id);
+        } else {
+          setBanInfo(null);
+          setBanPresentation(null);
+        }
+        try {
+          window.dispatchEvent(new CustomEvent("retweet-close-modals"));
+        } catch {
+          /* ignore */
+        }
+        return;
+      }
+
+      if (!isBannedAccountStatus(d.accountStatus) && !d.banInfo) return;
+
+      if (d.banInfo) {
+        applyActiveBan(d.banInfo);
+        return;
+      }
+      const r = await apiGetMyModerationStatus();
+      if (r.ok && r.data.banInfo && isBannedAccountStatus(r.data.accountStatus)) {
+        applyActiveBan(r.data.banInfo);
+      }
     };
-    window.addEventListener("retweet-account-moderation", onMod);
-    return () => window.removeEventListener("retweet-account-moderation", onMod);
+
+    const onMod = (e: Event) => {
+      const d = (e as CustomEvent<AccountModerationEventDetail>).detail;
+      if (!d) return;
+      void applyModeration(d);
+    };
+    window.addEventListener(ACCOUNT_MODERATION_EVENT, onMod);
+    return () => window.removeEventListener(ACCOUNT_MODERATION_EVENT, onMod);
+  }, [currentUser?.id, isGuest, applyActiveBan, showModerationNoticeIfNeeded]);
+
+  useEffect(() => {
+    if (!moderationReadyRef.current) return;
+    if (currentUser && !isGuest && !banInfo && !pendingModerationNotice) {
+      hadActiveAppRef.current = true;
+    }
+  }, [currentUser, isGuest, banInfo, pendingModerationNotice]);
+
+  /** احتياط: فحص دوري أثناء استخدام التطبيق إذا فات حدث الوقت الفعلي */
+  useEffect(() => {
+    if (!currentUser || isGuest || !apiBackendEnabled()) return;
+    let cancelled = false;
+    const tick = async () => {
+      if (cancelled || document.hidden) return;
+      const r = await apiGetMyModerationStatus();
+      if (cancelled || !r.ok) return;
+      if (r.data.pendingNotice && !hasModerationNoticeBeenShown(currentUser.id, r.data.pendingNotice.id)) {
+        dispatchAccountModeration({ pendingNotice: r.data.pendingNotice, accountStatus: "ACTIVE" });
+        return;
+      }
+      if (r.data.banInfo && isBannedAccountStatus(r.data.accountStatus)) {
+        dispatchAccountModeration({
+          banInfo: r.data.banInfo,
+          accountStatus: r.data.accountStatus,
+        });
+      }
+    };
+    void tick();
+    const id = window.setInterval(() => void tick(), 12_000);
+    const onVis = () => {
+      if (document.visibilityState === "visible") void tick();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }, [currentUser?.id, isGuest]);
 
   useEffect(() => {
@@ -712,18 +853,17 @@ export function App() {
   }, []);
 
   const onChatExitNavRevealProgress = useCallback((progress: number | null) => {
-    if (progress == null) {
-      setChatExitNavActive(false);
-      try {
-        document.documentElement.style.removeProperty(NAV_HIDE_PROGRESS_CSS_VAR);
-      } catch {
-        /* ignore */
-      }
-      return;
+    const nextActive = progress != null;
+    if (nextActive !== chatExitNavActiveRef.current) {
+      chatExitNavActiveRef.current = nextActive;
+      setChatExitNavActive(nextActive);
     }
-    setChatExitNavActive(true);
     try {
-      document.documentElement.style.setProperty(NAV_HIDE_PROGRESS_CSS_VAR, String(progress));
+      if (progress == null) {
+        document.documentElement.style.removeProperty(NAV_HIDE_PROGRESS_CSS_VAR);
+      } else {
+        document.documentElement.style.setProperty(NAV_HIDE_PROGRESS_CSS_VAR, String(progress));
+      }
     } catch {
       /* ignore */
     }
@@ -766,7 +906,10 @@ export function App() {
           setViewProfileId(null);
         }}
         onBack={viewProfileId && viewProfileId !== currentUser.id ? popProfileScreenBack : undefined}
-        onEdit={() => setModal("edit")}
+        onEdit={() => {
+          blurActiveElement();
+          setModal("edit");
+        }}
         onOpenAccountSwitcher={isGuest ? undefined : () => setModal("switcher")}
         onOpenSettings={isGuest ? undefined : () => setModal("settings")}
         onOpenVisitors={isGuest ? undefined : () => setModal("visitors")}
@@ -936,25 +1079,25 @@ export function App() {
     );
   }
 
-  if (restoredAppealId && currentUser && !isGuest) {
-    return (
-      <AccountRestoredScreen
-        onContinue={() => {
-          const shownKey = `retweet_restored_shown_${currentUser.id}_${restoredAppealId}`;
-          localStorage.setItem(shownKey, "1");
-          setRestoredAppealId(null);
-        }}
-      />
-    );
-  }
+  const showModerationGate =
+    !isGuest &&
+    currentUser &&
+    (pendingModerationNotice || (banInfo && banPresentation === "gate"));
 
-  if (banInfo && !isGuest) {
+  if (showModerationGate) {
     return (
-      <BanScreen
-        banInfo={banInfo}
+      <ModerationGateShell
+        banInfo={pendingModerationNotice ? null : banInfo}
+        notice={pendingModerationNotice}
         hasPendingAppeal={appealPending}
         onAppealSubmitted={() => setAppealPending(true)}
         onLogout={() => logout()}
+        onNoticeDismiss={() => {
+          if (!pendingModerationNotice) return;
+          markModerationNoticeShown(currentUser.id, pendingModerationNotice.id);
+          void apiDismissModerationNotice(pendingModerationNotice.id);
+          setPendingModerationNotice(null);
+        }}
       />
     );
   }
@@ -1001,12 +1144,14 @@ export function App() {
     cameraFullscreenOpen ||
     storyGalleryOpen;
   const showBottomNav = !hideBottomBar || chatExitNavActive;
+  const banOverlayActive = !!(banInfo && banPresentation === "overlay" && !isGuest);
 
   return (
     <div
       key={accountSessionKey}
       className={
         "retweet-no-select-pane select-none relative mx-auto flex w-full max-w-md flex-col overflow-x-hidden overscroll-none bg-background supports-[height:100dvh] " +
+        (banOverlayActive ? "pointer-events-none " : "") +
         (immersiveOverlay || settingsImmersive
           ? "h-dvh max-h-dvh overflow-hidden pt-0"
           : "h-dvh max-h-dvh overflow-hidden pt-[var(--sat,0px)]")
@@ -1188,7 +1333,7 @@ export function App() {
               }}
               onBack={closeProfileOverlay}
               onEdit={() => {
-                closeProfileOverlay();
+                blurActiveElement();
                 setModal("edit");
               }}
               onOpenAccountSwitcher={isGuest ? undefined : () => {
@@ -1264,7 +1409,12 @@ export function App() {
         </AppDismissSheet>
       )}
       {modal === "edit" && (
-        <AppDismissSheet onClose={() => setModal(null)}>
+        <AppDismissSheet
+          onClose={() => setModal(null)}
+          overlayZIndex={300}
+          animateOnMount
+          contentClassName="min-h-dvh bg-background text-foreground"
+        >
           <EditProfileScreen onBack={() => setModal(null)} />
         </AppDismissSheet>
       )}
@@ -1390,6 +1540,18 @@ export function App() {
           draft={storyCameraDraft}
           language={state.language}
           onClose={() => setStoryCameraDraft(null)}
+        />
+      )}
+
+      {banOverlayActive && banInfo && !pendingModerationNotice && (
+        <ModerationGateShell
+          animateOpen
+          banInfo={banInfo}
+          notice={null}
+          hasPendingAppeal={appealPending}
+          onAppealSubmitted={() => setAppealPending(true)}
+          onLogout={() => logout()}
+          onNoticeDismiss={() => {}}
         />
       )}
     </div>

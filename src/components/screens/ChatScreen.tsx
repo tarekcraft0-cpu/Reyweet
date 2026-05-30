@@ -37,6 +37,7 @@ import {
 import { ChatStackRoomGestureShell } from "../chat/ChatStackRoomGestureShell";
 import { SlideDismissBackButton, SlideDismissContext, SlideDismissShell } from "../SlideDismissShell";
 import { QURAN_CHANNEL_ID, isProfileNoteActive, useApp, userById, visibleChatMessages } from "@/lib/store";
+import { useTypingUsers } from "@/lib/typingContext";
 import { notifyGuestActionBlocked } from "@/lib/guestBlocked";
 import { chatNoSelectCaptureHandlers } from "@/lib/chatNoTextSelection";
 import { NATIVE_LONG_PRESS_ATTR } from "@/lib/nativeTextSelectionGuard";
@@ -124,7 +125,7 @@ export const CHAT_DISMISS_PULL_CSS_VAR = "--retweet-chat-dismiss-pull";
 const CHAT_ROOM_HEADER_EDGE_INSET_PX = 72;
 export { CHAT_STACK_PROGRESS_VAR } from "@/lib/chatStackGestureEngine";
 /** دخول المحادثة بالنقر — انزلاق مكدس تفاعلي (نفس إحساس السحب) */
-const CHAT_TAP_OPEN_MS = 280;
+const CHAT_TAP_OPEN_MS = 320;
 const CHAT_TAP_OPEN_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
 /** ارتفاع سطر شريط الكتابة (text-[16px] + leading-5) */
 /** منع تحديد iOS على زر المعرض — الضغط المطوّل يفتح فيديو كرسالة صوتية */
@@ -1141,6 +1142,7 @@ function ChatListRowWithPeek({
     const el = rowShellRef.current;
     if (!el) return;
     el.classList.toggle("bg-secondary/60", pressed);
+    el.style.transform = pressed ? "scale(0.985)" : "";
   };
 
   const scrollPeekToBottom = useCallback(() => {
@@ -1915,7 +1917,7 @@ function ChatListRowWithPeek({
       <div className="relative overflow-visible">
         <div
           ref={rowShellRef}
-          className="relative z-20 flex flex-row items-center bg-background transition-[background-color] duration-100"
+          className="relative z-20 flex flex-row items-center bg-background transition-[background-color,transform] duration-100 ease-out will-change-transform"
           style={{ minHeight: "84px" }}
           title={t("chatRowLongPressHint")}
         >
@@ -2205,6 +2207,11 @@ export function ChatScreen({
   const pendingStackDragRef = useRef<{ chatId: string; px: number; vx: number } | null>(null);
   const stackDragFrameRef = useRef(0);
   const stackOpenVelocityRef = useRef(0);
+  /** محادثة السحب الحالية — ref فقط أثناء الإصبع (لا يُركّب ChatRoom حتى commit) */
+  const stackDragPreviewIdRef = useRef<string | null>(null);
+  const stackDragVisualStartedRef = useRef(false);
+  const lastRoomDismissTxRef = useRef(0);
+  const stackNavDismissProgressRef = useRef(-1);
   const beginCloseChatThreadRef = useRef<(closingKey: string) => void>(() => {});
   const [stackGestureLocked, setStackGestureLocked] = useState(false);
   /** سحب خروج نشط — يبقي إيماءة الإغلاق مفعّلة حتى لو انخفض stackProgress أثناء السحب */
@@ -2270,15 +2277,27 @@ export function ChatScreen({
         stackCapRef.current = cap;
       }
       const clampedTx = Math.max(-cap, Math.min(0, Number.isFinite(tx) ? tx : 0));
-      const progress = applyCloseStackTransforms(clampedTx, cap, stackLayers(), animate);
+      if (!animate && clampedTx === lastRoomDismissTxRef.current) return;
+      lastRoomDismissTxRef.current = clampedTx;
+      const { inboxEl, roomEl } = stackLayers();
+      if (!animate && inboxEl) inboxEl.style.willChange = "transform";
+      if (!animate && roomEl) roomEl.style.willChange = "transform";
+      const progress = applyCloseStackTransforms(clampedTx, cap, { inboxEl, roomEl }, animate);
       stackProgressRef.current = progress;
-      if (animate) setStackProgress(progress);
+      if (animate) {
+        if (inboxEl) inboxEl.style.willChange = "auto";
+        if (roomEl) roomEl.style.willChange = "auto";
+        setStackProgress(progress);
+      }
       stackRoomDriveRef.current = "close";
       stackRoomDismissRef.current = true;
       publishChatStackCssProgress(progress);
       if (stackRoomDismissRef.current) {
-        syncStackNavHideProgress(progress);
-        onExitNavRevealProgress?.(progress);
+        if (animate || Math.abs(progress - stackNavDismissProgressRef.current) > 0.012) {
+          stackNavDismissProgressRef.current = progress;
+          syncStackNavHideProgress(progress);
+          onExitNavRevealProgress?.(progress);
+        }
       }
     } catch (err) {
       console.warn("[chat-room-close-drag]", err);
@@ -2290,6 +2309,10 @@ export function ChatScreen({
   const resetStackToInboxRest = useCallback(
     (opts?: { animate?: boolean }) => {
       stackProgressRef.current = 0;
+      stackDragPreviewIdRef.current = null;
+      stackDragVisualStartedRef.current = false;
+      lastRoomDismissTxRef.current = 0;
+      stackNavDismissProgressRef.current = -1;
       setStackProgress(0);
       setStackSpring(!!opts?.animate);
       stackRoomDriveRef.current = "idle";
@@ -2309,7 +2332,9 @@ export function ChatScreen({
       applyStackLayerTransforms(clamped, animate);
       const drivingNav =
         stackOpenDragRef.current ||
+        stackTapTransitionRef.current ||
         !!stackDragChatId ||
+        !!stackDragPreviewIdRef.current ||
         stackRoomDismissRef.current ||
         stackRoomDriveRef.current === "close";
       if (drivingNav && clamped > 0.001 && clamped < 0.999) {
@@ -2346,14 +2371,19 @@ export function ChatScreen({
         const cap = Math.max(260, stackCapRef.current);
         const threshold = Math.max(cap * CHAT_STACK_OPEN_FRACTION, 64);
         if (phase === "start" || phase === "move") {
-          setStackRoomDismissDragging(true);
+          if (phase === "start") {
+            setStackRoomDismissDragging(true);
+            lastRoomDismissTxRef.current = 0;
+            stackNavDismissProgressRef.current = -1;
+          }
           stackRoomDriveRef.current = "close";
           stackRoomDismissRef.current = true;
-          onExitNavRevealProgress?.(stackProgressRef.current);
           applyRoomCloseDrag(tx, false);
           return;
         }
         setStackRoomDismissDragging(false);
+        lastRoomDismissTxRef.current = 0;
+        stackNavDismissProgressRef.current = -1;
         const closing = tx <= -threshold;
         if (closing) {
           beginCloseChatThreadRef.current(resolveOpenChatId(openChat));
@@ -2443,11 +2473,14 @@ export function ChatScreen({
     stackOpenDragRef.current = true;
     stackRoomDriveRef.current = "open";
     stackRoomDismissRef.current = false;
-    setStackClosingId(null);
-    setStackSpring(false);
-    hideStackChrome();
+    if (!stackDragVisualStartedRef.current) {
+      stackDragVisualStartedRef.current = true;
+      setStackClosingId(null);
+      setStackSpring(false);
+      hideStackChrome();
+    }
     const canonical = resolveOpenChatId(chatId);
-    if (stackDragChatId !== canonical) setStackDragChatId(canonical);
+    stackDragPreviewIdRef.current = canonical;
     let cap = stackCapRef.current;
     if (!(cap > 0)) {
       cap = readSafeStackCapPx(stackInboxRef.current, stackCapRef);
@@ -2456,7 +2489,6 @@ export function ChatScreen({
     const progress = cap > 0 ? px / cap : 0;
     publishStackProgressVisual(progress, false);
   }, [
-    stackDragChatId,
     resolveOpenChatId,
     publishStackProgressVisual,
     hideStackChrome,
@@ -2489,6 +2521,7 @@ export function ChatScreen({
       const progress = stackProgressRef.current;
       const sameThread =
         stackDragChatId === canonical ||
+        stackDragPreviewIdRef.current === canonical ||
         openChat === canonical ||
         stackNavTargetRef.current === canonical;
 
@@ -2496,6 +2529,8 @@ export function ChatScreen({
       stackListGestureCommitRef.current = true;
       stackNavTargetRef.current = canonical;
       stackOpenDragRef.current = false;
+      stackDragPreviewIdRef.current = null;
+      stackDragVisualStartedRef.current = false;
       stackSwipeOpeningRef.current = false;
       stackRoomDriveRef.current = "open";
       stackRoomDismissRef.current = false;
@@ -2568,6 +2603,9 @@ export function ChatScreen({
 
   const cancelStackDrag = useCallback(() => {
     flushPendingStackDrag();
+    stackDragPreviewIdRef.current = null;
+    stackDragVisualStartedRef.current = false;
+    stackOpenDragRef.current = false;
     if (!stackDragChatId && !openChat && stackProgressRef.current < 0.02) {
       releaseStackTransitionLock();
       releaseChatChromeAfterGesture();
@@ -2615,6 +2653,7 @@ export function ChatScreen({
       }
 
       ++stackNavGenerationRef.current;
+      const gen = stackNavGenerationRef.current;
       stackTransitionLockRef.current = true;
       stackListGestureCommitRef.current = true;
       stackOpenDragRef.current = false;
@@ -2622,10 +2661,13 @@ export function ChatScreen({
       stackRoomDriveRef.current = "open";
       stackRoomDismissRef.current = false;
       stackNavTargetRef.current = canonical;
+      stackTapTransitionRef.current = true;
       setStackGestureLocked(true);
       setStackClosingId(null);
       setStackDragChatId(null);
-      stackTapTransitionRef.current = true;
+      stackDragPreviewIdRef.current = null;
+      stackDragVisualStartedRef.current = false;
+      hideStackChrome();
 
       flushSync(() => {
         setOpenChat(canonical);
@@ -2634,7 +2676,38 @@ export function ChatScreen({
         setStackSpring(false);
       });
       onActiveChatChange?.(canonical);
-      // useLayoutEffect يكتشف stackTapTransitionRef=true ويُشغّل الانزلاق
+
+      applyStackLayerTransforms(0, false);
+      publishChatStackCssProgress(0);
+      syncStackNavHideProgress(0.04);
+      onExitNavRevealProgress?.(0.04);
+      try {
+        void stackInboxRef.current?.offsetWidth;
+        void stackRoomRef.current?.offsetWidth;
+      } catch {
+        /* ignore */
+      }
+
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (gen !== stackNavGenerationRef.current || !stackTapTransitionRef.current) return;
+          syncStackNavHideProgress(1);
+          onExitNavRevealProgress?.(1);
+          stackProgressRef.current = 1;
+          setStackProgress(1);
+          setStackSpring(true);
+          publishStackProgressVisual(1, true, true);
+          window.setTimeout(() => {
+            if (gen !== stackNavGenerationRef.current) return;
+            setStackSpring(false);
+            stackTapTransitionRef.current = false;
+            syncStackNavHideProgress(null);
+            onExitNavRevealProgress?.(null);
+            releaseStackTransitionLock();
+            requestStackRoomScrollBottom();
+          }, CHAT_TAP_OPEN_MS);
+        });
+      });
     },
     [
       resolveOpenChatId,
@@ -2643,6 +2716,11 @@ export function ChatScreen({
       stackDragChatId,
       hideStackChrome,
       onActiveChatChange,
+      applyStackLayerTransforms,
+      publishStackProgressVisual,
+      onExitNavRevealProgress,
+      releaseStackTransitionLock,
+      requestStackRoomScrollBottom,
     ],
   );
 
@@ -2677,6 +2755,8 @@ export function ChatScreen({
     }
     setStackDragChatId(null);
     setStackClosingId(null);
+    stackDragPreviewIdRef.current = null;
+    stackDragVisualStartedRef.current = false;
     releaseStackTransitionLock();
     if (stackProgressRef.current > 0.02) {
       resetStackToInboxRest();
@@ -2740,8 +2820,11 @@ export function ChatScreen({
       if (mode === "tap") {
         stackOpenDragRef.current = false;
         stackSwipeOpeningRef.current = false;
+        const hadDragPreview = !!(stackDragChatId || stackDragPreviewIdRef.current);
+        stackDragPreviewIdRef.current = null;
+        stackDragVisualStartedRef.current = false;
         releaseStackTransitionLock();
-        if (stackDragChatId) {
+        if (hadDragPreview) {
           commitStackOpen(canonical);
           return;
         }
@@ -2986,6 +3069,8 @@ export function ChatScreen({
         setStackProgress(0);
         stackRoomDriveRef.current = "idle";
         stackRoomDismissRef.current = false;
+        lastRoomDismissTxRef.current = 0;
+        stackNavDismissProgressRef.current = -1;
         setStackRoomDismissDragging(false);
         onExitNavRevealProgress?.(null);
         if (typeof document !== "undefined") {
@@ -3022,11 +3107,14 @@ export function ChatScreen({
       stackOpenDragRef.current = true;
       stackRoomDriveRef.current = "open";
       stackRoomDismissRef.current = false;
-      setStackClosingId(null);
-      setStackSpring(false);
-      hideStackChrome();
+      if (!stackDragVisualStartedRef.current) {
+        stackDragVisualStartedRef.current = true;
+        setStackClosingId(null);
+        setStackSpring(false);
+        hideStackChrome();
+      }
       const canonical = resolveOpenChatId(chatId);
-      if (stackDragChatId !== canonical) setStackDragChatId(canonical);
+      stackDragPreviewIdRef.current = canonical;
       let cap = stackCapRef.current;
       if (!(cap > 0)) {
         cap = readSafeStackCapPx(stackInboxRef.current, stackCapRef);
@@ -3036,7 +3124,6 @@ export function ChatScreen({
       publishStackProgressVisual(progress, false);
     },
     [
-      stackDragChatId,
       resolveOpenChatId,
       publishStackProgressVisual,
       hideStackChrome,
@@ -3049,13 +3136,17 @@ export function ChatScreen({
       if (Number.isFinite(vx)) stackOpenVelocityRef.current = vx;
       pendingStackDragRef.current = { chatId, px, vx };
       if (stackDragFrameRef.current) return;
-      stackDragFrameRef.current = requestAnimationFrame(() => {
+      const tick = () => {
         stackDragFrameRef.current = 0;
         const pending = pendingStackDragRef.current;
         if (!pending) return;
         pendingStackDragRef.current = null;
         applyStackDragVisual(pending.chatId, pending.px);
-      });
+        if (pendingStackDragRef.current) {
+          stackDragFrameRef.current = requestAnimationFrame(tick);
+        }
+      };
+      stackDragFrameRef.current = requestAnimationFrame(tick);
     },
     [applyStackDragVisual],
   );
@@ -3084,31 +3175,7 @@ export function ChatScreen({
     }
     if (stackClosingId || stackDragChatId) return;
     if (stackGestureLocked && !stackTapTransitionRef.current) return;
-    if (stackTapTransitionRef.current) {
-      applyStackLayerTransforms(0, false);
-      let inner = 0;
-      const outer = requestAnimationFrame(() => {
-        inner = requestAnimationFrame(() => {
-          stackProgressRef.current = 1;
-          if (typeof document !== "undefined") {
-            document.documentElement.style.setProperty(CHAT_STACK_PROGRESS_VAR, "1");
-          }
-          setStackProgress(1);
-          setStackSpring(true);
-          applyStackLayerTransforms(1, true);
-          window.setTimeout(() => {
-            setStackSpring(false);
-            stackTapTransitionRef.current = false;
-            releaseStackTransitionLock();
-            requestStackRoomScrollBottom();
-          }, CHAT_TAP_OPEN_MS);
-        });
-      });
-      return () => {
-        cancelAnimationFrame(outer);
-        if (inner) cancelAnimationFrame(inner);
-      };
-    }
+    if (stackTapTransitionRef.current) return;
     if (stackProgressRef.current >= 0.98) {
       setStackSpring(false);
       applyStackLayerTransforms(1, false);
@@ -3138,7 +3205,7 @@ export function ChatScreen({
       flushPendingStackDrag();
       if (openChat || stackListGestureCommitRef.current) return;
       const p = stackProgressRef.current;
-      if (p > 0.03 && p < 0.97 && (stackOpenDragRef.current || stackDragChatId)) {
+      if (p > 0.03 && p < 0.97 && (stackDragChatId || stackDragPreviewIdRef.current)) {
         cancelStackDrag();
       }
     };
@@ -3150,18 +3217,21 @@ export function ChatScreen({
     };
   }, [openChat, stackDragChatId, cancelStackDrag, flushPendingStackDrag]);
 
-  /** إذا علِق القفل أو السحب بنصف شاشة — إنهاء تلقائي */
+  /** إذا علِق القفل أو السحب بنصف شاشة — إنهاء تلقائي (لا أثناء سحب نشط) */
   useEffect(() => {
+    if (stackOpenDragRef.current || stackListGestureCommitRef.current) return;
+    const previewId = stackDragPreviewIdRef.current || stackDragChatId;
     const stuck =
       (stackGestureLocked && !openChat && stackProgressRef.current < 0.98) ||
-      (!!stackDragChatId && !openChat && stackProgressRef.current > 0.03 && stackProgressRef.current < 0.97);
+      (!!previewId && !openChat && stackProgressRef.current > 0.03 && stackProgressRef.current < 0.97);
     if (!stuck) return;
     const t = window.setTimeout(() => {
+      if (stackOpenDragRef.current || stackListGestureCommitRef.current) return;
       if (openChat && stackProgressRef.current >= 0.98) {
         releaseStackTransitionLock();
         return;
       }
-      const id = stackDragChatId;
+      const id = stackDragPreviewIdRef.current || stackDragChatId;
       const p = stackProgressRef.current;
       if (!id || p <= 0.03) {
         releaseStackTransitionLock();
@@ -3230,12 +3300,11 @@ export function ChatScreen({
   }, [showGroupSettings, openChat, stackChat, restoreChatStackAfterGroupSettings]);
   /** معاينة الغرفة أثناء السحب — المحادثة لا تُعتبر «مفتوحة» حتى commit */
   const stackRoomPreviewOnly = !!stackDragChatId && !openChat;
-  /** يُعطّل سحب/زر الرجوع فقط أثناء فتح المحادثة — لا أثناء سحب الخروج */
+  /** يُعطّل سحب/زر الرجوع أثناء فتح المحادثة — لا أثناء سحب الخروج */
   const chatRoomDismissBlocked =
     stackRoomPreviewOnly ||
     !!stackDragChatId ||
-    stackTapTransitionRef.current ||
-    (stackGestureLocked && !stackRoomDismissDragging);
+    stackTapTransitionRef.current;
   /** الغرفة: scroll لأسفل فقط بعد اكتمال الفتح — لا أثناء السحب أو الانتقال */
   const stackRoomForceScrollBottom =
     !!openChat && !stackDragChatId && stackProgress >= 0.98 && !stackTapTransitionRef.current;
@@ -3317,8 +3386,14 @@ export function ChatScreen({
     setProfileNoteReplyDraft("");
   }, [profileNoteReply?.userId, profileNoteReply?.note]);
 
-  const myChats = state.chats.filter(c => c.members.includes(me.id) && !c.request);
-  const requests = state.chats.filter(c => c.members.includes(me.id) && c.request);
+  const myChats = useMemo(
+    () => state.chats.filter(c => c.members.includes(me.id) && !c.request),
+    [state.chats, me.id],
+  );
+  const requests = useMemo(
+    () => state.chats.filter(c => c.members.includes(me.id) && c.request),
+    [state.chats, me.id],
+  );
   const messageRequests = useMemo(
     () =>
       requests.filter(
@@ -3372,7 +3447,7 @@ export function ChatScreen({
       if (aPin && bPin) return ia - ib;
       return lastActivityAt(b) - lastActivityAt(a);
     });
-  }, [filteredChats, me.id, me.pinnedChatIds, state.chats]);
+  }, [filteredChats, me.id, me.pinnedChatIds]);
 
   /**
    * يمنع وميض "لا توجد دردشات" أثناء مزامنة الخادم:
@@ -3976,12 +4051,12 @@ export function ChatScreen({
       )}
       <div className="chat-stack-scene relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
         {chatInbox}
-        {activeStackChatId && stackChat ? (
-          <ChatStackRoomGestureShell
-            roomRef={stackRoomRef}
-            widthCapRef={stackCapRef}
-            interactive={!!openChat}
-          >
+        <ChatStackRoomGestureShell
+          roomRef={stackRoomRef}
+          widthCapRef={stackCapRef}
+          interactive={!!openChat}
+        >
+          {(openChat || stackClosingId) && stackChat ? (
             <ChatRoom
               key={`${accountSessionKey}-${stackChat.id}`}
               chat={stackChat}
@@ -4017,8 +4092,8 @@ export function ChatScreen({
                 openChatThemePickerRef.current = open;
               }}
             />
-          </ChatStackRoomGestureShell>
-        ) : null}
+          ) : null}
+        </ChatStackRoomGestureShell>
       </div>
       {showGroupSettings &&
       openChat &&
@@ -4476,7 +4551,6 @@ function ChatRoom({
     markViewOnceOpened,
     markChatOpened,
     markChatRead,
-    typingUserByChatId,
     joinChannel,
     hideMessageForMe,
     addMessageReaction,
@@ -4487,6 +4561,7 @@ function ChatRoom({
     mergeDiscoveredUsers,
     isGuest,
   } = useApp();
+  const typingUserByChatId = useTypingUsers();
   const t = useT();
   const chat = useMemo(() => normalizeChatRecord(chatInput), [chatInput]);
   const viewerId = resolveActiveViewerId(state) ?? currentUser?.id ?? "";
@@ -4712,9 +4787,10 @@ function ChatRoom({
     const el = composerRef.current;
     if (!el || typeof window === "undefined") return;
     const rect = el.getBoundingClientRect();
-    /** على iOS ارتفاع getBoundingClientRect أقل من المساحة المحجوبة فعلياً */
-    const obstructed = Math.max(rect.height, window.innerHeight - rect.top);
-    const h = Math.ceil(obstructed) + 12;
+    const kbOpen =
+      typeof document !== "undefined" &&
+      document.documentElement.classList.contains("chat-keyboard-open");
+    const h = Math.ceil(rect.height) + (kbOpen ? 2 : 8);
     if (h > 0) {
       document.documentElement.style.setProperty("--chat-composer-h", `${h}px`);
     }
@@ -4725,12 +4801,32 @@ function ChatRoom({
     if (!el) return;
     syncComposerDockHeight();
     const top = Math.max(0, el.scrollHeight - el.clientHeight);
+    const dist = top - el.scrollTop;
+    if (dist < 2) return;
     try {
       el.scrollTo({ top, behavior: "instant" });
     } catch {
       el.scrollTop = top;
     }
   }, [syncComposerDockHeight]);
+
+  const scrollBottomRafRef = useRef(0);
+  const scrollBottomTimerRef = useRef(0);
+  const scheduleScrollToBottom = useCallback(
+    (opts?: { afterMs?: number }) => {
+      if (!stickToBottomRef.current) return;
+      cancelAnimationFrame(scrollBottomRafRef.current);
+      scrollBottomRafRef.current = requestAnimationFrame(() => scrollMessagesToBottom());
+      if (opts?.afterMs != null && opts.afterMs > 0) {
+        if (scrollBottomTimerRef.current) window.clearTimeout(scrollBottomTimerRef.current);
+        scrollBottomTimerRef.current = window.setTimeout(() => {
+          scrollBottomTimerRef.current = 0;
+          scrollMessagesToBottom();
+        }, opts.afterMs);
+      }
+    },
+    [scrollMessagesToBottom],
+  );
 
   const onComposerFocus = useCallback(() => {
     stickToBottomRef.current = true;
@@ -4739,8 +4835,23 @@ function ChatRoom({
     } catch {
       /* ignore */
     }
-    requestAnimationFrame(() => scrollMessagesToBottom());
-  }, [scrollMessagesToBottom]);
+    scheduleScrollToBottom({ afterMs: 220 });
+  }, [scheduleScrollToBottom]);
+
+  useLayoutEffect(() => {
+    const headerEl = chatHeaderRef.current;
+    if (!headerEl || typeof document === "undefined") return;
+    const syncHeaderH = () => {
+      const hh = Math.ceil(headerEl.getBoundingClientRect().height);
+      if (hh > 0) {
+        document.documentElement.style.setProperty("--chat-header-h", `${hh}px`);
+      }
+    };
+    syncHeaderH();
+    const roHeader = new ResizeObserver(syncHeaderH);
+    roHeader.observe(headerEl);
+    return () => roHeader.disconnect();
+  }, [chat.id, showPrivacyMenu, (chat.pinnedMessageIds || []).length]);
 
   useLayoutEffect(() => {
     const el = composerRef.current;
@@ -4748,7 +4859,7 @@ function ChatRoom({
     syncComposerDockHeight();
     const ro = new ResizeObserver(() => {
       syncComposerDockHeight();
-      if (stickToBottomRef.current) scrollMessagesToBottom();
+      scheduleScrollToBottom();
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -4759,35 +4870,31 @@ function ChatRoom({
     mentionPick,
     plusAttachOpen,
     syncComposerDockHeight,
-    scrollMessagesToBottom,
+    scheduleScrollToBottom,
   ]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     const sync = () => {
       syncComposerDockHeight();
-      if (stickToBottomRef.current) scrollMessagesToBottom();
+      scheduleScrollToBottom();
     };
     window.addEventListener("resize", sync, { passive: true });
     window.addEventListener("orientationchange", sync, { passive: true });
-    window.addEventListener("retweet-chat-keyboard-sync", sync, { passive: true });
     return () => {
       window.removeEventListener("resize", sync);
       window.removeEventListener("orientationchange", sync);
-      window.removeEventListener("retweet-chat-keyboard-sync", sync);
     };
-  }, [syncComposerDockHeight, scrollMessagesToBottom]);
+  }, [syncComposerDockHeight, scheduleScrollToBottom]);
 
+  const kbOpenPrevRef = useRef(false);
   useEffect(() => {
+    const wasOpen = kbOpenPrevRef.current;
+    kbOpenPrevRef.current = kbSnap.open;
     if (!kbSnap.open) return;
-    stickToBottomRef.current = true;
-    const t1 = requestAnimationFrame(() => scrollMessagesToBottom());
-    const t2 = window.setTimeout(() => scrollMessagesToBottom(), 120);
-    return () => {
-      cancelAnimationFrame(t1);
-      window.clearTimeout(t2);
-    };
-  }, [kbSnap.open, kbSnap.keyboardInset, scrollMessagesToBottom]);
+    if (!wasOpen) stickToBottomRef.current = true;
+    scheduleScrollToBottom({ afterMs: 280 });
+  }, [kbSnap.open, scheduleScrollToBottom]);
   const scrollAnchorRef = useRef({ chatId: "", msgCount: 0 });
   const cameraCaptureRef = useRef<HTMLInputElement>(null);
   const galleryMediaInputRef = useRef<HTMLInputElement>(null);
@@ -5014,20 +5121,13 @@ function ChatRoom({
   useLayoutEffect(() => {
     const el = messagesScrollRef.current;
     if (!el) return;
-    let raf = 0;
     const ro = new ResizeObserver(() => {
       if (!forceScrollToBottom && !stickToBottomRef.current) return;
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => scrollMessagesToBottom());
+      scheduleScrollToBottom();
     });
     ro.observe(el);
-    const inner = el.firstElementChild;
-    if (inner) ro.observe(inner);
-    return () => {
-      ro.disconnect();
-      cancelAnimationFrame(raf);
-    };
-  }, [chat.id, scrollMessagesToBottom, forceScrollToBottom]);
+    return () => ro.disconnect();
+  }, [chat.id, scheduleScrollToBottom, forceScrollToBottom]);
 
   useLayoutEffect(() => {
     stickToBottomRef.current = true;
@@ -5073,13 +5173,12 @@ function ChatRoom({
     if (isNewChat) stickToBottomRef.current = true;
     if (!isNewChat && !forceScrollToBottom && count === prev.msgCount) return;
     stickToBottomRef.current = true;
-    scrollMessagesToBottom();
-    const inner = requestAnimationFrame(() => {
-      scrollMessagesToBottom();
-      requestAnimationFrame(scrollMessagesToBottom);
-    });
-    return () => cancelAnimationFrame(inner);
-  }, [chat.id, displayMessages.length, messageContext, scrollMessagesToBottom, forceScrollToBottom]);
+    scheduleScrollToBottom();
+    return () => {
+      cancelAnimationFrame(scrollBottomRafRef.current);
+      if (scrollBottomTimerRef.current) window.clearTimeout(scrollBottomTimerRef.current);
+    };
+  }, [chat.id, displayMessages.length, messageContext, scheduleScrollToBottom, forceScrollToBottom]);
 
   const onMessagesScroll = useCallback(() => {
     const el = messagesScrollRef.current;
@@ -6085,7 +6184,7 @@ function ChatRoom({
         dir={useIgDm ? dmDir : "rtl"}
         data-chat-dismiss-handle
         className={
-          "sticky top-0 z-[260] flex w-full shrink-0 items-center gap-2 px-3 py-3 pt-[max(0.75rem,var(--sat))] " +
+          "chat-room-header flex w-full shrink-0 items-center gap-2 px-3 py-3 pt-[max(0.75rem,var(--sat))] " +
           (isQuranChannel
             ? "bg-zinc-900 text-zinc-100 border-b border-zinc-700"
             : chromeOnWallpaper
@@ -6315,6 +6414,7 @@ function ChatRoom({
         </div>
       </div>
 
+      <div className="chat-bottom-lift flex min-h-0 flex-1 flex-col overflow-hidden">
       {isDmRoom && vanishMode && (
         <p className="sr-only">
           وضع مخفي — الرسائل الجديدة لا تُحفظ بالكامل. اسحب من أسفل منطقة الإدخال إلى الأعلى لتعطيل الوضع وحذف رسائل هذا الوضع.
@@ -6934,6 +7034,7 @@ function ChatRoom({
         </>
       )}
 
+      <div className="chat-composer-spacer" aria-hidden />
       <div
         ref={composerRef}
         className={
@@ -7551,6 +7652,7 @@ function ChatRoom({
           </form>
         </div>
       )}
+      </div>
       </div>
       <InstagramCamera
         open={instagramCameraOpen}

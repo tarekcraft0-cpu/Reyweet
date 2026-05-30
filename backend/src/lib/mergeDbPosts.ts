@@ -1,10 +1,11 @@
 import type { AppState, Post, User } from "../../../src/lib/types.js";
 import { getUserById, listPosts, type PostRow } from "../db/engine.js";
+import { normalizeFounderPostUserId } from "./founderLegacy.js";
 
 function rowToPost(row: PostRow, prev?: Post): Post {
   return {
     id: row.id,
-    userId: row.userId,
+    userId: normalizeFounderPostUserId(row.userId),
     type: (row.type || "post") as Post["type"],
     text: row.text ?? "",
     image: row.image,

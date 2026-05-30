@@ -23,7 +23,12 @@ import { getModeratorRole } from "./moderatorRoles.js";
 export class ReportError extends Error {
   constructor(
     message: string,
-    readonly code: "rate_limit" | "duplicate" | "invalid" | "not_found" = "invalid",
+    readonly code:
+      | "rate_limit"
+      | "duplicate"
+      | "invalid"
+      | "not_found"
+      | "already_decided" = "invalid",
   ) {
     super(message);
     this.name = "ReportError";
@@ -78,7 +83,9 @@ export async function submitReport(
     input.category,
     input.targetId,
   );
-  if (dup) throw new ReportError("تم إرسال بلاغ مشابه مؤخراً", "duplicate");
+  if (dup) {
+    throw new ReportError("تم إرسال هذا البلاغ للتو — انتظر لحظة ثم أعد المحاولة", "duplicate");
+  }
 
   const meta = clientMeta(req);
   await linkDeviceAndIp(reporterId, meta.fingerprint, meta.ip);
@@ -134,6 +141,7 @@ async function moderatorUserIds(): Promise<string[]> {
     }
   }
   ids.add("u_founder_tareqf");
+  ids.add("u_support_official");
   return [...ids];
 }
 
@@ -151,13 +159,11 @@ export async function moderatorReviewReport(
 ) {
   const report = await getReport(reportId);
   if (!report) throw new ReportError("البلاغ غير موجود", "not_found");
-
-  if (update.status) {
-    report.status = update.status;
-    report.assignedModeratorId = moderatorId;
-    report.updatedAt = Date.now();
-    await saveReport(report);
+  if (report.status === "approved" || report.status === "rejected") {
+    throw new ReportError("تم البت في هذا البلاغ مسبقاً", "already_decided");
   }
+
+  report.assignedModeratorId = moderatorId;
 
   if (update.action && update.action !== "ignore") {
     const { applyModerationAction } = await import("./banEngine.js");
@@ -172,6 +178,10 @@ export async function moderatorReviewReport(
     await saveReport(report);
   } else if (update.action === "ignore") {
     report.status = "rejected";
+    report.updatedAt = Date.now();
+    await saveReport(report);
+  } else if (update.status) {
+    report.status = update.status;
     report.updatedAt = Date.now();
     await saveReport(report);
   }

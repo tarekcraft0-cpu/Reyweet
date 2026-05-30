@@ -2,7 +2,9 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { HomeFeedPostItem } from "../home/HomeFeedPostItem";
 import { HomeFeedActionsProvider } from "@/lib/homeFeedActionsContext";
 import { useTabPanelScrollRef } from "@/lib/tabPanelScrollContext";
+import { useIsTabActive } from "@/lib/tabActiveContext";
 import { useApp, userById, visibleStoryFriendsUserIds } from "@/lib/store";
+import { canViewPostInHomeFeed } from "@/lib/feedVisibility";
 import { storyViewerTrayRing } from "@/lib/storyTray";
 import { isReelFeedPost } from "@/lib/postMedia";
 import { notifyGuestActionBlocked } from "@/lib/guestBlocked";
@@ -30,7 +32,17 @@ export function HomeScreen({
   restoreFromProfileContext = null,
   onConsumedRestoreFromProfile,
 }: Props) {
-  const { state, currentUser, addComment, deleteComment, isGuest } = useApp();
+  const {
+    state,
+    currentUser,
+    addComment,
+    deleteComment,
+    isGuest,
+    refreshFromServer,
+    refreshFeedFromServer,
+    refreshUserDirectory,
+  } = useApp();
+  const isHomeTabActive = useIsTabActive("home");
   const t = useT();
   const [shareTarget, setShareTarget] = useState<Post | null>(null);
   const [storyOpen, setStoryOpen] = useState<StoryOpenRequest | null>(null);
@@ -117,6 +129,7 @@ export function HomeScreen({
       if (scrollTop() <= 2 && dy > 72) {
         setFeedTick(t => t + 1);
         setPullHint(true);
+        void refreshFeedFromServer();
         window.setTimeout(() => setPullHint(false), 1400);
       }
     };
@@ -126,7 +139,7 @@ export function HomeScreen({
       window.removeEventListener("touchstart", onStart);
       window.removeEventListener("touchend", onEnd);
     };
-  }, [tabScrollRef]);
+  }, [tabScrollRef, refreshFeedFromServer]);
 
   const storyFriends = useMemo(
     () => visibleStoryFriendsUserIds(state, me.id),
@@ -159,24 +172,39 @@ export function HomeScreen({
     [onOpenProfile, onOpenChat, openPostById, openCommentsById],
   );
 
+  useEffect(() => {
+    if (!isHomeTabActive || isGuest) return;
+    void refreshFeedFromServer();
+    refreshFromServer({ urgent: true });
+  }, [isHomeTabActive, isGuest, refreshFromServer, refreshFeedFromServer]);
+
+  useEffect(() => {
+    if (!isHomeTabActive || isGuest) return;
+    const tick = () => {
+      if (document.visibilityState !== "visible") return;
+      void refreshFeedFromServer();
+    };
+    const id = window.setInterval(tick, 20_000);
+    const onVis = () => {
+      if (document.visibilityState === "visible") void refreshFeedFromServer();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [isHomeTabActive, isGuest, refreshFeedFromServer]);
+
   const feed = useMemo(() => {
     const seen = new Set<string>();
     return (state.posts ?? [])
       .filter(p => {
         if (!p?.id || seen.has(p.id) || isReelFeedPost(p)) return false;
         seen.add(p.id);
-        const author = userById(state, p.userId);
-        if (!author) return true;
-        const authorBlocked = author.blocked ?? [];
-        const myBlocked = me.blocked ?? [];
-        const authorFollowers = author.followers ?? [];
-        if (authorBlocked.includes(me.id)) return false;
-        if (myBlocked.includes(author.id)) return false;
-        if (author.isPrivate && p.userId !== me.id && !authorFollowers.includes(me.id)) return false;
-        return true;
+        return canViewPostInHomeFeed(state, me.id, p, me);
       })
       .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
-  }, [state.posts, state.users, me.id, me.blocked, feedTick]);
+  }, [state.posts, state.users, me, feedTick]);
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col bg-background">

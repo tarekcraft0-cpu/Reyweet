@@ -7,7 +7,10 @@ export async function runVerificationMigration(): Promise<{ updated: number }> {
 
   for (const u of users) {
     const patch: Partial<UserRow> = {};
-    const exempt = u.founderVerified === true || u.appOfficialVerified === true;
+    const exempt =
+      u.founderVerified === true ||
+      u.appOfficialVerified === true ||
+      u.supportOfficialVerified === true;
 
     if (!u.verificationStatus) {
       patch.verificationStatus = u.verified === true || exempt ? "approved" : "none";

@@ -23,6 +23,7 @@ import {
   findUsersByIp,
   getActiveAppealForUser,
   getReport,
+  dismissUserModerationNotice,
   getUserModerationState,
   listAppeals,
   listAudit,
@@ -30,12 +31,17 @@ import {
 } from "../db/moderationStore.js";
 import { getUserById, findUserByUsername } from "../db/engine.js";
 import {
+  enrichAppealsForAdmin,
+  enrichReportsForAdmin,
+  filterReportsByQuery,
+} from "../moderation/adminListEnrich.js";
+import {
   getModeratorRole,
   requireModeratorRole,
   verifyInternalOverrideKey,
 } from "../moderation/moderatorRoles.js";
-import { moderatorCan } from "../../../src/lib/moderationRbac.js";
-import { restoreAccount } from "../moderation/banEngine.js";
+import { canRestoreModerationAccount, moderatorCan } from "../../../src/lib/moderationRbac.js";
+import { isBannedStatus, restoreAccount } from "../moderation/banEngine.js";
 
 type Authed = Request & { userId: string };
 
@@ -45,8 +51,18 @@ function uid(req: Request) {
 
 function handleReportErr(res: Response, e: unknown) {
   if (e instanceof ReportError) {
-    const status = e.code === "rate_limit" ? 429 : e.code === "not_found" ? 404 : 400;
+    const status =
+      e.code === "rate_limit"
+        ? 429
+        : e.code === "not_found"
+          ? 404
+          : e.code === "already_decided"
+            ? 409
+            : 400;
     return res.status(status).json({ error: e.message });
+  }
+  if (e instanceof Error && e.message === "MODERATOR_FORBIDDEN") {
+    return res.status(403).json({ error: "غير مصرح" });
   }
   return res.status(500).json({ error: e instanceof Error ? e.message : "خطأ" });
 }
@@ -121,7 +137,16 @@ export function createModerationRouter(authMiddleware: (req: Request, res: Respo
       latestAppeal: latestAppeal
         ? { id: latestAppeal.id, status: latestAppeal.status, updatedAt: latestAppeal.updatedAt }
         : null,
+      pendingNotice: state.pendingNotice ?? null,
     });
+  });
+
+  router.post("/v1/me/moderation/dismiss-notice", authMiddleware, async (req, res) => {
+    const parsed = z.object({ noticeId: z.string().min(1) }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "noticeId مطلوب" });
+    const ok = await dismissUserModerationNotice(uid(req), parsed.data.noticeId);
+    if (!ok) return res.status(404).json({ error: "لا يوجد إشعار معلّق" });
+    return res.json({ ok: true });
   });
 
   router.post("/v1/me/appeal/otp", authMiddleware, async (req, res) => {
@@ -186,10 +211,13 @@ export function createModerationRouter(authMiddleware: (req: Request, res: Respo
       requireModeratorRole(uid(req));
       const status = String(req.query.status || "");
       const q = String(req.query.q || "");
-      const reports = await listReports({
-        status: status || undefined,
-        q: q || undefined,
-      });
+      let reports = await enrichReportsForAdmin(
+        await listReports({
+          status: status || undefined,
+          limit: 500,
+        }),
+      );
+      if (q) reports = filterReportsByQuery(reports, q);
       return res.json({ reports });
     } catch {
       return res.status(403).json({ error: "غير مصرح" });
@@ -218,6 +246,7 @@ export function createModerationRouter(authMiddleware: (req: Request, res: Respo
       .enum([
         "ignore",
         "warn",
+        "ban",
         "temp_ban",
         "perm_ban",
         "shadow_ban",
@@ -252,7 +281,9 @@ export function createModerationRouter(authMiddleware: (req: Request, res: Respo
     try {
       requireModeratorRole(uid(req));
       const status = String(req.query.status || "");
-      const appeals = await listAppeals({ status: status || undefined });
+      const appeals = await enrichAppealsForAdmin(
+        await listAppeals({ status: status || undefined }),
+      );
       return res.json({ appeals });
     } catch {
       return res.status(403).json({ error: "غير مصرح" });
@@ -289,6 +320,63 @@ export function createModerationRouter(authMiddleware: (req: Request, res: Respo
     }
   });
 
+  router.get("/v1/admin/moderation/users/by-username/:username", authMiddleware, async (req, res) => {
+    try {
+      requireModeratorRole(uid(req));
+      const row = await findUserByUsername(String(req.params.username ?? "").trim());
+      if (!row) return res.status(404).json({ error: "المستخدم غير موجود" });
+      const state = await getUserModerationState(row.id);
+      return res.json({
+        user: { id: row.id, username: row.username, email: row.email },
+        state,
+        banned: isBannedStatus(state.accountStatus),
+        permanentlyDisabled: state.accountStatus === "PERMANENTLY_BANNED",
+      });
+    } catch {
+      return res.status(403).json({ error: "غير مصرح" });
+    }
+  });
+
+  router.post("/v1/admin/moderation/users/:userId/restore", authMiddleware, async (req, res) => {
+    try {
+      const modId = uid(req);
+      const role = requireModeratorRole(modId);
+      if (!canRestoreModerationAccount(role)) {
+        return res.status(403).json({ error: "صلاحية غير كافية لاستعادة الحساب" });
+      }
+      const userId = String(req.params.userId);
+      const user = await getUserById(userId);
+      if (!user) return res.status(404).json({ error: "المستخدم غير موجود" });
+      const before = await getUserModerationState(userId);
+      if (!isBannedStatus(before.accountStatus) && before.accountStatus !== "RESTRICTED") {
+        return res.status(400).json({ error: "الحساب غير معطّل" });
+      }
+      const parsed = z
+        .object({
+          note: z.string().max(1000).optional(),
+          wrongfulPermanent: z.boolean().optional(),
+        })
+        .safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: "بيانات غير صالحة" });
+      const wasPermanent = before.accountStatus === "PERMANENTLY_BANNED";
+      await restoreAccount(userId, modId, {
+        wrongfulPermanentRestore: parsed.data.wrongfulPermanent === true || wasPermanent,
+        note: parsed.data.note,
+      });
+      return res.json({
+        ok: true,
+        restored: true,
+        userId,
+        username: user.username,
+        messageAr: wasPermanent
+          ? "تم فك الحظر النهائي واستعادة الحساب."
+          : "تم استعادة الحساب.",
+      });
+    } catch {
+      return res.status(403).json({ error: "غير مصرح" });
+    }
+  });
+
   router.get("/v1/admin/moderation/audit", authMiddleware, async (req, res) => {
     try {
       requireModeratorRole(uid(req));
@@ -307,7 +395,7 @@ export function createModerationRouter(authMiddleware: (req: Request, res: Respo
     const parsed = z.object({ userId: z.string().min(1), note: z.string().optional() }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: "userId مطلوب" });
     const actor = String(req.headers["x-internal-actor"] || "internal");
-    await restoreAccount(parsed.data.userId, actor);
+    await restoreAccount(parsed.data.userId, actor, { wrongfulPermanentRestore: true, note: parsed.data.note });
     return res.json({ ok: true, restored: true });
   });
 

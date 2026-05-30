@@ -2,6 +2,7 @@ import type { BanInfo } from "./moderationBanTypes";
 import type {
   ImpersonationTarget,
   ModerationReport,
+  ModerationUserNotice,
   ReportCategoryId,
   ReportTargetType,
 } from "./moderationTypes";
@@ -63,9 +64,17 @@ export async function apiGetMyModerationStatus() {
     banInfo: BanInfo | null;
     canAppeal: boolean;
     permanentlyDisabled: boolean;
+    pendingNotice: ModerationUserNotice | null;
     activeAppeal: { id: string; status: "pending" | "under_review" | "approved" | "rejected"; createdAt: number } | null;
     latestAppeal: { id: string; status: "pending" | "under_review" | "approved" | "rejected"; updatedAt: number } | null;
   }>("/v1/me/moderation/status", { method: "GET" });
+}
+
+export async function apiDismissModerationNotice(noticeId: string) {
+  return modFetch<{ ok: true }>("/v1/me/moderation/dismiss-notice", {
+    method: "POST",
+    body: JSON.stringify({ noticeId }),
+  });
 }
 
 export async function apiAppealSendOtp() {
@@ -146,4 +155,36 @@ export async function apiFetchBannedUserPreview(userId: string) {
     `/v1/users/${encodeURIComponent(userId)}/banned-preview`,
     { method: "GET" },
   );
+}
+
+export type AdminModerationUserState = {
+  userId: string;
+  accountStatus: string;
+  banReason?: string;
+  bannedAt?: number;
+};
+
+export async function apiAdminLookupUserByUsername(username: string) {
+  return modFetch<{
+    user: { id: string; username: string; email: string };
+    state: AdminModerationUserState;
+    banned: boolean;
+    permanentlyDisabled: boolean;
+  }>(`/v1/admin/moderation/users/by-username/${encodeURIComponent(username)}`, { method: "GET" });
+}
+
+export async function apiAdminRestoreUser(
+  userId: string,
+  body: { note?: string; wrongfulPermanent?: boolean },
+) {
+  return modFetch<{
+    ok: true;
+    restored: boolean;
+    userId: string;
+    username: string;
+    messageAr: string;
+  }>(`/v1/admin/moderation/users/${encodeURIComponent(userId)}/restore`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
 }

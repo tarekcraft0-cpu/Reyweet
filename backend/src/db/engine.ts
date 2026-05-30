@@ -22,6 +22,8 @@ export type UserRow = {
   founderVerified?: boolean;
   founderOfficialLabel?: string;
   appOfficialVerified?: boolean;
+  supportOfficialVerified?: boolean;
+  supportOfficialLabel?: string;
   appOfficialLabel?: string;
   profileLink?: string;
   note?: string;
@@ -40,6 +42,16 @@ export type UserRow = {
   storyMaxDuration?: number;
   storyExpiryOptions?: number[];
   postCharacterLimit?: number;
+  /** مصادقة ثنائية — كود بريد عند كل تسجيل دخول */
+  twoFactorEnabled?: boolean;
+  /** أجهزة موثوقة بعد التحقق بالبريد */
+  trustedDevices?: Array<{
+    fingerprint: string;
+    label?: string;
+    userAgent?: string;
+    lastSeenAt: string;
+    createdAt: string;
+  }>;
 };
 
 export type PostCommentRow = {
@@ -289,6 +301,8 @@ export async function createUser(
       founderOfficialLabel: data.founderOfficialLabel,
       appOfficialVerified: data.appOfficialVerified === true,
       appOfficialLabel: data.appOfficialLabel,
+      supportOfficialVerified: data.supportOfficialVerified === true,
+      supportOfficialLabel: data.supportOfficialLabel,
       profileLink: data.profileLink,
       note: data.note,
       phone: data.phone,
@@ -475,6 +489,16 @@ export async function replaceStories(rows: StoryRow[]): Promise<void> {
 }
 
 // ——— OTP ———
+
+/** تنفيذ ذري داخل قفل OTP — يمنع إرسال أكواد متعددة عند طلبات متزامنة */
+export async function runOtpLocked<T>(fn: (all: OtpRow[]) => Promise<{ next: OtpRow[]; result: T }>): Promise<T> {
+  return withLock("otp", async () => {
+    const all = await readJson<OtpRow[]>(filePaths.otp, []);
+    const { next, result } = await fn(all);
+    await writeJsonAtomic(filePaths.otp, next);
+    return result;
+  });
+}
 
 export async function deleteOtpsForUser(userId: string, purpose: string): Promise<void> {
   return withLock("otp", async () => {

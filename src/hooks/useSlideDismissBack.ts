@@ -91,6 +91,8 @@ export type UseSlideDismissBackOptions = {
   panelSwipeDismiss?: boolean;
   /** محادثة: حافة يمين + سحب لليسار؛ باقي التطبيق: حافة يسار + سحب لليمين في RTL */
   dismissGesture?: DismissGestureProfile;
+  /** انزلاق عند فتح اللوحة (مثل إعدادات / تعديل البروفايل) */
+  animateOnMount?: boolean;
 };
 
 export function useSlideDismissBack({
@@ -106,6 +108,7 @@ export function useSlideDismissBack({
   edgeTopInsetPx = 0,
   panelSwipeDismiss = false,
   dismissGesture = "app",
+  animateOnMount = false,
 }: UseSlideDismissBackOptions) {
   const dismissProfile = dismissGesture;
   const dismissRtl = dismissProfile === "chat" ? true : isDocumentRtl();
@@ -174,13 +177,6 @@ export function useSlideDismissBack({
     (tx: number, phase: "move" | "end" = "move") => {
       if (embedInStack && dismissProfile === "chat") {
         onStackProgressRef.current?.(tx, phase);
-        if (stackProgressCssVar && typeof document !== "undefined") {
-          const w = widthRef.current;
-          document.documentElement.style.setProperty(
-            stackProgressCssVar,
-            String(chatDismissProgress(tx, w)),
-          );
-        }
         return;
       }
       const p = stackOpenProgress(tx);
@@ -208,12 +204,17 @@ export function useSlideDismissBack({
     (tx: number) => {
       pendingTxRef.current = tx;
       if (rafRef.current !== null) return;
-      rafRef.current = requestAnimationFrame(() => {
+      const tick = () => {
         rafRef.current = null;
-        const next = pendingTxRef.current ?? 0;
+        const next = pendingTxRef.current;
+        if (next === null) return;
         pendingTxRef.current = null;
         flushTx(next);
-      });
+        if (pendingTxRef.current !== null) {
+          rafRef.current = requestAnimationFrame(tick);
+        }
+      };
+      rafRef.current = requestAnimationFrame(tick);
     },
     [flushTx],
   );
@@ -328,6 +329,32 @@ export function useSlideDismissBack({
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+
+  const mountEnterDoneRef = useRef(false);
+  useLayoutEffect(() => {
+    if (!animateOnMount || embedInStack || !enabled) return;
+    if (mountEnterDoneRef.current) return;
+    mountEnterDoneRef.current = true;
+    const w = Math.max(260, widthRef.current);
+    const startTx = dismissRtl ? w : -w;
+    cancelScheduledTx();
+    liveTxRef.current = startTx;
+    setSlideSpring(false);
+    setSlideTx(startTx);
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        setSlideSpring(true);
+        setSlideTx(0);
+        liveTxRef.current = 0;
+        window.setTimeout(() => setSlideSpring(false), SLIDE_DISMISS_MS);
+      });
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      if (raf2) cancelAnimationFrame(raf2);
+    };
+  }, [animateOnMount, embedInStack, enabled, dismissRtl, cancelScheduledTx]);
 
   useLayoutEffect(() => {
     if (embedInStack) return;

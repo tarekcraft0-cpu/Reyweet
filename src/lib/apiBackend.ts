@@ -23,6 +23,7 @@ import { scopeAppStateToAccount } from "./scopeAppState";
 import { isReactNativeWebView } from "./nativeShell";
 import { isGroupMembershipSystemContent } from "./groupSystemMessages";
 import { DEFAULT_AVATAR_DATA_URI } from "./defaultAvatar";
+import { getDeviceLabel, getOrCreateDeviceFingerprint } from "./deviceFingerprint";
 
 const TOKEN_KEY = "retweet_api_token";
 
@@ -158,6 +159,12 @@ export async function apiFetch(
   }
   const t = init.token ?? getApiToken();
   if (t) headers.set("Authorization", `Bearer ${t}`);
+  try {
+    const fp = await getOrCreateDeviceFingerprint();
+    if (fp) headers.set("X-Device-Fingerprint", fp);
+  } catch {
+    /* ignore */
+  }
 
   const method = (init.method || "GET").toUpperCase();
   if (shouldLogApi()) {
@@ -183,6 +190,9 @@ export async function apiFetch(
         .catch(() => "");
       logApi("response", { method, url, status: res.status, ok: res.ok, preview });
     }
+    void import("./accountModerationBridge").then(({ notifyAccountBannedFromResponse }) =>
+      notifyAccountBannedFromResponse(res),
+    );
     return res;
   } catch (e) {
     const aborted = e instanceof Error && e.name === "AbortError";
@@ -229,7 +239,7 @@ export async function apiLogin(
   password: string,
 ): Promise<
   | { ok: true; token: string; userId: string; user: ApiAuthUser }
-  | { ok: true; requiresOtp: true; emailHint?: string }
+  | { ok: true; requiresOtp: true; emailHint?: string; otpReason?: string }
   | { ok: false; error: string }
 > {
   await ensureApiRuntimeConfig();
@@ -240,9 +250,15 @@ export async function apiLogin(
     identifier: identifier.trim(),
   });
 
+  const deviceFingerprint = await getOrCreateDeviceFingerprint();
   const res = await apiFetch("/auth/login", {
     method: "POST",
-    body: JSON.stringify({ identifier: identifier.trim(), password }),
+    body: JSON.stringify({
+      identifier: identifier.trim(),
+      password,
+      deviceFingerprint,
+      deviceLabel: getDeviceLabel(),
+    }),
     token: null,
   });
   const data = (await res.json().catch(() => ({}))) as {
@@ -251,6 +267,7 @@ export async function apiLogin(
     user?: ApiAuthUser;
     requiresOtp?: boolean;
     emailHint?: string;
+    otpReason?: string;
     banInfo?: import("./moderationBanTypes").BanInfo;
     banned?: boolean;
     detail?: { url?: string; cause?: string };
@@ -277,7 +294,12 @@ export async function apiLogin(
     return { ok: false, error: data.error || `فشل تسجيل الدخول (${res.status})` };
   }
   if (data.requiresOtp) {
-    return { ok: true, requiresOtp: true, emailHint: data.emailHint };
+    return {
+      ok: true,
+      requiresOtp: true,
+      emailHint: data.emailHint,
+      otpReason: data.otpReason,
+    };
   }
   if (!data.token || !data.user?.id) return { ok: false, error: "استجابة غير صالحة" };
   return { ok: true, token: data.token, userId: data.user.id, user: data.user };
@@ -290,9 +312,15 @@ export async function apiVerifyLogin(
   | { ok: true; token: string; userId: string; user: ApiAuthUser }
   | { ok: false; error: string }
 > {
+  const deviceFingerprint = await getOrCreateDeviceFingerprint();
   const res = await apiFetch("/auth/verify-login", {
     method: "POST",
-    body: JSON.stringify({ identifier: identifier.trim(), code: code.trim() }),
+    body: JSON.stringify({
+      identifier: identifier.trim(),
+      code: code.trim(),
+      deviceFingerprint,
+      deviceLabel: getDeviceLabel(),
+    }),
     token: null,
   });
   const data = (await res.json().catch(() => ({}))) as {
@@ -361,6 +389,7 @@ export async function apiRegister(
   | { ok: true; token: string; userId: string; user: ApiAuthUser }
   | { ok: false; error: string }
 > {
+  const deviceFingerprint = await getOrCreateDeviceFingerprint();
   const res = await apiFetch("/auth/register", {
     method: "POST",
     body: JSON.stringify({
@@ -369,6 +398,8 @@ export async function apiRegister(
       password,
       code: code?.trim() || undefined,
       phone: phone?.trim() || undefined,
+      deviceFingerprint,
+      deviceLabel: getDeviceLabel(),
     }),
     token: null,
   });
@@ -410,6 +441,8 @@ export type ApiSearchUser = {
   founderOfficialLabel?: string;
   appOfficialVerified?: boolean;
   appOfficialLabel?: string;
+  supportOfficialVerified?: boolean;
+  supportOfficialLabel?: string;
 };
 
 /** حساب minimal للعرض بعد البحث — يُدمَج في الحالة عبر mergeDiscoveredUsers */
@@ -453,6 +486,8 @@ export function userFromSearchResult(row: ApiSearchUser): User {
     founderOfficialLabel: row.founderOfficialLabel,
     appOfficialVerified: row.appOfficialVerified === true,
     appOfficialLabel: row.appOfficialLabel,
+    supportOfficialVerified: row.supportOfficialVerified === true,
+    supportOfficialLabel: row.supportOfficialLabel,
   };
 }
 
@@ -551,6 +586,49 @@ export async function apiListRecentUsers(limit = 30): Promise<ApiSearchUser[]> {
   return data?.users ?? [];
 }
 
+export async function apiFetchHomeFeed(
+  token: string,
+): Promise<{ ok: true; posts: AppState["posts"]; users: AppState["users"] } | { ok: false; error: string }> {
+  const res = await apiFetch("/v1/feed/posts", {
+    method: "GET",
+    token,
+    headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    posts?: AppState["posts"];
+    users?: AppState["users"];
+    error?: string;
+  };
+  if (!res.ok) return { ok: false, error: data.error || "فشل تحميل الفيد" };
+  return {
+    ok: true,
+    posts: Array.isArray(data.posts) ? data.posts : [],
+    users: Array.isArray(data.users) ? data.users : [],
+  };
+}
+
+export async function apiFetchUserPosts(
+  token: string,
+  userId: string,
+): Promise<{ ok: true; posts: AppState["posts"]; users: AppState["users"] } | { ok: false; error: string }> {
+  const res = await apiFetch(`/v1/users/${encodeURIComponent(userId)}/posts`, {
+    method: "GET",
+    token,
+    headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    posts?: AppState["posts"];
+    users?: AppState["users"];
+    error?: string;
+  };
+  if (!res.ok) return { ok: false, error: data.error || "فشل تحميل المنشورات" };
+  return {
+    ok: true,
+    posts: Array.isArray(data.posts) ? data.posts : [],
+    users: Array.isArray(data.users) ? data.users : [],
+  };
+}
+
 export async function pullRemoteAppState(token: string): Promise<AppState | null> {
   const res = await apiFetch("/v1/app-state", { method: "GET", token });
   if (!res.ok) return null;
@@ -565,9 +643,13 @@ export async function pullRemoteAppState(token: string): Promise<AppState | null
   }
 }
 
-export async function pushRemoteAppState(token: string, state: AppState): Promise<boolean> {
+export async function pushRemoteAppState(
+  token: string,
+  state: AppState,
+  opts?: { force?: boolean },
+): Promise<boolean> {
   const { shouldAllowRemotePush } = await import("./remotePushGate");
-  if (!shouldAllowRemotePush(state)) return false;
+  if (!shouldAllowRemotePush(state, opts)) return false;
   const body = JSON.stringify({ state: sanitizeAppStateForSync(state) });
   const res = await apiFetch("/v1/app-state", { method: "PUT", body, token });
   return res.ok;
@@ -766,6 +848,20 @@ export async function apiGetSocialRelation(
   const data = (await res.json().catch(() => ({}))) as { relation?: SocialRelation; error?: string };
   if (!res.ok || !data.relation) return { ok: false, error: data.error || "تعذر جلب حالة المتابعة" };
   return { ok: true, relation: data.relation };
+}
+
+export async function apiSeverSocialOnBlock(
+  token: string,
+  targetUserId: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const res = await apiFetch("/v1/social/block/sever", {
+    method: "POST",
+    token,
+    body: JSON.stringify({ targetUserId }),
+  });
+  const data = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) return { ok: false, error: data.error || "فشل فصل المتابعة" };
+  return { ok: true };
 }
 
 export async function apiToggleFollow(

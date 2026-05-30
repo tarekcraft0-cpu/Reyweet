@@ -167,6 +167,24 @@ export async function removeFollowEdge(followerId: string, targetId: string): Pr
   await broadcastSocialGraphPair(followerId, targetId, "unfollowed");
 }
 
+/** يفصل المتابعة وطلبات المتابعة بالكامل عند حظر شخص */
+export async function severSocialForBlock(blockerId: string, blockedId: string): Promise<void> {
+  if (blockerId === blockedId) return;
+  await removeFollowEdge(blockerId, blockedId);
+  await removeFollowEdge(blockedId, blockerId);
+  let reqs = await listFollowRequests();
+  const before = reqs.length;
+  reqs = reqs.filter(
+    r =>
+      !(
+        (r.fromId === blockerId && r.toId === blockedId) ||
+        (r.fromId === blockedId && r.toId === blockerId)
+      ),
+  );
+  if (reqs.length !== before) await replaceFollowRequests(reqs);
+  await broadcastSocialGraphPair(blockerId, blockedId, "unfollowed");
+}
+
 export async function sendFollowRequest(fromId: string, toId: string): Promise<void> {
   if (fromId === toId) return;
   let reqs = await listFollowRequests();

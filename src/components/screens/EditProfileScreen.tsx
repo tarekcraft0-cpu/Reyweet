@@ -216,7 +216,7 @@ export function EditProfileScreen({ onBack }: { onBack: () => void }) {
   };
 
   return (
-    <div className="relative p-4 space-y-4">
+    <div className="relative min-h-dvh p-4 space-y-4 pb-[max(1.5rem,var(--sab))]">
       {(saving || avatarBusy) && (
         <div
           className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm"

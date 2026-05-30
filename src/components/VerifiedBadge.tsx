@@ -174,7 +174,51 @@ export function AppOfficialVerifiedBadge({
   );
 }
 
-/** شارة التوثيق — مؤسس → تطبيق رسمي → توثيق أزرق */
+/** شارة دعم رسمي — أخضر زمردي */
+export function SupportOfficialVerifiedBadge({
+  size = 16,
+  className = "",
+  title = "حساب الدعم الرسمي — موثّق",
+}: {
+  size?: number;
+  className?: string;
+  title?: string;
+}) {
+  const uid = useId().replace(/:/g, "");
+  const g = `support-official-g-${uid}`;
+  const seal =
+    "M12 1.8 L14.9 3.1 L17.8 2.4 L19.1 5.3 L22 6.6 L21.3 9.5 L23.2 12 L21.3 14.5 L22 17.4 L19.1 18.7 L17.8 21.6 L14.9 20.9 L12 22.2 L9.1 20.9 L6.2 21.6 L4.9 18.7 L2 17.4 L2.7 14.5 L0.8 12 L2.7 9.5 L2 6.6 L4.9 5.3 L6.2 2.4 L9.1 3.1 Z";
+
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      className={"shrink-0 inline-block align-middle drop-shadow-sm " + className}
+      role="img"
+      aria-label={title}
+    >
+      <defs>
+        <linearGradient id={g} x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#6EE7B7" />
+          <stop offset="45%" stopColor="#10B981" />
+          <stop offset="100%" stopColor="#047857" />
+        </linearGradient>
+      </defs>
+      <path d={seal} fill={`url(#${g})`} stroke="#064E3B" strokeWidth="0.35" />
+      <path
+        d="M8.1 12.15 L10.85 14.75 L15.95 9.25"
+        fill="none"
+        stroke="#ECFDF5"
+        strokeWidth="2.15"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** شارة التوثيق — مؤسس → تطبيق → دعم → توثيق أزرق */
 export function VerifiedMarkForUser({
   user,
   size = 16,
@@ -182,7 +226,12 @@ export function VerifiedMarkForUser({
 }: {
   user: Pick<
     User,
-    "id" | "verified" | "founderVerified" | "appOfficialVerified" | "verificationBadgeColor"
+    | "id"
+    | "verified"
+    | "founderVerified"
+    | "appOfficialVerified"
+    | "supportOfficialVerified"
+    | "verificationBadgeColor"
   >;
   size?: number;
   className?: string;
@@ -192,6 +241,9 @@ export function VerifiedMarkForUser({
   }
   if (user.appOfficialVerified) {
     return <AppOfficialVerifiedBadge size={size} className={className} title="حساب التطبيق الرسمي" />;
+  }
+  if (user.supportOfficialVerified) {
+    return <SupportOfficialVerifiedBadge size={size} className={className} title="حساب الدعم الرسمي — موثّق" />;
   }
   if (!isVerifiedBadgeActive(user)) return null;
   const color = user.verificationBadgeColor === "pink" ? "pink" : "blue";

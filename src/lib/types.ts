@@ -59,6 +59,9 @@ export interface User {
   appOfficialVerified?: boolean;
   /** نص الإطار الرسمي لحساب التطبيق */
   appOfficialLabel?: string;
+  /** حساب الدعم الرسمي */
+  supportOfficialVerified?: boolean;
+  supportOfficialLabel?: string;
   followers: ID[];
   following: ID[];
   /** إن وُجد، يُعرض كعدد المتابعين في البروفايل (بدل `followers.length` فقط) */

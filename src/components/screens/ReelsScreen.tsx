@@ -392,6 +392,12 @@ export function ReelsScreen({
 
   const reelIdSetKey = useMemo(() => reels.map(r => r.id).sort().join("|"), [reels]);
 
+  const activeReelIdx = useMemo(() => {
+    if (!activeReelId || reels.length === 0) return 0;
+    const i = reels.findIndex(r => r.id === activeReelId);
+    return i >= 0 ? i : 0;
+  }, [reels, activeReelId]);
+
   /* قياس ارتفاع الشريحة */
   useLayoutEffect(() => {
     if (!isTabActive) return;
@@ -410,7 +416,7 @@ export function ReelsScreen({
       ro.disconnect();
       window.removeEventListener("resize", measure);
     };
-  }, [isTabActive, tab, reelPullHint, reelIdSetKey]);
+  }, [isTabActive, tab, reelIdSetKey]);
 
   /* الريل الأول عند تغيير القائمة */
   useEffect(() => {
@@ -626,8 +632,19 @@ export function ReelsScreen({
           </p>
         )}
 
-        {reels.map(r => {
-          const slideH = slideHeightPx > 0 ? slideHeightPx : 0;
+        {reels.map((r, idx) => {
+          const slideH =
+            slideHeightPx > 0 ? slideHeightPx : REEL_SLIDE_HEIGHT_FALLBACK;
+          if (Math.abs(idx - activeReelIdx) > 1) {
+            return (
+              <div
+                key={r.id}
+                className="reels-snap-slide w-full shrink-0 snap-start snap-always"
+                style={{ height: slideH, minHeight: slideH }}
+                aria-hidden
+              />
+            );
+          }
           const u = userById(state, r.userId);
           const friendReposterId = (r.reposts || []).find(
             uid => uid !== me.id && me.following.includes(uid),

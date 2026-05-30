@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ArrowRight } from "lucide-react";
 import type { BanInfo } from "@/lib/moderationBanTypes";
 import {
@@ -25,16 +25,26 @@ export function AppealFlow({
   const [message, setMessage] = useState("");
   const [emailVerified, setEmailVerified] = useState(false);
   const [err, setErr] = useState("");
+  const [otpSending, setOtpSending] = useState(false);
+  const otpSendLock = useRef(false);
 
   const sendOtp = async () => {
+    if (otpSendLock.current) return;
+    otpSendLock.current = true;
+    setOtpSending(true);
     setErr("");
-    const r = await apiAppealSendOtp();
-    if (!r.ok) {
-      setErr(r.error);
-      return;
+    try {
+      const r = await apiAppealSendOtp();
+      if (!r.ok) {
+        setErr(r.error);
+        return;
+      }
+      setEmailHint(r.data.emailHint);
+      setStep("otp");
+    } finally {
+      otpSendLock.current = false;
+      setOtpSending(false);
     }
-    setEmailHint(r.data.emailHint);
-    setStep("otp");
   };
 
   const verifyOtp = async () => {
@@ -84,10 +94,11 @@ export function AppealFlow({
             </p>
             <button
               type="button"
+              disabled={otpSending}
               onClick={() => void sendOtp()}
-              className="w-full rounded-xl bg-primary py-3 font-semibold text-primary-foreground"
+              className="w-full rounded-xl bg-primary py-3 font-semibold text-primary-foreground disabled:opacity-60"
             >
-              التحقق من البريد
+              {otpSending ? "جاري الإرسال…" : "التحقق من البريد"}
             </button>
           </div>
         )}

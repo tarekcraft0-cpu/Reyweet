@@ -14,6 +14,7 @@ export const MODERATOR_ROLE_ACTIONS: Record<ModeratorRole, readonly ModeratorAct
   admin: [
     "ignore",
     "warn",
+    "ban",
     "temp_ban",
     "perm_ban",
     "shadow_ban",
@@ -24,6 +25,7 @@ export const MODERATOR_ROLE_ACTIONS: Record<ModeratorRole, readonly ModeratorAct
   super_admin: [
     "ignore",
     "warn",
+    "ban",
     "temp_ban",
     "perm_ban",
     "shadow_ban",
@@ -34,6 +36,7 @@ export const MODERATOR_ROLE_ACTIONS: Record<ModeratorRole, readonly ModeratorAct
   internal_trusted: [
     "ignore",
     "warn",
+    "ban",
     "temp_ban",
     "perm_ban",
     "shadow_ban",
@@ -53,4 +56,9 @@ export function canReviewAppeals(role: ModeratorRole): boolean {
 
 export function canInternalUnban(role: ModeratorRole): boolean {
   return role === "internal_trusted" || role === "super_admin";
+}
+
+/** استعادة حساب معطّل (بما فيها الحظر النهائي بعد مراجعة دعم) */
+export function canRestoreModerationAccount(role: ModeratorRole): boolean {
+  return role === "admin" || role === "super_admin" || role === "internal_trusted";
 }

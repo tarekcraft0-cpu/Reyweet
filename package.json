@@ -30,6 +30,7 @@
     "cap:open:android": "npx cap open android",
     "backend:dev": "npm run dev --prefix backend",
     "seed:demo": "npx tsx backend/scripts/seed-demo-content.ts",
+    "support:account": "node backend/scripts/add-support-user.mjs",
     "backend:start": "npm run start --prefix backend",
     "sync:api": "node scripts/sync-lan-api-url.mjs",
     "sync:public-api": "node scripts/write-public-web-config.mjs",

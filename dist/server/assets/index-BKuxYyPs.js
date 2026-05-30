@@ -1,10 +1,10 @@
-import { r as reactExports, a2 as getAugmentedNamespace, S as getDefaultExportFromCjs, W as jsxRuntimeExports, V as React__default, a3 as React } from "./server--IgNSFm5.js";
+import { r as reactExports, a2 as getAugmentedNamespace, S as getDefaultExportFromCjs, W as jsxRuntimeExports, V as React__default, a3 as React } from "./server-BMuOoJPg.js";
 import require$$0 from "fs";
 import require$$1 from "url";
-import { n as notImplementedClass, a as notImplemented } from "./worker-entry-Dc0IdM09.js";
+import { n as notImplementedClass, a as notImplemented } from "./worker-entry-CR0YnM8d.js";
 import require$$3 from "http";
 import require$$4 from "https";
-import { r as reactDomExports, R as ReactDOM } from "./router-4efRVdDp.js";
+import { r as reactDomExports, R as ReactDOM } from "./router-BTJXxjI9.js";
 import require$$0$1 from "util";
 import require$$1$1 from "stream";
 import require$$1$2 from "zlib";
@@ -16664,10 +16664,16 @@ function installDocumentRouter() {
     activeLayerId = null;
     layer?.onPointerUp(e);
   };
+  const resetActivePointer = () => {
+    activePointerId = null;
+    activeLayerId = null;
+  };
   document.addEventListener("pointerdown", onDown, { capture: true, passive: false });
   document.addEventListener("pointermove", onMove, { capture: true, passive: false });
   document.addEventListener("pointerup", onUp, { capture: true });
   document.addEventListener("pointercancel", onUp, { capture: true });
+  window.addEventListener("blur", resetActivePointer);
+  document.addEventListener("visibilitychange", resetActivePointer);
 }
 function warmGlobalPointerBackRouter() {
   if (typeof document === "undefined") return;
@@ -16767,13 +16773,6 @@ function useSlideDismissBack({
     (tx, phase = "move") => {
       if (embedInStack && dismissProfile === "chat") {
         onStackProgressRef.current?.(tx, phase);
-        if (stackProgressCssVar && typeof document !== "undefined") {
-          const w = widthRef.current;
-          document.documentElement.style.setProperty(
-            stackProgressCssVar,
-            String(chatDismissProgress(tx, w))
-          );
-        }
         return;
       }
       const p = stackOpenProgress(tx);
@@ -16799,12 +16798,17 @@ function useSlideDismissBack({
     (tx) => {
       pendingTxRef.current = tx;
       if (rafRef.current !== null) return;
-      rafRef.current = requestAnimationFrame(() => {
+      const tick = () => {
         rafRef.current = null;
-        const next = pendingTxRef.current ?? 0;
+        const next = pendingTxRef.current;
+        if (next === null) return;
         pendingTxRef.current = null;
         flushTx(next);
-      });
+        if (pendingTxRef.current !== null) {
+          rafRef.current = requestAnimationFrame(tick);
+        }
+      };
+      rafRef.current = requestAnimationFrame(tick);
     },
     [flushTx]
   );
@@ -17444,11 +17448,15 @@ function useIsTabActive(tab) {
   return useTabActive() === tab;
 }
 const PAGER_TAB_CHAIN = ["home", "search", "reels", "chat", "profile"];
-const TAB_COUNT = PAGER_TAB_CHAIN.length;
+const TAB_AXIS_LOCK_PX = 10;
+const TAB_HORIZONTAL_RATIO = 1.4;
+const TAB_VERTICAL_RATIO = 1.08;
+const TAB_HORIZONTAL_MIN_PX = 14;
 const SNAP_RATIO = 0.22;
 const VELOCITY_SNAP = 0.35;
 const TAB_TRANSITION_MS = 260;
 const TAB_EASE = "cubic-bezier(0.215, 0.61, 0.355, 1)";
+const TAB_COUNT = PAGER_TAB_CHAIN.length;
 function tabIndex(tab) {
   return PAGER_TAB_CHAIN.indexOf(tab);
 }
@@ -17506,7 +17514,7 @@ function MainTabStack({
   activeRef.current = activeTab;
   onTabRef.current = onTabChange;
   const settledIndex = tabIndex(activeTab);
-  reactExports.useEffect(() => {
+  reactExports.useLayoutEffect(() => {
     setVisited((prev) => {
       if (prev.has(activeTab)) return prev;
       const next = new Set(prev);
@@ -17541,6 +17549,11 @@ function MainTabStack({
       window.setTimeout(() => setAnimating(false), TAB_TRANSITION_MS + 40);
     }
   }, [markNeighborVisited]);
+  const clearTabDrag = reactExports.useCallback(() => {
+    dragRef.current = null;
+    setDragIndex(null);
+    setAnimating(false);
+  }, []);
   const onPointerDown = reactExports.useCallback(
     (e) => {
       if (!swipeEnabled || e.button !== 0) return;
@@ -17568,13 +17581,13 @@ function MainTabStack({
       const adx = Math.abs(e.clientX - d.startX);
       const ady = Math.abs(e.clientY - d.startY);
       if (!d.axis) {
-        if (adx < 8 && ady < 8) return;
-        if (ady > adx * 1.15) {
+        if (adx < TAB_AXIS_LOCK_PX && ady < TAB_AXIS_LOCK_PX) return;
+        if (ady > adx * TAB_VERTICAL_RATIO) {
           dragRef.current = null;
           setDragIndex(null);
           return;
         }
-        if (adx > ady * 1.05) {
+        if (adx >= TAB_HORIZONTAL_MIN_PX && adx > ady * TAB_HORIZONTAL_RATIO) {
           d.axis = "x";
           try {
             e.currentTarget.setPointerCapture(e.pointerId);
@@ -17603,7 +17616,9 @@ function MainTabStack({
       if (!d || e.pointerId !== d.pointerId) return;
       dragRef.current = null;
       try {
-        e.currentTarget.releasePointerCapture(e.pointerId);
+        if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+          e.currentTarget.releasePointerCapture(e.pointerId);
+        }
       } catch {
       }
       const idx = dragIndex ?? settledIndex;
@@ -17631,6 +17646,7 @@ function MainTabStack({
       onPointerMove,
       onPointerUp: endDrag,
       onPointerCancel: endDrag,
+      onLostPointerCapture: clearTabDrag,
       children: PAGER_TAB_CHAIN.map((id) => /* @__PURE__ */ jsxRuntimeExports.jsx(
         KeepAlivePanel,
         {
@@ -17822,17 +17838,17 @@ function normalizePostMedia(post) {
   }
   const imageUrl = imageRaw && !isVideoMediaRef(imageRaw) ? resolveMediaUrl(imageRaw) : "";
   const videoUrl = videoRaw ? resolveMediaUrl(videoRaw) : "";
-  const audioUrl = audioRaw ? resolveMediaUrl(audioRaw) : "";
   const posterUrl = imageUrl && isRenderableMediaUrl(imageUrl) ? imageUrl : "";
-  const voiceTweet = post.type === "tweet" && !!audioRaw;
+  const voiceTweet = !!audioRaw || post.type === "tweet" && isVoicePlaybackVideoSrc(videoRaw) && !imageRaw;
+  const voiceSrc = audioRaw || (voiceTweet && isVoicePlaybackVideoSrc(videoRaw) ? videoRaw : "");
   const normalized = {
     imageUrl,
     videoUrl,
     posterUrl,
     hasImage: !!imageUrl && isRenderableMediaUrl(imageUrl) && !isVideoMediaRef(imageRaw),
     hasVideo: !voiceTweet && !!videoRaw && isVideoMediaRef(videoRaw) && !!videoUrl,
-    hasAudio: !!audioRaw && (isRenderableMediaUrl(audioUrl) || isVoicePlaybackVideoSrc(audioRaw)),
-    audioUrl,
+    hasAudio: !!voiceSrc && (isRenderableMediaUrl(resolveMediaUrl(voiceSrc)) || isVoicePlaybackVideoSrc(voiceSrc)),
+    audioUrl: voiceSrc,
     emojiFallback: (!imageUrl && !videoUrl && imageRaw && !isRenderableMediaUrl(imageRaw) ? imageRaw : "") || (!imageUrl && !videoUrl && videoRaw && !isRenderableMediaUrl(videoRaw) ? videoRaw : "") || (post.type === "reel" && !videoUrl ? "🎬" : "") || (post.type === "tweet" ? "" : "📝")
   };
   return normalized;
@@ -19852,8 +19868,17 @@ ${this.state.componentStack}` : ""
             {
               type: "button",
               className: "rounded-2xl border border-border bg-background px-6 py-3 text-sm font-medium text-foreground",
-              onClick: () => window.location.reload(),
-              children: "تحديث الصفحة"
+              onClick: () => {
+                try {
+                  if ("caches" in window) {
+                    void caches.keys().then((keys) => Promise.all(keys.map((k) => caches.delete(k))));
+                  }
+                } catch {
+                }
+                const base = `${window.location.origin}/app/`;
+                window.location.replace(`${base}?force=${Date.now()}`);
+              },
+              children: "تحديث الصفحة (بدون كاش)"
             }
           ),
           /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -19922,7 +19947,7 @@ function LazyInView({
     io.observe(el);
     return () => io.disconnect();
   }, [rootMargin, visible]);
-  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { ref, className: minHeight, children: visible ? children : fallback ?? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-full " + minHeight + " bg-muted/30" }) });
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { ref, className: visible ? void 0 : minHeight, children: visible ? children : fallback ?? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-full " + minHeight + " bg-muted/30" }) });
 }
 function postFeedSignature(post) {
   return [
@@ -20951,14 +20976,8 @@ function PostFeedMediaBlock({
       )
     ] });
   }
-  if (postMedia.hasAudio && post.audio) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx(
-      "div",
-      {
-        className: (profileInset ? "mx-0 w-full" : "mx-4 w-[calc(100%-2rem)]") + " mb-1 rounded-2xl border border-border/60 bg-card p-3",
-        children: /* @__PURE__ */ jsxRuntimeExports.jsx(TweetVoicePlayer, { src: post.audio })
-      }
-    );
+  if (postMedia.hasAudio && postMedia.audioUrl) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: (profileInset ? "mx-0 w-full shrink-0" : "mx-4 w-[calc(100%-2rem)] shrink-0") + " mb-1", children: /* @__PURE__ */ jsxRuntimeExports.jsx(TweetVoicePlayer, { src: postMedia.audioUrl }) });
   }
   if (postMedia.hasVideo) {
     const reelGrid = post.type === "reel";
@@ -21117,7 +21136,10 @@ function PostCardInner({
   const [noteToReply, setNoteToReply] = reactExports.useState(null);
   const lang = state.language;
   const author = userById(state, post.userId);
-  const postMedia = reactExports.useMemo(() => normalizePostMedia(post), [post.image, post.video, post.type]);
+  const postMedia = reactExports.useMemo(
+    () => normalizePostMedia(post),
+    [post.image, post.video, post.audio, post.type]
+  );
   const displayType = reactExports.useMemo(
     () => resolvePostDisplayType(post),
     [post.type, post.image, post.video, post.text]
@@ -21188,6 +21210,7 @@ function PostCardInner({
     ] }, n.id);
   }) }) : null;
   const showFeedMedia = postShowsFeedMedia({ ...post, type: displayType });
+  const isAudioOnlyMedia = postMedia.hasAudio && !postMedia.hasImage && !postMedia.hasVideo;
   const mediaLazyMinH = postMedia.hasVideo || displayType === "reel" ? "min-h-[12rem]" : "min-h-[12rem]";
   const mediaBlock = /* @__PURE__ */ jsxRuntimeExports.jsx(
     PostFeedMediaBlock,
@@ -21221,7 +21244,7 @@ function PostCardInner({
           children: renderedPostText
         }
       ),
-      showFeedMedia ? /* @__PURE__ */ jsxRuntimeExports.jsx(LazyInView, { minHeight: mediaLazyMinH, rootMargin: "320px 0px", children: mediaBlock }) : mediaBlock,
+      showFeedMedia && !isAudioOnlyMedia ? /* @__PURE__ */ jsxRuntimeExports.jsx(LazyInView, { minHeight: mediaLazyMinH, rootMargin: "320px 0px", children: mediaBlock }) : showFeedMedia ? mediaBlock : null,
       /* @__PURE__ */ jsxRuntimeExports.jsx(
         PostFeedActions,
         {
@@ -24354,9 +24377,10 @@ function ReelsScreen({
     refreshFromServer();
   }, [refreshFromServer, isTabActive]);
   reactExports.useEffect(() => {
+    if (!isTabActive) return;
     document.documentElement.classList.add("retweet-overscroll-lock");
     return () => document.documentElement.classList.remove("retweet-overscroll-lock");
-  }, []);
+  }, [isTabActive]);
   reactExports.useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -25341,6 +25365,10 @@ function injectNoSelectStyles() {
   style.textContent = NO_SELECT_GLOBAL_CSS;
   (document.head || document.documentElement).appendChild(style);
 }
+function isAndroidTouchDevice() {
+  if (typeof navigator === "undefined") return false;
+  return /Android/i.test(navigator.userAgent);
+}
 function installTouchSelectionBlocker() {
   let startX = 0;
   let startY = 0;
@@ -25379,12 +25407,17 @@ function installTouchSelectionBlocker() {
       if (isNativeLongPressTarget(e.target)) return;
       const dx = Math.abs(e.touches[0].clientX - startX);
       const dy = Math.abs(e.touches[0].clientY - startY);
+      if (dy > dx && dy > 4) {
+        touchMoved = true;
+        stopRaf();
+        return;
+      }
       if (dx > 12 || dy > 12) {
         touchMoved = true;
         stopRaf();
         return;
       }
-      if (!touchMoved) {
+      if (!touchMoved && !isAndroidTouchDevice()) {
         e.preventDefault();
         clearNativeSelection();
       }
@@ -27011,7 +27044,7 @@ async function ensureNativeKeyboardBridge() {
   nativeListenersReady = true;
   try {
     const [{ Keyboard }, { Capacitor: Capacitor2 }] = await Promise.all([
-      import("./index-CQlmOpCt.js"),
+      import("./index-BI_cPKYZ.js"),
       Promise.resolve().then(() => index$1)
     ]);
     if (!Capacitor2.isNativePlatform()) return;
@@ -30834,7 +30867,7 @@ function CallScreen({
 const PREVIEW_MAX = 96;
 const CHAT_DISMISS_PULL_CSS_VAR = "--retweet-chat-dismiss-pull";
 const CHAT_ROOM_HEADER_EDGE_INSET_PX = 72;
-const CHAT_TAP_OPEN_MS = 280;
+const CHAT_TAP_OPEN_MS = 320;
 const galleryLongPressBtnProps = {
   [NATIVE_LONG_PRESS_ATTR]: "gallery",
   onContextMenu: (e) => e.preventDefault(),
@@ -31514,6 +31547,8 @@ function ChatPeekMessageBody({
 const CAMERA_LONG_PRESS_MS = 240;
 const CAMERA_TAP_MAX_DURATION_MS = CAMERA_LONG_PRESS_MS - 45;
 const CAMERA_EARLY_PULL_PX = 16;
+const ROW_OPEN_ARM_PX = 10;
+const ROW_TAP_MAX_MOVE_PX = 18;
 const PEEK_OPEN_CHAT_FRACTION = 0.5;
 const PEEK_CAMERA_TAP_FRACTION = 0.2;
 function StreakBadge({ streak, compact = false }) {
@@ -31586,12 +31621,27 @@ function ChatListRowWithPeek({
   const rowOpenVelocityRef = reactExports.useRef(0);
   const rowOpenMoveSampleRef = reactExports.useRef({ x: 0, t: 0 });
   const rowPointerEndedRef = reactExports.useRef(false);
+  const rowOpenCommittedRef = reactExports.useRef(false);
   const rowShellRef = reactExports.useRef(null);
   const chatRowOpenId = openChatIdFor(c, me.id);
+  const commitRowOpen = reactExports.useCallback(
+    (px, mode2) => {
+      if (rowOpenCommittedRef.current) return;
+      rowOpenCommittedRef.current = true;
+      window.setTimeout(() => {
+        rowOpenCommittedRef.current = false;
+      }, 450);
+      if (onRowOpenCommit) onRowOpenCommit(chatRowOpenId, px, mode2);
+      else if (mode2 === "tap") reactExports.startTransition(() => onOpenChat(chatRowOpenId));
+      else onStackDragEnd?.(chatRowOpenId, px, rowOpenVelocityRef.current);
+    },
+    [onRowOpenCommit, onOpenChat, onStackDragEnd, chatRowOpenId]
+  );
   const setRowPressedVisual = (pressed) => {
     const el = rowShellRef.current;
     if (!el) return;
     el.classList.toggle("bg-secondary/60", pressed);
+    el.style.transform = pressed ? "scale(0.985)" : "";
   };
   const scrollPeekToBottom = reactExports.useCallback(() => {
     const el = peekScrollRef.current;
@@ -31809,20 +31859,19 @@ function ChatListRowWithPeek({
     if (!down) return 0;
     return Math.max(0, e.clientX - down.x0);
   };
-  const openChatFromRowTap = reactExports.useCallback(() => {
-    try {
-      navigator.vibrate?.(10);
-    } catch {
-    }
-    if (onRowOpenCommit) onRowOpenCommit(chatRowOpenId, 0, "tap");
-    else onOpenChat(chatRowOpenId);
-  }, [onOpenChat, onRowOpenCommit, chatRowOpenId]);
   const onRowOpenPointerDown = (e) => {
     if (e.button !== 0) return;
+    e.stopPropagation();
     onStackGestureArm?.();
     rowPointerEndedRef.current = false;
+    rowOpenCommittedRef.current = false;
     setRowPressedVisual(true);
-    rowOpenDownRef.current = { x0: e.clientX, y0: e.clientY, pointerId: e.pointerId };
+    rowOpenDownRef.current = {
+      x0: e.clientX,
+      y0: e.clientY,
+      pointerId: e.pointerId,
+      downAt: Date.now()
+    };
     rowOpenArmedRef.current = false;
     try {
       e.currentTarget.setPointerCapture(e.pointerId);
@@ -31839,14 +31888,13 @@ function ChatListRowWithPeek({
         rowOpenArmedRef.current = false;
         rowOpenDownRef.current = null;
         setRowPressedVisual(false);
-        if (onRowOpenCommit) onRowOpenCommit(chatRowOpenId, rowOpenLastPullRef.current, "swipe-end");
-        else onStackDragEnd?.(chatRowOpenId, rowOpenLastPullRef.current);
+        commitRowOpen(rowOpenLastPullRef.current, "swipe-end");
       }
       return;
     }
     const pull = rowOpenPullPx(e);
     if (!rowOpenArmedRef.current) {
-      if (pull < 8 || dx <= 0) return;
+      if (pull < ROW_OPEN_ARM_PX || dx <= 0) return;
       if (Math.abs(dy) > Math.abs(dx) * 1.2 && dy * dy > 64) {
         rowOpenDownRef.current = null;
         setRowPressedVisual(false);
@@ -31868,8 +31916,7 @@ function ChatListRowWithPeek({
         rowOpenDownRef.current = null;
         setRowPressedVisual(false);
         const abortPx = rowOpenLastPullRef.current;
-        if (onRowOpenCommit) onRowOpenCommit(chatRowOpenId, abortPx, "swipe-end");
-        else onStackDragEnd?.(chatRowOpenId, abortPx);
+        commitRowOpen(abortPx, "swipe-end");
         return;
       }
       if (e.cancelable) e.preventDefault();
@@ -31901,43 +31948,43 @@ function ChatListRowWithPeek({
     } catch {
     }
     if (armed && down) {
-      const dx2 = e.clientX - down.x0;
-      const dy2 = e.clientY - down.y0;
       const cap = capWidth();
       const pull = rowOpenPullPx(e);
       const px = Math.max(0, Math.min(cap, pull));
-      const mode2 = Math.hypot(dx2, dy2) < 14 ? "tap" : "swipe-end";
-      const vx = rowOpenVelocityRef.current;
+      rowOpenVelocityRef.current;
       rowOpenLastPullRef.current = px;
-      if (onRowOpenCommit) {
-        onRowOpenCommit(chatRowOpenId, px, mode2);
-      } else if (mode2 === "tap") {
-        openChatFromRowTap();
-      } else {
-        onStackDragEnd?.(chatRowOpenId, px, vx);
-      }
+      commitRowOpen(px, "swipe-end");
       return;
     }
     if (!down || down.pointerId !== e.pointerId) return;
     const dx = e.clientX - down.x0;
     const dy = e.clientY - down.y0;
-    if (Math.hypot(dx, dy) < 14) {
-      if (onRowOpenCommit) onRowOpenCommit(chatRowOpenId, 0, "tap");
-      else openChatFromRowTap();
+    if (Math.hypot(dx, dy) < ROW_TAP_MAX_MOVE_PX) {
+      try {
+        navigator.vibrate?.(8);
+      } catch {
+      }
+      commitRowOpen(0, "tap");
     } else {
       onStackChromeShow?.();
     }
   };
-  const onRowOpenPointerCancel = () => {
+  const onRowOpenPointerCancel = (e) => {
+    const down = rowOpenDownRef.current;
+    if (e && down && down.pointerId !== e.pointerId) return;
     const wasArmed = rowOpenArmedRef.current;
+    const px = rowOpenLastPullRef.current;
     rowOpenDownRef.current = null;
     rowOpenArmedRef.current = false;
     rowOpenLastPullRef.current = 0;
     rowOpenVelocityRef.current = 0;
     setRowPressedVisual(false);
     if (wasArmed) {
-      if (onRowOpenCommit) onRowOpenCommit(chatRowOpenId, 0, "swipe-end");
-      else onStackDragEnd?.(chatRowOpenId, 0, 0);
+      commitRowOpen(px, "swipe-end");
+    } else if (down && !rowOpenCommittedRef.current) {
+      const holdMs = Date.now() - down.downAt;
+      if (holdMs < 600) commitRowOpen(0, "tap");
+      else onStackChromeShow?.();
     } else {
       onStackChromeShow?.();
     }
@@ -31990,24 +32037,24 @@ function ChatListRowWithPeek({
         "div",
         {
           ref: rowShellRef,
-          className: "relative z-20 flex flex-row items-center bg-background transition-[background-color] duration-100",
+          className: "relative z-20 flex flex-row items-center bg-background transition-[background-color,transform] duration-100 ease-out will-change-transform",
           style: { minHeight: "84px" },
           title: t("chatRowLongPressHint"),
-          onPointerDown: onAvatarPointerDown,
-          onPointerMove: onAvatarPointerMove,
-          onPointerUp: onAvatarPointerEnd,
-          onPointerLeave: onAvatarPointerEnd,
-          onPointerCancel: onAvatarPointerEnd,
           children: [
             /* @__PURE__ */ jsxRuntimeExports.jsxs(
               "div",
               {
                 className: "relative shrink-0 flex items-center justify-center touch-manipulation",
                 style: { paddingInlineStart: "14px", paddingInlineEnd: "12px", paddingTop: "10px", paddingBottom: "10px" },
+                onPointerDown: onAvatarPointerDown,
+                onPointerMove: onAvatarPointerMove,
+                onPointerUp: onAvatarPointerEnd,
+                onPointerLeave: onAvatarPointerEnd,
+                onPointerCancel: onAvatarPointerEnd,
                 onClick: (e) => {
                   e.stopPropagation();
                   if (skipAvatarClickRef.current) return;
-                  openChatFromRowTap();
+                  if (otherId) reactExports.startTransition(() => onOpenProfile(otherId));
                 },
                 children: [
                   /* @__PURE__ */ jsxRuntimeExports.jsx(RSocialAvatar, { name: displayName, src: avatarSrc, size: 58 }),
@@ -32026,17 +32073,17 @@ function ChatListRowWithPeek({
               "button",
               {
                 type: "button",
-                className: "flex min-w-0 flex-1 touch-none flex-col justify-center gap-[5px] text-start outline-none select-none",
+                className: "flex min-w-0 flex-1 touch-none flex-col justify-center gap-[5px] text-start outline-none select-none active:opacity-90",
                 style: { paddingTop: "16px", paddingBottom: "16px", paddingInlineEnd: "8px", touchAction: "none" },
-                onClick: () => {
-                  if (skipAvatarClickRef.current) return;
-                  openChatFromRowTap();
-                },
                 onPointerDown: onRowOpenPointerDown,
                 onPointerMove: onRowOpenPointerMove,
                 onPointerUp: onRowOpenPointerEnd,
                 onPointerCancel: onRowOpenPointerCancel,
-                onPointerLeave: onRowOpenPointerCancel,
+                onClick: (e) => {
+                  e.stopPropagation();
+                  if (skipAvatarClickRef.current || rowOpenArmedRef.current) return;
+                  if (!rowOpenCommittedRef.current) commitRowOpen(0, "tap");
+                },
                 children: [
                   /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-w-0 items-center gap-1.5", children: [
                     c.isChannel && /* @__PURE__ */ jsxRuntimeExports.jsx(Megaphone, { size: 12, className: "shrink-0 text-muted-foreground", "aria-hidden": true }),
@@ -32239,6 +32286,7 @@ function ChatScreen({
   const [profileNoteReplyDraft, setProfileNoteReplyDraft] = reactExports.useState("");
   const t = useT();
   const me = currentUser;
+  const chatTabActive = useIsTabActive("chat");
   const [openChat, setOpenChat] = reactExports.useState(() => initialChatId ?? null);
   const [showRequests, setShowRequests] = reactExports.useState(false);
   const [showCreate, setShowCreate] = reactExports.useState(null);
@@ -32272,6 +32320,10 @@ function ChatScreen({
   const pendingStackDragRef = reactExports.useRef(null);
   const stackDragFrameRef = reactExports.useRef(0);
   const stackOpenVelocityRef = reactExports.useRef(0);
+  const stackDragPreviewIdRef = reactExports.useRef(null);
+  const stackDragVisualStartedRef = reactExports.useRef(false);
+  const lastRoomDismissTxRef = reactExports.useRef(0);
+  const stackNavDismissProgressRef = reactExports.useRef(-1);
   const beginCloseChatThreadRef = reactExports.useRef(() => {
   });
   const [stackGestureLocked, setStackGestureLocked] = reactExports.useState(false);
@@ -32329,15 +32381,27 @@ function ChatScreen({
         stackCapRef.current = cap;
       }
       const clampedTx = Math.max(-cap, Math.min(0, Number.isFinite(tx) ? tx : 0));
-      const progress = applyCloseStackTransforms(clampedTx, cap, stackLayers(), animate);
+      if (!animate && clampedTx === lastRoomDismissTxRef.current) return;
+      lastRoomDismissTxRef.current = clampedTx;
+      const { inboxEl, roomEl } = stackLayers();
+      if (!animate && inboxEl) inboxEl.style.willChange = "transform";
+      if (!animate && roomEl) roomEl.style.willChange = "transform";
+      const progress = applyCloseStackTransforms(clampedTx, cap, { inboxEl, roomEl }, animate);
       stackProgressRef.current = progress;
-      if (animate) setStackProgress(progress);
+      if (animate) {
+        if (inboxEl) inboxEl.style.willChange = "auto";
+        if (roomEl) roomEl.style.willChange = "auto";
+        setStackProgress(progress);
+      }
       stackRoomDriveRef.current = "close";
       stackRoomDismissRef.current = true;
       publishChatStackCssProgress(progress);
       if (stackRoomDismissRef.current) {
-        syncStackNavHideProgress(progress);
-        onExitNavRevealProgress?.(progress);
+        if (animate || Math.abs(progress - stackNavDismissProgressRef.current) > 0.012) {
+          stackNavDismissProgressRef.current = progress;
+          syncStackNavHideProgress(progress);
+          onExitNavRevealProgress?.(progress);
+        }
       }
     } catch (err) {
       console.warn("[chat-room-close-drag]", err);
@@ -32348,6 +32412,10 @@ function ChatScreen({
   const resetStackToInboxRest = reactExports.useCallback(
     (opts) => {
       stackProgressRef.current = 0;
+      stackDragPreviewIdRef.current = null;
+      stackDragVisualStartedRef.current = false;
+      lastRoomDismissTxRef.current = 0;
+      stackNavDismissProgressRef.current = -1;
       setStackProgress(0);
       setStackSpring(!!opts?.animate);
       stackRoomDriveRef.current = "idle";
@@ -32364,7 +32432,7 @@ function ChatScreen({
       const clamped = publishChatStackCssProgress(p);
       stackProgressRef.current = clamped;
       applyStackLayerTransforms(clamped, animate);
-      const drivingNav = stackOpenDragRef.current || !!stackDragChatId || stackRoomDismissRef.current || stackRoomDriveRef.current === "close";
+      const drivingNav = stackOpenDragRef.current || stackTapTransitionRef.current || !!stackDragChatId || !!stackDragPreviewIdRef.current || stackRoomDismissRef.current || stackRoomDriveRef.current === "close";
       if (drivingNav && clamped > 1e-3 && clamped < 0.999) {
         syncStackNavHideProgress(clamped);
         onExitNavRevealProgress?.(clamped);
@@ -32395,14 +32463,19 @@ function ChatScreen({
         const cap2 = Math.max(260, stackCapRef.current);
         const threshold2 = Math.max(cap2 * CHAT_STACK_OPEN_FRACTION, 64);
         if (phase === "start" || phase === "move") {
-          setStackRoomDismissDragging(true);
+          if (phase === "start") {
+            setStackRoomDismissDragging(true);
+            lastRoomDismissTxRef.current = 0;
+            stackNavDismissProgressRef.current = -1;
+          }
           stackRoomDriveRef.current = "close";
           stackRoomDismissRef.current = true;
-          onExitNavRevealProgress?.(stackProgressRef.current);
           applyRoomCloseDrag(tx, false);
           return;
         }
         setStackRoomDismissDragging(false);
+        lastRoomDismissTxRef.current = 0;
+        stackNavDismissProgressRef.current = -1;
         const closing2 = tx <= -threshold2;
         if (closing2) {
           beginCloseChatThreadRef.current(resolveOpenChatId(openChat));
@@ -32473,6 +32546,39 @@ function ChatScreen({
     },
     [state.chats, me.id]
   );
+  const flushPendingStackDrag = reactExports.useCallback(() => {
+    if (stackDragFrameRef.current) {
+      cancelAnimationFrame(stackDragFrameRef.current);
+      stackDragFrameRef.current = 0;
+    }
+    const pending = pendingStackDragRef.current;
+    if (!pending) return;
+    pendingStackDragRef.current = null;
+    const { chatId, px } = pending;
+    if (stackListGestureCommitRef.current || stackTransitionLockRef.current) return;
+    stackOpenDragRef.current = true;
+    stackRoomDriveRef.current = "open";
+    stackRoomDismissRef.current = false;
+    if (!stackDragVisualStartedRef.current) {
+      stackDragVisualStartedRef.current = true;
+      setStackClosingId(null);
+      setStackSpring(false);
+      hideStackChrome();
+    }
+    const canonical = resolveOpenChatId(chatId);
+    stackDragPreviewIdRef.current = canonical;
+    let cap = stackCapRef.current;
+    if (!(cap > 0)) {
+      cap = readSafeStackCapPx(stackInboxRef.current, stackCapRef);
+      stackCapRef.current = cap;
+    }
+    const progress = cap > 0 ? px / cap : 0;
+    publishStackProgressVisual(progress, false);
+  }, [
+    resolveOpenChatId,
+    publishStackProgressVisual,
+    hideStackChrome
+  ]);
   const isChatThreadFullyOpen = reactExports.useCallback(
     (id) => openChat === id && !stackDragChatId && !stackClosingId && stackProgressRef.current >= 0.98,
     [openChat, stackDragChatId, stackClosingId]
@@ -32494,11 +32600,13 @@ function ChatScreen({
       }
       if (stackTransitionLockRef.current && stackNavTargetRef.current !== canonical) return;
       const progress = stackProgressRef.current;
-      const sameThread = stackDragChatId === canonical || openChat === canonical || stackNavTargetRef.current === canonical;
+      const sameThread = stackDragChatId === canonical || stackDragPreviewIdRef.current === canonical || openChat === canonical || stackNavTargetRef.current === canonical;
       stackTransitionLockRef.current = true;
       stackListGestureCommitRef.current = true;
       stackNavTargetRef.current = canonical;
       stackOpenDragRef.current = false;
+      stackDragPreviewIdRef.current = null;
+      stackDragVisualStartedRef.current = false;
       stackSwipeOpeningRef.current = false;
       stackRoomDriveRef.current = "open";
       stackRoomDismissRef.current = false;
@@ -32569,6 +32677,9 @@ function ChatScreen({
   );
   const cancelStackDrag = reactExports.useCallback(() => {
     flushPendingStackDrag();
+    stackDragPreviewIdRef.current = null;
+    stackDragVisualStartedRef.current = false;
+    stackOpenDragRef.current = false;
     if (!stackDragChatId && !openChat && stackProgressRef.current < 0.02) {
       releaseStackTransitionLock();
       releaseChatChromeAfterGesture();
@@ -32614,6 +32725,7 @@ function ChatScreen({
         return;
       }
       ++stackNavGenerationRef.current;
+      const gen = stackNavGenerationRef.current;
       stackTransitionLockRef.current = true;
       stackListGestureCommitRef.current = true;
       stackOpenDragRef.current = false;
@@ -32621,10 +32733,13 @@ function ChatScreen({
       stackRoomDriveRef.current = "open";
       stackRoomDismissRef.current = false;
       stackNavTargetRef.current = canonical;
+      stackTapTransitionRef.current = true;
       setStackGestureLocked(true);
       setStackClosingId(null);
       setStackDragChatId(null);
-      stackTapTransitionRef.current = true;
+      stackDragPreviewIdRef.current = null;
+      stackDragVisualStartedRef.current = false;
+      hideStackChrome();
       reactDomExports.flushSync(() => {
         setOpenChat(canonical);
         stackProgressRef.current = 0;
@@ -32632,6 +32747,35 @@ function ChatScreen({
         setStackSpring(false);
       });
       onActiveChatChange?.(canonical);
+      applyStackLayerTransforms(0, false);
+      publishChatStackCssProgress(0);
+      syncStackNavHideProgress(0.04);
+      onExitNavRevealProgress?.(0.04);
+      try {
+        void stackInboxRef.current?.offsetWidth;
+        void stackRoomRef.current?.offsetWidth;
+      } catch {
+      }
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (gen !== stackNavGenerationRef.current || !stackTapTransitionRef.current) return;
+          syncStackNavHideProgress(1);
+          onExitNavRevealProgress?.(1);
+          stackProgressRef.current = 1;
+          setStackProgress(1);
+          setStackSpring(true);
+          publishStackProgressVisual(1, true, true);
+          window.setTimeout(() => {
+            if (gen !== stackNavGenerationRef.current) return;
+            setStackSpring(false);
+            stackTapTransitionRef.current = false;
+            syncStackNavHideProgress(null);
+            onExitNavRevealProgress?.(null);
+            releaseStackTransitionLock();
+            requestStackRoomScrollBottom();
+          }, CHAT_TAP_OPEN_MS);
+        });
+      });
     },
     [
       resolveOpenChatId,
@@ -32639,7 +32783,12 @@ function ChatScreen({
       commitStackOpen,
       stackDragChatId,
       hideStackChrome,
-      onActiveChatChange
+      onActiveChatChange,
+      applyStackLayerTransforms,
+      publishStackProgressVisual,
+      onExitNavRevealProgress,
+      releaseStackTransitionLock,
+      requestStackRoomScrollBottom
     ]
   );
   const closeOpenChat = reactExports.useCallback(() => {
@@ -32655,19 +32804,68 @@ function ChatScreen({
     onExitNavRevealProgress?.(null);
     onActiveChatChange?.(null);
   }, [releaseStackTransitionLock, resetStackToInboxRest, onExitNavRevealProgress, onActiveChatChange]);
-  const armStackListGesture = reactExports.useCallback(() => {
-    if ((stackGestureLocked || stackListGestureCommitRef.current) && !openChat && stackProgressRef.current < 0.98) {
-      releaseStackTransitionLock();
-      stackListGestureCommitRef.current = false;
-      if (stackProgressRef.current > 0.02) {
-        resetStackToInboxRest();
-      }
+  const releaseStuckStackListGesture = reactExports.useCallback(() => {
+    ++stackNavGenerationRef.current;
+    flushPendingStackDrag();
+    pendingStackDragRef.current = null;
+    if (stackDragFrameRef.current) {
+      cancelAnimationFrame(stackDragFrameRef.current);
+      stackDragFrameRef.current = 0;
     }
-  }, [openChat, releaseStackTransitionLock, resetStackToInboxRest]);
+    stackOpenVelocityRef.current = 0;
+    if (openChat && stackProgressRef.current >= 0.98) {
+      releaseStackTransitionLock();
+      return;
+    }
+    setStackDragChatId(null);
+    setStackClosingId(null);
+    stackDragPreviewIdRef.current = null;
+    stackDragVisualStartedRef.current = false;
+    releaseStackTransitionLock();
+    if (stackProgressRef.current > 0.02) {
+      resetStackToInboxRest();
+    }
+    releaseChatChromeAfterGesture();
+    showStackChrome();
+  }, [
+    openChat,
+    flushPendingStackDrag,
+    releaseStackTransitionLock,
+    resetStackToInboxRest,
+    releaseChatChromeAfterGesture,
+    showStackChrome
+  ]);
+  const armStackListGesture = reactExports.useCallback(() => {
+    if (stackDragFrameRef.current) {
+      cancelAnimationFrame(stackDragFrameRef.current);
+      stackDragFrameRef.current = 0;
+    }
+    pendingStackDragRef.current = null;
+    if (openChat && stackProgressRef.current >= 0.98) return;
+    if (stackListGestureCommitRef.current || stackTransitionLockRef.current) {
+      releaseStackTransitionLock();
+    }
+    if (!openChat && stackProgressRef.current > 0.02 && stackProgressRef.current < 0.98) {
+      ++stackNavGenerationRef.current;
+      setStackDragChatId(null);
+      setStackClosingId(null);
+      resetStackToInboxRest();
+      releaseChatChromeAfterGesture();
+    }
+  }, [
+    openChat,
+    releaseStackTransitionLock,
+    resetStackToInboxRest,
+    releaseChatChromeAfterGesture
+  ]);
   const handleRowOpenCommit = reactExports.useCallback(
     (chatId, px, mode2) => {
       flushPendingStackDrag();
-      if (stackListGestureCommitRef.current) return;
+      if (stackListGestureCommitRef.current) {
+        if (openChat && stackProgressRef.current >= 0.98) return;
+        ++stackNavGenerationRef.current;
+        releaseStackTransitionLock();
+      }
       if (stackTransitionLockRef.current) {
         const p = stackProgressRef.current;
         if (openChat && p >= 0.98) return;
@@ -32683,7 +32881,11 @@ function ChatScreen({
       if (mode2 === "tap") {
         stackOpenDragRef.current = false;
         stackSwipeOpeningRef.current = false;
-        if (stackDragChatId) {
+        const hadDragPreview = !!(stackDragChatId || stackDragPreviewIdRef.current);
+        stackDragPreviewIdRef.current = null;
+        stackDragVisualStartedRef.current = false;
+        releaseStackTransitionLock();
+        if (hadDragPreview) {
           commitStackOpen(canonical);
           return;
         }
@@ -32902,6 +33104,8 @@ function ChatScreen({
         setStackProgress(0);
         stackRoomDriveRef.current = "idle";
         stackRoomDismissRef.current = false;
+        lastRoomDismissTxRef.current = 0;
+        stackNavDismissProgressRef.current = -1;
         setStackRoomDismissDragging(false);
         onExitNavRevealProgress?.(null);
         if (typeof document !== "undefined") {
@@ -32923,50 +33127,28 @@ function ChatScreen({
     ]
   );
   beginCloseChatThreadRef.current = beginCloseChatThread;
-  const flushPendingStackDrag = reactExports.useCallback(() => {
-    if (stackDragFrameRef.current) {
-      cancelAnimationFrame(stackDragFrameRef.current);
-      stackDragFrameRef.current = 0;
-    }
-    const pending = pendingStackDragRef.current;
-    if (!pending) return;
-    pendingStackDragRef.current = null;
-    const { chatId, px } = pending;
-    if (stackListGestureCommitRef.current || stackTransitionLockRef.current) return;
-    stackOpenDragRef.current = true;
-    stackRoomDriveRef.current = "open";
-    stackRoomDismissRef.current = false;
-    setStackClosingId(null);
-    setStackSpring(false);
-    hideStackChrome();
-    const canonical = resolveOpenChatId(chatId);
-    if (stackDragChatId !== canonical) setStackDragChatId(canonical);
-    let cap = stackCapRef.current;
-    if (!(cap > 0)) {
-      cap = readSafeStackCapPx(stackInboxRef.current, stackCapRef);
-      stackCapRef.current = cap;
-    }
-    const progress = cap > 0 ? px / cap : 0;
-    publishStackProgressVisual(progress, false);
-  }, [
-    stackDragChatId,
-    resolveOpenChatId,
-    publishStackProgressVisual,
-    hideStackChrome
-  ]);
   const applyStackDragVisual = reactExports.useCallback(
     (chatId, px) => {
-      if (stackListGestureCommitRef.current || stackTransitionLockRef.current || stackSwipeOpeningRef.current) {
-        return;
+      if (stackSwipeOpeningRef.current) return;
+      if (stackListGestureCommitRef.current || stackTransitionLockRef.current) {
+        if (!stackOpenDragRef.current && stackProgressRef.current < 0.98) {
+          releaseStackTransitionLock();
+          stackListGestureCommitRef.current = false;
+        } else {
+          return;
+        }
       }
       stackOpenDragRef.current = true;
       stackRoomDriveRef.current = "open";
       stackRoomDismissRef.current = false;
-      setStackClosingId(null);
-      setStackSpring(false);
-      hideStackChrome();
+      if (!stackDragVisualStartedRef.current) {
+        stackDragVisualStartedRef.current = true;
+        setStackClosingId(null);
+        setStackSpring(false);
+        hideStackChrome();
+      }
       const canonical = resolveOpenChatId(chatId);
-      if (stackDragChatId !== canonical) setStackDragChatId(canonical);
+      stackDragPreviewIdRef.current = canonical;
       let cap = stackCapRef.current;
       if (!(cap > 0)) {
         cap = readSafeStackCapPx(stackInboxRef.current, stackCapRef);
@@ -32975,20 +33157,29 @@ function ChatScreen({
       const progress = cap > 0 ? px / cap : 0;
       publishStackProgressVisual(progress, false);
     },
-    [stackDragChatId, resolveOpenChatId, publishStackProgressVisual, hideStackChrome]
+    [
+      resolveOpenChatId,
+      publishStackProgressVisual,
+      hideStackChrome,
+      releaseStackTransitionLock
+    ]
   );
   const onStackDrag = reactExports.useCallback(
     (chatId, px, vx = 0) => {
       if (Number.isFinite(vx)) stackOpenVelocityRef.current = vx;
       pendingStackDragRef.current = { chatId, px, vx };
       if (stackDragFrameRef.current) return;
-      stackDragFrameRef.current = requestAnimationFrame(() => {
+      const tick = () => {
         stackDragFrameRef.current = 0;
         const pending = pendingStackDragRef.current;
         if (!pending) return;
         pendingStackDragRef.current = null;
         applyStackDragVisual(pending.chatId, pending.px);
-      });
+        if (pendingStackDragRef.current) {
+          stackDragFrameRef.current = requestAnimationFrame(tick);
+        }
+      };
+      stackDragFrameRef.current = requestAnimationFrame(tick);
     },
     [applyStackDragVisual]
   );
@@ -33014,31 +33205,7 @@ function ChatScreen({
     }
     if (stackClosingId || stackDragChatId) return;
     if (stackGestureLocked && !stackTapTransitionRef.current) return;
-    if (stackTapTransitionRef.current) {
-      applyStackLayerTransforms(0, false);
-      let inner = 0;
-      const outer = requestAnimationFrame(() => {
-        inner = requestAnimationFrame(() => {
-          stackProgressRef.current = 1;
-          if (typeof document !== "undefined") {
-            document.documentElement.style.setProperty(CHAT_STACK_PROGRESS_VAR, "1");
-          }
-          setStackProgress(1);
-          setStackSpring(true);
-          applyStackLayerTransforms(1, true);
-          window.setTimeout(() => {
-            setStackSpring(false);
-            stackTapTransitionRef.current = false;
-            releaseStackTransitionLock();
-            requestStackRoomScrollBottom();
-          }, CHAT_TAP_OPEN_MS);
-        });
-      });
-      return () => {
-        cancelAnimationFrame(outer);
-        if (inner) cancelAnimationFrame(inner);
-      };
-    }
+    if (stackTapTransitionRef.current) return;
     if (stackProgressRef.current >= 0.98) {
       setStackSpring(false);
       applyStackLayerTransforms(1, false);
@@ -33065,7 +33232,7 @@ function ChatScreen({
       flushPendingStackDrag();
       if (openChat || stackListGestureCommitRef.current) return;
       const p = stackProgressRef.current;
-      if (p > 0.03 && p < 0.97 && (stackOpenDragRef.current || stackDragChatId)) {
+      if (p > 0.03 && p < 0.97 && (stackDragChatId || stackDragPreviewIdRef.current)) {
         cancelStackDrag();
       }
     };
@@ -33077,14 +33244,17 @@ function ChatScreen({
     };
   }, [openChat, stackDragChatId, cancelStackDrag, flushPendingStackDrag]);
   reactExports.useEffect(() => {
-    const stuck = stackGestureLocked && !openChat && stackProgressRef.current < 0.98 || !!stackDragChatId && !openChat && stackProgressRef.current > 0.03 && stackProgressRef.current < 0.97;
+    if (stackOpenDragRef.current || stackListGestureCommitRef.current) return;
+    const previewId = stackDragPreviewIdRef.current || stackDragChatId;
+    const stuck = stackGestureLocked && !openChat && stackProgressRef.current < 0.98 || !!previewId && !openChat && stackProgressRef.current > 0.03 && stackProgressRef.current < 0.97;
     if (!stuck) return;
     const t2 = window.setTimeout(() => {
+      if (stackOpenDragRef.current || stackListGestureCommitRef.current) return;
       if (openChat && stackProgressRef.current >= 0.98) {
         releaseStackTransitionLock();
         return;
       }
-      const id = stackDragChatId;
+      const id = stackDragPreviewIdRef.current || stackDragChatId;
       const p = stackProgressRef.current;
       if (!id || p <= 0.03) {
         releaseStackTransitionLock();
@@ -33099,7 +33269,7 @@ function ChatScreen({
       if (p > 0.03 && p < 0.97) {
         cancelStackDrag();
       }
-    }, 420);
+    }, 220);
     return () => window.clearTimeout(t2);
   }, [
     stackGestureLocked,
@@ -33148,7 +33318,7 @@ function ChatScreen({
     restoreChatStackAfterGroupSettings();
   }, [showGroupSettings, openChat, stackChat, restoreChatStackAfterGroupSettings]);
   const stackRoomPreviewOnly = !!stackDragChatId && !openChat;
-  const chatRoomDismissBlocked = stackRoomPreviewOnly || !!stackDragChatId || stackTapTransitionRef.current || stackGestureLocked && !stackRoomDismissDragging;
+  const chatRoomDismissBlocked = stackRoomPreviewOnly || !!stackDragChatId || stackTapTransitionRef.current;
   const stackRoomForceScrollBottom = !!openChat && !stackDragChatId && stackProgress >= 0.98 && !stackTapTransitionRef.current;
   reactExports.useEffect(() => {
     if (!openChat || stackClosingId || stackDragChatId || stackTapTransitionRef.current) return;
@@ -33191,7 +33361,15 @@ function ChatScreen({
   reactExports.useEffect(() => {
     onActiveChatChange?.(openChat);
   }, [openChat, onActiveChatChange]);
-  useLockPageScroll(!!openChat || !!stackDragChatId || !!stackClosingId);
+  useLockPageScroll(
+    chatTabActive && (!!openChat || !!stackDragChatId || !!stackClosingId)
+  );
+  const releaseStuckStackListGestureRef = reactExports.useRef(releaseStuckStackListGesture);
+  releaseStuckStackListGestureRef.current = releaseStuckStackListGesture;
+  reactExports.useEffect(() => {
+    if (chatTabActive) return;
+    releaseStuckStackListGestureRef.current();
+  }, [chatTabActive]);
   reactExports.useEffect(() => {
     const onRing = (e) => {
       const detail = e.detail;
@@ -33316,6 +33494,7 @@ function ChatScreen({
       ref: stackInboxRef,
       dir: isRtl ? "rtl" : "ltr",
       className: "chat-inbox-pane no-scrollbar relative z-[1] flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-none bg-background [transform:translateZ(0)]",
+      "data-no-tab-swipe": true,
       style: stackInboxPointerEvents ? { pointerEvents: stackInboxPointerEvents } : void 0,
       children: [
         !hideInboxTopChrome && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "shrink-0 px-4 pb-2 pt-[max(0.75rem,max(0.75rem, var(--sat)))]", children: [
@@ -33509,7 +33688,7 @@ function ChatScreen({
             }
           )
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "chat-inbox-scroll no-scrollbar", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "chat-inbox-scroll no-scrollbar", "data-no-tab-swipe": true, children: [
           renderedChats.map((c) => /* @__PURE__ */ jsxRuntimeExports.jsx(
             ChatListRowWithPeek,
             {
@@ -33769,13 +33948,13 @@ function ChatScreen({
     ),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "chat-stack-scene relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background", children: [
       chatInbox,
-      activeStackChatId && stackChat ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
         ChatStackRoomGestureShell,
         {
           roomRef: stackRoomRef,
           widthCapRef: stackCapRef,
           interactive: !!openChat,
-          children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+          children: (openChat || stackClosingId) && stackChat ? /* @__PURE__ */ jsxRuntimeExports.jsx(
             ChatRoom,
             {
               chat: stackChat,
@@ -33807,9 +33986,9 @@ function ChatScreen({
               }
             },
             `${accountSessionKey}-${stackChat.id}`
-          )
+          ) : null
         }
-      ) : null
+      )
     ] }),
     showGroupSettings && openChat && stackChat && (stackChat.isGroup || stackChat.isChannel) ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "pointer-events-auto fixed inset-0 z-[220] mx-auto flex max-w-md flex-col bg-background", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
       GroupDetailsScreen,
@@ -37224,12 +37403,24 @@ function BottomNavTabRow({
     tabCount,
     isDraggingRef
   );
-  reactExports.useEffect(() => {
-    return () => {
-      windowDragCleanupRef.current?.();
-      windowDragCleanupRef.current = null;
-    };
+  const clearWindowDragListeners = reactExports.useCallback(() => {
+    windowDragCleanupRef.current?.();
+    windowDragCleanupRef.current = null;
   }, []);
+  reactExports.useEffect(() => {
+    const resetDrag = () => {
+      dragRef.current = null;
+      isDraggingRef.current = false;
+      clearWindowDragListeners();
+    };
+    window.addEventListener("blur", resetDrag);
+    document.addEventListener("visibilitychange", resetDrag);
+    return () => {
+      window.removeEventListener("blur", resetDrag);
+      document.removeEventListener("visibilitychange", resetDrag);
+      clearWindowDragListeners();
+    };
+  }, [clearWindowDragListeners]);
   const shouldSuppressNavTap = reactExports.useCallback(
     () => shouldSuppressTap() || Date.now() < suppressUntilRef.current,
     [shouldSuppressTap]
@@ -37238,10 +37429,6 @@ function BottomNavTabRow({
     onSuppressTapChange?.(shouldSuppressNavTap);
   }, [onSuppressTapChange, shouldSuppressNavTap]);
   const items = reactExports.Children.toArray(children);
-  const clearWindowDragListeners = reactExports.useCallback(() => {
-    windowDragCleanupRef.current?.();
-    windowDragCleanupRef.current = null;
-  }, []);
   const finishDragSession = reactExports.useCallback(
     (clientX, pointerId, targetEl) => {
       const d = dragRef.current;
@@ -37289,7 +37476,6 @@ function BottomNavTabRow({
       const onMove = (ev) => {
         if (ev.pointerType === "mouse" && ev.buttons === 0) return;
         handlePointerMove(ev.clientX, ev.pointerId, rowEl);
-        if (isDraggingRef.current) ev.preventDefault();
       };
       const onEnd = (ev) => {
         try {
@@ -37548,8 +37734,8 @@ function ProfileTweetMedia({
   if (postMedia.hasImage && !postMedia.hasVideo) {
     return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-2.5 overflow-hidden rounded-2xl border border-border/50 bg-zinc-900/80", children: /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: postMedia.imageUrl, alt: "", className: "max-h-[min(420px,55vh)] w-full object-cover" }) });
   }
-  if (postMedia.hasAudio && post.audio) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-2.5 rounded-2xl border border-border/50 bg-card p-3", children: /* @__PURE__ */ jsxRuntimeExports.jsx(TweetVoicePlayer, { src: post.audio }) });
+  if (postMedia.hasAudio && postMedia.audioUrl) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-2.5 shrink-0", children: /* @__PURE__ */ jsxRuntimeExports.jsx(TweetVoicePlayer, { src: postMedia.audioUrl }) });
   }
   if (postMedia.hasVideo) {
     return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "group relative mt-2.5 overflow-hidden rounded-2xl border border-border/50 bg-zinc-900", children: [
@@ -52464,6 +52650,7 @@ function App() {
   const [chatThreadOpen, setChatThreadOpen] = reactExports.useState(false);
   const [chatHideBottomNav, setChatHideBottomNav] = reactExports.useState(false);
   const [chatExitNavActive, setChatExitNavActive] = reactExports.useState(false);
+  const chatExitNavActiveRef = reactExports.useRef(false);
   const [postDetailOpen, setPostDetailOpen] = reactExports.useState(false);
   const [reportSheetOpen, setReportSheetOpen2] = reactExports.useState(false);
   const [reelsCommentsOpen, setReelsCommentsOpen] = reactExports.useState(false);
@@ -52982,17 +53169,17 @@ function App() {
     setRestorePostContext(null);
   }, []);
   const onChatExitNavRevealProgress = reactExports.useCallback((progress) => {
-    if (progress == null) {
-      setChatExitNavActive(false);
-      try {
-        document.documentElement.style.removeProperty(NAV_HIDE_PROGRESS_CSS_VAR);
-      } catch {
-      }
-      return;
+    const nextActive = progress != null;
+    if (nextActive !== chatExitNavActiveRef.current) {
+      chatExitNavActiveRef.current = nextActive;
+      setChatExitNavActive(nextActive);
     }
-    setChatExitNavActive(true);
     try {
-      document.documentElement.style.setProperty(NAV_HIDE_PROGRESS_CSS_VAR, String(progress));
+      if (progress == null) {
+        document.documentElement.style.removeProperty(NAV_HIDE_PROGRESS_CSS_VAR);
+      } else {
+        document.documentElement.style.setProperty(NAV_HIDE_PROGRESS_CSS_VAR, String(progress));
+      }
     } catch {
     }
   }, []);
@@ -53661,6 +53848,17 @@ function WebAppRoot() {
   const [bootState, setBootState] = reactExports.useState(null);
   const [apiMissing, setApiMissing] = reactExports.useState(false);
   reactExports.useEffect(() => {
+    try {
+      const url2 = new URL(window.location.href);
+      if (url2.searchParams.has("force") || url2.searchParams.has("_b") || url2.searchParams.has("_")) {
+        url2.searchParams.delete("force");
+        url2.searchParams.delete("_b");
+        url2.searchParams.delete("_");
+        const next = url2.pathname + (url2.search || "") + url2.hash;
+        window.history.replaceState(null, "", next || "/app/");
+      }
+    } catch {
+    }
     installNativeTextSelectionGuard();
     warmGlobalPointerBackRouter();
     clearStaleApiConfig();

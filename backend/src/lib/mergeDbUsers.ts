@@ -21,6 +21,8 @@ function rowToProfileOverlay(row: UserRow): Partial<User> {
     founderOfficialLabel: row.founderOfficialLabel,
     appOfficialVerified: row.appOfficialVerified === true,
     appOfficialLabel: row.appOfficialLabel,
+    supportOfficialVerified: row.supportOfficialVerified === true,
+    supportOfficialLabel: row.supportOfficialLabel,
     isSubscribed: row.isSubscribed === true,
     subscriptionPlan: row.subscriptionPlan,
     subscriptionExpiresAt: row.subscriptionExpiresAt,

@@ -10,6 +10,7 @@ export interface VerificationUserFields {
   verified?: boolean;
   founderVerified?: boolean;
   appOfficialVerified?: boolean;
+  supportOfficialVerified?: boolean;
   isSubscribed?: boolean;
   subscriptionPlan?: string;
   subscriptionExpiresAt?: string;
@@ -34,7 +35,11 @@ export interface UserEntitlements {
 }
 
 function isExemptAccount(user: VerificationUserFields): boolean {
-  return user.founderVerified === true || user.appOfficialVerified === true;
+  return (
+    user.founderVerified === true ||
+    user.appOfficialVerified === true ||
+    user.supportOfficialVerified === true
+  );
 }
 
 /** حساب موثّق يعرض الشارة الزرقاء (بعد موافقة الإدارة) */

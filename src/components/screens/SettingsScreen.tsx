@@ -19,7 +19,14 @@ import { VerificationRequestPanel } from "../verification/VerificationRequestPan
 import { VerificationBadgeColorPicker } from "../verification/VerificationBadgeColorPicker";
 import { AdminVerificationPanel } from "../verification/AdminVerificationPanel";
 import { ModerationDashboard } from "../admin/ModerationDashboard";
+import { BlockConfirmSheet } from "../moderation/BlockConfirmSheet";
 import { apiAdminModerationMe } from "@/lib/moderationApi";
+import {
+  apiGetSecurity,
+  apiRevokeTrustedDevices,
+  apiSetTwoFactor,
+  type SecuritySummary,
+} from "@/lib/securityApi";
 import { AppErrorBoundary } from "../AppErrorBoundary";
 import { useT, type TKey } from "@/lib/i18n";
 
@@ -44,6 +51,8 @@ import {
   MessageCircle,
   Moon,
   Shield,
+  ShieldCheck,
+  Smartphone,
   Sun,
   Trash2,
   UserCircle,
@@ -55,6 +64,7 @@ import { RSocialAvatar } from "../rsocial/RSocialAvatar";
 import { SlideDismissBackButton } from "../SlideDismissShell";
 import { writeDeviceTheme } from "@/lib/deviceTheme";
 import { StoriesArchiveScreen } from "./StoriesArchiveScreen";
+import { BottomDismissSheet } from "../BottomDismissSheet";
 
 type SubView =
   | null
@@ -69,6 +79,7 @@ type SubView =
   | "timeManagement"
   | "closeFriends"
   | "notifications"
+  | "security"
   | "deleteAccount";
 
 const PRIVACY_POLICY_URL = `${VERCEL_SITE_URL}/privacy.html`;
@@ -378,6 +389,144 @@ function SettingsHeader({
   );
 }
 
+function SecuritySettingsPanel({ onBack }: { onBack: () => void }) {
+  const [summary, setSummary] = useState<SecuritySummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [pwd, setPwd] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      setLoading(true);
+      const r = await apiGetSecurity();
+      if (r.ok) setSummary(r.data);
+      setLoading(false);
+    })();
+  }, []);
+
+  const refresh = async () => {
+    const r = await apiGetSecurity();
+    if (r.ok) setSummary(r.data);
+  };
+
+  const toggle2fa = async (enabled: boolean) => {
+    if (!pwd.trim()) {
+      setMsg("أدخل كلمة المرور الحالية للتأكيد");
+      return;
+    }
+    setBusy(true);
+    setMsg(null);
+    const r = await apiSetTwoFactor(enabled, pwd);
+    setBusy(false);
+    if (!r.ok) {
+      setMsg(r.error);
+      return;
+    }
+    setSummary(r.data);
+    setPwd("");
+    setMsg(enabled ? "تم تفعيل المصادقة الثنائية" : "تم إيقاف المصادقة الثنائية");
+  };
+
+  const revokeDevices = async () => {
+    if (!pwd.trim()) {
+      setMsg("أدخل كلمة المرور الحالية");
+      return;
+    }
+    if (!confirm("إزالة كل الأجهزة الموثوقة؟ سيُطلب كود بريد عند الدخول من أي جهاز.")) return;
+    setBusy(true);
+    setMsg(null);
+    const r = await apiRevokeTrustedDevices(pwd);
+    setBusy(false);
+    if (!r.ok) {
+      setMsg(r.error);
+      return;
+    }
+    setPwd("");
+    setMsg(r.message || "تمت الإزالة");
+    await refresh();
+  };
+
+  return (
+    <div className="settings-screen-root min-h-full w-full overflow-x-hidden bg-background pb-10" dir="rtl">
+      <SettingsHeader title="الأمان" onBack={onBack} navScope="local" />
+      <div className="mx-4 mt-4 space-y-4">
+        {loading && <p className="text-sm text-muted-foreground">جاري التحميل…</p>}
+        {summary && (
+          <>
+            <SettingsCard>
+              <div className="px-4 py-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">المصادقة الثنائية</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      كود بريد عند كل تسجيل دخول
+                    </p>
+                  </div>
+                  <IgToggle
+                    on={summary.twoFactorEnabled}
+                    onToggle={() => void toggle2fa(!summary.twoFactorEnabled)}
+                  />
+                </div>
+              </div>
+            </SettingsCard>
+
+            <p className="text-xs leading-relaxed text-muted-foreground px-1">
+              عند الدخول من <strong>جهاز جديد</strong> يُرسل كود تحقق إلى بريدك تلقائياً (حتى بدون تفعيل
+              المصادقة الثنائية). بعد إدخال الكود يُوثَّق الجهاز.
+            </p>
+
+            <div className="space-y-2">
+              <input
+                value={pwd}
+                onChange={e => setPwd(e.target.value)}
+                type="password"
+                placeholder="كلمة المرور الحالية"
+                className="w-full rounded-xl border border-border bg-input px-4 py-3 text-sm text-foreground"
+                autoComplete="current-password"
+              />
+            </div>
+
+            <SettingsCard>
+              <div className="px-4 py-3">
+                <p className="text-sm font-semibold text-foreground flex items-center gap-2">
+                  <Smartphone className="h-4 w-4" />
+                  أجهزة موثوقة ({summary.trustedDeviceCount})
+                </p>
+                {summary.trustedDevices.length > 0 ? (
+                  <ul className="mt-2 space-y-1.5">
+                    {summary.trustedDevices.map((d, i) => (
+                      <li key={i} className="text-xs text-muted-foreground">
+                        {d.label} · آخر دخول{" "}
+                        {new Date(d.lastSeenAt).toLocaleDateString("ar")}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-1 text-xs text-muted-foreground">لا توجد أجهزة موثوقة بعد</p>
+                )}
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void revokeDevices()}
+                  className="mt-3 w-full rounded-xl border border-red-500/30 bg-red-500/10 py-2.5 text-sm font-semibold text-red-400 disabled:opacity-50"
+                >
+                  إزالة جميع الأجهزة الموثوقة
+                </button>
+              </div>
+            </SettingsCard>
+          </>
+        )}
+        {msg && (
+          <p className={`text-sm px-1 ${msg.includes("تعذر") || msg.includes("غير") ? "text-red-400" : "text-emerald-400"}`}>
+            {msg}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function SettingsScreen({
   onBack,
   onOpenAccounts,
@@ -392,7 +541,7 @@ export function SettingsScreen({
     currentUser,
     logout,
     updateProfile,
-    toggleBlock,
+    toggleBlockWithSync,
     toggleCloseFriend,
     changeOwnPassword,
     hardResyncFromServer,
@@ -407,11 +556,13 @@ export function SettingsScreen({
   const t = useT();
   const me = currentUser!;
   const [subView, setSubView] = useState<SubView>(null);
+  const [accountsCenterOpen, setAccountsCenterOpen] = useState(false);
   const [oldP, setOldP] = useState("");
   const [newP, setNewP] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
   const [isModerator, setIsModerator] = useState(false);
   const blockedUsers = state.users.filter(u => (me.blocked ?? []).includes(u.id));
+  const [unblockTarget, setUnblockTarget] = useState<{ id: string; username: string } | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -487,7 +638,8 @@ export function SettingsScreen({
 
   const subTitle = (k: SubView): string => {
     if (k === "adminModeration") return "لوحة الإشراف";
-    const map: Record<Exclude<SubView, null | "adminModeration">, TKey> = {
+    if (k === "security") return "الأمان";
+    const map: Record<Exclude<SubView, null | "adminModeration" | "security">, TKey> = {
       accountInfo: "accountInfo",
       changePwd: "changePwd",
       verify: "verifyAccount",
@@ -527,6 +679,10 @@ export function SettingsScreen({
   }
   if (subView === "notifications") {
     return <PlaceholderPanel title={t("notificationsSettings")} hint={t("comingSoonPanel")} onBack={() => setSubView(null)} />;
+  }
+
+  if (subView === "security") {
+    return <SecuritySettingsPanel onBack={() => setSubView(null)} />;
   }
 
   if (subView === "subscription") {
@@ -655,51 +811,110 @@ export function SettingsScreen({
     <div className="settings-screen-root min-h-full w-full max-w-full overflow-x-hidden bg-background pb-10" dir="rtl">
       <SettingsHeader title={t("settingsActivity")} onBack={onBack} navScope="local" />
 
-      {/* مركز الحسابات */}
-      <div dir="rtl" className="mx-4 mt-2 overflow-hidden rounded-2xl border border-border bg-card">
-        <div className="border-b border-border px-4 py-4 text-start">
-          <h2 className="text-[15px] font-semibold text-foreground">{t("accountsCenter")}</h2>
-          <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground">{t("accountsCenterDesc")}</p>
+      <SettingsCard>
+        <SettingsRow
+          icon={Users}
+          label={t("accountsCenter")}
+          chevron
+          onClick={() => setAccountsCenterOpen(true)}
+        />
+      </SettingsCard>
+
+      <BottomDismissSheet
+        open={accountsCenterOpen}
+        onClose={() => setAccountsCenterOpen(false)}
+        title={t("accountsCenter")}
+        subtitle={t("accountsCenterDesc")}
+        zIndex={140}
+      >
+        <div dir="rtl" className="pb-2 pt-1">
+          <SettingsCard>
+            {onOpenAccounts ? (
+              <SettingsRow
+                icon={Users}
+                label={t("activeAccountsAdd")}
+                chevron
+                onClick={() => {
+                  setAccountsCenterOpen(false);
+                  onOpenAccounts();
+                }}
+              />
+            ) : null}
+            {getUserEntitlements(me).isVerified ? (
+              <SettingsRow
+                icon={BadgeCheck}
+                label={t("verifiedAccount")}
+                chevron
+                onClick={() => {
+                  setAccountsCenterOpen(false);
+                  setSubView("verify");
+                }}
+              />
+            ) : (
+              <SettingsRow
+                icon={BadgeCheck}
+                label="Get Verified"
+                chevron
+                onClick={() => {
+                  setAccountsCenterOpen(false);
+                  setSubView("verify");
+                }}
+              />
+            )}
+            <SettingsRow
+              icon={UserCircle}
+              label={t("accountInfo")}
+              chevron
+              onClick={() => {
+                setAccountsCenterOpen(false);
+                setSubView("accountInfo");
+              }}
+            />
+            <SettingsRow
+              icon={KeyRound}
+              label={t("changePwd")}
+              chevron
+              onClick={() => {
+                setAccountsCenterOpen(false);
+                setSubView("changePwd");
+              }}
+            />
+            {apiBackendEnabled() ? (
+              <SettingsRow
+                icon={ShieldCheck}
+                label="الأمان والمصادقة الثنائية"
+                chevron
+                onClick={() => {
+                  setAccountsCenterOpen(false);
+                  setSubView("security");
+                }}
+              />
+            ) : null}
+            {isAdmin ? (
+              <SettingsRow
+                icon={BadgeCheck}
+                label="لوحة طلبات التوثيق"
+                chevron
+                onClick={() => {
+                  setAccountsCenterOpen(false);
+                  setSubView("adminVerify");
+                }}
+              />
+            ) : null}
+            {isModerator ? (
+              <SettingsRow
+                icon={Shield}
+                label="لوحة الإشراف والبلاغات"
+                chevron
+                onClick={() => {
+                  setAccountsCenterOpen(false);
+                  setSubView("adminModeration");
+                }}
+              />
+            ) : null}
+          </SettingsCard>
         </div>
-        <div className="divide-y divide-border">
-          {onOpenAccounts ? (
-            <SettingsRow icon={Users} label={t("activeAccountsAdd")} chevron onClick={onOpenAccounts} />
-          ) : null}
-          {getUserEntitlements(me).isVerified ? (
-            <SettingsRow
-              icon={BadgeCheck}
-              label={t("verifiedAccount")}
-              chevron
-              onClick={() => setSubView("verify")}
-            />
-          ) : (
-            <SettingsRow
-              icon={BadgeCheck}
-              label="Get Verified"
-              chevron
-              onClick={() => setSubView("verify")}
-            />
-          )}
-          <SettingsRow icon={UserCircle} label={t("accountInfo")} chevron onClick={() => setSubView("accountInfo")} />
-          <SettingsRow icon={KeyRound} label={t("changePwd")} chevron onClick={() => setSubView("changePwd")} />
-          {isAdmin ? (
-            <SettingsRow
-              icon={BadgeCheck}
-              label="لوحة طلبات التوثيق"
-              chevron
-              onClick={() => setSubView("adminVerify")}
-            />
-          ) : null}
-          {isModerator ? (
-            <SettingsRow
-              icon={Shield}
-              label="لوحة الإشراف والبلاغات"
-              chevron
-              onClick={() => setSubView("adminModeration")}
-            />
-          ) : null}
-        </div>
-      </div>
+      </BottomDismissSheet>
 
       <SectionGap />
       <SectionTitle>{t("howYouUseApp")}</SectionTitle>
@@ -806,7 +1021,7 @@ export function SettingsScreen({
               <span className="flex-1 truncate text-[15px] text-foreground">@{u.username}</span>
               <button
                 type="button"
-                onClick={() => toggleBlock(u.id)}
+                onClick={() => setUnblockTarget({ id: u.id, username: u.username })}
                 className="rounded-lg bg-secondary px-3 py-1.5 text-xs font-medium text-foreground"
               >
                 {t("unblockUser")}
@@ -854,6 +1069,16 @@ export function SettingsScreen({
           {t("logout")}
         </button>
       </div>
+
+      {unblockTarget && (
+        <BlockConfirmSheet
+          open
+          onClose={() => setUnblockTarget(null)}
+          username={unblockTarget.username}
+          mode="unblock"
+          onConfirm={() => toggleBlockWithSync(unblockTarget.id)}
+        />
+      )}
     </div>
   );
 }

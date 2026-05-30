@@ -39,7 +39,7 @@ export async function mergeSocialGraphIntoAppState(state: AppState): Promise<App
     if (!prev || item.createdAt >= prev.createdAt) storyById.set(item.id, item);
   }
 
-  const users = (state.users || []).map(u => ({
+  let users = (state.users || []).map(u => ({
     ...u,
     following: [...new Set(followingByUser.get(u.id) || [])],
     followers: [...new Set(followersByUser.get(u.id) || [])],
@@ -47,9 +47,37 @@ export async function mergeSocialGraphIntoAppState(state: AppState): Promise<App
     followRequestIn: [...new Set(requestIn.get(u.id) || [])],
   }));
 
+  users = applyBlockedSocialFilters(users);
+
   return {
     ...state,
     users,
     stories: [...storyById.values()].sort((a, b) => b.createdAt - a.createdAt),
   };
+}
+
+/** يزيل أي متابعة أو طلب بين محظور ومحظور — الحظر لا يُلغى المتابعة تلقائياً عند فك الحظر */
+function applyBlockedSocialFilters(
+  users: AppState["users"],
+): AppState["users"] {
+  const byId = new Map(users.map(u => [u.id, { ...u }]));
+  for (const u of users) {
+    const blocked = u.blocked || [];
+    for (const bid of blocked) {
+      const me = byId.get(u.id);
+      const other = byId.get(bid);
+      if (!me) continue;
+      me.following = (me.following || []).filter(id => id !== bid);
+      me.followers = (me.followers || []).filter(id => id !== bid);
+      me.followRequestOut = (me.followRequestOut || []).filter(id => id !== bid);
+      me.followRequestIn = (me.followRequestIn || []).filter(id => id !== bid);
+      if (other) {
+        other.following = (other.following || []).filter(id => id !== u.id);
+        other.followers = (other.followers || []).filter(id => id !== u.id);
+        other.followRequestOut = (other.followRequestOut || []).filter(id => id !== u.id);
+        other.followRequestIn = (other.followRequestIn || []).filter(id => id !== u.id);
+      }
+    }
+  }
+  return [...byId.values()];
 }

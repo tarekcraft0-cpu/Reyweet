@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { formatCompactCount } from "@/lib/formatCount";
-import { isMutual } from "@/lib/store";
+import { isMutual, theyFollowViewer, userIsFollowing } from "@/lib/store";
 import type { AppState, ID, User } from "@/lib/types";
 import { Avatar } from "../Avatar";
 import { VerifiedMarkForUser } from "../VerifiedBadge";
@@ -95,9 +95,9 @@ export function ChatDmIntroCard({ other, meId, state, onOpenProfile, isQuran, ha
         </div>
       ) : followingEachOther ? (
         <p className={"mt-4 text-sm " + muted}>أنتم تتابعان بعضكم</p>
-      ) : state.users.find(u => u.id === meId)?.following.includes(other.id) ? (
+      ) : userIsFollowing(state, meId, other.id) ? (
         <p className={"mt-4 text-sm " + muted}>أنت تتابعه</p>
-      ) : other.followers.includes(meId) ? (
+      ) : theyFollowViewer(state, meId, other.id) ? (
         <p className={"mt-4 text-sm " + muted}>يتابعك</p>
       ) : null}
 

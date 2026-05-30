@@ -10,9 +10,16 @@ import {
   getUserModerationState,
   saveUserModerationState,
 } from "../db/moderationStore.js";
+import { getUserById } from "../db/engine.js";
 import { emitToUsers } from "../lib/realtimeSocket.js";
 import { broadcastSseToUser } from "../lib/realtimeHub.js";
 import { DEFAULT_AVATAR_DATA_URI } from "../lib/defaultAvatar.js";
+import {
+  sendAccountBannedEmail,
+  sendAccountRestoredAfterAppealEmail,
+  sendAccountRestoredWrongfulPermanentBanEmail,
+} from "../lib/mail.js";
+import { buildWarningNoticePayload } from "./noticeMessages.js";
 
 export type BanInfo = {
   accountStatus: AccountStatus;
@@ -84,8 +91,22 @@ export async function applyModerationAction(
   state.violationCount = state.violations.length;
 
   switch (action) {
-    case "warn":
+    case "warn": {
+      const warn = buildWarningNoticePayload({
+        reason: opts.reason,
+        guideline: opts.guideline,
+      });
+      state.pendingNotice = {
+        id: randomUUID(),
+        kind: "warning",
+        titleAr: warn.titleAr,
+        messageAr: warn.messageAr,
+        guidelineAr: warn.guidelineAr,
+        reasonDetail: warn.reasonDetail,
+        createdAt: now,
+      };
       break;
+    }
     case "restrict":
       state.accountStatus = "RESTRICTED";
       state.restrictedUntil = now + (opts.durationHours ?? 72) * 3600_000;
@@ -93,6 +114,13 @@ export async function applyModerationAction(
     case "shadow_ban":
       state.accountStatus = "SHADOW_BANNED";
       state.shadowBanned = true;
+      break;
+    case "ban":
+      state.accountStatus = "BANNED";
+      state.banReason = opts.reason;
+      state.banGuideline = opts.guideline;
+      state.bannedAt = now;
+      state.banExpiresAt = null;
       break;
     case "temp_ban":
       state.accountStatus = "TEMP_BANNED";
@@ -112,10 +140,6 @@ export async function applyModerationAction(
       break;
   }
 
-  if (action === "temp_ban" || action === "perm_ban") {
-    state.accountStatus = action === "perm_ban" ? "PERMANENTLY_BANNED" : "TEMP_BANNED";
-  }
-
   await saveUserModerationState(state);
   await appendModerationAudit({
     actorId: moderatorId,
@@ -125,15 +149,49 @@ export async function applyModerationAction(
     meta: { reason: opts.reason, reportId: opts.reportId },
   });
 
-  const payload = { userId, accountStatus: state.accountStatus };
+  const user = await getUserById(userId);
+  const banInfo = user ? await getBanInfoForUser(user) : null;
+  const payload = {
+    userId,
+    accountStatus: state.accountStatus,
+    banInfo,
+    restored: false,
+    pendingNotice: state.pendingNotice ?? null,
+  };
   broadcastSseToUser(userId, "account:moderation", payload);
   emitToUsers([userId], "account:moderation", payload);
+
+  if ((action === "ban" || action === "temp_ban" || action === "perm_ban") && user?.email?.trim()) {
+    const permanent = state.accountStatus === "PERMANENTLY_BANNED";
+    void sendAccountBannedEmail({
+      to: user.email,
+      username: user.username,
+      banReason: state.banReason || opts.reason,
+      banGuideline: state.banGuideline ?? opts.guideline,
+      canAppeal: canAppealStatus(state),
+      permanent,
+      banExpiresAt: state.banExpiresAt,
+    }).then(r => {
+      if (!r.sent) console.warn("[ban] banned email not sent:", user.id, r.error);
+    });
+  }
 
   return state;
 }
 
-export async function restoreAccount(userId: string, actorId: string): Promise<UserModerationState> {
+export async function restoreAccount(
+  userId: string,
+  actorId: string,
+  opts?: {
+    appealId?: string;
+    appealApproved?: boolean;
+    /** فك حظر نهائي بعد دعم — إيميل اعتذار مخصص */
+    wrongfulPermanentRestore?: boolean;
+    note?: string;
+  },
+): Promise<UserModerationState> {
   const state = await getUserModerationState(userId);
+  const wasPermanent = state.accountStatus === "PERMANENTLY_BANNED";
   state.accountStatus = "ACTIVE";
   state.banReason = undefined;
   state.banGuideline = undefined;
@@ -141,16 +199,63 @@ export async function restoreAccount(userId: string, actorId: string): Promise<U
   state.banExpiresAt = undefined;
   state.restrictedUntil = undefined;
   state.shadowBanned = false;
+  const wrongfulRestore = opts?.wrongfulPermanentRestore === true || (wasPermanent && !opts?.appealApproved);
+  const messageAr = opts?.appealApproved
+    ? "تم قبول طعنك واستعادة حسابك."
+    : wrongfulRestore
+      ? "تم فك الحظر النهائي واستعادة حسابك بعد مراجعة الدعم. نعتذر عن الخطأ."
+      : "تم استعادة حسابك.";
+  state.pendingNotice = {
+    id: randomUUID(),
+    kind: "account_restored",
+    titleAr: wrongfulRestore
+      ? "تم فك الحظر النهائي"
+      : opts?.appealApproved
+        ? "تم قبول طعنك"
+        : "تم استعادة حسابك",
+    messageAr,
+    createdAt: Date.now(),
+  };
   await saveUserModerationState(state);
   await appendModerationAudit({
     actorId,
-    action: "account.restored",
+    action: wrongfulRestore ? "account.restored_wrongful_permanent" : "account.restored",
     entityType: "user",
     entityId: userId,
+    meta: opts?.note ? { note: opts.note, wasPermanent } : { wasPermanent },
   });
-  const payload = { userId, accountStatus: "ACTIVE", restored: true };
+  const payload = {
+    userId,
+    accountStatus: "ACTIVE",
+    restored: true,
+    banInfo: null,
+    appealApproved: opts?.appealApproved === true,
+    appealId: opts?.appealId,
+    messageAr,
+    pendingNotice: state.pendingNotice,
+  };
   broadcastSseToUser(userId, "account:moderation", payload);
   emitToUsers([userId], "account:moderation", payload);
+
+  const user = await getUserById(userId);
+  if (user?.email?.trim()) {
+    if (opts?.appealApproved) {
+      void sendAccountRestoredAfterAppealEmail({
+        to: user.email,
+        username: user.username,
+      }).then(r => {
+        if (!r.sent) console.warn("[ban] restored email not sent:", userId, r.error);
+      });
+    } else if (wrongfulRestore || wasPermanent) {
+      void sendAccountRestoredWrongfulPermanentBanEmail({
+        to: user.email,
+        username: user.username,
+      }).then(r => {
+        if (!r.sent) console.warn("[ban] wrongful-restore email not sent:", userId, r.error);
+      });
+    }
+  }
+
   return state;
 }
 
@@ -166,11 +271,17 @@ export async function rejectAppealPermanent(userId: string, moderatorId: string)
     entityType: "user",
     entityId: userId,
   });
-  emitToUsers([userId], "account:moderation", {
+  const user = await getUserById(userId);
+  const banInfo = user ? await getBanInfoForUser(user) : null;
+  const payload = {
     userId,
-    accountStatus: "PERMANENTLY_BANNED",
+    accountStatus: "PERMANENTLY_BANNED" as const,
+    banInfo,
     permanentlyDisabled: true,
-  });
+    restored: false,
+  };
+  broadcastSseToUser(userId, "account:moderation", payload);
+  emitToUsers([userId], "account:moderation", payload);
   return state;
 }
 
