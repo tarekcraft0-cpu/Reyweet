@@ -158,7 +158,12 @@ app.use(
   cors({
     origin: createCorsOriginChecker(),
     credentials: true,
-    allowedHeaders: ["Content-Type", "Authorization"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Device-Fingerprint",
+      "X-Device-Label",
+    ],
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   }),
 );

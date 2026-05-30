@@ -161,7 +161,12 @@ export async function apiFetch(
   if (t) headers.set("Authorization", `Bearer ${t}`);
   try {
     const fp = await getOrCreateDeviceFingerprint();
-    if (fp) headers.set("X-Device-Fingerprint", fp);
+    // Capacitor origin (capacitor://) → cross-origin إلى Vercel؛ رأس مخصص يفشل CORS ما لم يُسمح به الخادم
+    const crossOrigin =
+      typeof window !== "undefined" &&
+      !!base &&
+      !url.startsWith(window.location.origin);
+    if (fp && !crossOrigin) headers.set("X-Device-Fingerprint", fp);
   } catch {
     /* ignore */
   }
