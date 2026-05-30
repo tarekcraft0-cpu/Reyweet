@@ -921,7 +921,7 @@ export function ProfileScreen({
                 <span className="text-xs">جديد</span>
               </button>
             )}
-            {u.highlights.map(h => (
+            {(u.highlights ?? []).map(h => (
               <button
                 key={h.id}
                 type="button"

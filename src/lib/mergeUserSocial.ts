@@ -3,6 +3,27 @@ import type { ApiSearchUser } from "./apiBackend";
 import { userFromSearchResult } from "./apiBackend";
 import { isRenderableMediaUrl } from "./mediaUrl";
 
+/** يمنع crash عند حقول مصفوفة ناقصة (حساب جديد / stub / لقطة قديمة) */
+export function withUserListDefaults(u: User): User {
+  return {
+    ...u,
+    highlights: u.highlights ?? [],
+    followers: u.followers ?? [],
+    following: u.following ?? [],
+    blocked: u.blocked ?? [],
+    closeFriends: u.closeFriends ?? [],
+    favorites: u.favorites ?? [],
+    followRequestIn: u.followRequestIn ?? [],
+    followRequestOut: u.followRequestOut ?? [],
+    publicChannelIds: u.publicChannelIds ?? [],
+    favoriteStickerContents: u.favoriteStickerContents ?? [],
+    createdStickerContents: u.createdStickerContents ?? [],
+    profileViews: u.profileViews ?? [],
+    pinnedChatIds: u.pinnedChatIds ?? [],
+    mutedChatIds: u.mutedChatIds ?? [],
+  };
+}
+
 /** أحرف أولية من السيرفر (مثل "AB") — ليست صورة مرفوعة */
 function isPlaceholderAvatar(avatar: string | undefined, username: string): boolean {
   if (!avatar) return true;
@@ -74,8 +95,8 @@ export function mergeBlockedFromServer(prev?: ID[], incoming?: ID[]): ID[] {
 
 /** دمج حالة السيرفر — المتابعات من الاستجابة دائماً (حتى لو فارغة بعد إلغاء متابعة) */
 export function mergeUserFromServer(prev: User | undefined, incoming: User): User {
-  if (!prev) return { ...incoming, password: "" };
-  return {
+  if (!prev) return withUserListDefaults({ ...incoming, password: "" });
+  return withUserListDefaults({
     ...prev,
     ...incoming,
     password: "",
@@ -108,7 +129,8 @@ export function mergeUserFromServer(prev: User | undefined, incoming: User): Use
       : prev.followRequestOut,
     blocked: mergeBlockedFromServer(prev.blocked, incoming.blocked),
     closeFriends: Array.isArray(incoming.closeFriends) ? incoming.closeFriends : prev.closeFriends,
-  };
+    highlights: Array.isArray(incoming.highlights) ? incoming.highlights : (prev.highlights ?? []),
+  });
 }
 
 /** دليل البحث / recent — حقول الملف الشخصي فقط، لا يمسح المتابعات */

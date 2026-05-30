@@ -1,10 +1,33 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl" class="h-full retweet-native-shell">
   <head>
+    <style id="retweet-no-select-critical">
+      html.retweet-native-shell,
+      html.retweet-native-shell *,
+      #root,
+      #root * {
+        -webkit-user-select: none !important;
+        user-select: none !important;
+        -webkit-touch-callout: none !important;
+      }
+      html.retweet-native-shell input,
+      html.retweet-native-shell textarea,
+      html.retweet-native-shell select,
+      html.retweet-native-shell [contenteditable="true"],
+      html.retweet-native-shell .chat-allow-select,
+      html.retweet-native-shell .chat-allow-select * {
+        -webkit-user-select: text !important;
+        user-select: text !important;
+      }
+      html.retweet-native-shell ::selection,
+      #root ::selection {
+        background: transparent !important;
+      }
+    </style>
     <meta charset="UTF-8" />
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1, user-scalable=no, interactive-widget=resizes-content"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1, user-scalable=no, interactive-widget=overlays-content"
     />
     <meta name="description" content="Retweet — شارك لحظتك" />
     <meta name="theme-color" content="#0095f6" />
@@ -19,11 +42,13 @@
     <link rel="apple-touch-icon" sizes="180x180" href="./icons/apple-touch-icon.png" />
     <link rel="apple-touch-icon" sizes="167x167" href="./icons/apple-touch-icon.png" />
     <link rel="apple-touch-icon" sizes="152x152" href="./icons/apple-touch-icon.png" />
-    <script type="module" crossorigin src="./assets/index-Do44ZafL.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-BlVuyfxz.css">
-  <script>window.__RETWEET_NATIVE_SHELL__=true;window.__RETWEET_API_URL__="https://reyweet.vercel.app";document.documentElement.classList.add("retweet-native-shell");window.dispatchEvent(new Event("retweet-api-config-ready"));</script>
+    <!-- قبل React: منع التحديد الأزرق وقائمة iOS على كل الشاشات -->
+    <script src="/app/native-no-select-bootstrap.js"></script>
+    <script type="module" crossorigin src="./assets/index-CrmssVkK.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-CGF6SrY5.css">
+  <script>window.__RETWEET_NATIVE_SHELL__=true;window.__RETWEET_NO_SELECT_BOOT__=true;window.__RETWEET_API_URL__="https://reyweet.vercel.app";document.documentElement.classList.add("retweet-native-shell");window.dispatchEvent(new Event("retweet-api-config-ready"));</script>
 </head>
   <body class="h-full min-h-dvh overflow-x-hidden bg-background antialiased">
-    <div id="root" class="h-full min-h-dvh"></div>
+    <div id="root" class="retweet-no-select-pane h-full min-h-dvh"></div>
   </body>
 </html>

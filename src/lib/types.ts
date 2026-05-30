@@ -318,12 +318,20 @@ export interface Notification {
   id: ID;
   userId: ID; // recipient
   fromId: ID;
-  type: "like" | "comment" | "follow" | "repost" | "mention" | "message" | "friend_request";
+  type: "like" | "comment" | "follow" | "repost" | "mention" | "message" | "friend_request" | "report_update";
   postId?: ID;
   /** عند الإعجاب بستوري */
   storyId?: ID;
   /** محادثة الخاص عند type === "message" */
   chatId?: ID;
+  /** بلاغ — معرّف التذكرة */
+  reportId?: ID;
+  /** حالة البلاغ للمُبلِّغ */
+  reportStatus?: "pending" | "approved" | "rejected";
+  /** فئة البلاغ (spam, harassment, …) */
+  reportCategory?: string;
+  /** الحساب المُبلَّغ عنه */
+  reportedUserId?: ID;
   text?: string;
   createdAt: number;
   read: boolean;

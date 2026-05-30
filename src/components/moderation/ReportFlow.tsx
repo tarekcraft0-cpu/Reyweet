@@ -27,7 +27,7 @@ export function ReportFlow({
   targetId?: string;
   reportedUsername?: string;
   onClose: () => void;
-  onDone?: () => void;
+  onDone?: (reportId?: string) => void;
   /** داخل ReportFlowSheet — يملأ الارتفاع المتبقي */
   fullScreen?: boolean;
   contentScrollRef?: RefObject<HTMLDivElement | null>;
@@ -78,6 +78,7 @@ export function ReportFlow({
         setErr(res.error);
         return;
       }
+      onDone?.(res.data.reportId);
     } else {
       setBusy(false);
     }
@@ -235,7 +236,7 @@ export function ReportFlow({
             <CheckCircle2 size={56} className="text-[#0095f6] mb-4" />
             <p className="text-lg font-semibold">شكراً لبلاغك</p>
             <p className="mt-2 text-sm text-muted-foreground max-w-xs">
-              سنراجع البلاغ. لن نُبلِغ الطرف الآخر بمن أرسل البلاغ.
+              سنراجع البلاغ. ستجد تحديثاً في الإشعارات — اضغط عليه لمتابعة حالة الطلب.
             </p>
             <button
               type="button"

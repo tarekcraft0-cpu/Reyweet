@@ -24,6 +24,7 @@ import { isReactNativeWebView } from "./nativeShell";
 import { isGroupMembershipSystemContent } from "./groupSystemMessages";
 import { DEFAULT_AVATAR_DATA_URI } from "./defaultAvatar";
 import { getDeviceLabel, getOrCreateDeviceFingerprint } from "./deviceFingerprint";
+import { normalizeRemoteAppState } from "./stateNormalizeBridge";
 
 const TOKEN_KEY = "retweet_api_token";
 
@@ -397,6 +398,7 @@ export async function apiRegister(
   const deviceFingerprint = await getOrCreateDeviceFingerprint();
   const res = await apiFetch("/auth/register", {
     method: "POST",
+    timeoutMs: 30_000,
     body: JSON.stringify({
       email: email.trim().toLowerCase(),
       username: username.trim().toLowerCase().replace(/[^a-z0-9_]/g, ""),
@@ -635,16 +637,19 @@ export async function apiFetchUserPosts(
 }
 
 export async function pullRemoteAppState(token: string): Promise<AppState | null> {
-  const res = await apiFetch("/v1/app-state", { method: "GET", token });
+  const res = await apiFetch("/v1/app-state", {
+    method: "GET",
+    token,
+    timeoutMs: 20_000,
+  });
   if (!res.ok) return null;
   const data = (await res.json().catch(() => null)) as { state?: AppState } | null;
   if (!data?.state) return null;
   try {
-    const { normalizePersistedAppState } = await import("./store");
-    return normalizePersistedAppState(data.state);
+    return normalizeRemoteAppState(data.state);
   } catch (e) {
     console.warn("[Retweet] normalize remote state failed", e);
-    return null;
+    return data.state;
   }
 }
 

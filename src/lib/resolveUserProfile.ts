@@ -5,7 +5,7 @@ import {
   stripOtherOwnedAccountsFromUsers,
 } from "./accountSessions";
 import { isGuestUserId } from "./guestUser";
-import { mergeUserProfilePatch, mergeUserFromServer } from "./mergeUserSocial";
+import { mergeUserProfilePatch, mergeUserFromServer, withUserListDefaults } from "./mergeUserSocial";
 import { getPublicProfileOverlay } from "./publicProfileCache";
 import { isRenderableMediaUrl } from "./mediaUrl";
 import type { AppState, ID, User } from "./types";
@@ -47,6 +47,14 @@ export function resolveUserProfile(state: AppState, userId: ID): User | undefine
       followRequestOut: [],
       blocked: [],
       closeFriends: [],
+      highlights: [],
+      favorites: [],
+      publicChannelIds: [],
+      favoriteStickerContents: [],
+      createdStickerContents: [],
+      profileViews: [],
+      pinnedChatIds: [],
+      mutedChatIds: [],
       isPrivate: publicOverlay?.isPrivate ?? canon?.isPrivate ?? false,
     } as User);
 
@@ -61,30 +69,34 @@ export function resolveUserProfile(state: AppState, userId: ID): User | undefine
       baseInState?.avatar && isRenderableMediaUrl(baseInState.avatar)
         ? baseInState.avatar
         : resolved.avatar;
-    return mergeUserProfilePatch(resolved, {
-      id: userId,
-      username: sess!.username,
-      email: sess!.email,
-      avatar: liveAvatar,
-      displayName: baseInState?.displayName ?? resolved.displayName,
-    });
+    return withUserListDefaults(
+      mergeUserProfilePatch(resolved, {
+        id: userId,
+        username: sess!.username,
+        email: sess!.email,
+        avatar: liveAvatar,
+        displayName: baseInState?.displayName ?? resolved.displayName,
+      }),
+    );
   }
   if (sess && !isActiveOwned) {
     const liveAvatar =
       resolved.avatar && isRenderableMediaUrl(resolved.avatar)
         ? resolved.avatar
         : sess.avatar ?? resolved.avatar;
-    return mergeUserProfilePatch(resolved, {
-      id: userId,
-      username: sess.username,
-      avatar: liveAvatar,
-      displayName: resolved.displayName,
-    });
+    return withUserListDefaults(
+      mergeUserProfilePatch(resolved, {
+        id: userId,
+        username: sess.username,
+        avatar: liveAvatar,
+        displayName: resolved.displayName,
+      }),
+    );
   }
   if (canon) {
-    return mergeUserProfilePatch(resolved, canon);
+    return withUserListDefaults(mergeUserProfilePatch(resolved, canon));
   }
-  return resolved;
+  return withUserListDefaults(resolved);
 }
 
 export function resolveActiveViewer(state: AppState): User | null {

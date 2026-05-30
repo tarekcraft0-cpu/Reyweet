@@ -74,6 +74,7 @@ import { EditProfileScreen } from "./screens/EditProfileScreen";
 import { AuthScreen } from "./screens/AuthScreen";
 import { GuestBrowseProfilePrompt } from "./GuestBrowseProfilePrompt";
 import { NotificationsPanel } from "./NotificationsPanel";
+import { ReportStatusScreen } from "./moderation/ReportStatusScreen";
 import { NotificationBanner } from "./NotificationBanner";
 import { Avatar } from "./Avatar";
 import { AccountSwitcherSheet } from "./rsocial/AccountSwitcherSheet";
@@ -130,6 +131,10 @@ export function App() {
   );
   const [tab, setTab] = useState<Tab>("home");
   const [modal, setModal] = useState<Modal>(null);
+  const [reportStatusSheet, setReportStatusSheet] = useState<{
+    reportId: string;
+    status?: "pending" | "approved" | "rejected";
+  } | null>(null);
   const [createInitial, setCreateInitial] = useState<CreateScreenInitial | null>(null);
   const [switchingAccountId, setSwitchingAccountId] = useState<string | null>(null);
   const [guestToast, setGuestToast] = useState(false);
@@ -1429,7 +1434,22 @@ export function App() {
         </AppDismissSheet>
       )}
       {modal === "notifications" && (
-        <NotificationsPanel onClose={() => setModal(null)} onOpenProfile={openProfile} onOpenChat={goChat} />
+        <NotificationsPanel
+          onClose={() => setModal(null)}
+          onOpenProfile={openProfile}
+          onOpenChat={goChat}
+          onOpenReportStatus={(reportId, status) => {
+            setModal(null);
+            setReportStatusSheet({ reportId, status });
+          }}
+        />
+      )}
+      {reportStatusSheet && (
+        <ReportStatusScreen
+          reportId={reportStatusSheet.reportId}
+          initialStatus={reportStatusSheet.status}
+          onClose={() => setReportStatusSheet(null)}
+        />
       )}
       {modal === "visitors" && (
         <AppDismissSheet onClose={() => setModal(null)} contentClassName="bg-background">

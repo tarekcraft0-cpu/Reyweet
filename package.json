@@ -14,6 +14,7 @@
     "test:verification": "node --import tsx --test src/lib/verificationEntitlements.test.ts",
     "format": "prettier --write .",
     "ios:prepare": "node scripts/prepare-capacitor-ios.mjs",
+    "ios:codemagic": "node scripts/trigger-codemagic-ios.mjs",
     "mobile:verify": "node scripts/verify-mobile-app.mjs",
     "appstore:verify": "node scripts/verify-app-store-ready.mjs",
     "ios:verify-bundle": "node scripts/verify-ios-api-bundle.mjs",

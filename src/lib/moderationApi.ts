@@ -58,6 +58,13 @@ export async function apiSubmitReport(body: {
   });
 }
 
+export async function apiGetMyReport(reportId: string) {
+  return modFetch<{ report: ModerationReport & { reportedUsername?: string; categoryLabelAr?: string } }>(
+    `/v1/moderation/reports/${encodeURIComponent(reportId)}`,
+    { method: "GET" },
+  );
+}
+
 export async function apiGetMyModerationStatus() {
   return modFetch<{
     accountStatus: string;

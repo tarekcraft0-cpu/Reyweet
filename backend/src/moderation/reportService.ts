@@ -122,7 +122,28 @@ export async function submitReport(
     emitToUsers([mid], "moderation:report_new", { reportId: report.id });
   }
 
+  const { notifyReporterReportSubmitted } = await import("./reportNotifications.js");
+  await notifyReporterReportSubmitted(report).catch(() => {});
+
   return report;
+}
+
+export async function getReportForReporter(
+  reporterId: string,
+  reportId: string,
+): Promise<ModerationReport & { reportedUsername?: string; categoryLabelAr?: string }> {
+  const report = await getReport(reportId);
+  if (!report) throw new ReportError("البلاغ غير موجود", "not_found");
+  if (report.reporterId !== reporterId) {
+    throw new ReportError("غير مصرح", "invalid");
+  }
+  const reported = await getUserById(report.reportedUserId);
+  const cat = REPORT_CATEGORIES.find(c => c.id === report.category);
+  return {
+    ...report,
+    reportedUsername: reported?.username,
+    categoryLabelAr: cat?.labelAr,
+  };
 }
 
 async function moderatorUserIds(): Promise<string[]> {
@@ -193,6 +214,14 @@ export async function moderatorReviewReport(
     entityId: reportId,
     meta: update,
   });
+
+  const { notifyReporterReportDecision, reportOutcomeFromReview } = await import(
+    "./reportNotifications.js"
+  );
+  const outcome = reportOutcomeFromReview(update.action, report.status);
+  if (outcome) {
+    await notifyReporterReportDecision(report, outcome).catch(() => {});
+  }
 
   const role = getModeratorRole(moderatorId);
   return { report, moderatorRole: role };

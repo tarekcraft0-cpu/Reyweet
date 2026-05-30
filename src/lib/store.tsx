@@ -138,7 +138,7 @@ function mergePostsPreservingLocalDeletes(localPosts: Post[], remotePosts: Post[
   }
   return merged.sort((a, b) => b.createdAt - a.createdAt);
 }
-import type { ApiAuthUser, SocialRelation, SocialToggleMode } from "./apiBackend";
+import type { ApiAuthUser, ApiSearchUser, SocialRelation, SocialToggleMode } from "./apiBackend";
 import {
   apiBackendEnabled,
   apiLogin,
@@ -251,6 +251,7 @@ import {
 } from "./supportOfficialAccount";
 import { toStoredMediaRef } from "./mediaUrl";
 import { DEFAULT_AVATAR_DATA_URI } from "./defaultAvatar";
+import { setPersistedAppStateNormalizer } from "./stateNormalizeBridge";
 import { isUsernameTaken, normalizeUsername, validateUsernameFormat } from "./usernameRules";
 import {
   hashPassword,
@@ -1224,19 +1225,46 @@ async function applyApiAuthSuccess(
   setLastActiveUserId(user.id);
   setApiToken(token);
 
-  const remote = await pullRemoteAppState(token);
+  const remote = await Promise.race([
+    pullRemoteAppState(token),
+    new Promise<null>((resolve) => {
+      const delayMs = 18_000;
+      if (typeof window === "undefined") resolve(null);
+      else window.setTimeout(() => resolve(null), delayMs);
+    }),
+  ]);
+
   if (!remote) {
-    if (addAccount && previous.currentUserId) {
-      const prev = getAccountSession(previous.currentUserId);
-      setApiToken(prev?.token ?? null);
-    } else {
-      setApiToken(null);
-    }
-    return { ok: false, error: "تعذر تحميل الحساب من الخادم" };
+    const fallback = ensureAuthUserInState(
+      scopeAppStateToAccount(user.id, { ...previous, currentUserId: user.id }),
+      user.id,
+      user,
+    );
+    saveAccountStateCache(user.id, fallback);
+    const { markServerHydrated } = await import("./remotePushGate");
+    markServerHydrated(user.id, fallback);
+    logAuthRoute("login-apply-fallback", {
+      userId: user.id,
+      reason: "remote-state-timeout-or-missing",
+    });
+    void pullRemoteAppState(token).then((late) => {
+      if (!late) return;
+      const hydrated = buildMultiAccountState(user.id, late, fallback, user, {
+        serverAuthoritative: true,
+      });
+      saveAccountStateCache(user.id, hydrated);
+    });
+    return { ok: true, state: fallback };
   }
 
   let next = buildMultiAccountState(user.id, remote, previous, user, { serverAuthoritative: true });
-  const directory = await apiFetchUserDirectory();
+  const directory = await Promise.race([
+    apiFetchUserDirectory(),
+    new Promise<ApiSearchUser[]>((resolve) => {
+      if (typeof window === "undefined") resolve([]);
+      else window.setTimeout(() => resolve([]), 8_000);
+    }),
+  ]);
   if (directory.length) {
     const byId = new Map(next.users.map((u) => [u.id, u]));
     for (const row of directory) {
@@ -3527,7 +3555,7 @@ export function AppProvider({
       return {
         ...s,
         users: s.users.map((u) =>
-          u.id === s.currentUserId ? { ...u, highlights: [...u.highlights, entry] } : u,
+          u.id === s.currentUserId ? { ...u, highlights: [...(u.highlights ?? []), entry] } : u,
         ),
       };
     });
@@ -5938,3 +5966,5 @@ export function trendingHashtags(state: AppState, limit = 10) {
     .sort((a, b) => b[1] - a[1])
     .slice(0, limit);
 }
+
+setPersistedAppStateNormalizer(normalizePersistedAppState);

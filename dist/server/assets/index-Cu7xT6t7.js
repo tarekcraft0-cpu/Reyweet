@@ -1,10 +1,10 @@
-import { r as reactExports, a2 as getAugmentedNamespace, S as getDefaultExportFromCjs, W as jsxRuntimeExports, V as React__default, a3 as React } from "./server-Gng79oXN.js";
+import { r as reactExports, a2 as getAugmentedNamespace, S as getDefaultExportFromCjs, W as jsxRuntimeExports, V as React__default, a3 as React } from "./server-CWcbcS94.js";
 import require$$0 from "fs";
 import require$$1 from "url";
-import { n as notImplementedClass, a as notImplemented } from "./worker-entry-D4gFMffl.js";
+import { n as notImplementedClass, a as notImplemented } from "./worker-entry-Ca-BElUX.js";
 import require$$3 from "http";
 import require$$4 from "https";
-import { r as reactDomExports, R as ReactDOM } from "./router-jBaH-NZX.js";
+import { r as reactDomExports, R as ReactDOM } from "./router-DaRxnuN8.js";
 import require$$0$1 from "util";
 import require$$1$1 from "stream";
 import require$$1$2 from "zlib";
@@ -1167,6 +1167,25 @@ function toStoredMediaRef(src) {
 function resolveMediaUrl(src) {
   return normalizeMediaRef(src);
 }
+function withUserListDefaults(u) {
+  return {
+    ...u,
+    highlights: u.highlights ?? [],
+    followers: u.followers ?? [],
+    following: u.following ?? [],
+    blocked: u.blocked ?? [],
+    closeFriends: u.closeFriends ?? [],
+    favorites: u.favorites ?? [],
+    followRequestIn: u.followRequestIn ?? [],
+    followRequestOut: u.followRequestOut ?? [],
+    publicChannelIds: u.publicChannelIds ?? [],
+    favoriteStickerContents: u.favoriteStickerContents ?? [],
+    createdStickerContents: u.createdStickerContents ?? [],
+    profileViews: u.profileViews ?? [],
+    pinnedChatIds: u.pinnedChatIds ?? [],
+    mutedChatIds: u.mutedChatIds ?? []
+  };
+}
 function isPlaceholderAvatar(avatar, username) {
   if (!avatar) return true;
   const t = avatar.trim();
@@ -1213,8 +1232,8 @@ function mergeBlockedFromServer(prev, incoming) {
   return i;
 }
 function mergeUserFromServer(prev, incoming) {
-  if (!prev) return { ...incoming, password: "" };
-  return {
+  if (!prev) return withUserListDefaults({ ...incoming, password: "" });
+  return withUserListDefaults({
     ...prev,
     ...incoming,
     password: "",
@@ -1234,8 +1253,9 @@ function mergeUserFromServer(prev, incoming) {
     followRequestIn: Array.isArray(incoming.followRequestIn) ? incoming.followRequestIn : prev.followRequestIn,
     followRequestOut: Array.isArray(incoming.followRequestOut) ? incoming.followRequestOut : prev.followRequestOut,
     blocked: mergeBlockedFromServer(prev.blocked, incoming.blocked),
-    closeFriends: Array.isArray(incoming.closeFriends) ? incoming.closeFriends : prev.closeFriends
-  };
+    closeFriends: Array.isArray(incoming.closeFriends) ? incoming.closeFriends : prev.closeFriends,
+    highlights: Array.isArray(incoming.highlights) ? incoming.highlights : prev.highlights ?? []
+  });
 }
 function mergeDirectoryUser(prev, row) {
   const stub = userFromSearchResult(row);
@@ -1596,10 +1616,10 @@ function readSessions() {
     return { order: [], sessions: {} };
   }
 }
-function writeSessions(store2) {
+function writeSessions(store) {
   if (typeof window === "undefined") return;
   try {
-    localStorage.setItem(SESSIONS_KEY, JSON.stringify(store2));
+    localStorage.setItem(SESSIONS_KEY, JSON.stringify(store));
   } catch {
   }
 }
@@ -1611,16 +1631,16 @@ function getAccountSession(userId) {
   return readSessions().sessions[userId] ?? null;
 }
 function upsertAccountSession(meta) {
-  const store2 = readSessions();
-  store2.sessions[meta.userId] = meta;
-  if (!store2.order.includes(meta.userId)) store2.order.push(meta.userId);
-  writeSessions(store2);
+  const store = readSessions();
+  store.sessions[meta.userId] = meta;
+  if (!store.order.includes(meta.userId)) store.order.push(meta.userId);
+  writeSessions(store);
 }
 function removeAccountSession(userId) {
-  const store2 = readSessions();
-  delete store2.sessions[userId];
-  store2.order = store2.order.filter((id) => id !== userId);
-  writeSessions(store2);
+  const store = readSessions();
+  delete store.sessions[userId];
+  store.order = store.order.filter((id) => id !== userId);
+  writeSessions(store);
   try {
     localStorage.removeItem(`${CACHE_PREFIX}${userId}`);
   } catch {
@@ -1685,12 +1705,12 @@ function resolveProfileTogglePeer(currentUserId) {
 function pruneStaleAccountSessions() {
   if (typeof window === "undefined") return;
   for (const id of REMOVED_ACCOUNT_IDS) removeAccountSession(id);
-  const store2 = readSessions();
+  const store = readSessions();
   let changed = false;
-  for (const id of [...store2.order]) {
-    if (!store2.sessions[id]?.token) {
-      delete store2.sessions[id];
-      store2.order = store2.order.filter((x) => x !== id);
+  for (const id of [...store.order]) {
+    if (!store.sessions[id]?.token) {
+      delete store.sessions[id];
+      store.order = store.order.filter((x) => x !== id);
       changed = true;
       try {
         localStorage.removeItem(`${CACHE_PREFIX}${id}`);
@@ -1699,13 +1719,13 @@ function pruneStaleAccountSessions() {
     }
   }
   const seenUsernames = /* @__PURE__ */ new Set();
-  for (const id of [...store2.order].reverse()) {
-    const sess = store2.sessions[id];
+  for (const id of [...store.order].reverse()) {
+    const sess = store.sessions[id];
     if (!sess) continue;
     const uname = sess.username.toLowerCase();
     if (seenUsernames.has(uname)) {
-      delete store2.sessions[id];
-      store2.order = store2.order.filter((x) => x !== id);
+      delete store.sessions[id];
+      store.order = store.order.filter((x) => x !== id);
       changed = true;
       try {
         localStorage.removeItem(`${CACHE_PREFIX}${id}`);
@@ -1715,7 +1735,7 @@ function pruneStaleAccountSessions() {
       seenUsernames.add(uname);
     }
   }
-  if (changed) writeSessions(store2);
+  if (changed) writeSessions(store);
   try {
     const raw = localStorage.getItem(PROFILE_TOGGLE_PEER_KEY);
     if (!raw) return;
@@ -1986,6 +2006,13 @@ async function getOrCreateDeviceFingerprint() {
   }
   return fp;
 }
+let normalizer = null;
+function setPersistedAppStateNormalizer(fn) {
+  normalizer = fn;
+}
+function normalizeRemoteAppState(state) {
+  return normalizer ? normalizer(state) : state;
+}
 const TOKEN_KEY = "retweet_api_token";
 function getApiBaseUrl() {
   const fromPeek = peekApiBaseUrl();
@@ -2235,6 +2262,7 @@ async function apiRegister(email, username, password, code, phone) {
   const deviceFingerprint = await getOrCreateDeviceFingerprint();
   const res = await apiFetch$1("/auth/register", {
     method: "POST",
+    timeoutMs: 3e4,
     body: JSON.stringify({
       email: email.trim().toLowerCase(),
       username: username.trim().toLowerCase().replace(/[^a-z0-9_]/g, ""),
@@ -2411,16 +2439,19 @@ async function apiFetchUserPosts(token, userId) {
   };
 }
 async function pullRemoteAppState(token) {
-  const res = await apiFetch$1("/v1/app-state", { method: "GET", token });
+  const res = await apiFetch$1("/v1/app-state", {
+    method: "GET",
+    token,
+    timeoutMs: 2e4
+  });
   if (!res.ok) return null;
   const data = await res.json().catch(() => null);
   if (!data?.state) return null;
   try {
-    const { normalizePersistedAppState: normalizePersistedAppState2 } = await Promise.resolve().then(() => store);
-    return normalizePersistedAppState2(data.state);
+    return normalizeRemoteAppState(data.state);
   } catch (e) {
     console.warn("[Retweet] normalize remote state failed", e);
-    return null;
+    return data.state;
   }
 }
 async function pushRemoteAppState(token, state, opts) {
@@ -2932,15 +2963,6 @@ function getUserEntitlements(user, now = Date.now()) {
     postCharacterLimit: postLimit,
     canRequestVerification: isSubscribed && !isVerified && status !== "pending" && status !== "rejected"
   };
-}
-function storyExpiryMs(story, ent) {
-  const hours = story.expiryHours ?? 24;
-  const allowed = ent?.storyExpiryHoursOptions ?? [24];
-  const h = allowed.includes(hours) ? hours : allowed[allowed.length - 1] ?? 24;
-  return h * 60 * 60 * 1e3;
-}
-function isStoryStillActive(story, ent, now = Date.now()) {
-  return story.createdAt + storyExpiryMs(story, ent) > now;
 }
 const AppLanguageCtx = reactExports.createContext("ar");
 const TypingCtx = reactExports.createContext({});
@@ -7245,8 +7267,8 @@ async function readCachedChatMessages(userId, chatId) {
     const db = await openDb$1();
     return await new Promise((resolve, reject) => {
       const tx = db.transaction(STORE, "readonly");
-      const store2 = tx.objectStore(STORE);
-      const req = store2.get(cacheKey(userId, chatId));
+      const store = tx.objectStore(STORE);
+      const req = store.get(cacheKey(userId, chatId));
       req.onsuccess = () => {
         const row = req.result;
         resolve(row?.messages?.length ? row.messages : null);
@@ -7271,8 +7293,8 @@ async function writeCachedChatMessages(userId, chatId, messages) {
     };
     await new Promise((resolve, reject) => {
       const tx = db.transaction(STORE, "readwrite");
-      const store2 = tx.objectStore(STORE);
-      const req = store2.put(row);
+      const store = tx.objectStore(STORE);
+      const req = store.put(row);
       req.onsuccess = () => resolve();
       req.onerror = () => reject(req.error);
       tx.oncomplete = () => db.close();
@@ -7695,6 +7717,14 @@ function resolveUserProfile(state, userId) {
     followRequestOut: [],
     blocked: [],
     closeFriends: [],
+    highlights: [],
+    favorites: [],
+    publicChannelIds: [],
+    favoriteStickerContents: [],
+    createdStickerContents: [],
+    profileViews: [],
+    pinnedChatIds: [],
+    mutedChatIds: [],
     isPrivate: publicOverlay?.isPrivate ?? canon?.isPrivate ?? false
   };
   let resolved = stub;
@@ -7703,27 +7733,31 @@ function resolveUserProfile(state, userId) {
   }
   if (isActiveOwned) {
     const liveAvatar = baseInState?.avatar && isRenderableMediaUrl(baseInState.avatar) ? baseInState.avatar : resolved.avatar;
-    return mergeUserProfilePatch(resolved, {
-      id: userId,
-      username: sess.username,
-      email: sess.email,
-      avatar: liveAvatar,
-      displayName: baseInState?.displayName ?? resolved.displayName
-    });
+    return withUserListDefaults(
+      mergeUserProfilePatch(resolved, {
+        id: userId,
+        username: sess.username,
+        email: sess.email,
+        avatar: liveAvatar,
+        displayName: baseInState?.displayName ?? resolved.displayName
+      })
+    );
   }
   if (sess && !isActiveOwned) {
     const liveAvatar = resolved.avatar && isRenderableMediaUrl(resolved.avatar) ? resolved.avatar : sess.avatar ?? resolved.avatar;
-    return mergeUserProfilePatch(resolved, {
-      id: userId,
-      username: sess.username,
-      avatar: liveAvatar,
-      displayName: resolved.displayName
-    });
+    return withUserListDefaults(
+      mergeUserProfilePatch(resolved, {
+        id: userId,
+        username: sess.username,
+        avatar: liveAvatar,
+        displayName: resolved.displayName
+      })
+    );
   }
   if (canon) {
-    return mergeUserProfilePatch(resolved, canon);
+    return withUserListDefaults(mergeUserProfilePatch(resolved, canon));
   }
-  return resolved;
+  return withUserListDefaults(resolved);
 }
 function refreshOwnedUsersInState(state) {
   const cur = state.currentUserId;
@@ -8643,18 +8677,44 @@ async function applyApiAuthSuccess(token, user, previous, addAccount) {
   });
   setLastActiveUserId(user.id);
   setApiToken(token);
-  const remote = await pullRemoteAppState(token);
+  const remote = await Promise.race([
+    pullRemoteAppState(token),
+    new Promise((resolve) => {
+      const delayMs = 18e3;
+      if (typeof window === "undefined") resolve(null);
+      else window.setTimeout(() => resolve(null), delayMs);
+    })
+  ]);
   if (!remote) {
-    if (addAccount && previous.currentUserId) {
-      const prev = getAccountSession(previous.currentUserId);
-      setApiToken(prev?.token ?? null);
-    } else {
-      setApiToken(null);
-    }
-    return { ok: false, error: "تعذر تحميل الحساب من الخادم" };
+    const fallback = ensureAuthUserInState(
+      scopeAppStateToAccount(user.id, { ...previous, currentUserId: user.id }),
+      user.id,
+      user
+    );
+    saveAccountStateCache(user.id, fallback);
+    const { markServerHydrated: markServerHydrated2 } = await import("./remotePushGate-DaTPuI7n.js");
+    markServerHydrated2(user.id, fallback);
+    logAuthRoute("login-apply-fallback", {
+      userId: user.id,
+      reason: "remote-state-timeout-or-missing"
+    });
+    void pullRemoteAppState(token).then((late) => {
+      if (!late) return;
+      const hydrated = buildMultiAccountState(user.id, late, fallback, user, {
+        serverAuthoritative: true
+      });
+      saveAccountStateCache(user.id, hydrated);
+    });
+    return { ok: true, state: fallback };
   }
   let next = buildMultiAccountState(user.id, remote, previous, user, { serverAuthoritative: true });
-  const directory = await apiFetchUserDirectory();
+  const directory = await Promise.race([
+    apiFetchUserDirectory(),
+    new Promise((resolve) => {
+      if (typeof window === "undefined") resolve([]);
+      else window.setTimeout(() => resolve([]), 8e3);
+    })
+  ]);
   if (directory.length) {
     const byId = new Map(next.users.map((u) => [u.id, u]));
     for (const row of directory) {
@@ -10532,7 +10592,7 @@ function AppProvider({
     return {
       ...s,
       users: s.users.map(
-        (u) => u.id === s.currentUserId ? { ...u, highlights: [...u.highlights, entry] } : u
+        (u) => u.id === s.currentUserId ? { ...u, highlights: [...u.highlights ?? [], entry] } : u
       )
     };
   });
@@ -12567,18 +12627,6 @@ function canViewPrivatePosts(state, viewerId, targetId) {
   if (!target.isPrivate) return true;
   return viewerCanSeePrivateAuthorContent(state, viewerId, targetId, (st, id) => userById(st, id));
 }
-function isStoryActive(story, now = Date.now(), state) {
-  try {
-    if (state) {
-      const author = state.users.find((u) => u.id === story.userId);
-      if (author) return isStoryStillActive(story, getUserEntitlements(author), now);
-    }
-    const hours = typeof story.expiryHours === "number" && [24, 48, 72].includes(story.expiryHours) ? story.expiryHours : 24;
-    return story.createdAt + hours * 60 * 60 * 1e3 > now;
-  } catch {
-    return story.createdAt > now - STORY_TTL_MS;
-  }
-}
 function archivedStoriesForUser(state, userId) {
   return (state.storyArchive || []).filter((s) => s.userId === userId).slice().sort((a, b) => b.createdAt - a.createdAt);
 }
@@ -12603,17 +12651,6 @@ function visibleStoryFriendsUserIds(state, viewerId) {
     return me.following.includes(id);
   });
 }
-function nextStoryAuthorInRing(ring, current) {
-  if (ring.length <= 1) return null;
-  const i = ring.indexOf(current);
-  if (i < 0) return ring[0] ?? null;
-  return ring[(i + 1) % ring.length];
-}
-function nextStoryAuthorAfter(ring, current) {
-  const i = ring.indexOf(current);
-  if (i < 0 || i >= ring.length - 1) return null;
-  return ring[i + 1] ?? null;
-}
 function visibleMediaNotes(state, kind, targetId, viewerId) {
   return state.mediaNotes.filter((n) => {
     if (n.kind !== kind || n.targetId !== targetId) return false;
@@ -12631,39 +12668,7 @@ function trendingHashtags(state, limit = 10) {
   });
   return Array.from(counts.entries()).sort((a, b) => b[1] - a[1]).slice(0, limit);
 }
-const store = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
-  __proto__: null,
-  AppLanguageCtx,
-  AppProvider,
-  INCOMING_CALL_WINDOW_EVENT,
-  PROFILE_NOTE_TTL_MS,
-  QURAN_CHANNEL_ID,
-  STORY_TTL_MS,
-  TARIQ_BOT_CHANNEL_NAME,
-  archivedStoriesForUser,
-  canViewPrivatePosts,
-  canViewProfile,
-  isMutual,
-  isProfileNoteActive,
-  isStoryActive,
-  nextStoryAuthorAfter,
-  nextStoryAuthorInRing,
-  normalizePersistedAppState,
-  readPersistedAppState,
-  storiesForUser,
-  theyFollowViewer,
-  trendingHashtags,
-  useApp,
-  useTypingUsers,
-  userById,
-  userHasVisibleStories,
-  userIsFollowing,
-  viewerCanSeePrivateAuthorContent,
-  visibleChatMessages,
-  visibleMediaNotes,
-  visibleStoryFriendsUserIds,
-  visibleStoryUserIds
-}, Symbol.toStringTag, { value: "Module" }));
+setPersistedAppStateNormalizer(normalizePersistedAppState);
 const STORAGE_KEY$1 = "retweet_state_v2";
 function loadPersisted() {
   if (typeof window === "undefined") return null;
@@ -18434,20 +18439,20 @@ function txDone(tx) {
     tx.onabort = () => reject(tx.error);
   });
 }
-async function idbGet(store2, key2) {
+async function idbGet(store, key2) {
   const db = await openDb();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(store2, "readonly");
-    const req = tx.objectStore(store2).get(key2);
+    const tx = db.transaction(store, "readonly");
+    const req = tx.objectStore(store).get(key2);
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
 }
-async function idbPut(store2, key2, value2) {
+async function idbPut(store, key2, value2) {
   const db = await openDb();
-  const tx = db.transaction(store2, "readwrite");
-  const os = tx.objectStore(store2);
-  if (store2 === META) os.put(value2);
+  const tx = db.transaction(store, "readwrite");
+  const os = tx.objectStore(store);
+  if (store === META) os.put(value2);
   else os.put(value2, key2);
   await txDone(tx);
 }
@@ -29154,11 +29159,7 @@ let engineRefs = 0;
 let nativeListenersReady = false;
 let nativeBridgeTeardown = null;
 function computeVisualViewportKeyboardInset(layoutH, vvHeight, vvOffsetTop) {
-  const gap = layoutH - vvHeight;
-  if (gap > 48) {
-    return Math.max(0, Math.round(gap));
-  }
-  return Math.max(0, Math.round(gap - vvOffsetTop));
+  return Math.max(0, Math.round(layoutH - vvHeight - vvOffsetTop));
 }
 function readNativeKeyboardInsetFromCss() {
   if (typeof document === "undefined") return 0;
@@ -29176,15 +29177,20 @@ function readChatKeyboardSnapshot() {
   const vvOffsetTop = vv ? Math.round(vv.offsetTop) : 0;
   const vvInset = computeVisualViewportKeyboardInset(layoutH, vvHeight, vvOffsetTop);
   const nativeCssInset = readNativeKeyboardInsetFromCss();
-  let keyboardInset = Math.max(vvInset, nativeKeyboardPx, nativeCssInset);
-  if (keyboardInset < 8 && useNativeKeyboardHeight && nativeKeyboardPx > 0) {
+  const kbBodyMode = typeof document !== "undefined" && document.documentElement.classList.contains("retweet-kb-body-resize");
+  const bodyShrunk = typeof document !== "undefined" && !!document.body && layoutH - document.body.getBoundingClientRect().height > 24;
+  const naturalResize = kbBodyMode || bodyShrunk;
+  let keyboardInset = naturalResize ? 0 : Math.max(vvInset, nativeKeyboardPx, nativeCssInset);
+  if (!naturalResize && keyboardInset < 8 && nativeKeyboardPx > 0) {
     keyboardInset = nativeKeyboardPx;
   }
+  const kbOpenSignal = vvInset > 8 || nativeKeyboardPx > 8 || nativeCssInset > 8 || bodyShrunk;
+  const open = naturalResize ? kbOpenSignal : keyboardInset > 8;
   return {
     keyboardInset,
     vvHeight,
     vvOffsetTop,
-    open: keyboardInset > 8
+    open
   };
 }
 function dispatchKeyboardSync() {
@@ -29209,18 +29215,23 @@ function onViewportChange() {
   applyChatKeyboardCss();
   dispatchKeyboardSync();
 }
+async function initNativeKeyboardLayout() {
+  await ensureNativeKeyboardBridge();
+}
 async function ensureNativeKeyboardBridge() {
   if (nativeListenersReady) return;
   nativeListenersReady = true;
   try {
     const [{ Keyboard }, { Capacitor: Capacitor2 }] = await Promise.all([
-      import("./index-BZeTmH_7.js"),
+      import("./index-Di2JAumm.js"),
       Promise.resolve().then(() => index$1)
     ]);
     if (!Capacitor2.isNativePlatform()) return;
     useNativeKeyboardHeight = true;
+    document.documentElement.classList.add("retweet-kb-body-resize");
     try {
-      await Keyboard.setScroll({ isDisabled: true });
+      const { KeyboardResize } = await import("./index-Di2JAumm.js");
+      await Keyboard.setResizeMode({ mode: KeyboardResize.Body });
     } catch {
     }
     const onShow = (info) => {
@@ -29241,7 +29252,7 @@ async function ensureNativeKeyboardBridge() {
     ]);
     nativeBridgeTeardown = () => {
       void Promise.all(handles.map((h) => h.remove())).catch(() => void 0);
-      void Keyboard.setScroll({ isDisabled: false }).catch(() => void 0);
+      document.documentElement.classList.remove("retweet-kb-body-resize");
     };
   } catch {
   }
@@ -29267,10 +29278,6 @@ function mountChatKeyboardEngine() {
     engineRefs = Math.max(0, engineRefs - 1);
     if (engineRefs > 0) return;
     nativeKeyboardPx = 0;
-    useNativeKeyboardHeight = false;
-    nativeListenersReady = false;
-    nativeBridgeTeardown?.();
-    nativeBridgeTeardown = null;
     vv?.removeEventListener("resize", onViewportChange);
     vv?.removeEventListener("scroll", onViewportChange);
     window.removeEventListener("resize", onViewportChange);
@@ -29285,6 +29292,7 @@ function mountChatKeyboardEngine() {
     root.style.removeProperty("--chat-sab-effective");
     root.style.removeProperty("--chat-scroll-padding-bottom");
     root.classList.remove("chat-keyboard-open");
+    applyChatKeyboardCss();
   };
 }
 function snapChanged(a, b) {
@@ -29998,6 +30006,12 @@ async function apiSubmitReport(body) {
     body: JSON.stringify(body)
   });
 }
+async function apiGetMyReport(reportId) {
+  return modFetch(
+    `/v1/moderation/reports/${encodeURIComponent(reportId)}`,
+    { method: "GET" }
+  );
+}
 async function apiGetMyModerationStatus() {
   return modFetch("/v1/me/moderation/status", { method: "GET" });
 }
@@ -30122,6 +30136,7 @@ function ReportFlow({
         setErr(res.error);
         return;
       }
+      onDone?.(res.data.reportId);
     } else {
       setBusy(false);
     }
@@ -30245,7 +30260,7 @@ function ReportFlow({
               step === "done" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col items-center py-10 text-center", children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsx(CircleCheck, { size: 56, className: "text-[#0095f6] mb-4" }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-lg font-semibold", children: "شكراً لبلاغك" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-sm text-muted-foreground max-w-xs", children: "سنراجع البلاغ. لن نُبلِغ الطرف الآخر بمن أرسل البلاغ." }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-sm text-muted-foreground max-w-xs", children: "سنراجع البلاغ. ستجد تحديثاً في الإشعارات — اضغط عليه لمتابعة حالة الطلب." }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx(
                   "button",
                   {
@@ -36962,8 +36977,13 @@ function ChatRoom({
       window.scrollTo(0, 0);
     } catch {
     }
-    scheduleScrollToBottom({ afterMs: 220 });
-  }, [scheduleScrollToBottom]);
+    scheduleScrollToBottom({ afterMs: 80 });
+    window.setTimeout(() => {
+      syncComposerDockHeight();
+      scheduleScrollToBottom();
+    }, 120);
+    window.setTimeout(() => scheduleScrollToBottom(), 280);
+  }, [scheduleScrollToBottom, syncComposerDockHeight]);
   reactExports.useLayoutEffect(() => {
     const headerEl = chatHeaderRef.current;
     if (!headerEl || typeof document === "undefined") return;
@@ -38080,15 +38100,19 @@ function ChatRoom({
     ] });
   }
   const me = currentUser;
+  const nativeShell = isNativeCapacitorShell();
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "div",
     {
       ref: chatSwipeColumnRef,
       "data-chat-swipe-column": true,
       "data-chat-dismiss-rtl": "1",
-      className: (embedInStack ? "chat-room-viewport relative flex h-full min-h-0 w-full flex-col overflow-hidden overscroll-none pointer-events-auto touch-manipulation " : "chat-room-solo fixed inset-x-0 z-[200] box-border flex justify-center overflow-hidden overscroll-none pointer-events-none touch-manipulation ") + (useIgDm ? "" : "bg-background"),
+      className: (embedInStack ? "chat-room-viewport relative flex h-full min-h-0 w-full flex-col overflow-hidden overscroll-none pointer-events-auto touch-manipulation " : nativeShell ? "chat-room-solo absolute inset-0 z-[200] box-border flex justify-center overflow-hidden overscroll-none pointer-events-none touch-manipulation " : "chat-room-solo fixed inset-x-0 z-[200] box-border flex justify-center overflow-hidden overscroll-none pointer-events-none touch-manipulation ") + (useIgDm ? "" : "bg-background"),
       style: embedInStack ? {
         ...!embedInStack ? panelDismissTouchStyle : {},
+        ...useIgDm && dmPalette && !chromeOnWallpaper ? igDmSurfaceStyle : {}
+      } : nativeShell ? {
+        ...panelDismissTouchStyle,
         ...useIgDm && dmPalette && !chromeOnWallpaper ? igDmSurfaceStyle : {}
       } : {
         top: 0,
@@ -46630,7 +46654,7 @@ function ProfileScreen({
                 /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-16 h-16 rounded-full bg-secondary flex items-center justify-center text-2xl border-2 border-dashed border-muted-foreground/40", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, {}) }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs", children: "جديد" })
               ] }),
-              u.highlights.map((h) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              (u.highlights ?? []).map((h) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
                 "button",
                 {
                   type: "button",
@@ -55137,6 +55161,8 @@ function AuthScreen(props) {
         } catch {
         }
         onAuthSuccess?.();
+      } else {
+        setError("تم إنشاء الحساب لكن تعذر الدخول — حدّث الصفحة أو سجّل الدخول");
       }
       return;
     }
@@ -55482,9 +55508,10 @@ function GuestBrowseProfilePrompt({ onGoLogin }) {
 function NotificationsPanel({
   onClose,
   onOpenProfile,
-  onOpenChat
+  onOpenChat,
+  onOpenReportStatus
 }) {
-  const { state, currentUser, acceptFollowRequest, declineFollowRequest } = useApp();
+  const { state, currentUser, acceptFollowRequest, declineFollowRequest, markNotificationRead } = useApp();
   const t = useT();
   const me = currentUser;
   const list = state.notifications.filter((n) => n.userId === me.id && n.type !== "message");
@@ -55499,41 +55526,55 @@ function NotificationsPanel({
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "notifications-panel-scroll no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-y-contain pb-8", children: [
           list.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "py-12 text-center text-muted-foreground", children: "—" }),
           list.map((n) => {
-            const from = userById(state, n.fromId);
-            const Icon2 = n.type === "like" ? Heart : n.type === "comment" ? MessageCircle : n.type === "repost" ? Repeat2 : n.type === "mention" ? AtSign : n.type === "message" ? MessageCircle : n.type === "friend_request" ? Heart : UserPlus;
-            const iconClass = n.type === "friend_request" && n.followRequestStatus !== "accepted" && n.followRequestStatus !== "declined" ? "shrink-0 fill-red-500 text-red-500" : n.type === "like" ? "shrink-0 fill-red-500/90 text-red-500" : "shrink-0 text-primary";
+            const from = n.type === "report_update" ? userById(state, SUPPORT_OFFICIAL_ACCOUNT_ID) ?? userById(state, n.fromId) : userById(state, n.fromId);
+            const Icon2 = n.type === "report_update" ? n.reportStatus === "approved" ? Shield : n.reportStatus === "rejected" ? Flag : Shield : n.type === "like" ? Heart : n.type === "comment" ? MessageCircle : n.type === "repost" ? Repeat2 : n.type === "mention" ? AtSign : n.type === "message" ? MessageCircle : n.type === "friend_request" ? Heart : UserPlus;
+            const iconClass = n.type === "report_update" ? n.reportStatus === "approved" ? "shrink-0 text-emerald-500" : n.reportStatus === "pending" ? "shrink-0 text-primary" : "shrink-0 text-muted-foreground" : n.type === "friend_request" && n.followRequestStatus !== "accepted" && n.followRequestStatus !== "declined" ? "shrink-0 fill-red-500 text-red-500" : n.type === "like" ? "shrink-0 fill-red-500/90 text-red-500" : "shrink-0 text-primary";
             const friendReqResolved = n.type === "friend_request" && (n.followRequestStatus === "accepted" || n.followRequestStatus === "declined");
             const friendReqPending = n.type === "friend_request" && !friendReqResolved;
+            const reportCat = n.reportCategory && (REPORT_CATEGORIES.find((c) => c.id === n.reportCategory)?.labelAr || n.reportCategory);
             return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex w-full flex-col gap-2 border-b border-border p-3", children: [
               /* @__PURE__ */ jsxRuntimeExports.jsxs(
                 "button",
                 {
                   type: "button",
                   onClick: () => {
+                    if (n.type === "report_update" && n.reportId) {
+                      markNotificationRead(n.id);
+                      onOpenReportStatus?.(n.reportId, n.reportStatus);
+                      onClose();
+                      return;
+                    }
                     if (n.type === "message" && n.chatId) onOpenChat?.(n.chatId);
                     else if (n.type !== "friend_request" || friendReqResolved) onOpenProfile(n.fromId);
                     onClose();
                   },
                   className: "-m-1 flex w-full items-center gap-3 rounded-xl p-1 text-start hover:bg-secondary/60",
                   children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: from?.username || "?", src: from?.avatar }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: from?.username || "Retweet", src: from?.avatar }),
                     /* @__PURE__ */ jsxRuntimeExports.jsx(Icon2, { size: 18, className: iconClass }),
                     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1 text-sm", children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "font-semibold", children: [
-                        "@",
-                        from?.username
+                      n.type === "report_update" ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "font-semibold", children: "بلاغك — دعم Retweet" }),
+                        " ",
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-muted-foreground block mt-0.5 leading-snug", children: n.text || (n.reportStatus === "pending" ? "بلاغك قيد المراجعة" : n.reportStatus === "approved" ? "تمت إزالة الحساب" : "لم تتم إزالة الحساب") }),
+                        reportCat && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "mt-1 inline-block rounded-full bg-secondary px-2 py-0.5 text-[11px] text-muted-foreground", children: reportCat })
+                      ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "font-semibold", children: [
+                          "@",
+                          from?.username
+                        ] }),
+                        " ",
+                        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-muted-foreground", children: [
+                          n.type === "like" && (n.text || t("likes")),
+                          n.type === "comment" && (n.text || t("comments")),
+                          n.type === "repost" && t("reposts"),
+                          n.type === "mention" && t("notifications"),
+                          n.type === "follow" && t("follow"),
+                          n.type === "message" && "رسالة",
+                          n.type === "friend_request" && (friendReqResolved ? n.text || (n.followRequestStatus === "accepted" ? "تم قبول الطلب" : "تم رفض الطلب") : me.isPrivate ? "طلب متابعة — حسابك خاص" : "طلب متابعة")
+                        ] })
                       ] }),
-                      " ",
-                      /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-muted-foreground", children: [
-                        n.type === "like" && (n.text || t("likes")),
-                        n.type === "comment" && (n.text || t("comments")),
-                        n.type === "repost" && t("reposts"),
-                        n.type === "mention" && t("notifications"),
-                        n.type === "follow" && t("follow"),
-                        n.type === "message" && "رسالة",
-                        n.type === "friend_request" && (friendReqResolved ? n.text || (n.followRequestStatus === "accepted" ? "تم قبول الطلب" : "تم رفض الطلب") : me.isPrivate ? "طلب متابعة — حسابك خاص" : "طلب متابعة")
-                      ] }),
-                      n.text && n.type !== "like" && n.type !== "comment" && n.type !== "friend_request" && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-0.5 line-clamp-2 break-words text-xs text-muted-foreground", children: n.text })
+                      n.text && n.type !== "like" && n.type !== "comment" && n.type !== "friend_request" && n.type !== "report_update" && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-0.5 line-clamp-2 break-words text-xs text-muted-foreground", children: n.text })
                     ] }),
                     !n.read && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "h-2 w-2 shrink-0 rounded-full bg-primary" })
                   ]
@@ -55565,6 +55606,193 @@ function NotificationsPanel({
       ]
     }
   );
+}
+function categoryLabel(report) {
+  if (report.categoryLabelAr) return report.categoryLabelAr;
+  return REPORT_CATEGORIES.find((c) => c.id === report.category)?.labelAr || report.category;
+}
+function resolveUiStatus(report) {
+  if (report.status === "approved") return "approved";
+  if (report.status === "rejected") return "rejected";
+  return "pending";
+}
+function ReportStatusScreen({
+  reportId,
+  initialStatus,
+  onClose
+}) {
+  const { state, markNotificationRead } = useApp();
+  const [report, setReport] = reactExports.useState(null);
+  const [loading, setLoading] = reactExports.useState(true);
+  const [err, setErr] = reactExports.useState("");
+  reactExports.useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      setLoading(true);
+      setErr("");
+      const r2 = await apiGetMyReport(reportId);
+      if (cancelled) return;
+      if (!r2.ok) {
+        setErr(r2.error);
+        setLoading(false);
+        return;
+      }
+      setReport(r2.data.report);
+      setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [reportId]);
+  reactExports.useEffect(() => {
+    for (const n of state.notifications) {
+      if (n.type === "report_update" && n.reportId === reportId && !n.read) {
+        markNotificationRead(n.id);
+      }
+    }
+  }, [reportId, state.notifications, markNotificationRead]);
+  const uiStatus = report ? resolveUiStatus(report) : initialStatus || "pending";
+  const reportedUser = report ? userById(state, report.reportedUserId) : void 0;
+  const supportUser = userById(state, SUPPORT_OFFICIAL_ACCOUNT_ID);
+  const body = reactExports.useMemo(() => {
+    const uname = report?.reportedUsername || reportedUser?.username || "…";
+    const cat = report ? categoryLabel(report) : "—";
+    if (uiStatus === "pending") {
+      return {
+        title: "بلاغك قيد المراجعة",
+        lines: [
+          `أنت أبلغت عن @${uname}.`,
+          `نوع البلاغ: ${cat}.`,
+          "الطلب قيد المراجعة من فريق الدعم.",
+          "سنُبلغك هنا بالقرار فور اتخاذه."
+        ],
+        icon: Clock,
+        iconClass: "text-primary",
+        ringClass: "border-primary/30 bg-primary/5",
+        animateCheck: false
+      };
+    }
+    if (uiStatus === "approved") {
+      return {
+        title: "تمت إزالة الحساب",
+        lines: [
+          `تمت إزالة @${uname} لأنه يخالف سياسات التطبيق.`,
+          `نوع البلاغ: ${cat}.`,
+          "نشكرك على مساهمتك في الحفاظ على أمان مجتمع Retweet."
+        ],
+        icon: CircleCheck,
+        iconClass: "text-emerald-500",
+        ringClass: "border-emerald-500/30 bg-emerald-500/5",
+        animateCheck: true
+      };
+    }
+    return {
+      title: "لم تتم إزالة الحساب",
+      lines: [
+        `راجع فريق الدعم بلاغك عن @${uname}.`,
+        `نوع البلاغ: ${cat}.`,
+        "تبيّن أن الحساب لا يخالف سياسات المجتمع حالياً.",
+        "نشكرك على حرصك — يمكنك الإبلاغ مجدداً إن ظهرت مخالفة جديدة."
+      ],
+      icon: CircleX,
+      iconClass: "text-muted-foreground",
+      ringClass: "border-border bg-secondary/40",
+      animateCheck: false
+    };
+  }, [report, reportedUser?.username, uiStatus]);
+  const Icon2 = body.icon;
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(AppDismissSheet, { onClose, overlayZIndex: 48, contentClassName: "min-h-0 flex flex-col bg-background", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(RtlScreenHeader, { onBack: onClose, title: "حالة البلاغ", className: "shrink-0" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pb-10 pt-2", children: [
+      loading && !report && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "py-16 text-center text-sm text-muted-foreground", children: "جاري تحميل تفاصيل البلاغ…" }),
+      err && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-8 flex flex-col items-center gap-3 text-center", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(CircleAlert, { className: "text-destructive", size: 40 }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-destructive", children: err })
+      ] }),
+      !err && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4 flex flex-col items-center text-center", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "div",
+          {
+            className: `relative mb-5 flex h-28 w-28 items-center justify-center rounded-full border-2 ${body.ringClass}`,
+            children: body.animateCheck ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+              CircleCheck,
+              {
+                size: 56,
+                className: `${body.iconClass} report-status-check-pop`,
+                strokeWidth: 2.2
+              }
+            ) : /* @__PURE__ */ jsxRuntimeExports.jsx(Icon2, { size: 52, className: body.iconClass, strokeWidth: 2 })
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-xl font-bold", children: body.title }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-6 w-full max-w-sm rounded-2xl border border-border bg-card p-4 text-start", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-4 flex items-center gap-3", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              Avatar,
+              {
+                name: reportedUser?.username || report?.reportedUsername || "?",
+                src: reportedUser?.avatar,
+                size: 48
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground", children: "الحساب المُبلَّغ عنه" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "truncate font-semibold", dir: "ltr", children: [
+                "@",
+                reportedUser?.username || report?.reportedUsername || "…"
+              ] })
+            ] })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("dl", { className: "space-y-2 text-sm", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex justify-between gap-3", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { className: "text-muted-foreground", children: "نوع البلاغ" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { className: "font-medium", children: report ? categoryLabel(report) : "—" })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex justify-between gap-3", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { className: "text-muted-foreground", children: "الحالة" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("dd", { className: "font-medium", children: [
+                uiStatus === "pending" && "قيد المراجعة",
+                uiStatus === "approved" && "تمت الإزالة",
+                uiStatus === "rejected" && "لم تُقبل"
+              ] })
+            ] }),
+            report?.createdAt && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex justify-between gap-3", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { className: "text-muted-foreground", children: "تاريخ الإرسال" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { className: "font-medium text-xs", children: new Date(report.createdAt).toLocaleString("ar-SA") })
+            ] })
+          ] })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-5 max-w-sm space-y-2 text-sm leading-relaxed text-muted-foreground", children: body.lines.map((line) => /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: line }, line)) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-8 flex w-full max-w-sm items-center gap-3 rounded-2xl border border-border bg-secondary/30 px-4 py-3 text-start", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Shield, { size: 22, className: "shrink-0 text-primary" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 text-xs leading-relaxed text-muted-foreground", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "font-semibold text-foreground", children: supportUser?.displayName || "دعم Retweet" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("br", {}),
+            "لن نُبلِغ الطرف الآخر بمن أرسل البلاغ."
+          ] })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            type: "button",
+            onClick: onClose,
+            className: "mt-8 w-full max-w-sm rounded-2xl bg-primary py-3 text-sm font-semibold text-primary-foreground",
+            children: "تم"
+          }
+        )
+      ] })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("style", { children: `
+        @keyframes reportCheckPop {
+          0% { transform: scale(0.2); opacity: 0; }
+          55% { transform: scale(1.12); opacity: 1; }
+          100% { transform: scale(1); opacity: 1; }
+        }
+        .report-status-check-pop {
+          animation: reportCheckPop 0.65s cubic-bezier(0.22, 1, 0.36, 1) both;
+        }
+      ` })
+  ] });
 }
 const DM_TOAST_MS = 2e3;
 function NotificationBanner() {
@@ -56363,6 +56591,7 @@ function App() {
   );
   const [tab, setTab] = reactExports.useState("home");
   const [modal, setModal] = reactExports.useState(null);
+  const [reportStatusSheet, setReportStatusSheet] = reactExports.useState(null);
   const [createInitial, setCreateInitial] = reactExports.useState(null);
   const [switchingAccountId, setSwitchingAccountId] = reactExports.useState(null);
   const [guestToast, setGuestToast] = reactExports.useState(false);
@@ -57248,10 +57477,12 @@ function App() {
   const hideBottomBar = immersiveOverlay && !chatExitNavActive || storyFullscreen || !!profileOverlayUserId || settingsImmersive || reportSheetOpen || reelsCommentsOpen || chatCreateSheetOpen || cameraFullscreenOpen || storyGalleryOpen;
   const showBottomNav = !hideBottomBar || chatExitNavActive;
   const banOverlayActive = !!(banInfo && banPresentation === "overlay" && !isGuest);
+  const nativeShell = isNativeCapacitorShell();
+  const appShellHeight = nativeShell ? "h-full max-h-full min-h-0" : immersiveOverlay || settingsImmersive ? "h-dvh max-h-dvh" : "h-dvh max-h-dvh";
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "div",
     {
-      className: "retweet-no-select-pane select-none relative mx-auto flex w-full max-w-md flex-col overflow-x-hidden overscroll-none bg-background supports-[height:100dvh] " + (banOverlayActive ? "pointer-events-none " : "") + (immersiveOverlay || settingsImmersive ? "h-dvh max-h-dvh overflow-hidden pt-0" : "h-dvh max-h-dvh overflow-hidden pt-[var(--sat,0px)]"),
+      className: "retweet-no-select-pane select-none relative mx-auto flex w-full max-w-md flex-col overflow-x-hidden overscroll-none bg-background " + (nativeShell ? "" : "supports-[height:100dvh] ") + (banOverlayActive ? "pointer-events-none " : "") + appShellHeight + " overflow-hidden " + (immersiveOverlay || settingsImmersive || nativeShell ? "pt-0" : "pt-[var(--sat,0px)]"),
       style: {
         [NAV_FLOAT_INSET_CSS_VAR]: NAV_FLOAT_INSET_DEFAULT,
         [NAV_SCROLL_PADDING_CSS_VAR]: NAV_SCROLL_PADDING_DEFAULT
@@ -57480,7 +57711,26 @@ function App() {
             children: /* @__PURE__ */ jsxRuntimeExports.jsx(EditProfileScreen, { onBack: () => setModal(null) })
           }
         ),
-        modal === "notifications" && /* @__PURE__ */ jsxRuntimeExports.jsx(NotificationsPanel, { onClose: () => setModal(null), onOpenProfile: openProfile, onOpenChat: goChat }),
+        modal === "notifications" && /* @__PURE__ */ jsxRuntimeExports.jsx(
+          NotificationsPanel,
+          {
+            onClose: () => setModal(null),
+            onOpenProfile: openProfile,
+            onOpenChat: goChat,
+            onOpenReportStatus: (reportId, status) => {
+              setModal(null);
+              setReportStatusSheet({ reportId, status });
+            }
+          }
+        ),
+        reportStatusSheet && /* @__PURE__ */ jsxRuntimeExports.jsx(
+          ReportStatusScreen,
+          {
+            reportId: reportStatusSheet.reportId,
+            initialStatus: reportStatusSheet.status,
+            onClose: () => setReportStatusSheet(null)
+          }
+        ),
         modal === "visitors" && /* @__PURE__ */ jsxRuntimeExports.jsx(AppDismissSheet, { onClose: () => setModal(null), contentClassName: "bg-background", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "p-4", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between gap-2 mb-3", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsxs(
@@ -57720,6 +57970,9 @@ function WebAppRoot() {
     installNativeTextSelectionGuard();
     warmGlobalPointerBackRouter();
     clearStaleApiConfig();
+    if (isNativeCapacitorShell()) {
+      void initNativeKeyboardLayout();
+    }
     logAuthRoute("webapp-root-mount", {
       apiEnabled: apiBackendEnabled(),
       hasToken: !!getApiToken()
@@ -57848,10 +58101,11 @@ function WebAppRoot() {
       /* @__PURE__ */ jsxRuntimeExports.jsx("a", { href: "https://reyweet.vercel.app", className: "text-primary underline", children: "فتح الموقع في Safari" })
     ] });
   }
+  const nativeShell = isNativeCapacitorShell();
   return /* @__PURE__ */ jsxRuntimeExports.jsx(
     "div",
     {
-      className: "relative mx-auto min-h-dvh w-full max-w-md overflow-x-hidden bg-background text-start supports-[height:100dvh]:min-h-dvh",
+      className: "relative mx-auto w-full max-w-md overflow-x-hidden bg-background text-start " + (nativeShell ? "flex h-full min-h-0 flex-col" : "min-h-dvh supports-[height:100dvh]:min-h-dvh"),
       ...nativeNoSelectCaptureHandlers,
       children: /* @__PURE__ */ jsxRuntimeExports.jsx(AppProvider, { initialState: bootState ?? void 0, children: /* @__PURE__ */ jsxRuntimeExports.jsx(App, {}) })
     }
