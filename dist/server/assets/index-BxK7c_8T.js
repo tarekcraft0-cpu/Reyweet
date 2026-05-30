@@ -1,10 +1,10 @@
-import { r as reactExports, a2 as getAugmentedNamespace, S as getDefaultExportFromCjs, W as jsxRuntimeExports, V as React__default, a3 as React } from "./server-BMuOoJPg.js";
+import { r as reactExports, a2 as getAugmentedNamespace, S as getDefaultExportFromCjs, W as jsxRuntimeExports, V as React__default, a3 as React } from "./server-D_NeUWUL.js";
 import require$$0 from "fs";
 import require$$1 from "url";
-import { n as notImplementedClass, a as notImplemented } from "./worker-entry-CR0YnM8d.js";
+import { n as notImplementedClass, a as notImplemented } from "./worker-entry-CELnSaxb.js";
 import require$$3 from "http";
 import require$$4 from "https";
-import { r as reactDomExports, R as ReactDOM } from "./router-BTJXxjI9.js";
+import { r as reactDomExports, R as ReactDOM } from "./router-D5VxWWOw.js";
 import require$$0$1 from "util";
 import require$$1$1 from "stream";
 import require$$1$2 from "zlib";
@@ -307,10 +307,10 @@ class CapacitorCookiesPluginWeb extends WebPlugin {
     cookies.split(";").forEach((cookie) => {
       if (cookie.length <= 0)
         return;
-      let [key, value2] = cookie.replace(/=/, "CAP_COOKIE").split("CAP_COOKIE");
-      key = decode$1(key).trim();
+      let [key2, value2] = cookie.replace(/=/, "CAP_COOKIE").split("CAP_COOKIE");
+      key2 = decode$1(key2).trim();
       value2 = decode$1(value2).trim();
-      cookieMap[key] = value2;
+      cookieMap[key2] = value2;
     });
     return cookieMap;
   }
@@ -366,8 +366,8 @@ const readBlobAsBase64 = async (blob) => new Promise((resolve, reject) => {
 const normalizeHttpHeaders = (headers = {}) => {
   const originalKeys = Object.keys(headers);
   const loweredKeys = Object.keys(headers).map((k) => k.toLocaleLowerCase());
-  const normalized = loweredKeys.reduce((acc, key, index2) => {
-    acc[key] = headers[originalKeys[index2]];
+  const normalized = loweredKeys.reduce((acc, key2, index2) => {
+    acc[key2] = headers[originalKeys[index2]];
     return acc;
   }, {});
   return normalized;
@@ -376,19 +376,19 @@ const buildUrlParams = (params, shouldEncode = true) => {
   if (!params)
     return null;
   const output = Object.entries(params).reduce((accumulator, entry) => {
-    const [key, value2] = entry;
+    const [key2, value2] = entry;
     let encodedValue;
     let item;
     if (Array.isArray(value2)) {
       item = "";
       value2.forEach((str) => {
         encodedValue = shouldEncode ? encodeURIComponent(str) : str;
-        item += `${key}=${encodedValue}&`;
+        item += `${key2}=${encodedValue}&`;
       });
       item.slice(0, -1);
     } else {
       encodedValue = shouldEncode ? encodeURIComponent(value2) : value2;
-      item = `${key}=${encodedValue}`;
+      item = `${key2}=${encodedValue}`;
     }
     return `${accumulator}&${item}`;
   }, "");
@@ -402,19 +402,19 @@ const buildRequestInit = (options, extra = {}) => {
     output.body = options.data;
   } else if (type.includes("application/x-www-form-urlencoded")) {
     const params = new URLSearchParams();
-    for (const [key, value2] of Object.entries(options.data || {})) {
-      params.set(key, value2);
+    for (const [key2, value2] of Object.entries(options.data || {})) {
+      params.set(key2, value2);
     }
     output.body = params.toString();
   } else if (type.includes("multipart/form-data") || options.data instanceof FormData) {
     const form = new FormData();
     if (options.data instanceof FormData) {
-      options.data.forEach((value2, key) => {
-        form.append(key, value2);
+      options.data.forEach((value2, key2) => {
+        form.append(key2, value2);
       });
     } else {
-      for (const key of Object.keys(options.data)) {
-        form.append(key, options.data[key]);
+      for (const key2 of Object.keys(options.data)) {
+        form.append(key2, options.data[key2]);
       }
     }
     output.body = form;
@@ -458,8 +458,8 @@ class CapacitorHttpPluginWeb extends WebPlugin {
         data = await response.text();
     }
     const headers = {};
-    response.headers.forEach((value2, key) => {
-      headers[key] = value2;
+    response.headers.forEach((value2, key2) => {
+      headers[key2] = value2;
     });
     return {
       data,
@@ -678,9 +678,9 @@ async function probeHealth() {
   }
   const seen = /* @__PURE__ */ new Set();
   for (const path of urls) {
-    const key = path;
-    if (seen.has(key)) continue;
-    seen.add(key);
+    const key2 = path;
+    if (seen.has(key2)) continue;
+    seen.add(key2);
     if (await probeUrl(path.replace(/\/health$/, "").replace(/\/$/, "") || "")) return true;
   }
   return false;
@@ -1205,6 +1205,13 @@ function applyAuthoritativeProfile(base, server2) {
     appOfficialLabel: server2.appOfficialLabel !== void 0 ? server2.appOfficialLabel : base.appOfficialLabel
   });
 }
+function mergeBlockedFromServer(prev, incoming) {
+  const p = prev ?? [];
+  const i = incoming ?? [];
+  if (p.length > i.length) return p;
+  if (i.length > p.length) return i;
+  return i;
+}
 function mergeUserFromServer(prev, incoming) {
   if (!prev) return { ...incoming, password: "" };
   return {
@@ -1225,7 +1232,9 @@ function mergeUserFromServer(prev, incoming) {
     following: Array.isArray(incoming.following) ? incoming.following : prev.following,
     followers: Array.isArray(incoming.followers) ? incoming.followers : prev.followers,
     followRequestIn: Array.isArray(incoming.followRequestIn) ? incoming.followRequestIn : prev.followRequestIn,
-    followRequestOut: Array.isArray(incoming.followRequestOut) ? incoming.followRequestOut : prev.followRequestOut
+    followRequestOut: Array.isArray(incoming.followRequestOut) ? incoming.followRequestOut : prev.followRequestOut,
+    blocked: mergeBlockedFromServer(prev.blocked, incoming.blocked),
+    closeFriends: Array.isArray(incoming.closeFriends) ? incoming.closeFriends : prev.closeFriends
   };
 }
 function mergeDirectoryUser(prev, row) {
@@ -1881,7 +1890,7 @@ function migrateLegacyApiToken(userId, username, email) {
   if (!token || getAccountSession(userId)) return;
   upsertAccountSession({ userId, token, username, email });
 }
-const PREFIX = "[Retweet API]";
+const PREFIX$1 = "[Retweet API]";
 function shouldLogApi() {
   if (typeof window === "undefined") return false;
   const w = window;
@@ -1889,7 +1898,7 @@ function shouldLogApi() {
 }
 function logApi(phase, detail) {
   if (!shouldLogApi()) return;
-  console.log(PREFIX, phase, detail ?? "");
+  console.log(PREFIX$1, phase, detail ?? "");
 }
 function formatFetchError(e, url2) {
   if (e instanceof Error) {
@@ -1927,6 +1936,56 @@ function isGroupMembershipSystemContent(content) {
 }
 const DEFAULT_AVATAR_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120"><rect width="120" height="120" fill="#ffffff"/><circle cx="60" cy="43" r="24" fill="#9aa3af"/><path d="M16 112c1-22 20-36 44-36s43 14 44 36" fill="#9aa3af"/></svg>`;
 const DEFAULT_AVATAR_DATA_URI = `data:image/svg+xml;utf8,${encodeURIComponent(DEFAULT_AVATAR_SVG)}`;
+const STORAGE_KEY$3 = "retweet_device_fp_v1";
+function getDeviceLabel() {
+  if (typeof navigator === "undefined") return "جهاز";
+  const ua = navigator.userAgent;
+  if (/iPhone/i.test(ua)) return "آيفون";
+  if (/iPad/i.test(ua)) return "آيباد";
+  if (/Android/i.test(ua)) return "أندرويد";
+  if (/Windows/i.test(ua)) return "ويندوز";
+  if (/Mac OS/i.test(ua)) return "ماك";
+  if (/Linux/i.test(ua)) return "لينكس";
+  return ua.slice(0, 80) || "متصفح";
+}
+async function hashFingerprintMaterial(material) {
+  const subtle = globalThis.crypto?.subtle;
+  if (!subtle) {
+    let h = 0;
+    for (let i = 0; i < material.length; i++) h = h * 31 + material.charCodeAt(i) >>> 0;
+    return `fb${h.toString(16).padStart(8, "0")}`;
+  }
+  const data = new TextEncoder().encode(material);
+  const digest = await subtle.digest("SHA-256", data);
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function createFingerprint() {
+  if (typeof navigator === "undefined") return hashFingerprintMaterial("server");
+  const parts2 = [
+    navigator.userAgent,
+    navigator.language,
+    String(screen.width),
+    String(screen.height),
+    String(screen.colorDepth),
+    String((/* @__PURE__ */ new Date()).getTimezoneOffset()),
+    navigator.platform || ""
+  ];
+  return hashFingerprintMaterial(parts2.join("|"));
+}
+async function getOrCreateDeviceFingerprint() {
+  if (typeof window === "undefined") return "";
+  try {
+    const existing = localStorage.getItem(STORAGE_KEY$3);
+    if (existing && existing.length >= 16) return existing;
+  } catch {
+  }
+  const fp = await createFingerprint();
+  try {
+    localStorage.setItem(STORAGE_KEY$3, fp);
+  } catch {
+  }
+  return fp;
+}
 const TOKEN_KEY = "retweet_api_token";
 function getApiBaseUrl() {
   const fromPeek = peekApiBaseUrl();
@@ -2024,6 +2083,11 @@ async function apiFetch$1(path, init = {}) {
   }
   const t = init.token ?? getApiToken();
   if (t) headers.set("Authorization", `Bearer ${t}`);
+  try {
+    const fp = await getOrCreateDeviceFingerprint();
+    if (fp) headers.set("X-Device-Fingerprint", fp);
+  } catch {
+  }
   const method = (init.method || "GET").toUpperCase();
   if (shouldLogApi()) {
     logApi("request", {
@@ -2043,6 +2107,9 @@ async function apiFetch$1(path, init = {}) {
       const preview = await res.clone().text().then((t2) => t2.length > 400 ? `${t2.slice(0, 400)}…` : t2).catch(() => "");
       logApi("response", { method, url: url2, status: res.status, ok: res.ok, preview });
     }
+    void Promise.resolve().then(() => accountModerationBridge).then(
+      ({ notifyAccountBannedFromResponse: notifyAccountBannedFromResponse2 }) => notifyAccountBannedFromResponse2(res)
+    );
     return res;
   } catch (e) {
     const aborted = e instanceof Error && e.name === "AbortError";
@@ -2077,9 +2144,15 @@ async function apiLogin(identifier, password) {
     endpoint: `${base || ""}/auth/login`,
     identifier: identifier.trim()
   });
+  const deviceFingerprint = await getOrCreateDeviceFingerprint();
   const res = await apiFetch$1("/auth/login", {
     method: "POST",
-    body: JSON.stringify({ identifier: identifier.trim(), password }),
+    body: JSON.stringify({
+      identifier: identifier.trim(),
+      password,
+      deviceFingerprint,
+      deviceLabel: getDeviceLabel()
+    }),
     token: null
   });
   const data = await res.json().catch(() => ({}));
@@ -2099,15 +2172,26 @@ async function apiLogin(identifier, password) {
     return { ok: false, error: data.error || `فشل تسجيل الدخول (${res.status})` };
   }
   if (data.requiresOtp) {
-    return { ok: true, requiresOtp: true, emailHint: data.emailHint };
+    return {
+      ok: true,
+      requiresOtp: true,
+      emailHint: data.emailHint,
+      otpReason: data.otpReason
+    };
   }
   if (!data.token || !data.user?.id) return { ok: false, error: "استجابة غير صالحة" };
   return { ok: true, token: data.token, userId: data.user.id, user: data.user };
 }
 async function apiVerifyLogin(identifier, code) {
+  const deviceFingerprint = await getOrCreateDeviceFingerprint();
   const res = await apiFetch$1("/auth/verify-login", {
     method: "POST",
-    body: JSON.stringify({ identifier: identifier.trim(), code: code.trim() }),
+    body: JSON.stringify({
+      identifier: identifier.trim(),
+      code: code.trim(),
+      deviceFingerprint,
+      deviceLabel: getDeviceLabel()
+    }),
     token: null
   });
   const data = await res.json().catch(() => ({}));
@@ -2147,6 +2231,7 @@ async function apiRequestSignupVerification(email, username) {
   return { ok: true };
 }
 async function apiRegister(email, username, password, code, phone) {
+  const deviceFingerprint = await getOrCreateDeviceFingerprint();
   const res = await apiFetch$1("/auth/register", {
     method: "POST",
     body: JSON.stringify({
@@ -2154,7 +2239,9 @@ async function apiRegister(email, username, password, code, phone) {
       username: username.trim().toLowerCase().replace(/[^a-z0-9_]/g, ""),
       password,
       code: code?.trim() || void 0,
-      phone: phone?.trim() || void 0
+      phone: phone?.trim() || void 0,
+      deviceFingerprint,
+      deviceLabel: getDeviceLabel()
     }),
     token: null
   });
@@ -2201,7 +2288,9 @@ function userFromSearchResult(row) {
     founderVerified: row.founderVerified === true,
     founderOfficialLabel: row.founderOfficialLabel,
     appOfficialVerified: row.appOfficialVerified === true,
-    appOfficialLabel: row.appOfficialLabel
+    appOfficialLabel: row.appOfficialLabel,
+    supportOfficialVerified: row.supportOfficialVerified === true,
+    supportOfficialLabel: row.supportOfficialLabel
   };
 }
 async function apiLookupUserByUsername(username) {
@@ -2292,6 +2381,34 @@ async function apiListRecentUsers(limit = 30) {
   const data = await res.json().catch(() => null);
   return data?.users ?? [];
 }
+async function apiFetchHomeFeed(token) {
+  const res = await apiFetch$1("/v1/feed/posts", {
+    method: "GET",
+    token,
+    headers: { "Cache-Control": "no-cache", Pragma: "no-cache" }
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) return { ok: false, error: data.error || "فشل تحميل الفيد" };
+  return {
+    ok: true,
+    posts: Array.isArray(data.posts) ? data.posts : [],
+    users: Array.isArray(data.users) ? data.users : []
+  };
+}
+async function apiFetchUserPosts(token, userId) {
+  const res = await apiFetch$1(`/v1/users/${encodeURIComponent(userId)}/posts`, {
+    method: "GET",
+    token,
+    headers: { "Cache-Control": "no-cache", Pragma: "no-cache" }
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) return { ok: false, error: data.error || "فشل تحميل المنشورات" };
+  return {
+    ok: true,
+    posts: Array.isArray(data.posts) ? data.posts : [],
+    users: Array.isArray(data.users) ? data.users : []
+  };
+}
 async function pullRemoteAppState(token) {
   const res = await apiFetch$1("/v1/app-state", { method: "GET", token });
   if (!res.ok) return null;
@@ -2305,9 +2422,9 @@ async function pullRemoteAppState(token) {
     return null;
   }
 }
-async function pushRemoteAppState(token, state) {
-  const { shouldAllowRemotePush } = await import("./remotePushGate-Bzct81oc.js");
-  if (!shouldAllowRemotePush(state)) return false;
+async function pushRemoteAppState(token, state, opts) {
+  const { shouldAllowRemotePush } = await import("./remotePushGate-DaTPuI7n.js");
+  if (!shouldAllowRemotePush(state, opts)) return false;
   const body = JSON.stringify({ state: sanitizeAppStateForSync(state) });
   const res = await apiFetch$1("/v1/app-state", { method: "PUT", body, token });
   return res.ok;
@@ -2436,6 +2553,16 @@ async function apiGetSocialRelation(token, targetUserId) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.relation) return { ok: false, error: data.error || "تعذر جلب حالة المتابعة" };
   return { ok: true, relation: data.relation };
+}
+async function apiSeverSocialOnBlock(token, targetUserId) {
+  const res = await apiFetch$1("/v1/social/block/sever", {
+    method: "POST",
+    token,
+    body: JSON.stringify({ targetUserId })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) return { ok: false, error: data.error || "فشل فصل المتابعة" };
+  return { ok: true };
 }
 async function apiToggleFollow(token, targetUserId) {
   const res = await apiFetch$1("/v1/social/follow/toggle", {
@@ -2709,8 +2836,10 @@ const apiBackend = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePr
   apiFetch: apiFetch$1,
   apiFetchChatMessages,
   apiFetchGroupInvitePreview,
+  apiFetchHomeFeed,
   apiFetchUserById,
   apiFetchUserDirectory,
+  apiFetchUserPosts,
   apiGetAuthConfig,
   apiGetSocialRelation,
   apiIsUsernameAvailable,
@@ -2731,6 +2860,7 @@ const apiBackend = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePr
   apiRequestSignupVerification,
   apiRespondGroupJoinRequest,
   apiSearchUsers,
+  apiSeverSocialOnBlock,
   apiToggleFollow,
   apiTogglePostLike,
   apiTogglePostRepost,
@@ -2765,7 +2895,7 @@ function repairDevLocalStorageOnce(storageKey, seed, normalize, base) {
 }
 const VERIFICATION_SUBSCRIPTION_PRICE_USD = 4;
 function isExemptAccount(user) {
-  return user.founderVerified === true || user.appOfficialVerified === true;
+  return user.founderVerified === true || user.appOfficialVerified === true || user.supportOfficialVerified === true;
 }
 function isVerifiedBadgeActive(user) {
   if (user.verificationStatus === "rejected") return false;
@@ -2812,6 +2942,10 @@ function isStoryStillActive(story, ent, now = Date.now()) {
   return story.createdAt + storyExpiryMs(story, ent) > now;
 }
 const AppLanguageCtx = reactExports.createContext("ar");
+const TypingCtx = reactExports.createContext({});
+function useTypingUsers() {
+  return reactExports.useContext(TypingCtx);
+}
 async function groupFetch(path, init) {
   const token = init?.token ?? getApiToken();
   const res = await apiFetch$1(path, { ...init, token });
@@ -3294,8 +3428,8 @@ PACKET_TYPES["message"] = "4";
 PACKET_TYPES["upgrade"] = "5";
 PACKET_TYPES["noop"] = "6";
 const PACKET_TYPES_REVERSE = /* @__PURE__ */ Object.create(null);
-Object.keys(PACKET_TYPES).forEach((key) => {
-  PACKET_TYPES_REVERSE[PACKET_TYPES[key]] = key;
+Object.keys(PACKET_TYPES).forEach((key2) => {
+  PACKET_TYPES_REVERSE[PACKET_TYPES[key2]] = key2;
 });
 const ERROR_PACKET = { type: "error", data: "parser error" };
 const encodePacket = ({ type, data }, supportsBinary, callback) => {
@@ -3513,8 +3647,8 @@ function Emitter(obj) {
   if (obj) return mixin(obj);
 }
 function mixin(obj) {
-  for (var key in Emitter.prototype) {
-    obj[key] = Emitter.prototype[key];
+  for (var key2 in Emitter.prototype) {
+    obj[key2] = Emitter.prototype[key2];
   }
   return obj;
 }
@@ -3608,9 +3742,9 @@ function parse$2(setCookieString) {
     if (subParts.length !== 2) {
       continue;
     }
-    const key = subParts[0].trim();
+    const key2 = subParts[0].trim();
     const value3 = subParts[1].trim();
-    switch (key) {
+    switch (key2) {
       case "Expires":
         cookie.expires = new Date(value3);
         break;
@@ -5106,8 +5240,8 @@ function hasBinary(obj, toJSON) {
   if (obj.toJSON && typeof obj.toJSON === "function" && arguments.length === 1) {
     return hasBinary(obj.toJSON(), true);
   }
-  for (const key in obj) {
-    if (Object.prototype.hasOwnProperty.call(obj, key) && hasBinary(obj[key])) {
+  for (const key2 in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, key2) && hasBinary(obj[key2])) {
       return true;
     }
   }
@@ -5136,9 +5270,9 @@ function _deconstructPacket(data, buffers) {
     return newData;
   } else if (typeof data === "object" && !(data instanceof Date)) {
     const newData = {};
-    for (const key in data) {
-      if (Object.prototype.hasOwnProperty.call(data, key)) {
-        newData[key] = _deconstructPacket(data[key], buffers);
+    for (const key2 in data) {
+      if (Object.prototype.hasOwnProperty.call(data, key2)) {
+        newData[key2] = _deconstructPacket(data[key2], buffers);
       }
     }
     return newData;
@@ -5165,9 +5299,9 @@ function _reconstructPacket(data, buffers) {
       data[i] = _reconstructPacket(data[i], buffers);
     }
   } else if (typeof data === "object") {
-    for (const key in data) {
-      if (Object.prototype.hasOwnProperty.call(data, key)) {
-        data[key] = _reconstructPacket(data[key], buffers);
+    for (const key2 in data) {
+      if (Object.prototype.hasOwnProperty.call(data, key2)) {
+        data[key2] = _reconstructPacket(data[key2], buffers);
       }
     }
   }
@@ -7031,14 +7165,14 @@ function emitChatTypingRest(chatId, peerId, active2) {
   if (!apiBackendEnabled()) return;
   const token = getApiToken();
   if (!token) return;
-  const key = typingSessionKey(chatId, peerId);
+  const key2 = typingSessionKey(chatId, peerId);
   if (active2) {
     const now = Date.now();
-    const prev = lastRestTypingPulseAt.get(key) ?? 0;
+    const prev = lastRestTypingPulseAt.get(key2) ?? 0;
     if (now - prev < REST_TYPING_MIN_MS) return;
-    lastRestTypingPulseAt.set(key, now);
+    lastRestTypingPulseAt.set(key2, now);
   } else {
-    lastRestTypingPulseAt.delete(key);
+    lastRestTypingPulseAt.delete(key2);
   }
   void apiPostChatTyping(token, chatId, peerId, active2);
 }
@@ -7051,23 +7185,23 @@ function emitChatTyping(chatId, peerId, active2) {
   emitChatTypingRest(chatId, peerId, active2);
 }
 function flushTypingStop(chatId, peerId) {
-  const key = typingSessionKey(chatId, peerId);
-  const t = typingStopTimers.get(key);
+  const key2 = typingSessionKey(chatId, peerId);
+  const t = typingStopTimers.get(key2);
   if (t) {
     clearTimeout(t);
-    typingStopTimers.delete(key);
+    typingStopTimers.delete(key2);
   }
   emitChatTyping(chatId, peerId, false);
 }
 function scheduleTypingPulse(chatId, peerId) {
-  const key = typingSessionKey(chatId, peerId);
+  const key2 = typingSessionKey(chatId, peerId);
   emitChatTyping(chatId, peerId, true);
-  const prev = typingStopTimers.get(key);
+  const prev = typingStopTimers.get(key2);
   if (prev) clearTimeout(prev);
   typingStopTimers.set(
-    key,
+    key2,
     setTimeout(() => {
-      typingStopTimers.delete(key);
+      typingStopTimers.delete(key2);
       emitChatTyping(chatId, peerId, false);
     }, TYPING_STOP_MS)
   );
@@ -7172,9 +7306,16 @@ function resolveDisplayFollowerCount(user) {
   return user.followers?.length ?? 0;
 }
 const FOUNDER_ACCOUNT_ID = "u_founder_tareqf";
+const LEGACY_FOUNDER_USER_ID$1 = "u_t_account";
 const FOUNDER_BODY = "هذا الحساب (@t) هو حساب صاحب التطبيق ومؤسسه؛ يُعرض المحتوى والتوجيه الرسمي لـ Retweet من هنا.";
 function isFounderAccount(user) {
-  return user.id === FOUNDER_ACCOUNT_ID || user.username?.trim().toLowerCase() === "t";
+  return user.id === FOUNDER_ACCOUNT_ID || user.id === LEGACY_FOUNDER_USER_ID$1 || user.username?.trim().toLowerCase() === "t";
+}
+function profilePostAuthorIds(userId, user) {
+  if (isFounderAccount(user ?? { id: userId, username: "" })) {
+    return [FOUNDER_ACCOUNT_ID, LEGACY_FOUNDER_USER_ID$1];
+  }
+  return [userId];
 }
 function withFounderProfileFields(user) {
   if (!isFounderAccount(user)) return user;
@@ -7231,9 +7372,63 @@ function createOfficialAppSeedUser(mk) {
     isPrivate: false
   });
 }
+const SUPPORT_OFFICIAL_ACCOUNT_ID = "u_support_official";
+const SUPPORT_OFFICIAL_USERNAME = "support";
+const SUPPORT_OFFICIAL_EMAIL = "support@retweet.app";
+const SUPPORT_OFFICIAL_PASSWORD = "Support@Retweet2026!";
+const SUPPORT_OFFICIAL_DISPLAY_NAME = "دعم Retweet";
+const SUPPORT_LABEL = "هذا هو حساب الدعم الرسمي لتطبيق Retweet — للمساعدة، البلاغات، طلبات التوثيق، واستفسارات الحساب. لا تتعامل مع حسابات أخرى تدّعي أنها فريق الدعم.";
+function isSupportOfficialAccount(user) {
+  const u = user.username?.trim().toLowerCase();
+  return user.id === SUPPORT_OFFICIAL_ACCOUNT_ID || u === SUPPORT_OFFICIAL_USERNAME;
+}
+function withSupportOfficialProfileFields(user) {
+  if (!isSupportOfficialAccount(user)) return user;
+  return {
+    ...user,
+    username: SUPPORT_OFFICIAL_USERNAME,
+    displayName: user.displayName?.trim() || SUPPORT_OFFICIAL_DISPLAY_NAME,
+    supportOfficialVerified: true,
+    verified: user.verified !== false,
+    verificationStatus: user.verificationStatus ?? "approved",
+    isSubscribed: user.isSubscribed !== false,
+    subscriptionPlan: user.subscriptionPlan || "official",
+    founderVerified: false,
+    appOfficialVerified: false,
+    bio: user.bio?.trim() || "حساب الدعم الرسمي — مساعدة المستخدمين، متابعة البلاغات، وطلبات التوثيق.",
+    note: user.note?.trim() || "🛟 دعم Retweet الرسمي",
+    supportOfficialLabel: user.supportOfficialLabel?.trim() || SUPPORT_LABEL,
+    avatar: user.avatar?.trim() || "🛟",
+    isPrivate: false
+  };
+}
+function createSupportOfficialSeedUser(mk) {
+  return withSupportOfficialProfileFields(
+    mk({
+      id: SUPPORT_OFFICIAL_ACCOUNT_ID,
+      username: SUPPORT_OFFICIAL_USERNAME,
+      displayName: SUPPORT_OFFICIAL_DISPLAY_NAME,
+      email: SUPPORT_OFFICIAL_EMAIL,
+      password: SUPPORT_OFFICIAL_PASSWORD,
+      avatar: "🛟",
+      bio: "حساب الدعم الرسمي — مساعدة المستخدمين، متابعة البلاغات، وطلبات التوثيق.",
+      note: "🛟 دعم Retweet الرسمي",
+      supportOfficialVerified: true,
+      supportOfficialLabel: SUPPORT_LABEL,
+      verified: true,
+      verificationStatus: "approved",
+      isSubscribed: true,
+      subscriptionPlan: "official",
+      verificationBadgeColor: "blue",
+      founderVerified: false,
+      appOfficialVerified: false,
+      isPrivate: false
+    })
+  );
+}
 const __vite_import_meta_env__ = { "BASE_URL": "/", "DEV": false, "MODE": "production", "PROD": true, "SSR": true, "TSS_DEV_SERVER": "false", "TSS_DEV_SSR_STYLES_BASEPATH": "/", "TSS_DEV_SSR_STYLES_ENABLED": "true", "TSS_INLINE_CSS_ENABLED": "false", "TSS_ROUTER_BASEPATH": "", "TSS_SERVER_FN_BASE": "/_serverFn/", "VITE_API_URL_MOBILE": "http://192.168.100.166:3000", "VITE_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Impsd2J6Y2J3dHhsdWducXJkYnZlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg0MjU0MDAsImV4cCI6MjA5NDAwMTQwMH0.suJrOWFOQs_wtGP-bJPbOFzlBFbx27NQlYbrhjGFwOE", "VITE_SUPABASE_JWT_ANON": "", "VITE_SUPABASE_URL": "https://jlwbzcbwtxlugnqrdbve.supabase.co" };
-function envUserId(key) {
-  const v = typeof import.meta !== "undefined" && __vite_import_meta_env__?.[key] || "";
+function envUserId(key2) {
+  const v = typeof import.meta !== "undefined" && __vite_import_meta_env__?.[key2] || "";
   const t = String(v).trim();
   return t || void 0;
 }
@@ -7269,6 +7464,10 @@ function getUserIdForReservedShortUsername(username) {
   }
   return void 0;
 }
+const SYSTEM_RESERVED_USERNAMES = {
+  [SUPPORT_OFFICIAL_USERNAME]: SUPPORT_OFFICIAL_ACCOUNT_ID,
+  retweet: "u_official_retweet"
+};
 const USERNAME_RE = /^[a-z0-9_]{3,30}$/;
 const ARABIC_RE = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/;
 function normalizeUsername(raw) {
@@ -7288,6 +7487,9 @@ function validateUsernameFormat(username, userId) {
   if (!USERNAME_RE.test(t)) {
     return "يُسمح بـ a-z و 0-9 و _ فقط — بدون عربي أو أحرف كبيرة أو رموز";
   }
+  const norm = normalizeUsername(t);
+  const owner = SYSTEM_RESERVED_USERNAMES[norm];
+  if (owner && userId !== owner) return "هذا الاسم محجوز لحساب رسمي في التطبيق";
   return null;
 }
 function isUsernameTaken(username, users, exceptUserId) {
@@ -7395,8 +7597,8 @@ function runChatIsolationMigration() {
   try {
     if (localStorage.getItem("retweet_chat_migration") === CHAT_ISOLATION_MIGRATION) return;
     for (let i = localStorage.length - 1; i >= 0; i--) {
-      const key = localStorage.key(i);
-      if (key?.startsWith("retweet_account_state_")) localStorage.removeItem(key);
+      const key2 = localStorage.key(i);
+      if (key2?.startsWith("retweet_account_state_")) localStorage.removeItem(key2);
     }
     localStorage.setItem("retweet_chat_migration", CHAT_ISOLATION_MIGRATION);
   } catch {
@@ -7562,8 +7764,8 @@ function pruneLocalRemoveMaps(now = Date.now()) {
   for (const [id, at] of [...locallyRemovedPostIds.entries()]) {
     if (now - at > LOCAL_REMOVE_TTL_MS) locallyRemovedPostIds.delete(id);
   }
-  for (const [key, at] of [...locallyRemovedCommentKeys.entries()]) {
-    if (now - at > LOCAL_REMOVE_TTL_MS) locallyRemovedCommentKeys.delete(key);
+  for (const [key2, at] of [...locallyRemovedCommentKeys.entries()]) {
+    if (now - at > LOCAL_REMOVE_TTL_MS) locallyRemovedCommentKeys.delete(key2);
   }
 }
 function mergeHiddenMessageIdsByUser(a, b, ownerId) {
@@ -7578,6 +7780,29 @@ function mergeHiddenMessageIdsByUser(a, b, ownerId) {
   }
   return { ...b || {}, ...a || {}, [ownerId]: merged };
 }
+function mergePostsServerAuthoritative(localPosts, remotePosts) {
+  pruneLocalRemoveMaps();
+  const remoteById = new Map(remotePosts.map((p) => [p.id, p]));
+  const merged = [];
+  for (const p of remotePosts) {
+    if (locallyRemovedPostIds.has(p.id)) continue;
+    merged.push(p);
+  }
+  for (const p of localPosts) {
+    if (remoteById.has(p.id) || locallyRemovedPostIds.has(p.id)) continue;
+    merged.push(p);
+  }
+  return merged.sort((a, b) => b.createdAt - a.createdAt);
+}
+function mergeHomeFeedIntoState(state, feed) {
+  const posts = mergePostsServerAuthoritative(state.posts || [], feed.posts || []);
+  const usersById = new Map(state.users.map((u) => [u.id, u]));
+  for (const u of feed.users || []) {
+    const prev = usersById.get(u.id);
+    usersById.set(u.id, prev ? mergeUserFromServer(prev, u) : { ...u, password: "" });
+  }
+  return { ...state, posts, users: [...usersById.values()] };
+}
 function mergePostsPreservingLocalDeletes(localPosts, remotePosts) {
   const now = Date.now();
   pruneLocalRemoveMaps(now);
@@ -7590,8 +7815,8 @@ function mergePostsPreservingLocalDeletes(localPosts, remotePosts) {
     const base = remote ?? p;
     const localCommentIds = new Set(p.comments.map((c) => c.id));
     const filteredRemoteComments = (remote?.comments ?? []).filter((c) => {
-      const key = `${p.id}:${c.id}`;
-      if (locallyRemovedCommentKeys.has(key)) return false;
+      const key2 = `${p.id}:${c.id}`;
+      if (locallyRemovedCommentKeys.has(key2)) return false;
       return true;
     });
     const comments = [
@@ -7696,12 +7921,16 @@ function stripLegacyFounderFromState(s) {
       messages
     };
   });
-  const posts = (s.posts || []).filter((p) => stripUser(p.userId)).map((p) => ({
+  const posts = (s.posts || []).map((p) => ({
     ...p,
+    userId: p.userId === LEGACY_FOUNDER_USER_ID ? FOUNDER_ACCOUNT_ID : p.userId,
     likes: (p.likes || []).filter(stripUser),
     reposts: (p.reposts || []).filter(stripUser),
-    comments: (p.comments || []).filter((c) => stripUser(c.userId))
-  }));
+    comments: (p.comments || []).filter((c) => stripUser(c.userId)).map((c) => ({
+      ...c,
+      userId: c.userId === LEGACY_FOUNDER_USER_ID ? FOUNDER_ACCOUNT_ID : c.userId
+    }))
+  })).filter((p) => stripUser(p.userId));
   const stories = (s.stories || []).filter((st) => stripUser(st.userId)).map((st) => {
     let stickers2 = st.stickers;
     for (const rid of LEGACY_REMOVED_USER_IDS) {
@@ -7774,7 +8003,8 @@ const seedUsers = [
     avatar: "RT",
     bio: "بوت طارق رمدي — أدعية وتذكير"
   }),
-  createOfficialAppSeedUser(mkUser)
+  createOfficialAppSeedUser(mkUser),
+  createSupportOfficialSeedUser(mkUser)
 ];
 const seedPosts = [
   {
@@ -7854,6 +8084,27 @@ const devSeedBundle = {
   stickers: initial.stickers,
   quranChat: initial.chats[0]
 };
+function applyBlockedSocialFiltersToUsers(users) {
+  const byId = new Map(users.map((u) => [u.id, { ...u }]));
+  for (const u of users) {
+    for (const bid of u.blocked || []) {
+      const me = byId.get(u.id);
+      const other = byId.get(bid);
+      if (!me) continue;
+      me.following = (me.following || []).filter((id) => id !== bid);
+      me.followers = (me.followers || []).filter((id) => id !== bid);
+      me.followRequestOut = (me.followRequestOut || []).filter((id) => id !== bid);
+      me.followRequestIn = (me.followRequestIn || []).filter((id) => id !== bid);
+      if (other) {
+        other.following = (other.following || []).filter((id) => id !== u.id);
+        other.followers = (other.followers || []).filter((id) => id !== u.id);
+        other.followRequestOut = (other.followRequestOut || []).filter((id) => id !== u.id);
+        other.followRequestIn = (other.followRequestIn || []).filter((id) => id !== u.id);
+      }
+    }
+  }
+  return [...byId.values()];
+}
 function normalizePersistedAppState(merged) {
   let m = stripLegacyFounderFromState({
     ...merged,
@@ -7880,9 +8131,9 @@ function normalizePersistedAppState(merged) {
         messages: cc.messages.filter((m2) => {
           if (m2.senderId !== BOT_USER_ID) return true;
           if (isBotSpamContent(m2.content)) return false;
-          const key = m2.content.trim().slice(0, 120);
-          if (seenBotText.has(key)) return false;
-          seenBotText.add(key);
+          const key2 = m2.content.trim().slice(0, 120);
+          if (seenBotText.has(key2)) return false;
+          seenBotText.add(key2);
           return true;
         })
       };
@@ -7999,9 +8250,13 @@ function normalizePersistedAppState(merged) {
       founderVerified: u.founderVerified === true,
       founderOfficialLabel: typeof u.founderOfficialLabel === "string" ? u.founderOfficialLabel : void 0,
       appOfficialVerified: u.appOfficialVerified === true,
-      appOfficialLabel: typeof u.appOfficialLabel === "string" ? u.appOfficialLabel : void 0
+      appOfficialLabel: typeof u.appOfficialLabel === "string" ? u.appOfficialLabel : void 0,
+      supportOfficialVerified: u.supportOfficialVerified === true,
+      supportOfficialLabel: typeof u.supportOfficialLabel === "string" ? u.supportOfficialLabel : void 0
     };
-  }).map((u) => withOfficialAppProfileFields(withFounderProfileFields(u)));
+  }).map(
+    (u) => withSupportOfficialProfileFields(withOfficialAppProfileFields(withFounderProfileFields(u)))
+  );
   m.stories = (m.stories || []).map((st) => {
     const createdAt = typeof st.createdAt === "number" ? st.createdAt : Date.parse(String(st.createdAt ?? "")) || Date.now();
     return {
@@ -8042,6 +8297,7 @@ function normalizePersistedAppState(merged) {
       users: stripOtherOwnedAccountsFromUsers(m.currentUserId, m.users)
     };
   }
+  m = { ...m, users: applyBlockedSocialFiltersToUsers(m.users) };
   return m;
 }
 function readPersistedAppState() {
@@ -8086,7 +8342,9 @@ function hydrateSwitchedAccountState(userId, base, remote) {
     avatar: meta.avatar
   } : void 0;
   try {
-    let next = remote ? refreshOwnedUsersInState(buildMultiAccountState(userId, remote, base)) : refreshOwnedUsersInState(
+    let next = remote ? refreshOwnedUsersInState(
+      buildMultiAccountState(userId, remote, base, void 0, { serverAuthoritative: true })
+    ) : refreshOwnedUsersInState(
       reconcileOwnedAccountProfiles(
         ensureAuthUserInState(
           scopeAppStateToAccount(userId, { ...base, currentUserId: userId }),
@@ -8282,14 +8540,14 @@ function buildMultiAccountState(activeUserId, primary, previous, apiUser, opts) 
       chats: [normalizeChatRecord(raw)]
     }).chats[0];
     if (!scoped) return;
-    const key = chatMergeKey(scoped, resolvedId);
-    const prev = chatsById.get(key);
+    const key2 = chatMergeKey(scoped, resolvedId);
+    const prev = chatsById.get(key2);
     chatsById.set(
-      key,
+      key2,
       prev ? {
         ...prev,
         ...scoped,
-        id: key,
+        id: key2,
         members: scoped.isGroup || scoped.isChannel ? scoped.members.length >= prev.members.length ? scoped.members : Array.from(/* @__PURE__ */ new Set([...prev.members, ...scoped.members])) : scoped.members,
         messages: mergeChatMessages(prev.messages, scoped.messages || []),
         hiddenMessageIdsByUser: opts2?.serverAuthoritative ? scoped.hiddenMessageIdsByUser : mergeHiddenMessageIdsByUser(
@@ -8297,7 +8555,7 @@ function buildMultiAccountState(activeUserId, primary, previous, apiUser, opts) 
           scoped.hiddenMessageIdsByUser,
           resolvedId
         )
-      } : { ...scoped, id: key }
+      } : { ...scoped, id: key2 }
     );
   };
   const seedChatForMerge = (raw) => {
@@ -8306,16 +8564,16 @@ function buildMultiAccountState(activeUserId, primary, previous, apiUser, opts) 
       chats: [normalizeChatRecord(raw)]
     }).chats[0];
     if (!scoped || !scoped.members.includes(resolvedId)) return;
-    const key = chatMergeKey(scoped, resolvedId);
-    const prev = chatsById.get(key);
+    const key2 = chatMergeKey(scoped, resolvedId);
+    const prev = chatsById.get(key2);
     chatsById.set(
-      key,
+      key2,
       prev ? {
         ...prev,
         ...scoped,
-        id: key,
+        id: key2,
         messages: mergeChatMessages(prev.messages, scoped.messages || [])
-      } : { ...scoped, id: key }
+      } : { ...scoped, id: key2 }
     );
   };
   if (opts?.serverAuthoritative) {
@@ -8346,10 +8604,7 @@ function buildMultiAccountState(activeUserId, primary, previous, apiUser, opts) 
   }
   const localPostsById = /* @__PURE__ */ new Map();
   for (const p of localPostSources) localPostsById.set(p.id, p);
-  const mergedPosts = mergePostsPreservingLocalDeletes(
-    [...localPostsById.values()],
-    primaryNorm.posts || []
-  );
+  const mergedPosts = opts?.serverAuthoritative ? mergePostsServerAuthoritative([...localPostsById.values()], primaryNorm.posts || []) : mergePostsPreservingLocalDeletes([...localPostsById.values()], primaryNorm.posts || []);
   return scopeAppStateToAccount(
     resolvedId,
     reconcileOwnedAccountProfiles(
@@ -8397,7 +8652,7 @@ async function applyApiAuthSuccess(token, user, previous, addAccount) {
     }
     return { ok: false, error: "تعذر تحميل الحساب من الخادم" };
   }
-  let next = buildMultiAccountState(user.id, remote, previous, user);
+  let next = buildMultiAccountState(user.id, remote, previous, user, { serverAuthoritative: true });
   const directory = await apiFetchUserDirectory();
   if (directory.length) {
     const byId = new Map(next.users.map((u) => [u.id, u]));
@@ -8409,15 +8664,20 @@ async function applyApiAuthSuccess(token, user, previous, addAccount) {
     next = normalizePersistedAppState({ ...next, users: [...byId.values()] });
   }
   saveAccountStateCache(user.id, next);
+  const { markServerHydrated } = await import("./remotePushGate-DaTPuI7n.js");
+  markServerHydrated(user.id, next);
   logAuthRoute("login-apply-success", {
     userId: user.id,
     currentUserId: next.currentUserId,
-    usersCount: next.users.length
+    usersCount: next.users.length,
+    postsCount: next.posts?.length ?? 0
   });
   return { ok: true, state: next };
 }
 const AppCtx = reactExports.createContext(null);
 function applySocialRelationToState(state, meId, peerId, rel) {
+  const meRow = state.users.find((u) => u.id === meId);
+  if (meRow?.blocked.includes(peerId)) return state;
   const next = {
     ...state,
     users: state.users.map((u) => {
@@ -8640,8 +8900,10 @@ function AppProvider({
   const fullPullPendingRef = reactExports.useRef(false);
   const fullPullTimerRef = reactExports.useRef(null);
   const remoteSyncTimerRef = reactExports.useRef(null);
-  const MIN_FULL_PULL_MS = 18e3;
-  const MIN_URGENT_PULL_MS = 500;
+  const MIN_FULL_PULL_MS = 8e3;
+  const MIN_URGENT_PULL_MS = 600;
+  const feedPullDebounceRef = reactExports.useRef(null);
+  const urgentPullRef = reactExports.useRef(false);
   const pullSocialState = reactExports.useCallback(async () => {
     if (!apiBackendEnabled()) return;
     const token = getApiToken();
@@ -8650,7 +8912,10 @@ function AppProvider({
     const remote = await pullRemoteAppState(token);
     if (!remote) return;
     setStateRaw(
-      (s) => preserveResolvedFollowRequestNotifications(s, buildMultiAccountState(activeId, remote, s))
+      (s) => preserveResolvedFollowRequestNotifications(
+        s,
+        buildMultiAccountState(activeId, remote, s, void 0, { serverAuthoritative: true })
+      )
     );
   }, [setStateRaw]);
   const runFollowToggleApi = reactExports.useCallback(
@@ -8758,7 +9023,9 @@ function AppProvider({
   reactExports.useEffect(() => {
     if (persistTimerRef.current) window.clearTimeout(persistTimerRef.current);
     persistTimerRef.current = window.setTimeout(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
       const write = () => {
+        if (typeof document !== "undefined" && document.hidden) return;
         try {
           const uid2 = stateRef.current.currentUserId;
           const snap = stateRef.current;
@@ -8775,11 +9042,11 @@ function AppProvider({
         }
       };
       if (typeof window.requestIdleCallback === "function") {
-        window.requestIdleCallback(write, { timeout: 4e3 });
+        window.requestIdleCallback(write, { timeout: 6e3 });
       } else {
         write();
       }
-    }, 2e3);
+    }, 4500);
     return () => {
       if (persistTimerRef.current) window.clearTimeout(persistTimerRef.current);
     };
@@ -8816,7 +9083,9 @@ function AppProvider({
             migrateLegacyApiToken(activeId, me.username, me.email);
             syncActiveApiToken(activeId, token);
           }
-          const merged = buildMultiAccountState(activeId, remote, s);
+          const merged = buildMultiAccountState(activeId, remote, s, void 0, {
+            serverAuthoritative: true
+          });
           const meRow = merged.users.find((u) => u.id === activeId);
           const sess = meRow ? getAccountSession(activeId) : null;
           if (meRow && sess) {
@@ -8834,7 +9103,7 @@ function AppProvider({
             ...merged,
             accountIds: snapshotAccountIdsForOwner(activeId)
           });
-          void import("./remotePushGate-Bzct81oc.js").then(
+          void import("./remotePushGate-DaTPuI7n.js").then(
             ({ markServerHydrated }) => markServerHydrated(activeId, normalized)
           );
           return normalized;
@@ -8884,7 +9153,7 @@ function AppProvider({
             email: meta.email,
             avatar: meta.avatar
           } : void 0;
-          return buildMultiAccountState(activeId, remote, s, apiUser);
+          return buildMultiAccountState(activeId, remote, s, apiUser, { serverAuthoritative: true });
         });
       } finally {
         if (!cancelled) sessionRepairBusy.current = false;
@@ -8964,6 +9233,7 @@ function AppProvider({
       const applied = await applyApiAuthSuccess(reg.token, reg.user, stateRef.current, adding);
       if (!applied.ok) return { ok: false, error: applied.error };
       setStateRaw(applied.state);
+      void Promise.resolve().then(() => feedVisibility).then(({ requestAuthFeedRefresh: requestAuthFeedRefresh2 }) => requestAuthFeedRefresh2());
       return { ok: true, userId: reg.userId };
     }
     const u = normalizeUsername(data.username);
@@ -9009,13 +9279,15 @@ function AppProvider({
         return {
           ok: true,
           requiresOtp: true,
-          emailHint: r2.emailHint
+          emailHint: r2.emailHint,
+          otpReason: r2.otpReason
         };
       }
       const adding = !!(stateRef.current.currentUserId && !isGuestUserId(stateRef.current.currentUserId));
       const applied = await applyApiAuthSuccess(r2.token, r2.user, stateRef.current, adding);
       if (!applied.ok) return { ok: false, error: applied.error };
       setStateRaw(applied.state);
+      void Promise.resolve().then(() => feedVisibility).then(({ requestAuthFeedRefresh: requestAuthFeedRefresh2 }) => requestAuthFeedRefresh2());
       return { ok: true };
     }
     const u = state.users.find(
@@ -9052,6 +9324,7 @@ function AppProvider({
     const applied = await applyApiAuthSuccess(r2.token, r2.user, stateRef.current, adding);
     if (!applied.ok) return { ok: false, error: applied.error };
     setStateRaw(applied.state);
+    void Promise.resolve().then(() => feedVisibility).then(({ requestAuthFeedRefresh: requestAuthFeedRefresh2 }) => requestAuthFeedRefresh2());
     return { ok: true };
   };
   const resetPasswordForUser = async (userId, newPassword) => {
@@ -9572,32 +9845,114 @@ function AppProvider({
       )
     };
   });
-  const toggleBlock = (userId) => setState((s) => {
-    if (!s.currentUserId || isGuestUserId(s.currentUserId) || s.currentUserId === userId)
-      return s;
+  const applyBlockToggleToState = (s, userId) => {
+    if (!s.currentUserId || isGuestUserId(s.currentUserId) || s.currentUserId === userId) return null;
     const meId = s.currentUserId;
     const meRow = s.users.find((u) => u.id === meId);
     const blocking = !!(meRow && !meRow.blocked.includes(userId));
-    return {
+    let next = {
       ...s,
       users: s.users.map((u) => {
         if (u.id === meId) {
           const b = blocking ? [...u.blocked, userId] : u.blocked.filter((x) => x !== userId);
-          const following = blocking ? u.following.filter((x) => x !== userId) : u.following;
-          const followRequestOut = blocking ? (u.followRequestOut || []).filter((x) => x !== userId) : u.followRequestOut || [];
-          const followRequestIn = blocking ? (u.followRequestIn || []).filter((x) => x !== userId) : u.followRequestIn || [];
-          return { ...u, blocked: b, following, followRequestOut, followRequestIn };
+          if (!blocking) {
+            return { ...u, blocked: b };
+          }
+          return {
+            ...u,
+            blocked: b,
+            following: u.following.filter((x) => x !== userId),
+            followers: u.followers.filter((x) => x !== userId),
+            followRequestOut: (u.followRequestOut || []).filter((x) => x !== userId),
+            followRequestIn: (u.followRequestIn || []).filter((x) => x !== userId),
+            closeFriends: (u.closeFriends || []).filter((x) => x !== userId)
+          };
         }
-        if (u.id === userId) {
-          const followers = blocking ? u.followers.filter((x) => x !== meId) : u.followers;
-          const followRequestIn = blocking ? (u.followRequestIn || []).filter((x) => x !== meId) : u.followRequestIn || [];
-          const followRequestOut = blocking ? (u.followRequestOut || []).filter((x) => x !== meId) : u.followRequestOut || [];
-          return { ...u, followers, followRequestIn, followRequestOut };
+        if (u.id === userId && blocking) {
+          return {
+            ...u,
+            following: u.following.filter((x) => x !== meId),
+            followers: u.followers.filter((x) => x !== meId),
+            followRequestIn: (u.followRequestIn || []).filter((x) => x !== meId),
+            followRequestOut: (u.followRequestOut || []).filter((x) => x !== meId)
+          };
         }
         return u;
       })
     };
-  });
+    const byId = new Map(next.users.map((u) => [u.id, u]));
+    const me = byId.get(meId);
+    if (me && blocking) {
+      const other = byId.get(userId);
+      if (other) {
+        byId.set(userId, {
+          ...other,
+          following: other.following.filter((x) => x !== meId),
+          followers: other.followers.filter((x) => x !== meId),
+          followRequestIn: (other.followRequestIn || []).filter((x) => x !== meId),
+          followRequestOut: (other.followRequestOut || []).filter((x) => x !== meId)
+        });
+      }
+      next = { ...next, users: [...byId.values()] };
+    }
+    return next;
+  };
+  const toggleBlock = (userId) => {
+    let nextState = null;
+    setStateRaw((s) => {
+      const next = applyBlockToggleToState(s, userId);
+      if (!next) return s;
+      nextState = next;
+      return next;
+    });
+    if (nextState?.currentUserId) {
+      saveAccountStateCache(nextState.currentUserId, nextState);
+      pushSnapshotNow(nextState);
+    }
+  };
+  const toggleBlockWithSync = async (userId) => {
+    const meId = stateRef.current.currentUserId;
+    if (!meId || isGuestUserId(meId)) {
+      return { ok: false, error: "لا يمكن تنفيذ الحظر" };
+    }
+    const meRow = stateRef.current.users.find((u) => u.id === meId);
+    const blocking = !!(meRow && !meRow.blocked.includes(userId));
+    const prevState = stateRef.current;
+    let nextState = null;
+    setStateRaw((s) => {
+      const next = applyBlockToggleToState(s, userId);
+      if (!next) return s;
+      nextState = next;
+      return next;
+    });
+    if (!nextState?.currentUserId) {
+      return { ok: false, error: "لا يمكن تنفيذ الحظر" };
+    }
+    saveAccountStateCache(nextState.currentUserId, nextState);
+    pushSnapshotNow(nextState);
+    const token = getApiToken();
+    if (!apiBackendEnabled() || !token || isGuestUserId(meId)) {
+      return { ok: true };
+    }
+    ensureApiTokenMatchesUser(meId);
+    if (blocking) {
+      const severed = await apiSeverSocialOnBlock(token, userId);
+      if (!severed.ok) {
+        setStateRaw(() => prevState);
+        saveAccountStateCache(meId, prevState);
+        pushSnapshotNow(prevState);
+        return { ok: false, error: severed.error || "فشل فصل المتابعة" };
+      }
+    }
+    const pushed = await pushRemoteAppState(token, nextState, { force: true });
+    if (!pushed) {
+      setStateRaw(() => prevState);
+      saveAccountStateCache(meId, prevState);
+      pushSnapshotNow(prevState);
+      return { ok: false, error: "تعذر حفظ الحظر — تحقق من الاتصال وأعد المحاولة" };
+    }
+    return { ok: true };
+  };
   const toggleCloseFriend = (userId) => setState((s) => {
     if (!s.currentUserId || isGuestUserId(s.currentUserId)) return s;
     return {
@@ -9649,15 +10004,27 @@ function AppProvider({
     pushSnapshotNow(nextState);
     const token = getApiToken();
     if (token && apiBackendEnabled() && created?.userId === nextState.currentUserId) {
-      void apiUpsertPost(token, {
-        id: created.id,
-        type: created.type,
-        text: created.text,
-        image: created.image,
-        video: created.video,
-        audio: created.audio,
-        createdAt: created.createdAt
-      });
+      void (async () => {
+        const payload = {
+          id: created.id,
+          type: created.type,
+          text: created.text,
+          image: created.image,
+          video: created.video,
+          audio: created.audio,
+          createdAt: created.createdAt
+        };
+        let saved = await apiUpsertPost(token, payload);
+        if (!saved.ok) {
+          await new Promise((r2) => window.setTimeout(r2, 400));
+          saved = await apiUpsertPost(token, payload);
+        }
+        if (saved.ok) {
+          void Promise.resolve().then(() => feedVisibility).then(({ requestAuthFeedRefresh: requestAuthFeedRefresh2 }) => requestAuthFeedRefresh2());
+        } else {
+          console.warn("[Retweet] apiUpsertPost failed:", saved.error);
+        }
+      })();
     }
     window.setTimeout(() => {
       socialSyncBusyRef.current = false;
@@ -11248,6 +11615,40 @@ function AppProvider({
     },
     [setState]
   );
+  const markChatUnread = reactExports.useCallback(
+    (chatId) => {
+      setState((s) => {
+        if (!s.currentUserId || isGuestUserId(s.currentUserId)) return s;
+        const meId = s.currentUserId;
+        const chat = s.chats.find((c) => c.id === chatId);
+        if (!chat) return s;
+        const msgs = chat.messages || [];
+        let markBeforeId = "";
+        for (let i = msgs.length - 1; i >= 0; i--) {
+          const m = msgs[i];
+          if (m.senderId === meId) continue;
+          if (i > 0) markBeforeId = msgs[i - 1].id;
+          break;
+        }
+        if (!markBeforeId && msgs.some((m) => m.senderId !== meId)) markBeforeId = "";
+        const current = chat.lastReadMessageIdByUser?.[meId];
+        if (current === markBeforeId) return s;
+        return {
+          ...s,
+          chats: s.chats.map(
+            (c) => c.id !== chatId ? c : {
+              ...c,
+              lastReadMessageIdByUser: {
+                ...c.lastReadMessageIdByUser || {},
+                [meId]: markBeforeId
+              }
+            }
+          )
+        };
+      });
+    },
+    [setState]
+  );
   const recordProfileVisit = (targetUserId) => {
     setState((s) => {
       if (!s.currentUserId || isGuestUserId(s.currentUserId) || s.currentUserId === targetUserId)
@@ -11347,6 +11748,8 @@ function AppProvider({
           founderOfficialLabel: u.founderOfficialLabel,
           appOfficialVerified: u.appOfficialVerified,
           appOfficialLabel: u.appOfficialLabel,
+          supportOfficialVerified: u.supportOfficialVerified,
+          supportOfficialLabel: u.supportOfficialLabel,
           isPrivate: u.isPrivate,
           followers: u.followers,
           following: u.following,
@@ -11365,8 +11768,7 @@ function AppProvider({
   const refreshUserDirectory = reactExports.useCallback(async () => {
     if (!apiBackendEnabled() || !getApiToken()) return;
     if (isGuestUserId(stateRef.current.currentUserId)) return;
-    if (hydrateRemoteBusy.current || groupSyncBusyRef.current || socialSyncBusyRef.current || profileSaveBusyRef.current)
-      return;
+    if (hydrateRemoteBusy.current || groupSyncBusyRef.current) return;
     const rows = await apiFetchUserDirectory();
     if (!rows.length) return;
     for (const row of rows) cachePublicProfileFromApi(row);
@@ -11386,7 +11788,7 @@ function AppProvider({
     }
     const remote = await pullRemoteAppState(token);
     if (!remote) return { ok: false, error: "تعذر الاتصال بالخادم" };
-    const { markServerHydrated } = await import("./remotePushGate-Bzct81oc.js");
+    const { markServerHydrated } = await import("./remotePushGate-DaTPuI7n.js");
     const merged = buildMultiAccountState(
       activeId,
       remote,
@@ -11409,8 +11811,11 @@ function AppProvider({
     if (storyPublishBusyRef.current) return;
     if (!opts?.urgent && socialSyncBusyRef.current) return;
     if (!apiBackendEnabled() || !getApiToken() || isGuestUserId(stateRef.current.currentUserId)) return;
+    if (opts?.urgent) urgentPullRef.current = true;
     const runPull = () => {
-      if (hydrateRemoteBusy.current || groupSyncBusyRef.current || messageSendBusyRef.current || socialSyncBusyRef.current || storyPublishBusyRef.current || profileSaveBusyRef.current) {
+      const urgent = urgentPullRef.current;
+      urgentPullRef.current = false;
+      if (hydrateRemoteBusy.current || groupSyncBusyRef.current || messageSendBusyRef.current || !urgent && socialSyncBusyRef.current || storyPublishBusyRef.current || !urgent && profileSaveBusyRef.current) {
         fullPullPendingRef.current = false;
         return;
       }
@@ -11432,7 +11837,7 @@ function AppProvider({
           void 0,
           { serverAuthoritative: true }
         );
-        const { markServerHydrated } = await import("./remotePushGate-Bzct81oc.js");
+        const { markServerHydrated } = await import("./remotePushGate-DaTPuI7n.js");
         markServerHydrated(activeId, nextPreview);
         reactExports.startTransition(() => {
           setStateRaw((s) => {
@@ -11452,6 +11857,15 @@ function AppProvider({
             return next;
           });
         });
+        void refreshUserDirectory();
+        void (async () => {
+          const feed = await apiFetchHomeFeed(token);
+          if (feed.ok) {
+            reactExports.startTransition(() => {
+              setStateRaw((s) => mergeHomeFeedIntoState(s, feed));
+            });
+          }
+        })();
       })();
     };
     const now = Date.now();
@@ -11471,7 +11885,59 @@ function AppProvider({
       runPull,
       minGap - (now - lastFullPullAtRef.current)
     );
-  }, [setStateRaw]);
+  }, [setStateRaw, refreshUserDirectory]);
+  const refreshFeedFromServer = reactExports.useCallback(async () => {
+    if (!apiBackendEnabled() || !getApiToken() || isGuestUserId(stateRef.current.currentUserId)) return;
+    const token = getApiToken();
+    const feed = await apiFetchHomeFeed(token);
+    if (!feed.ok) return;
+    reactExports.startTransition(() => {
+      setStateRaw((s) => mergeHomeFeedIntoState(s, feed));
+    });
+    void refreshUserDirectory();
+  }, [setStateRaw, refreshUserDirectory]);
+  const refreshProfilePostsFromServer = reactExports.useCallback(
+    async (profileUserId) => {
+      if (!apiBackendEnabled() || !getApiToken() || isGuestUserId(stateRef.current.currentUserId)) return;
+      const token = getApiToken();
+      const res = await apiFetchUserPosts(token, profileUserId);
+      if (!res.ok) return;
+      reactExports.startTransition(() => {
+        setStateRaw((s) => {
+          const posts = mergePostsPreservingLocalDeletes(s.posts || [], res.posts || []);
+          const usersById = new Map(s.users.map((u) => [u.id, u]));
+          for (const u of res.users || []) {
+            const prev = usersById.get(u.id);
+            usersById.set(u.id, prev ? mergeUserFromServer(prev, u) : { ...u, password: "" });
+          }
+          return { ...s, posts, users: [...usersById.values()] };
+        });
+      });
+    },
+    [setStateRaw]
+  );
+  const scheduleFeedPull = reactExports.useCallback(() => {
+    if (feedPullDebounceRef.current != null) window.clearTimeout(feedPullDebounceRef.current);
+    feedPullDebounceRef.current = window.setTimeout(() => {
+      feedPullDebounceRef.current = null;
+      void refreshFeedFromServer();
+    }, 350);
+  }, [refreshFeedFromServer]);
+  reactExports.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onAuthFeed = () => {
+      void refreshFeedFromServer();
+      refreshFromServer({ urgent: true });
+    };
+    void Promise.resolve().then(() => feedVisibility).then(({ AUTH_FEED_REFRESH_EVENT: AUTH_FEED_REFRESH_EVENT2 }) => {
+      window.addEventListener(AUTH_FEED_REFRESH_EVENT2, onAuthFeed);
+    });
+    return () => {
+      void Promise.resolve().then(() => feedVisibility).then(({ AUTH_FEED_REFRESH_EVENT: AUTH_FEED_REFRESH_EVENT2 }) => {
+        window.removeEventListener(AUTH_FEED_REFRESH_EVENT2, onAuthFeed);
+      });
+    };
+  }, [refreshFromServer, refreshFeedFromServer]);
   const refreshSocialRelation = reactExports.useCallback(
     (targetUserId) => {
       void (async () => {
@@ -11526,7 +11992,7 @@ function AppProvider({
         if (payload.active) {
           setTypingUserByChatId((prev) => {
             const next = { ...prev };
-            for (const key of chatKeys) next[key] = typerId;
+            for (const key2 of chatKeys) next[key2] = typerId;
             return next;
           });
           typingIndicatorTimersRef.set(
@@ -11536,9 +12002,9 @@ function AppProvider({
               setTypingUserByChatId((prev) => {
                 let changed = false;
                 const next = { ...prev };
-                for (const key of chatKeys) {
-                  if (next[key] !== typerId) continue;
-                  delete next[key];
+                for (const key2 of chatKeys) {
+                  if (next[key2] !== typerId) continue;
+                  delete next[key2];
                   changed = true;
                 }
                 return changed ? next : prev;
@@ -11549,9 +12015,9 @@ function AppProvider({
           setTypingUserByChatId((prev) => {
             let changed = false;
             const next = { ...prev };
-            for (const key of chatKeys) {
-              if (next[key] !== typerId) continue;
-              delete next[key];
+            for (const key2 of chatKeys) {
+              if (next[key2] !== typerId) continue;
+              delete next[key2];
               changed = true;
             }
             return changed ? next : prev;
@@ -11694,23 +12160,29 @@ function AppProvider({
             }
             incoming2 = { ...existing, ...incoming2 };
           }
-          const scopedChat = scopeAppStateToAccount(meId2, {
-            ...s,
-            chats: [
-              {
-                ...chat,
-                messages: mergeChatMessages(chat.messages || [], [
-                  normalizeChatMessage(incoming2) ?? incoming2
-                ])
-              }
-            ]
-          }).chats[0];
-          if (!scopedChat) return s;
-          const updated = {
-            ...scopedChat,
+          const mergedMsgs = mergeChatMessages(chat.messages || [], [
+            normalizeChatMessage(incoming2) ?? incoming2
+          ]);
+          const updatedRaw = {
+            ...chat,
+            messages: mergedMsgs,
             request: payload.request === true ? true : chat.request
           };
+          const scopedChat = scopeAppStateToAccount(meId2, {
+            ...s,
+            chats: [updatedRaw]
+          }).chats[0];
+          if (!scopedChat) return s;
+          const updated = { ...scopedChat, request: updatedRaw.request };
           const mergeKey = chatMergeKey(updated, meId2);
+          const chatIdx = s.chats.findIndex(
+            (c) => c.id === chat.id || c.id === updated.id || chatMergeKey(c, meId2) === mergeKey
+          );
+          if (chatIdx >= 0) {
+            const nextChats = s.chats.slice();
+            nextChats[chatIdx] = { ...updated, id: mergeKey };
+            return { ...s, chats: nextChats };
+          }
           const deduped = s.chats.filter(
             (c) => c.id !== chat.id && c.id !== updated.id && chatMergeKey(c, meId2) !== mergeKey
           );
@@ -11790,6 +12262,11 @@ function AppProvider({
             )
           };
         });
+        void (async () => {
+          const row = await apiFetchUserById(patch.userId);
+          if (row) mergeDiscoveredUsers([userFromSearchResult(row)]);
+        })();
+        scheduleFeedPull();
         return;
       }
       if (event === "group:updated") {
@@ -11821,10 +12298,12 @@ function AppProvider({
       }
       if (event === "sync_hint") {
         const kind = data?.kind;
-        if (kind === "chats" || kind === "feed" || kind === "story" || kind === "profile") {
-          if (!profileSaveBusyRef.current) {
-            refreshFromServer({ urgent: kind === "feed" || kind === "story" });
-          }
+        if (kind === "feed" || kind === "story") {
+          scheduleFeedPull();
+          return;
+        }
+        if (kind === "chats" || kind === "profile") {
+          if (!profileSaveBusyRef.current) refreshFromServer({ urgent: false });
           return;
         }
         if (!socialSyncBusyRef.current) scheduleRemoteSync();
@@ -11913,32 +12392,41 @@ function AppProvider({
         }));
       }
     });
-  }, [state.currentUserId, mergeDiscoveredUsers, scheduleRemoteSync, refreshFromServer, setState]);
+  }, [
+    state.currentUserId,
+    mergeDiscoveredUsers,
+    scheduleRemoteSync,
+    refreshFromServer,
+    scheduleFeedPull,
+    setState
+  ]);
   reactExports.useEffect(() => {
     if (!apiBackendEnabled() || !getApiToken() || isGuestUserId(state.currentUserId)) return;
     const id = window.setInterval(() => {
-      if (document.visibilityState === "visible") scheduleRemoteSync();
-    }, 12e4);
+      if (document.visibilityState !== "visible") return;
+      scheduleFeedPull();
+      scheduleRemoteSync();
+    }, 45e3);
     return () => window.clearInterval(id);
-  }, [state.currentUserId, scheduleRemoteSync]);
+  }, [state.currentUserId, scheduleRemoteSync, scheduleFeedPull]);
   reactExports.useEffect(() => {
     if (!apiBackendEnabled() || !getApiToken() || isGuestUserId(state.currentUserId)) return;
     void refreshUserDirectory();
     const id = window.setInterval(() => {
       if (document.visibilityState === "visible") void refreshUserDirectory();
-    }, 3e5);
+    }, 9e4);
     return () => window.clearInterval(id);
   }, [state.currentUserId, refreshUserDirectory]);
-  const value2 = {
-    state,
+  const ctxActionsRef = reactExports.useRef({});
+  ctxActionsRef.current = {
     setState,
-    currentUser,
-    isGuest,
     enterGuestBrowseMode,
     exitGuestBrowseMode,
     mergeDiscoveredUsers,
     refreshUserDirectory,
     refreshFromServer,
+    refreshFeedFromServer,
+    refreshProfilePostsFromServer,
     hardResyncFromServer,
     refreshSocialRelation,
     signup,
@@ -11951,8 +12439,6 @@ function AppProvider({
     changeOwnPassword,
     logout,
     switchAccount,
-    accountSwitching,
-    accountSessionKey,
     removeAccount,
     updateProfile,
     toggleFollow,
@@ -11960,6 +12446,7 @@ function AppProvider({
     declineFollowRequest,
     joinChannel,
     toggleBlock,
+    toggleBlockWithSync,
     toggleCloseFriend,
     createPost,
     toggleLike,
@@ -12010,7 +12497,7 @@ function AppProvider({
     addMediaNote,
     markChatOpened,
     markChatRead,
-    typingUserByChatId,
+    markChatUnread,
     replyToMediaNoteAsDm,
     replyToProfileNoteAsDm,
     recordProfileVisit,
@@ -12018,8 +12505,20 @@ function AppProvider({
     answerStoryQuiz,
     rateStorySlider
   };
+  const value2 = reactExports.useMemo(
+    () => ({
+      state,
+      currentUser,
+      isGuest,
+      accountSwitching,
+      accountSessionKey,
+      typingUserByChatId: {},
+      ...ctxActionsRef.current
+    }),
+    [state, currentUser, isGuest, accountSwitching, accountSessionKey]
+  );
   const uiLang = state.language === "en" && typeof localStorage !== "undefined" && localStorage.getItem("retweet_lang_en") === "1" ? "en" : "ar";
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(AppLanguageCtx.Provider, { value: uiLang, children: /* @__PURE__ */ jsxRuntimeExports.jsx(AppCtx.Provider, { value: value2, children }) });
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(AppLanguageCtx.Provider, { value: uiLang, children: /* @__PURE__ */ jsxRuntimeExports.jsx(TypingCtx.Provider, { value: typingUserByChatId, children: /* @__PURE__ */ jsxRuntimeExports.jsx(AppCtx.Provider, { value: value2, children }) }) });
 }
 function useApp() {
   const ctx = reactExports.useContext(AppCtx);
@@ -12041,6 +12540,13 @@ function isMutual(state, a, b) {
   const ua = userById(state, a);
   const ub = userById(state, b);
   return !!(ua && ub && ua.following.includes(b) && ub.following.includes(a));
+}
+function userIsFollowing(state, followerId, followeeId) {
+  const u = userById(state, followerId);
+  return !!(u && u.following.includes(followeeId));
+}
+function theyFollowViewer(state, viewerId, otherId) {
+  return userIsFollowing(state, otherId, viewerId);
 }
 function canViewProfile(state, viewerId, targetId) {
   const target = userById(state, targetId);
@@ -12144,10 +12650,13 @@ const store = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePropert
   normalizePersistedAppState,
   readPersistedAppState,
   storiesForUser,
+  theyFollowViewer,
   trendingHashtags,
   useApp,
+  useTypingUsers,
   userById,
   userHasVisibleStories,
+  userIsFollowing,
   viewerCanSeePrivateAuthorContent,
   visibleChatMessages,
   visibleMediaNotes,
@@ -12212,7 +12721,7 @@ async function hydrateFromApiToken() {
     isolateOwnedUsers: (ownerId, s) => isolateUsersForAccountCache(ownerId, s)
   });
   savePersisted(scoped);
-  const { markServerHydrated } = await import("./remotePushGate-Bzct81oc.js");
+  const { markServerHydrated } = await import("./remotePushGate-DaTPuI7n.js");
   markServerHydrated(activeId, scoped);
   logAuthRoute("bootstrap-hydrate", { currentUserId: activeId, users: byId.size });
   return true;
@@ -12300,28 +12809,28 @@ const createLucideIcon = (iconName, iconNode) => {
   Component.displayName = toPascalCase(iconName);
   return Component;
 };
-const __iconNode$1M = [
+const __iconNode$1O = [
   ["rect", { width: "20", height: "5", x: "2", y: "3", rx: "1", key: "1wp1u1" }],
   ["path", { d: "M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8", key: "1s80jp" }],
   ["path", { d: "M10 12h4", key: "a56b0p" }]
 ];
-const Archive = createLucideIcon("archive", __iconNode$1M);
-const __iconNode$1L = [
+const Archive = createLucideIcon("archive", __iconNode$1O);
+const __iconNode$1N = [
   ["path", { d: "m12 19-7-7 7-7", key: "1l729n" }],
   ["path", { d: "M19 12H5", key: "x3x0zl" }]
 ];
-const ArrowLeft = createLucideIcon("arrow-left", __iconNode$1L);
-const __iconNode$1K = [
+const ArrowLeft = createLucideIcon("arrow-left", __iconNode$1N);
+const __iconNode$1M = [
   ["path", { d: "M5 12h14", key: "1ays0h" }],
   ["path", { d: "m12 5 7 7-7 7", key: "xquz4c" }]
 ];
-const ArrowRight = createLucideIcon("arrow-right", __iconNode$1K);
-const __iconNode$1J = [
+const ArrowRight = createLucideIcon("arrow-right", __iconNode$1M);
+const __iconNode$1L = [
   ["circle", { cx: "12", cy: "12", r: "4", key: "4exip2" }],
   ["path", { d: "M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8", key: "7n84p3" }]
 ];
-const AtSign = createLucideIcon("at-sign", __iconNode$1J);
-const __iconNode$1I = [
+const AtSign = createLucideIcon("at-sign", __iconNode$1L);
+const __iconNode$1K = [
   [
     "path",
     {
@@ -12331,13 +12840,13 @@ const __iconNode$1I = [
   ],
   ["path", { d: "m9 12 2 2 4-4", key: "dzmm74" }]
 ];
-const BadgeCheck = createLucideIcon("badge-check", __iconNode$1I);
-const __iconNode$1H = [
+const BadgeCheck = createLucideIcon("badge-check", __iconNode$1K);
+const __iconNode$1J = [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["path", { d: "M4.929 4.929 19.07 19.071", key: "196cmz" }]
 ];
-const Ban = createLucideIcon("ban", __iconNode$1H);
-const __iconNode$1G = [
+const Ban = createLucideIcon("ban", __iconNode$1J);
+const __iconNode$1I = [
   ["path", { d: "M10.268 21a2 2 0 0 0 3.464 0", key: "vwvbt9" }],
   [
     "path",
@@ -12349,8 +12858,8 @@ const __iconNode$1G = [
   ["path", { d: "m2 2 20 20", key: "1ooewy" }],
   ["path", { d: "M8.668 3.01A6 6 0 0 1 18 8c0 2.687.77 4.653 1.707 6.05", key: "1hqiys" }]
 ];
-const BellOff = createLucideIcon("bell-off", __iconNode$1G);
-const __iconNode$1F = [
+const BellOff = createLucideIcon("bell-off", __iconNode$1I);
+const __iconNode$1H = [
   ["path", { d: "M10.268 21a2 2 0 0 0 3.464 0", key: "vwvbt9" }],
   [
     "path",
@@ -12360,8 +12869,8 @@ const __iconNode$1F = [
     }
   ]
 ];
-const Bell = createLucideIcon("bell", __iconNode$1F);
-const __iconNode$1E = [
+const Bell = createLucideIcon("bell", __iconNode$1H);
+const __iconNode$1G = [
   ["path", { d: "M12 7v14", key: "1akyts" }],
   [
     "path",
@@ -12371,8 +12880,8 @@ const __iconNode$1E = [
     }
   ]
 ];
-const BookOpen = createLucideIcon("book-open", __iconNode$1E);
-const __iconNode$1D = [
+const BookOpen = createLucideIcon("book-open", __iconNode$1G);
+const __iconNode$1F = [
   [
     "path",
     {
@@ -12381,8 +12890,8 @@ const __iconNode$1D = [
     }
   ]
 ];
-const Bookmark = createLucideIcon("bookmark", __iconNode$1D);
-const __iconNode$1C = [
+const Bookmark = createLucideIcon("bookmark", __iconNode$1F);
+const __iconNode$1E = [
   [
     "path",
     {
@@ -12392,45 +12901,45 @@ const __iconNode$1C = [
   ],
   ["circle", { cx: "12", cy: "13", r: "3", key: "1vg3eu" }]
 ];
-const Camera = createLucideIcon("camera", __iconNode$1C);
-const __iconNode$1B = [
+const Camera = createLucideIcon("camera", __iconNode$1E);
+const __iconNode$1D = [
   ["path", { d: "M5 21v-6", key: "1hz6c0" }],
   ["path", { d: "M12 21V3", key: "1lcnhd" }],
   ["path", { d: "M19 21V9", key: "unv183" }]
 ];
-const ChartNoAxesColumn = createLucideIcon("chart-no-axes-column", __iconNode$1B);
-const __iconNode$1A = [
+const ChartNoAxesColumn = createLucideIcon("chart-no-axes-column", __iconNode$1D);
+const __iconNode$1C = [
   ["path", { d: "M18 6 7 17l-5-5", key: "116fxf" }],
   ["path", { d: "m22 10-7.5 7.5L13 16", key: "ke71qq" }]
 ];
-const CheckCheck = createLucideIcon("check-check", __iconNode$1A);
-const __iconNode$1z = [["path", { d: "M20 6 9 17l-5-5", key: "1gmf2c" }]];
-const Check = createLucideIcon("check", __iconNode$1z);
-const __iconNode$1y = [["path", { d: "m6 9 6 6 6-6", key: "qrunsl" }]];
-const ChevronDown = createLucideIcon("chevron-down", __iconNode$1y);
-const __iconNode$1x = [["path", { d: "m15 18-6-6 6-6", key: "1wnfg3" }]];
-const ChevronLeft = createLucideIcon("chevron-left", __iconNode$1x);
-const __iconNode$1w = [["path", { d: "m9 18 6-6-6-6", key: "mthhwq" }]];
-const ChevronRight = createLucideIcon("chevron-right", __iconNode$1w);
-const __iconNode$1v = [["path", { d: "m18 15-6-6-6 6", key: "153udz" }]];
-const ChevronUp = createLucideIcon("chevron-up", __iconNode$1v);
-const __iconNode$1u = [
+const CheckCheck = createLucideIcon("check-check", __iconNode$1C);
+const __iconNode$1B = [["path", { d: "M20 6 9 17l-5-5", key: "1gmf2c" }]];
+const Check = createLucideIcon("check", __iconNode$1B);
+const __iconNode$1A = [["path", { d: "m6 9 6 6 6-6", key: "qrunsl" }]];
+const ChevronDown = createLucideIcon("chevron-down", __iconNode$1A);
+const __iconNode$1z = [["path", { d: "m15 18-6-6 6-6", key: "1wnfg3" }]];
+const ChevronLeft = createLucideIcon("chevron-left", __iconNode$1z);
+const __iconNode$1y = [["path", { d: "m9 18 6-6-6-6", key: "mthhwq" }]];
+const ChevronRight = createLucideIcon("chevron-right", __iconNode$1y);
+const __iconNode$1x = [["path", { d: "m18 15-6-6-6 6", key: "153udz" }]];
+const ChevronUp = createLucideIcon("chevron-up", __iconNode$1x);
+const __iconNode$1w = [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["line", { x1: "12", x2: "12", y1: "8", y2: "12", key: "1pkeuh" }],
   ["line", { x1: "12", x2: "12.01", y1: "16", y2: "16", key: "4dfq90" }]
 ];
-const CircleAlert = createLucideIcon("circle-alert", __iconNode$1u);
-const __iconNode$1t = [
+const CircleAlert = createLucideIcon("circle-alert", __iconNode$1w);
+const __iconNode$1v = [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["path", { d: "m9 12 2 2 4-4", key: "dzmm74" }]
 ];
-const CircleCheck = createLucideIcon("circle-check", __iconNode$1t);
-const __iconNode$1s = [
+const CircleCheck = createLucideIcon("circle-check", __iconNode$1v);
+const __iconNode$1u = [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["circle", { cx: "12", cy: "12", r: "1", key: "41hilf" }]
 ];
-const CircleDot = createLucideIcon("circle-dot", __iconNode$1s);
-const __iconNode$1r = [
+const CircleDot = createLucideIcon("circle-dot", __iconNode$1u);
+const __iconNode$1t = [
   [
     "path",
     {
@@ -12440,26 +12949,26 @@ const __iconNode$1r = [
   ],
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }]
 ];
-const CirclePlay = createLucideIcon("circle-play", __iconNode$1r);
-const __iconNode$1q = [
+const CirclePlay = createLucideIcon("circle-play", __iconNode$1t);
+const __iconNode$1s = [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["path", { d: "M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3", key: "1u773s" }],
   ["path", { d: "M12 17h.01", key: "p32p05" }]
 ];
-const CircleQuestionMark = createLucideIcon("circle-question-mark", __iconNode$1q);
-const __iconNode$1p = [
+const CircleQuestionMark = createLucideIcon("circle-question-mark", __iconNode$1s);
+const __iconNode$1r = [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["circle", { cx: "12", cy: "10", r: "3", key: "ilqhr7" }],
   ["path", { d: "M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662", key: "154egf" }]
 ];
-const CircleUser = createLucideIcon("circle-user", __iconNode$1p);
-const __iconNode$1o = [
+const CircleUser = createLucideIcon("circle-user", __iconNode$1r);
+const __iconNode$1q = [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["path", { d: "m15 9-6 6", key: "1uzhvr" }],
   ["path", { d: "m9 9 6 6", key: "z0biqf" }]
 ];
-const CircleX = createLucideIcon("circle-x", __iconNode$1o);
-const __iconNode$1n = [
+const CircleX = createLucideIcon("circle-x", __iconNode$1q);
+const __iconNode$1p = [
   ["path", { d: "m12.296 3.464 3.02 3.956", key: "qash78" }],
   [
     "path",
@@ -12468,23 +12977,23 @@ const __iconNode$1n = [
   ["path", { d: "M3 11h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z", key: "4lm6w1" }],
   ["path", { d: "m6.18 5.276 3.1 3.899", key: "zjj9t3" }]
 ];
-const Clapperboard = createLucideIcon("clapperboard", __iconNode$1n);
-const __iconNode$1m = [
+const Clapperboard = createLucideIcon("clapperboard", __iconNode$1p);
+const __iconNode$1o = [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["path", { d: "M12 6v6l4 2", key: "mmk7yg" }]
 ];
-const Clock = createLucideIcon("clock", __iconNode$1m);
-const __iconNode$1l = [
+const Clock = createLucideIcon("clock", __iconNode$1o);
+const __iconNode$1n = [
   ["rect", { width: "14", height: "14", x: "8", y: "8", rx: "2", ry: "2", key: "17jyea" }],
   ["path", { d: "M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2", key: "zix9uf" }]
 ];
-const Copy = createLucideIcon("copy", __iconNode$1l);
-const __iconNode$1k = [
+const Copy = createLucideIcon("copy", __iconNode$1n);
+const __iconNode$1m = [
   ["rect", { width: "20", height: "14", x: "2", y: "5", rx: "2", key: "ynyp8z" }],
   ["line", { x1: "2", x2: "22", y1: "10", y2: "10", key: "1b3vmo" }]
 ];
-const CreditCard = createLucideIcon("credit-card", __iconNode$1k);
-const __iconNode$1j = [
+const CreditCard = createLucideIcon("credit-card", __iconNode$1m);
+const __iconNode$1l = [
   [
     "path",
     {
@@ -12494,32 +13003,32 @@ const __iconNode$1j = [
   ],
   ["path", { d: "M5 21h14", key: "11awu3" }]
 ];
-const Crown = createLucideIcon("crown", __iconNode$1j);
-const __iconNode$1i = [
+const Crown = createLucideIcon("crown", __iconNode$1l);
+const __iconNode$1k = [
   ["path", { d: "M12 15V3", key: "m9g1x1" }],
   ["path", { d: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", key: "ih7n3h" }],
   ["path", { d: "m7 10 5 5 5-5", key: "brsn70" }]
 ];
-const Download = createLucideIcon("download", __iconNode$1i);
-const __iconNode$1h = [
+const Download = createLucideIcon("download", __iconNode$1k);
+const __iconNode$1j = [
   ["circle", { cx: "12", cy: "12", r: "1", key: "41hilf" }],
   ["circle", { cx: "12", cy: "5", r: "1", key: "gxeob9" }],
   ["circle", { cx: "12", cy: "19", r: "1", key: "lyex9k" }]
 ];
-const EllipsisVertical = createLucideIcon("ellipsis-vertical", __iconNode$1h);
-const __iconNode$1g = [
+const EllipsisVertical = createLucideIcon("ellipsis-vertical", __iconNode$1j);
+const __iconNode$1i = [
   ["circle", { cx: "12", cy: "12", r: "1", key: "41hilf" }],
   ["circle", { cx: "19", cy: "12", r: "1", key: "1wjl8i" }],
   ["circle", { cx: "5", cy: "12", r: "1", key: "1pcz8c" }]
 ];
-const Ellipsis = createLucideIcon("ellipsis", __iconNode$1g);
-const __iconNode$1f = [
+const Ellipsis = createLucideIcon("ellipsis", __iconNode$1i);
+const __iconNode$1h = [
   ["path", { d: "M15 3h6v6", key: "1q9fwt" }],
   ["path", { d: "M10 14 21 3", key: "gplh6r" }],
   ["path", { d: "M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6", key: "a6xqqp" }]
 ];
-const ExternalLink = createLucideIcon("external-link", __iconNode$1f);
-const __iconNode$1e = [
+const ExternalLink = createLucideIcon("external-link", __iconNode$1h);
+const __iconNode$1g = [
   [
     "path",
     {
@@ -12537,8 +13046,8 @@ const __iconNode$1e = [
   ],
   ["path", { d: "m2 2 20 20", key: "1ooewy" }]
 ];
-const EyeOff = createLucideIcon("eye-off", __iconNode$1e);
-const __iconNode$1d = [
+const EyeOff = createLucideIcon("eye-off", __iconNode$1g);
+const __iconNode$1f = [
   [
     "path",
     {
@@ -12548,8 +13057,8 @@ const __iconNode$1d = [
   ],
   ["circle", { cx: "12", cy: "12", r: "3", key: "1v7zrd" }]
 ];
-const Eye = createLucideIcon("eye", __iconNode$1d);
-const __iconNode$1c = [
+const Eye = createLucideIcon("eye", __iconNode$1f);
+const __iconNode$1e = [
   ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", key: "afitv7" }],
   ["path", { d: "M7 3v18", key: "bbkbws" }],
   ["path", { d: "M3 7.5h4", key: "zfgn84" }],
@@ -12559,8 +13068,8 @@ const __iconNode$1c = [
   ["path", { d: "M17 7.5h4", key: "myr1c1" }],
   ["path", { d: "M17 16.5h4", key: "go4c1d" }]
 ];
-const Film = createLucideIcon("film", __iconNode$1c);
-const __iconNode$1b = [
+const Film = createLucideIcon("film", __iconNode$1e);
+const __iconNode$1d = [
   [
     "path",
     {
@@ -12569,8 +13078,8 @@ const __iconNode$1b = [
     }
   ]
 ];
-const Flag = createLucideIcon("flag", __iconNode$1b);
-const __iconNode$1a = [
+const Flag = createLucideIcon("flag", __iconNode$1d);
+const __iconNode$1c = [
   [
     "path",
     {
@@ -12588,32 +13097,32 @@ const __iconNode$1a = [
   ["path", { d: "M16 17h4", key: "1dejxt" }],
   ["path", { d: "M4 13h4", key: "1bwh8b" }]
 ];
-const Footprints = createLucideIcon("footprints", __iconNode$1a);
-const __iconNode$19 = [
+const Footprints = createLucideIcon("footprints", __iconNode$1c);
+const __iconNode$1b = [
   ["path", { d: "m15 17 5-5-5-5", key: "nf172w" }],
   ["path", { d: "M4 18v-2a4 4 0 0 1 4-4h12", key: "jmiej9" }]
 ];
-const Forward = createLucideIcon("forward", __iconNode$19);
-const __iconNode$18 = [
+const Forward = createLucideIcon("forward", __iconNode$1b);
+const __iconNode$1a = [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["path", { d: "M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20", key: "13o1zl" }],
   ["path", { d: "M2 12h20", key: "9i4pu4" }]
 ];
-const Globe = createLucideIcon("globe", __iconNode$18);
-const __iconNode$17 = [
+const Globe = createLucideIcon("globe", __iconNode$1a);
+const __iconNode$19 = [
   ["path", { d: "M12 3v18", key: "108xh3" }],
   ["path", { d: "M3 12h18", key: "1i2n21" }],
   ["rect", { x: "3", y: "3", width: "18", height: "18", rx: "2", key: "h1oib" }]
 ];
-const Grid2x2 = createLucideIcon("grid-2x2", __iconNode$17);
-const __iconNode$16 = [
+const Grid2x2 = createLucideIcon("grid-2x2", __iconNode$19);
+const __iconNode$18 = [
   ["line", { x1: "4", x2: "20", y1: "9", y2: "9", key: "4lhtct" }],
   ["line", { x1: "4", x2: "20", y1: "15", y2: "15", key: "vyu0kd" }],
   ["line", { x1: "10", x2: "8", y1: "3", y2: "21", key: "1ggp8o" }],
   ["line", { x1: "16", x2: "14", y1: "3", y2: "21", key: "weycgp" }]
 ];
-const Hash = createLucideIcon("hash", __iconNode$16);
-const __iconNode$15 = [
+const Hash = createLucideIcon("hash", __iconNode$18);
+const __iconNode$17 = [
   [
     "path",
     {
@@ -12622,8 +13131,8 @@ const __iconNode$15 = [
     }
   ]
 ];
-const Heart = createLucideIcon("heart", __iconNode$15);
-const __iconNode$14 = [
+const Heart = createLucideIcon("heart", __iconNode$17);
+const __iconNode$16 = [
   ["path", { d: "M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8", key: "5wwlr5" }],
   [
     "path",
@@ -12633,31 +13142,31 @@ const __iconNode$14 = [
     }
   ]
 ];
-const House = createLucideIcon("house", __iconNode$14);
-const __iconNode$13 = [
+const House = createLucideIcon("house", __iconNode$16);
+const __iconNode$15 = [
   ["path", { d: "m22 11-1.296-1.296a2.4 2.4 0 0 0-3.408 0L11 16", key: "9kzy35" }],
   ["path", { d: "M4 8a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2", key: "1t0f0t" }],
   ["circle", { cx: "13", cy: "7", r: "1", fill: "currentColor", key: "1obus6" }],
   ["rect", { x: "8", y: "2", width: "14", height: "14", rx: "2", key: "1gvhby" }]
 ];
-const Images = createLucideIcon("images", __iconNode$13);
-const __iconNode$12 = [
+const Images = createLucideIcon("images", __iconNode$15);
+const __iconNode$14 = [
   ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", ry: "2", key: "1m3agn" }],
   ["circle", { cx: "9", cy: "9", r: "2", key: "af1f0g" }],
   ["path", { d: "m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21", key: "1xmnt7" }]
 ];
-const Image$1 = createLucideIcon("image", __iconNode$12);
-const __iconNode$11 = [
+const Image$1 = createLucideIcon("image", __iconNode$14);
+const __iconNode$13 = [
   ["path", { d: "M6 16c5 0 7-8 12-8a4 4 0 0 1 0 8c-5 0-7-8-12-8a4 4 0 1 0 0 8", key: "18ogeb" }]
 ];
-const Infinity$1 = createLucideIcon("infinity", __iconNode$11);
-const __iconNode$10 = [
+const Infinity$1 = createLucideIcon("infinity", __iconNode$13);
+const __iconNode$12 = [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["path", { d: "M12 16v-4", key: "1dtifu" }],
   ["path", { d: "M12 8h.01", key: "e9boi3" }]
 ];
-const Info = createLucideIcon("info", __iconNode$10);
-const __iconNode$$ = [
+const Info = createLucideIcon("info", __iconNode$12);
+const __iconNode$11 = [
   [
     "path",
     {
@@ -12667,15 +13176,15 @@ const __iconNode$$ = [
   ],
   ["circle", { cx: "16.5", cy: "7.5", r: ".5", fill: "currentColor", key: "w0ekpg" }]
 ];
-const KeyRound = createLucideIcon("key-round", __iconNode$$);
-const __iconNode$_ = [
+const KeyRound = createLucideIcon("key-round", __iconNode$11);
+const __iconNode$10 = [
   ["rect", { width: "7", height: "7", x: "3", y: "3", rx: "1", key: "1g98yp" }],
   ["rect", { width: "7", height: "7", x: "14", y: "3", rx: "1", key: "6d4xhi" }],
   ["rect", { width: "7", height: "7", x: "14", y: "14", rx: "1", key: "nxv5o0" }],
   ["rect", { width: "7", height: "7", x: "3", y: "14", rx: "1", key: "1bb6yr" }]
 ];
-const LayoutGrid = createLucideIcon("layout-grid", __iconNode$_);
-const __iconNode$Z = [
+const LayoutGrid = createLucideIcon("layout-grid", __iconNode$10);
+const __iconNode$$ = [
   ["rect", { width: "7", height: "7", x: "3", y: "3", rx: "1", key: "1g98yp" }],
   ["rect", { width: "7", height: "7", x: "3", y: "14", rx: "1", key: "1bb6yr" }],
   ["path", { d: "M14 4h7", key: "3xa0d5" }],
@@ -12683,19 +13192,19 @@ const __iconNode$Z = [
   ["path", { d: "M14 15h7", key: "1mj8o2" }],
   ["path", { d: "M14 20h7", key: "11slyb" }]
 ];
-const LayoutList = createLucideIcon("layout-list", __iconNode$Z);
-const __iconNode$Y = [
+const LayoutList = createLucideIcon("layout-list", __iconNode$$);
+const __iconNode$_ = [
   ["path", { d: "M9 17H7A5 5 0 0 1 7 7h2", key: "8i5ue5" }],
   ["path", { d: "M15 7h2a5 5 0 1 1 0 10h-2", key: "1b9ql8" }],
   ["line", { x1: "8", x2: "16", y1: "12", y2: "12", key: "1jonct" }]
 ];
-const Link2 = createLucideIcon("link-2", __iconNode$Y);
-const __iconNode$X = [
+const Link2 = createLucideIcon("link-2", __iconNode$_);
+const __iconNode$Z = [
   ["path", { d: "M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71", key: "1cjeqo" }],
   ["path", { d: "M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71", key: "19qd67" }]
 ];
-const Link = createLucideIcon("link", __iconNode$X);
-const __iconNode$W = [
+const Link = createLucideIcon("link", __iconNode$Z);
+const __iconNode$Y = [
   ["path", { d: "M11 5h10", key: "1cz7ny" }],
   ["path", { d: "M11 12h10", key: "1438ji" }],
   ["path", { d: "M11 19h10", key: "11t30w" }],
@@ -12703,21 +13212,21 @@ const __iconNode$W = [
   ["path", { d: "M4 9h2", key: "r1h2o0" }],
   ["path", { d: "M6.5 20H3.4c0-1 2.6-1.925 2.6-3.5a1.5 1.5 0 0 0-2.6-1.02", key: "xtkcd5" }]
 ];
-const ListOrdered = createLucideIcon("list-ordered", __iconNode$W);
-const __iconNode$V = [["path", { d: "M21 12a9 9 0 1 1-6.219-8.56", key: "13zald" }]];
-const LoaderCircle = createLucideIcon("loader-circle", __iconNode$V);
-const __iconNode$U = [
+const ListOrdered = createLucideIcon("list-ordered", __iconNode$Y);
+const __iconNode$X = [["path", { d: "M21 12a9 9 0 1 1-6.219-8.56", key: "13zald" }]];
+const LoaderCircle = createLucideIcon("loader-circle", __iconNode$X);
+const __iconNode$W = [
   ["rect", { width: "18", height: "11", x: "3", y: "11", rx: "2", ry: "2", key: "1w4ew1" }],
   ["path", { d: "M7 11V7a5 5 0 0 1 10 0v4", key: "fwvmzm" }]
 ];
-const Lock = createLucideIcon("lock", __iconNode$U);
-const __iconNode$T = [
+const Lock = createLucideIcon("lock", __iconNode$W);
+const __iconNode$V = [
   ["path", { d: "m16 17 5-5-5-5", key: "1bji2h" }],
   ["path", { d: "M21 12H9", key: "dn1m92" }],
   ["path", { d: "M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4", key: "1uf3rs" }]
 ];
-const LogOut = createLucideIcon("log-out", __iconNode$T);
-const __iconNode$S = [
+const LogOut = createLucideIcon("log-out", __iconNode$V);
+const __iconNode$U = [
   [
     "path",
     {
@@ -12727,8 +13236,8 @@ const __iconNode$S = [
   ],
   ["circle", { cx: "12", cy: "10", r: "3", key: "ilqhr7" }]
 ];
-const MapPin = createLucideIcon("map-pin", __iconNode$S);
-const __iconNode$R = [
+const MapPin = createLucideIcon("map-pin", __iconNode$U);
+const __iconNode$T = [
   [
     "path",
     {
@@ -12739,14 +13248,14 @@ const __iconNode$R = [
   ["path", { d: "M6 14a12 12 0 0 0 2.4 7.2 2 2 0 0 0 3.2-2.4A8 8 0 0 1 10 14", key: "1853fq" }],
   ["path", { d: "M8 6v8", key: "15ugcq" }]
 ];
-const Megaphone = createLucideIcon("megaphone", __iconNode$R);
-const __iconNode$Q = [
+const Megaphone = createLucideIcon("megaphone", __iconNode$T);
+const __iconNode$S = [
   ["path", { d: "M4 5h16", key: "1tepv9" }],
   ["path", { d: "M4 12h16", key: "1lakjw" }],
   ["path", { d: "M4 19h16", key: "1djgab" }]
 ];
-const Menu = createLucideIcon("menu", __iconNode$Q);
-const __iconNode$P = [
+const Menu = createLucideIcon("menu", __iconNode$S);
+const __iconNode$R = [
   [
     "path",
     {
@@ -12757,8 +13266,8 @@ const __iconNode$P = [
   ["path", { d: "M8 12h8", key: "1wcyev" }],
   ["path", { d: "M12 8v8", key: "napkw2" }]
 ];
-const MessageCirclePlus = createLucideIcon("message-circle-plus", __iconNode$P);
-const __iconNode$O = [
+const MessageCirclePlus = createLucideIcon("message-circle-plus", __iconNode$R);
+const __iconNode$Q = [
   [
     "path",
     {
@@ -12769,8 +13278,8 @@ const __iconNode$O = [
   ["path", { d: "M12 8v4", key: "1got3b" }],
   ["path", { d: "M12 16h.01", key: "1drbdi" }]
 ];
-const MessageCircleWarning = createLucideIcon("message-circle-warning", __iconNode$O);
-const __iconNode$N = [
+const MessageCircleWarning = createLucideIcon("message-circle-warning", __iconNode$Q);
+const __iconNode$P = [
   [
     "path",
     {
@@ -12779,8 +13288,8 @@ const __iconNode$N = [
     }
   ]
 ];
-const MessageCircle = createLucideIcon("message-circle", __iconNode$N);
-const __iconNode$M = [
+const MessageCircle = createLucideIcon("message-circle", __iconNode$P);
+const __iconNode$O = [
   [
     "path",
     {
@@ -12789,8 +13298,8 @@ const __iconNode$M = [
     }
   ]
 ];
-const MessageSquare = createLucideIcon("message-square", __iconNode$M);
-const __iconNode$L = [
+const MessageSquare = createLucideIcon("message-square", __iconNode$O);
+const __iconNode$N = [
   ["path", { d: "M12 19v3", key: "npa21l" }],
   ["path", { d: "M15 9.34V5a3 3 0 0 0-5.68-1.33", key: "1gzdoj" }],
   ["path", { d: "M16.95 16.95A7 7 0 0 1 5 12v-2", key: "cqa7eg" }],
@@ -12798,14 +13307,14 @@ const __iconNode$L = [
   ["path", { d: "m2 2 20 20", key: "1ooewy" }],
   ["path", { d: "M9 9v3a3 3 0 0 0 5.12 2.12", key: "r2i35w" }]
 ];
-const MicOff = createLucideIcon("mic-off", __iconNode$L);
-const __iconNode$K = [
+const MicOff = createLucideIcon("mic-off", __iconNode$N);
+const __iconNode$M = [
   ["path", { d: "M12 19v3", key: "npa21l" }],
   ["path", { d: "M19 10v2a7 7 0 0 1-14 0v-2", key: "1vc78b" }],
   ["rect", { x: "9", y: "2", width: "6", height: "13", rx: "3", key: "s6n7sd" }]
 ];
-const Mic = createLucideIcon("mic", __iconNode$K);
-const __iconNode$J = [
+const Mic = createLucideIcon("mic", __iconNode$M);
+const __iconNode$L = [
   [
     "path",
     {
@@ -12814,19 +13323,19 @@ const __iconNode$J = [
     }
   ]
 ];
-const Moon = createLucideIcon("moon", __iconNode$J);
-const __iconNode$I = [
+const Moon = createLucideIcon("moon", __iconNode$L);
+const __iconNode$K = [
   ["circle", { cx: "8", cy: "18", r: "4", key: "1fc0mg" }],
   ["path", { d: "M12 18V2l7 4", key: "g04rme" }]
 ];
-const Music2 = createLucideIcon("music-2", __iconNode$I);
-const __iconNode$H = [
+const Music2 = createLucideIcon("music-2", __iconNode$K);
+const __iconNode$J = [
   ["path", { d: "M9 18V5l12-2v13", key: "1jmyc2" }],
   ["circle", { cx: "6", cy: "18", r: "3", key: "fqmcym" }],
   ["circle", { cx: "18", cy: "16", r: "3", key: "1hluhg" }]
 ];
-const Music = createLucideIcon("music", __iconNode$H);
-const __iconNode$G = [
+const Music = createLucideIcon("music", __iconNode$J);
+const __iconNode$I = [
   [
     "path",
     {
@@ -12839,8 +13348,8 @@ const __iconNode$G = [
   ["circle", { cx: "6.5", cy: "12.5", r: ".5", fill: "currentColor", key: "qy21gx" }],
   ["circle", { cx: "8.5", cy: "7.5", r: ".5", fill: "currentColor", key: "fotxhn" }]
 ];
-const Palette = createLucideIcon("palette", __iconNode$G);
-const __iconNode$F = [
+const Palette = createLucideIcon("palette", __iconNode$I);
+const __iconNode$H = [
   [
     "path",
     {
@@ -12849,13 +13358,13 @@ const __iconNode$F = [
     }
   ]
 ];
-const Paperclip = createLucideIcon("paperclip", __iconNode$F);
-const __iconNode$E = [
+const Paperclip = createLucideIcon("paperclip", __iconNode$H);
+const __iconNode$G = [
   ["rect", { x: "14", y: "3", width: "5", height: "18", rx: "1", key: "kaeet6" }],
   ["rect", { x: "5", y: "3", width: "5", height: "18", rx: "1", key: "1wsw3u" }]
 ];
-const Pause = createLucideIcon("pause", __iconNode$E);
-const __iconNode$D = [
+const Pause = createLucideIcon("pause", __iconNode$G);
+const __iconNode$F = [
   ["path", { d: "M13 21h8", key: "1jsn5i" }],
   [
     "path",
@@ -12865,8 +13374,8 @@ const __iconNode$D = [
     }
   ]
 ];
-const PenLine = createLucideIcon("pen-line", __iconNode$D);
-const __iconNode$C = [
+const PenLine = createLucideIcon("pen-line", __iconNode$F);
+const __iconNode$E = [
   [
     "path",
     {
@@ -12875,8 +13384,8 @@ const __iconNode$C = [
     }
   ]
 ];
-const Phone = createLucideIcon("phone", __iconNode$C);
-const __iconNode$B = [
+const Phone = createLucideIcon("phone", __iconNode$E);
+const __iconNode$D = [
   ["path", { d: "M12 17v5", key: "bb1du9" }],
   [
     "path",
@@ -12886,8 +13395,8 @@ const __iconNode$B = [
     }
   ]
 ];
-const Pin = createLucideIcon("pin", __iconNode$B);
-const __iconNode$A = [
+const Pin = createLucideIcon("pin", __iconNode$D);
+const __iconNode$C = [
   [
     "path",
     {
@@ -12896,13 +13405,13 @@ const __iconNode$A = [
     }
   ]
 ];
-const Play = createLucideIcon("play", __iconNode$A);
-const __iconNode$z = [
+const Play = createLucideIcon("play", __iconNode$C);
+const __iconNode$B = [
   ["path", { d: "M5 12h14", key: "1ays0h" }],
   ["path", { d: "M12 5v14", key: "s699le" }]
 ];
-const Plus = createLucideIcon("plus", __iconNode$z);
-const __iconNode$y = [
+const Plus = createLucideIcon("plus", __iconNode$B);
+const __iconNode$A = [
   ["rect", { width: "5", height: "5", x: "3", y: "3", rx: "1", key: "1tu5fj" }],
   ["rect", { width: "5", height: "5", x: "16", y: "3", rx: "1", key: "1v8r4q" }],
   ["rect", { width: "5", height: "5", x: "3", y: "16", rx: "1", key: "1x03jg" }],
@@ -12916,37 +13425,37 @@ const __iconNode$y = [
   ["path", { d: "M21 12v.01", key: "1lwtk9" }],
   ["path", { d: "M12 21v-1", key: "1880an" }]
 ];
-const QrCode = createLucideIcon("qr-code", __iconNode$y);
-const __iconNode$x = [
+const QrCode = createLucideIcon("qr-code", __iconNode$A);
+const __iconNode$z = [
   ["path", { d: "M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8", key: "v9h5vc" }],
   ["path", { d: "M21 3v5h-5", key: "1q7to0" }],
   ["path", { d: "M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16", key: "3uifl3" }],
   ["path", { d: "M8 16H3v5", key: "1cv678" }]
 ];
-const RefreshCw = createLucideIcon("refresh-cw", __iconNode$x);
-const __iconNode$w = [
+const RefreshCw = createLucideIcon("refresh-cw", __iconNode$z);
+const __iconNode$y = [
   ["path", { d: "m2 9 3-3 3 3", key: "1ltn5i" }],
   ["path", { d: "M13 18H7a2 2 0 0 1-2-2V6", key: "1r6tfw" }],
   ["path", { d: "m22 15-3 3-3-3", key: "4rnwn2" }],
   ["path", { d: "M11 6h6a2 2 0 0 1 2 2v10", key: "2f72bc" }]
 ];
-const Repeat2 = createLucideIcon("repeat-2", __iconNode$w);
-const __iconNode$v = [
+const Repeat2 = createLucideIcon("repeat-2", __iconNode$y);
+const __iconNode$x = [
   ["path", { d: "M20 18v-2a4 4 0 0 0-4-4H4", key: "5vmcpk" }],
   ["path", { d: "m9 17-5-5 5-5", key: "nvlc11" }]
 ];
-const Reply = createLucideIcon("reply", __iconNode$v);
-const __iconNode$u = [
+const Reply = createLucideIcon("reply", __iconNode$x);
+const __iconNode$w = [
   ["path", { d: "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8", key: "1357e3" }],
   ["path", { d: "M3 3v5h5", key: "1xhq8a" }]
 ];
-const RotateCcw = createLucideIcon("rotate-ccw", __iconNode$u);
-const __iconNode$t = [
+const RotateCcw = createLucideIcon("rotate-ccw", __iconNode$w);
+const __iconNode$v = [
   ["path", { d: "m21 21-4.34-4.34", key: "14j7rj" }],
   ["circle", { cx: "11", cy: "11", r: "8", key: "4ej97u" }]
 ];
-const Search = createLucideIcon("search", __iconNode$t);
-const __iconNode$s = [
+const Search = createLucideIcon("search", __iconNode$v);
+const __iconNode$u = [
   [
     "path",
     {
@@ -12956,8 +13465,8 @@ const __iconNode$s = [
   ],
   ["path", { d: "m21.854 2.147-10.94 10.939", key: "12cjpa" }]
 ];
-const Send = createLucideIcon("send", __iconNode$s);
-const __iconNode$r = [
+const Send = createLucideIcon("send", __iconNode$u);
+const __iconNode$t = [
   [
     "path",
     {
@@ -12967,16 +13476,16 @@ const __iconNode$r = [
   ],
   ["circle", { cx: "12", cy: "12", r: "3", key: "1v7zrd" }]
 ];
-const Settings = createLucideIcon("settings", __iconNode$r);
-const __iconNode$q = [
+const Settings = createLucideIcon("settings", __iconNode$t);
+const __iconNode$s = [
   ["circle", { cx: "18", cy: "5", r: "3", key: "gq8acd" }],
   ["circle", { cx: "6", cy: "12", r: "3", key: "w7nqdw" }],
   ["circle", { cx: "18", cy: "19", r: "3", key: "1xt0gg" }],
   ["line", { x1: "8.59", x2: "15.42", y1: "13.51", y2: "17.49", key: "47mynk" }],
   ["line", { x1: "15.41", x2: "8.59", y1: "6.51", y2: "10.49", key: "1n3mei" }]
 ];
-const Share2 = createLucideIcon("share-2", __iconNode$q);
-const __iconNode$p = [
+const Share2 = createLucideIcon("share-2", __iconNode$s);
+const __iconNode$r = [
   [
     "path",
     {
@@ -12986,8 +13495,8 @@ const __iconNode$p = [
   ],
   ["path", { d: "m9 12 2 2 4-4", key: "dzmm74" }]
 ];
-const ShieldCheck = createLucideIcon("shield-check", __iconNode$p);
-const __iconNode$o = [
+const ShieldCheck = createLucideIcon("shield-check", __iconNode$r);
+const __iconNode$q = [
   [
     "path",
     {
@@ -12996,8 +13505,8 @@ const __iconNode$o = [
     }
   ]
 ];
-const Shield = createLucideIcon("shield", __iconNode$o);
-const __iconNode$n = [
+const Shield = createLucideIcon("shield", __iconNode$q);
+const __iconNode$p = [
   ["path", { d: "M10 5H3", key: "1qgfaw" }],
   ["path", { d: "M12 19H3", key: "yhmn1j" }],
   ["path", { d: "M14 3v4", key: "1sua03" }],
@@ -13008,15 +13517,20 @@ const __iconNode$n = [
   ["path", { d: "M8 10v4", key: "tgpxqk" }],
   ["path", { d: "M8 12H3", key: "a7s4jb" }]
 ];
-const SlidersHorizontal = createLucideIcon("sliders-horizontal", __iconNode$n);
-const __iconNode$m = [
+const SlidersHorizontal = createLucideIcon("sliders-horizontal", __iconNode$p);
+const __iconNode$o = [
+  ["rect", { width: "14", height: "20", x: "5", y: "2", rx: "2", ry: "2", key: "1yt0o3" }],
+  ["path", { d: "M12 18h.01", key: "mhygvu" }]
+];
+const Smartphone = createLucideIcon("smartphone", __iconNode$o);
+const __iconNode$n = [
   ["circle", { cx: "12", cy: "12", r: "10", key: "1mglay" }],
   ["path", { d: "M8 14s1.5 2 4 2 4-2 4-2", key: "1y1vjs" }],
   ["line", { x1: "9", x2: "9.01", y1: "9", y2: "9", key: "yxxnd0" }],
   ["line", { x1: "15", x2: "15.01", y1: "9", y2: "9", key: "1p4y9e" }]
 ];
-const Smile = createLucideIcon("smile", __iconNode$m);
-const __iconNode$l = [
+const Smile = createLucideIcon("smile", __iconNode$n);
+const __iconNode$m = [
   [
     "path",
     {
@@ -13028,8 +13542,8 @@ const __iconNode$l = [
   ["path", { d: "M22 4h-4", key: "gwowj6" }],
   ["circle", { cx: "4", cy: "20", r: "2", key: "6kqj1y" }]
 ];
-const Sparkles = createLucideIcon("sparkles", __iconNode$l);
-const __iconNode$k = [
+const Sparkles = createLucideIcon("sparkles", __iconNode$m);
+const __iconNode$l = [
   ["path", { d: "M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7", key: "1m0v6g" }],
   [
     "path",
@@ -13039,8 +13553,8 @@ const __iconNode$k = [
     }
   ]
 ];
-const SquarePen = createLucideIcon("square-pen", __iconNode$k);
-const __iconNode$j = [
+const SquarePen = createLucideIcon("square-pen", __iconNode$l);
+const __iconNode$k = [
   ["rect", { x: "3", y: "3", width: "18", height: "18", rx: "2", key: "h1oib" }],
   [
     "path",
@@ -13050,18 +13564,18 @@ const __iconNode$j = [
     }
   ]
 ];
-const SquarePlay = createLucideIcon("square-play", __iconNode$j);
-const __iconNode$i = [
+const SquarePlay = createLucideIcon("square-play", __iconNode$k);
+const __iconNode$j = [
   ["path", { d: "M4 10c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h4c1.1 0 2 .9 2 2", key: "4i38lg" }],
   ["path", { d: "M10 16c-1.1 0-2-.9-2-2v-4c0-1.1.9-2 2-2h4c1.1 0 2 .9 2 2", key: "mlte4a" }],
   ["rect", { width: "8", height: "8", x: "14", y: "14", rx: "2", key: "1fa9i4" }]
 ];
-const SquareStack = createLucideIcon("square-stack", __iconNode$i);
-const __iconNode$h = [
+const SquareStack = createLucideIcon("square-stack", __iconNode$j);
+const __iconNode$i = [
   ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", key: "afitv7" }]
 ];
-const Square = createLucideIcon("square", __iconNode$h);
-const __iconNode$g = [
+const Square = createLucideIcon("square", __iconNode$i);
+const __iconNode$h = [
   [
     "path",
     {
@@ -13070,8 +13584,8 @@ const __iconNode$g = [
     }
   ]
 ];
-const Star = createLucideIcon("star", __iconNode$g);
-const __iconNode$f = [
+const Star = createLucideIcon("star", __iconNode$h);
+const __iconNode$g = [
   [
     "path",
     {
@@ -13084,8 +13598,8 @@ const __iconNode$f = [
   ["path", { d: "M16 13h.01", key: "wip0gl" }],
   ["path", { d: "M10 16s.8 1 2 1c1.3 0 2-1 2-1", key: "1vvgv3" }]
 ];
-const Sticker = createLucideIcon("sticker", __iconNode$f);
-const __iconNode$e = [
+const Sticker = createLucideIcon("sticker", __iconNode$g);
+const __iconNode$f = [
   [
     "path",
     {
@@ -13095,8 +13609,8 @@ const __iconNode$e = [
   ],
   ["path", { d: "M15 3v5a1 1 0 0 0 1 1h5", key: "6s6qgf" }]
 ];
-const StickyNote = createLucideIcon("sticky-note", __iconNode$e);
-const __iconNode$d = [
+const StickyNote = createLucideIcon("sticky-note", __iconNode$f);
+const __iconNode$e = [
   ["circle", { cx: "12", cy: "12", r: "4", key: "4exip2" }],
   ["path", { d: "M12 2v2", key: "tus03m" }],
   ["path", { d: "M12 20v2", key: "1lh1kg" }],
@@ -13107,15 +13621,27 @@ const __iconNode$d = [
   ["path", { d: "m6.34 17.66-1.41 1.41", key: "1m8zz5" }],
   ["path", { d: "m19.07 4.93-1.41 1.41", key: "1shlcs" }]
 ];
-const Sun = createLucideIcon("sun", __iconNode$d);
-const __iconNode$c = [
+const Sun = createLucideIcon("sun", __iconNode$e);
+const __iconNode$d = [
   ["path", { d: "M10 11v6", key: "nco0om" }],
   ["path", { d: "M14 11v6", key: "outv1u" }],
   ["path", { d: "M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6", key: "miytrc" }],
   ["path", { d: "M3 6h18", key: "d0wm0j" }],
   ["path", { d: "M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2", key: "e791ji" }]
 ];
-const Trash2 = createLucideIcon("trash-2", __iconNode$c);
+const Trash2 = createLucideIcon("trash-2", __iconNode$d);
+const __iconNode$c = [
+  [
+    "path",
+    {
+      d: "m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3",
+      key: "wmoenq"
+    }
+  ],
+  ["path", { d: "M12 9v4", key: "juzpu7" }],
+  ["path", { d: "M12 17h.01", key: "p32p05" }]
+];
+const TriangleAlert = createLucideIcon("triangle-alert", __iconNode$c);
 const __iconNode$b = [
   ["path", { d: "M12 4v16", key: "1654pz" }],
   ["path", { d: "M4 7V5a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2", key: "e0r10z" }],
@@ -13360,8 +13886,8 @@ const processObjectDefinition = (classDefinition, classPartObject, classGroupId,
   const entries = Object.entries(classDefinition);
   const len = entries.length;
   for (let i = 0; i < len; i++) {
-    const [key, value2] = entries[i];
-    processClassesRecursively(value2, getPart(classPartObject, key), classGroupId, theme);
+    const [key2, value2] = entries[i];
+    processClassesRecursively(value2, getPart(classPartObject, key2), classGroupId, theme);
   }
 };
 const getPart = (classPartObject, path) => {
@@ -13391,8 +13917,8 @@ const createLruCache = (maxCacheSize) => {
   let cacheSize = 0;
   let cache2 = /* @__PURE__ */ Object.create(null);
   let previousCache = /* @__PURE__ */ Object.create(null);
-  const update = (key, value2) => {
-    cache2[key] = value2;
+  const update = (key2, value2) => {
+    cache2[key2] = value2;
     cacheSize++;
     if (cacheSize > maxCacheSize) {
       cacheSize = 0;
@@ -13401,21 +13927,21 @@ const createLruCache = (maxCacheSize) => {
     }
   };
   return {
-    get(key) {
-      let value2 = cache2[key];
+    get(key2) {
+      let value2 = cache2[key2];
       if (value2 !== void 0) {
         return value2;
       }
-      if ((value2 = previousCache[key]) !== void 0) {
-        update(key, value2);
+      if ((value2 = previousCache[key2]) !== void 0) {
+        update(key2, value2);
         return value2;
       }
     },
-    set(key, value2) {
-      if (key in cache2) {
-        cache2[key] = value2;
+    set(key2, value2) {
+      if (key2 in cache2) {
+        cache2[key2] = value2;
       } else {
-        update(key, value2);
+        update(key2, value2);
       }
     }
   };
@@ -13663,8 +14189,8 @@ const createTailwindMerge = (createConfigFirst, ...createConfigRest) => {
   return (...args) => functionToCall(twJoin(...args));
 };
 const fallbackThemeArr = [];
-const fromTheme = (key) => {
-  const themeGetter = (theme) => theme[key] || fallbackThemeArr;
+const fromTheme = (key2) => {
+  const themeGetter = (theme) => theme[key2] || fallbackThemeArr;
   themeGetter.isThemeGetter = true;
   return themeGetter;
 };
@@ -16717,7 +17243,8 @@ function useSlideDismissBack({
   edgeBottomInsetPx = 80,
   edgeTopInsetPx = 0,
   panelSwipeDismiss = false,
-  dismissGesture = "app"
+  dismissGesture = "app",
+  animateOnMount = false
 }) {
   const dismissProfile = dismissGesture;
   const dismissRtl = dismissProfile === "chat" ? true : isDocumentRtl();
@@ -16916,6 +17443,31 @@ function useSlideDismissBack({
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+  const mountEnterDoneRef = reactExports.useRef(false);
+  reactExports.useLayoutEffect(() => {
+    if (!animateOnMount || embedInStack || !enabled) return;
+    if (mountEnterDoneRef.current) return;
+    mountEnterDoneRef.current = true;
+    const w = Math.max(260, widthRef.current);
+    const startTx = dismissRtl ? w : -w;
+    cancelScheduledTx();
+    liveTxRef.current = startTx;
+    setSlideSpring(false);
+    setSlideTx(startTx);
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        setSlideSpring(true);
+        setSlideTx(0);
+        liveTxRef.current = 0;
+        window.setTimeout(() => setSlideSpring(false), SLIDE_DISMISS_MS);
+      });
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      if (raf2) cancelAnimationFrame(raf2);
+    };
+  }, [animateOnMount, embedInStack, enabled, dismissRtl, cancelScheduledTx]);
   reactExports.useLayoutEffect(() => {
     if (embedInStack) return;
     const w = Math.max(260, widthRef.current);
@@ -17342,7 +17894,8 @@ function AppDismissSheet({
   darkPanelChrome,
   enabled = true,
   blocked = false,
-  edgeBottomInsetPx
+  edgeBottomInsetPx,
+  animateOnMount = false
 }) {
   const pullVar = dismissPullCssVar ?? (panelSwipeDismiss ? GENERIC_DISMISS_PULL_CSS_VAR : void 0);
   const isDarkChrome = darkPanelChrome ?? (contentClassName ?? "").includes("bg-black");
@@ -17352,7 +17905,8 @@ function AppDismissSheet({
     blocked,
     dismissPullCssVar: pullVar,
     panelSwipeDismiss,
-    edgeBottomInsetPx
+    edgeBottomInsetPx,
+    animateOnMount
   });
   const panelTouchStyle = panelSwipeProps.style;
   const panelPointerHandlers = panelSwipeProps.onPointerDown ? {
@@ -17490,6 +18044,7 @@ const KeepAlivePanel = reactExports.memo(function KeepAlivePanel2({
         transform: `translate3d(${offset}%, 0, 0)`,
         transition: animate && isSettled ? `transform ${TAB_TRANSITION_MS}ms ${TAB_EASE}` : "none",
         visibility: showPanel ? "visible" : "hidden",
+        contentVisibility: isSettled ? "visible" : "hidden",
         pointerEvents: isSettled && !isDragging ? "auto" : "none",
         zIndex: isSettled ? 10 : isDragging && near ? 5 : 0
       },
@@ -17878,21 +18433,21 @@ function txDone(tx) {
     tx.onabort = () => reject(tx.error);
   });
 }
-async function idbGet(store2, key) {
+async function idbGet(store2, key2) {
   const db = await openDb();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(store2, "readonly");
-    const req = tx.objectStore(store2).get(key);
+    const req = tx.objectStore(store2).get(key2);
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
 }
-async function idbPut(store2, key, value2) {
+async function idbPut(store2, key2, value2) {
   const db = await openDb();
   const tx = db.transaction(store2, "readwrite");
   const os = tx.objectStore(store2);
   if (store2 === META) os.put(value2);
-  else os.put(value2, key);
+  else os.put(value2, key2);
   await txDone(tx);
 }
 async function listMeta() {
@@ -19361,6 +19916,45 @@ function AppOfficialVerifiedBadge({
     }
   );
 }
+function SupportOfficialVerifiedBadge({
+  size = 16,
+  className = "",
+  title = "حساب الدعم الرسمي — موثّق"
+}) {
+  const uid2 = reactExports.useId().replace(/:/g, "");
+  const g = `support-official-g-${uid2}`;
+  const seal = "M12 1.8 L14.9 3.1 L17.8 2.4 L19.1 5.3 L22 6.6 L21.3 9.5 L23.2 12 L21.3 14.5 L22 17.4 L19.1 18.7 L17.8 21.6 L14.9 20.9 L12 22.2 L9.1 20.9 L6.2 21.6 L4.9 18.7 L2 17.4 L2.7 14.5 L0.8 12 L2.7 9.5 L2 6.6 L4.9 5.3 L6.2 2.4 L9.1 3.1 Z";
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "svg",
+    {
+      width: size,
+      height: size,
+      viewBox: "0 0 24 24",
+      className: "shrink-0 inline-block align-middle drop-shadow-sm " + className,
+      role: "img",
+      "aria-label": title,
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("defs", { children: /* @__PURE__ */ jsxRuntimeExports.jsxs("linearGradient", { id: g, x1: "2", y1: "2", x2: "22", y2: "22", gradientUnits: "userSpaceOnUse", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("stop", { offset: "0%", stopColor: "#6EE7B7" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("stop", { offset: "45%", stopColor: "#10B981" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("stop", { offset: "100%", stopColor: "#047857" })
+        ] }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("path", { d: seal, fill: `url(#${g})`, stroke: "#064E3B", strokeWidth: "0.35" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "path",
+          {
+            d: "M8.1 12.15 L10.85 14.75 L15.95 9.25",
+            fill: "none",
+            stroke: "#ECFDF5",
+            strokeWidth: "2.15",
+            strokeLinecap: "round",
+            strokeLinejoin: "round"
+          }
+        )
+      ]
+    }
+  );
+}
 function VerifiedMarkForUser({
   user,
   size = 16,
@@ -19371,6 +19965,9 @@ function VerifiedMarkForUser({
   }
   if (user.appOfficialVerified) {
     return /* @__PURE__ */ jsxRuntimeExports.jsx(AppOfficialVerifiedBadge, { size, className, title: "حساب التطبيق الرسمي" });
+  }
+  if (user.supportOfficialVerified) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(SupportOfficialVerifiedBadge, { size, className, title: "حساب الدعم الرسمي — موثّق" });
   }
   if (!isVerifiedBadgeActive(user)) return null;
   const color = user.verificationBadgeColor === "pink" ? "pink" : "blue";
@@ -19402,7 +19999,7 @@ function CameraCaptureShareScreen({
   const ar = language === "ar";
   const { state, currentUser, addStory, openOrCreateChat, sendMessage, isGuest } = useApp();
   const me = currentUser;
-  const [screen, setScreen] = reactExports.useState("preview");
+  const [screen2, setScreen] = reactExports.useState("preview");
   const [caption, setCaption] = reactExports.useState("");
   const [shareTarget, setShareTarget] = reactExports.useState("all");
   const [search, setSearch] = reactExports.useState("");
@@ -19761,8 +20358,8 @@ function CameraCaptureShareScreen({
   ] });
   const body = /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "fixed inset-0 z-[425] mx-auto max-w-md bg-black", role: "dialog", "aria-modal": "true", children: [
     previewLayer,
-    screen === "share" && shareSheet,
-    screen === "message" && messageScreen
+    screen2 === "share" && shareSheet,
+    screen2 === "message" && messageScreen
   ] });
   return reactDomExports.createPortal(body, document.body);
 }
@@ -19820,7 +20417,7 @@ function clearRetweetLocalSession() {
     }
   } catch {
   }
-  void import("./remotePushGate-Bzct81oc.js").then((m) => m.resetServerHydrated());
+  void import("./remotePushGate-DaTPuI7n.js").then((m) => m.resetServerHydrated());
 }
 const uiErrorMessage = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
   __proto__: null,
@@ -19977,6 +20574,8 @@ const dict = {
     story: "ستوري",
     follow: "متابعة",
     following: "متابَع",
+    followingDone: "تمت المتابعة",
+    mutualFriends: "أصدقاء",
     followBack: "رد المتابعة",
     followers: "متابعون",
     followsCount: "يتابع",
@@ -20154,6 +20753,8 @@ const dict = {
     story: "Story",
     follow: "Follow",
     following: "Following",
+    followingDone: "Following",
+    mutualFriends: "Friends",
     followBack: "Follow back",
     followers: "Followers",
     followsCount: "Following",
@@ -20560,14 +21161,14 @@ function MentionPill({
 }
 function createMentionRenderer(opts) {
   const variant = opts.variant ?? "default";
-  return (username, key) => {
+  return (username, key2) => {
     const u = opts.users?.find((x) => x.username.toLowerCase() === username.toLowerCase());
     const onClick = opts.onUserClick || opts.onUsernameClick ? (e) => {
       e.stopPropagation();
       if (u && opts.onUserClick) opts.onUserClick(u.id);
       else opts.onUsernameClick?.(username);
     } : void 0;
-    return /* @__PURE__ */ jsxRuntimeExports.jsx(MentionPill, { username, variant, onClick }, key);
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(MentionPill, { username, variant, onClick }, key2);
   };
 }
 function renderMentionHashtagNodes(raw, opts) {
@@ -20589,8 +21190,8 @@ function renderMentionHashtagNodes(raw, opts) {
 function renderComposerMentionOverlay(text, variant = "composer") {
   if (!text) return [];
   return renderMentionHashtagNodes(text, {
-    renderMention: (uname, key) => /* @__PURE__ */ jsxRuntimeExports.jsx(MentionPill, { username: uname, variant }, key),
-    renderHashtag: (h, key) => /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-inherit", children: h }, key)
+    renderMention: (uname, key2) => /* @__PURE__ */ jsxRuntimeExports.jsx(MentionPill, { username: uname, variant }, key2),
+    renderHashtag: (h, key2) => /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-inherit", children: h }, key2)
   });
 }
 const RS_ACCENT = "#5AC8D8";
@@ -21174,7 +21775,7 @@ function PostCardInner({
         users: state.users,
         onUserClick: (userId) => reactExports.startTransition(() => openAuthorProfile(userId))
       }),
-      renderHashtag: (h, key) => /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-primary", children: h }, key)
+      renderHashtag: (h, key2) => /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-primary", children: h }, key2)
     });
   }, [post.text, state.users]);
   const notesOverlay = feedNotes.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "pointer-events-none absolute inset-x-0 top-0 z-10 flex gap-2 overflow-x-auto bg-gradient-to-b from-black/55 via-black/25 to-transparent px-2.5 pb-8 pt-2.5", children: feedNotes.map((n) => {
@@ -21348,6 +21949,36 @@ const HomeFeedPostItem = reactExports.memo(
   },
   (prev, next) => postFeedSignature(prev.post) === postFeedSignature(next.post)
 );
+const AUTH_FEED_REFRESH_EVENT = "retweet-auth-feed-refresh";
+function requestAuthFeedRefresh() {
+  if (typeof window === "undefined") return;
+  try {
+    window.dispatchEvent(new Event(AUTH_FEED_REFRESH_EVENT));
+  } catch {
+  }
+}
+function canViewPostInHomeFeed(state, meId, post, me) {
+  if (!post?.id) return false;
+  const viewer = me ?? state.users.find((u) => u.id === meId);
+  if (!viewer) return false;
+  const author = state.users.find((u) => u.id === post.userId);
+  if (!author) return true;
+  const authorBlocked = author.blocked ?? [];
+  const myBlocked = viewer.blocked ?? [];
+  if (authorBlocked.includes(meId)) return false;
+  if (myBlocked.includes(author.id)) return false;
+  if (author.isPrivate !== true || post.userId === meId) return true;
+  if ((author.followers ?? []).includes(meId)) return true;
+  if ((viewer.following ?? []).includes(author.id)) return true;
+  if (!author.followers?.length && !viewer.following?.length) return true;
+  return false;
+}
+const feedVisibility = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+  __proto__: null,
+  AUTH_FEED_REFRESH_EVENT,
+  canViewPostInHomeFeed,
+  requestAuthFeedRefresh
+}, Symbol.toStringTag, { value: "Module" }));
 function authorHasUnseenStories(state, viewerId, authorId) {
   const stories = storiesForUser(state, authorId, viewerId);
   if (stories.length === 0) return false;
@@ -21599,7 +22230,7 @@ function PostDetail({ post: postProp, onBack, onOpenProfile, onOpenChat, profile
         users: state.users,
         onUserClick: (userId) => reactExports.startTransition(() => onOpenProfile(userId, returnCtx(false)))
       }),
-      renderHashtag: (h, key) => /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-primary", children: h }, key)
+      renderHashtag: (h, key2) => /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-primary", children: h }, key2)
     });
   }, [post.text, state.users, onOpenProfile, returnCtx]);
   if (!author) return null;
@@ -23566,7 +24197,17 @@ function HomeScreen({
   restoreFromProfileContext = null,
   onConsumedRestoreFromProfile
 }) {
-  const { state, currentUser, addComment, deleteComment, isGuest } = useApp();
+  const {
+    state,
+    currentUser,
+    addComment,
+    deleteComment,
+    isGuest,
+    refreshFromServer,
+    refreshFeedFromServer,
+    refreshUserDirectory
+  } = useApp();
+  const isHomeTabActive = useIsTabActive("home");
   const t = useT();
   const [shareTarget, setShareTarget] = reactExports.useState(null);
   const [storyOpen, setStoryOpen] = reactExports.useState(null);
@@ -23648,6 +24289,7 @@ function HomeScreen({
       if (scrollTop() <= 2 && dy > 72) {
         setFeedTick((t2) => t2 + 1);
         setPullHint(true);
+        void refreshFeedFromServer();
         window.setTimeout(() => setPullHint(false), 1400);
       }
     };
@@ -23657,7 +24299,7 @@ function HomeScreen({
       window.removeEventListener("touchstart", onStart);
       window.removeEventListener("touchend", onEnd);
     };
-  }, [tabScrollRef]);
+  }, [tabScrollRef, refreshFeedFromServer]);
   const storyFriends = reactExports.useMemo(
     () => visibleStoryFriendsUserIds(state, me.id),
     [state.stories, state.users, me.id, me.following, feedTick]
@@ -23684,22 +24326,35 @@ function HomeScreen({
     }),
     [onOpenProfile, onOpenChat, openPostById, openCommentsById]
   );
+  reactExports.useEffect(() => {
+    if (!isHomeTabActive || isGuest) return;
+    void refreshFeedFromServer();
+    refreshFromServer({ urgent: true });
+  }, [isHomeTabActive, isGuest, refreshFromServer, refreshFeedFromServer]);
+  reactExports.useEffect(() => {
+    if (!isHomeTabActive || isGuest) return;
+    const tick = () => {
+      if (document.visibilityState !== "visible") return;
+      void refreshFeedFromServer();
+    };
+    const id = window.setInterval(tick, 2e4);
+    const onVis = () => {
+      if (document.visibilityState === "visible") void refreshFeedFromServer();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [isHomeTabActive, isGuest, refreshFeedFromServer]);
   const feed = reactExports.useMemo(() => {
     const seen = /* @__PURE__ */ new Set();
     return (state.posts ?? []).filter((p) => {
       if (!p?.id || seen.has(p.id) || isReelFeedPost(p)) return false;
       seen.add(p.id);
-      const author = userById(state, p.userId);
-      if (!author) return true;
-      const authorBlocked = author.blocked ?? [];
-      const myBlocked = me.blocked ?? [];
-      const authorFollowers = author.followers ?? [];
-      if (authorBlocked.includes(me.id)) return false;
-      if (myBlocked.includes(author.id)) return false;
-      if (author.isPrivate && p.userId !== me.id && !authorFollowers.includes(me.id)) return false;
-      return true;
+      return canViewPostInHomeFeed(state, me.id, p, me);
     }).sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
-  }, [state.posts, state.users, me.id, me.blocked, feedTick]);
+  }, [state.posts, state.users, me, feedTick]);
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative flex min-h-0 flex-1 flex-col bg-background", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs(
       "div",
@@ -24417,6 +25072,11 @@ function ReelsScreen({
   }, [state.posts, state.users, me.id, me.blocked]);
   const reels = tab === "friends" ? allReels.filter((p) => me.following.includes(p.userId)) : allReels;
   const reelIdSetKey = reactExports.useMemo(() => reels.map((r2) => r2.id).sort().join("|"), [reels]);
+  const activeReelIdx = reactExports.useMemo(() => {
+    if (!activeReelId || reels.length === 0) return 0;
+    const i = reels.findIndex((r2) => r2.id === activeReelId);
+    return i >= 0 ? i : 0;
+  }, [reels, activeReelId]);
   reactExports.useLayoutEffect(() => {
     if (!isTabActive) return;
     const el = scrollRef.current;
@@ -24434,7 +25094,7 @@ function ReelsScreen({
       ro.disconnect();
       window.removeEventListener("resize", measure);
     };
-  }, [isTabActive, tab, reelPullHint, reelIdSetKey]);
+  }, [isTabActive, tab, reelIdSetKey]);
   reactExports.useEffect(() => {
     const first = reels[0]?.id ?? null;
     if (!first) {
@@ -24624,8 +25284,19 @@ function ReelsScreen({
               children: t("noReels")
             }
           ),
-          reels.map((r2) => {
-            const slideH = slideHeightPx > 0 ? slideHeightPx : 0;
+          reels.map((r2, idx) => {
+            const slideH = slideHeightPx > 0 ? slideHeightPx : REEL_SLIDE_HEIGHT_FALLBACK;
+            if (Math.abs(idx - activeReelIdx) > 1) {
+              return /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "div",
+                {
+                  className: "reels-snap-slide w-full shrink-0 snap-start snap-always",
+                  style: { height: slideH, minHeight: slideH },
+                  "aria-hidden": true
+                },
+                r2.id
+              );
+            }
             const u = userById(state, r2.userId);
             const friendReposterId = (r2.reposts || []).find(
               (uid2) => uid2 !== me.id && me.following.includes(uid2)
@@ -25551,7 +26222,7 @@ function ChatDmIntroCard({ other, meId, state, onOpenProfile, isQuran, hasMessag
     mutualUsers.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4 flex max-w-full flex-col items-center gap-2", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex items-center justify-center -space-x-2 rtl:space-x-reverse", children: mutualUsers.slice(0, 3).map((u) => /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u.username, src: u.avatar, size: 28 }, u.id)) }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm " + muted, children: mutualUsers.length === 1 ? `صديق مشترك · @${mutualUsers[0].username}` : `${formatCompactCount(mutualUsers.length)} أصدقاء مشتركون` })
-    ] }) : followingEachOther ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-4 text-sm " + muted, children: "أنتم تتابعان بعضكم" }) : state.users.find((u) => u.id === meId)?.following.includes(other.id) ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-4 text-sm " + muted, children: "أنت تتابعه" }) : other.followers.includes(meId) ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-4 text-sm " + muted, children: "يتابعك" }) : null,
+    ] }) : followingEachOther ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-4 text-sm " + muted, children: "أنتم تتابعان بعضكم" }) : userIsFollowing(state, meId, other.id) ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-4 text-sm " + muted, children: "أنت تتابعه" }) : theyFollowViewer(state, meId, other.id) ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-4 text-sm " + muted, children: "يتابعك" }) : null,
     other.bio?.trim() ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-3 max-w-sm text-sm leading-relaxed line-clamp-2 " + muted, children: other.bio.trim() }) : null,
     !hideStartConversationHint && !hasMessages ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-3 text-xs " + muted, children: "أرسل رسالة لبدء المحادثة" }) : null
   ] });
@@ -26376,18 +27047,18 @@ function ChatSharedFeedOverlay({
   onClose
 }) {
   const scrollKeyRef = reactExports.useRef("");
-  const key = reactExports.useMemo(() => items.map((i) => i.messageId).join("|") + "#" + initialIndex, [items, initialIndex]);
+  const key2 = reactExports.useMemo(() => items.map((i) => i.messageId).join("|") + "#" + initialIndex, [items, initialIndex]);
   reactExports.useLayoutEffect(() => {
     if (items.length === 0) return;
-    if (scrollKeyRef.current === key) return;
-    scrollKeyRef.current = key;
+    if (scrollKeyRef.current === key2) return;
+    scrollKeyRef.current = key2;
     const safe = Math.min(Math.max(0, initialIndex), items.length - 1);
     const id = items[safe]?.messageId;
     if (!id) return;
     requestAnimationFrame(() => {
       document.getElementById(`chat-share-section-${id}`)?.scrollIntoView({ block: "start", behavior: "auto" });
     });
-  }, [items, initialIndex, key]);
+  }, [items, initialIndex, key2]);
   reactExports.useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -26861,7 +27532,7 @@ function ChatSwipeMessageRowInner({
     "div",
     {
       "data-mine": mine ? "1" : "0",
-      className: "chat-msg-row w-full touch-manipulation select-none",
+      className: "chat-msg-row chat-msg-enter w-full touch-manipulation select-none",
       style: {
         direction: "ltr",
         display: "flex",
@@ -26978,11 +27649,1516 @@ function ChatListOutgoingStatusIcon({ status }) {
   }
   return /* @__PURE__ */ jsxRuntimeExports.jsx(CheckCheck, { size: 12, className: "shrink-0 text-muted-foreground/70", strokeWidth: 2.25, "aria-hidden": true });
 }
+function createLazyMeasurementsView(count2, flat, getItemKey) {
+  const cache2 = new Array(count2);
+  return new Proxy(cache2, {
+    get(target, prop, receiver) {
+      if (typeof prop === "string") {
+        const c = prop.charCodeAt(0);
+        if (c >= 48 && c <= 57) {
+          const i = +prop;
+          if (Number.isInteger(i) && i >= 0 && i < count2) {
+            let v = target[i];
+            if (!v) {
+              const s = flat[i * 2];
+              v = target[i] = {
+                index: i,
+                key: getItemKey(i),
+                start: s,
+                size: flat[i * 2 + 1],
+                end: s + flat[i * 2 + 1],
+                lane: 0
+              };
+            }
+            return v;
+          }
+        }
+        if (prop === "length") return count2;
+      }
+      return Reflect.get(target, prop, receiver);
+    }
+  });
+}
+function memo(getDeps, fn, opts) {
+  let deps = opts.initialDeps ?? [];
+  let result;
+  let isInitial = true;
+  function memoizedFunction() {
+    const newDeps = getDeps();
+    const depsChanged = newDeps.length !== deps.length || newDeps.some((dep, index2) => deps[index2] !== dep);
+    if (!depsChanged) {
+      return result;
+    }
+    deps = newDeps;
+    result = fn(...newDeps);
+    if ((opts == null ? void 0 : opts.onChange) && !(isInitial && opts.skipInitialOnChange)) {
+      opts.onChange(result);
+    }
+    isInitial = false;
+    return result;
+  }
+  memoizedFunction.updateDeps = (newDeps) => {
+    deps = newDeps;
+  };
+  return memoizedFunction;
+}
+function notUndefined(value2, msg) {
+  if (value2 === void 0) {
+    throw new Error(`Unexpected undefined${""}`);
+  } else {
+    return value2;
+  }
+}
+const approxEqual = (a, b) => Math.abs(a - b) < 1.01;
+const debounce = (targetWindow, fn, ms) => {
+  let timeoutId;
+  return function(...args) {
+    targetWindow.clearTimeout(timeoutId);
+    timeoutId = targetWindow.setTimeout(() => fn.apply(this, args), ms);
+  };
+};
+let _isIOSResult;
+const isIOSWebKit = () => {
+  if (_isIOSResult !== void 0) return _isIOSResult;
+  if (typeof navigator === "undefined") return _isIOSResult = false;
+  if (/iP(hone|od|ad)/.test(navigator.userAgent)) return _isIOSResult = true;
+  const mtp = navigator.maxTouchPoints;
+  return _isIOSResult = navigator.platform === "MacIntel" && mtp !== void 0 && mtp > 0;
+};
+const getRect = (element) => {
+  const { offsetWidth, offsetHeight } = element;
+  return { width: offsetWidth, height: offsetHeight };
+};
+const defaultKeyExtractor = (index2) => index2;
+const defaultRangeExtractor = (range) => {
+  const start = Math.max(range.startIndex - range.overscan, 0);
+  const end = Math.min(range.endIndex + range.overscan, range.count - 1);
+  const len = end - start + 1;
+  const arr = new Array(len);
+  for (let i = 0; i < len; i++) {
+    arr[i] = start + i;
+  }
+  return arr;
+};
+const observeElementRect = (instance, cb) => {
+  const element = instance.scrollElement;
+  if (!element) {
+    return;
+  }
+  const targetWindow = instance.targetWindow;
+  if (!targetWindow) {
+    return;
+  }
+  const handler = (rect) => {
+    const { width, height } = rect;
+    cb({ width: Math.round(width), height: Math.round(height) });
+  };
+  handler(getRect(element));
+  if (!targetWindow.ResizeObserver) {
+    return () => {
+    };
+  }
+  const observer = new targetWindow.ResizeObserver((entries) => {
+    const run = () => {
+      const entry = entries[0];
+      if (entry == null ? void 0 : entry.borderBoxSize) {
+        const box = entry.borderBoxSize[0];
+        if (box) {
+          handler({ width: box.inlineSize, height: box.blockSize });
+          return;
+        }
+      }
+      handler(getRect(element));
+    };
+    instance.options.useAnimationFrameWithResizeObserver ? requestAnimationFrame(run) : run();
+  });
+  observer.observe(element, { box: "border-box" });
+  return () => {
+    observer.unobserve(element);
+  };
+};
+const addEventListenerOptions = {
+  passive: true
+};
+const supportsScrollend = typeof window == "undefined" ? true : "onscrollend" in window;
+const observeOffset = (instance, cb, readOffset) => {
+  const element = instance.scrollElement;
+  if (!element) {
+    return;
+  }
+  const targetWindow = instance.targetWindow;
+  if (!targetWindow) {
+    return;
+  }
+  const registerScrollendEvent = instance.options.useScrollendEvent && supportsScrollend;
+  let offset = 0;
+  const fallback = registerScrollendEvent ? null : debounce(
+    targetWindow,
+    () => cb(offset, false),
+    instance.options.isScrollingResetDelay
+  );
+  const createHandler = (isScrolling) => () => {
+    offset = readOffset(element);
+    fallback == null ? void 0 : fallback();
+    cb(offset, isScrolling);
+  };
+  const handler = createHandler(true);
+  const endHandler = createHandler(false);
+  element.addEventListener("scroll", handler, addEventListenerOptions);
+  if (registerScrollendEvent) {
+    element.addEventListener("scrollend", endHandler, addEventListenerOptions);
+  }
+  return () => {
+    element.removeEventListener("scroll", handler);
+    if (registerScrollendEvent) {
+      element.removeEventListener("scrollend", endHandler);
+    }
+  };
+};
+const observeElementOffset = (instance, cb) => observeOffset(instance, cb, (el) => {
+  const { horizontal, isRtl } = instance.options;
+  return horizontal ? el.scrollLeft * (isRtl && -1 || 1) : el.scrollTop;
+});
+const measureElement = (element, entry, instance) => {
+  if (entry == null ? void 0 : entry.borderBoxSize) {
+    const box = entry.borderBoxSize[0];
+    if (box) {
+      const size = Math.round(
+        box[instance.options.horizontal ? "inlineSize" : "blockSize"]
+      );
+      return size;
+    }
+  }
+  return element[instance.options.horizontal ? "offsetWidth" : "offsetHeight"];
+};
+const scrollWithAdjustments = (offset, {
+  adjustments = 0,
+  behavior
+}, instance) => {
+  var _a, _b;
+  (_b = (_a = instance.scrollElement) == null ? void 0 : _a.scrollTo) == null ? void 0 : _b.call(_a, {
+    [instance.options.horizontal ? "left" : "top"]: offset + adjustments,
+    behavior
+  });
+};
+const elementScroll = scrollWithAdjustments;
+class Virtualizer {
+  constructor(opts) {
+    this.unsubs = [];
+    this.scrollElement = null;
+    this.targetWindow = null;
+    this.isScrolling = false;
+    this.scrollState = null;
+    this.measurementsCache = [];
+    this._flatMeasurements = null;
+    this.itemSizeCache = /* @__PURE__ */ new Map();
+    this.itemSizeCacheVersion = 0;
+    this.laneAssignments = /* @__PURE__ */ new Map();
+    this.pendingMin = null;
+    this.prevLanes = void 0;
+    this.lanesChangedFlag = false;
+    this.lanesSettling = false;
+    this.pendingScrollAnchor = null;
+    this.scrollRect = null;
+    this.scrollOffset = null;
+    this.scrollDirection = null;
+    this.scrollAdjustments = 0;
+    this._iosDeferredAdjustment = 0;
+    this._iosTouching = false;
+    this._iosJustTouchEnded = false;
+    this._iosTouchEndTimerId = null;
+    this._intendedScrollOffset = null;
+    this.elementsCache = /* @__PURE__ */ new Map();
+    this.now = () => {
+      var _a, _b, _c;
+      return ((_c = (_b = (_a = this.targetWindow) == null ? void 0 : _a.performance) == null ? void 0 : _b.now) == null ? void 0 : _c.call(_b)) ?? Date.now();
+    };
+    this.observer = /* @__PURE__ */ (() => {
+      let _ro = null;
+      const get = () => {
+        if (_ro) {
+          return _ro;
+        }
+        if (!this.targetWindow || !this.targetWindow.ResizeObserver) {
+          return null;
+        }
+        return _ro = new this.targetWindow.ResizeObserver((entries) => {
+          entries.forEach((entry) => {
+            const run = () => {
+              const node = entry.target;
+              const index2 = this.indexFromElement(node);
+              if (!node.isConnected) {
+                this.observer.unobserve(node);
+                for (const [cacheKey2, cachedNode] of this.elementsCache) {
+                  if (cachedNode === node) {
+                    this.elementsCache.delete(cacheKey2);
+                    break;
+                  }
+                }
+                return;
+              }
+              if (this.shouldMeasureDuringScroll(index2)) {
+                this.resizeItem(
+                  index2,
+                  this.options.measureElement(node, entry, this)
+                );
+              }
+            };
+            this.options.useAnimationFrameWithResizeObserver ? requestAnimationFrame(run) : run();
+          });
+        });
+      };
+      return {
+        disconnect: () => {
+          var _a;
+          (_a = get()) == null ? void 0 : _a.disconnect();
+          _ro = null;
+        },
+        observe: (target) => {
+          var _a;
+          return (_a = get()) == null ? void 0 : _a.observe(target, { box: "border-box" });
+        },
+        unobserve: (target) => {
+          var _a;
+          return (_a = get()) == null ? void 0 : _a.unobserve(target);
+        }
+      };
+    })();
+    this.range = null;
+    this.setOptions = (opts2) => {
+      var _a, _b;
+      const merged = {
+        debug: false,
+        initialOffset: 0,
+        overscan: 1,
+        paddingStart: 0,
+        paddingEnd: 0,
+        scrollPaddingStart: 0,
+        scrollPaddingEnd: 0,
+        horizontal: false,
+        getItemKey: defaultKeyExtractor,
+        rangeExtractor: defaultRangeExtractor,
+        onChange: () => {
+        },
+        measureElement,
+        initialRect: { width: 0, height: 0 },
+        scrollMargin: 0,
+        gap: 0,
+        indexAttribute: "data-index",
+        initialMeasurementsCache: [],
+        lanes: 1,
+        anchorTo: "start",
+        followOnAppend: false,
+        scrollEndThreshold: 1,
+        isScrollingResetDelay: 150,
+        enabled: true,
+        isRtl: false,
+        useScrollendEvent: false,
+        useAnimationFrameWithResizeObserver: false,
+        laneAssignmentMode: "estimate"
+      };
+      for (const key2 in opts2) {
+        const v = opts2[key2];
+        if (v !== void 0) merged[key2] = v;
+      }
+      const prevOptions = this.options;
+      let anchor = null;
+      let followOnAppend = null;
+      if (prevOptions !== void 0 && prevOptions.enabled && merged.enabled && merged.anchorTo === "end" && this.scrollElement !== null) {
+        const prevCount = prevOptions.count;
+        const nextCount = merged.count;
+        const measurements = this.getMeasurements();
+        const prevFirstKey = prevCount > 0 ? ((_a = measurements[0]) == null ? void 0 : _a.key) ?? prevOptions.getItemKey(0) : null;
+        const prevLastKey = prevCount > 0 ? ((_b = measurements[prevCount - 1]) == null ? void 0 : _b.key) ?? prevOptions.getItemKey(prevCount - 1) : null;
+        const didCountChange = nextCount !== prevCount;
+        const didEdgeKeysChange = didCountChange || prevCount > 0 && nextCount > 0 && (merged.getItemKey(0) !== prevFirstKey || merged.getItemKey(nextCount - 1) !== prevLastKey);
+        if (didEdgeKeysChange) {
+          const item = prevCount > 0 ? this.getVirtualItemForOffset(this.getScrollOffset()) ?? measurements[0] : null;
+          if (item) {
+            anchor = [item.key, this.getScrollOffset() - item.start];
+          }
+          const behavior = merged.followOnAppend === true ? "auto" : merged.followOnAppend || null;
+          if (behavior && nextCount > prevCount && this.isAtEnd(prevOptions.scrollEndThreshold) && (prevCount === 0 || merged.getItemKey(nextCount - 1) !== prevLastKey)) {
+            followOnAppend = behavior;
+          }
+        }
+      }
+      this.options = merged;
+      if (anchor || followOnAppend) {
+        this.pendingScrollAnchor = [
+          (anchor == null ? void 0 : anchor[0]) ?? null,
+          (anchor == null ? void 0 : anchor[1]) ?? 0,
+          followOnAppend
+        ];
+      }
+    };
+    this.notify = (sync) => {
+      var _a, _b;
+      (_b = (_a = this.options).onChange) == null ? void 0 : _b.call(_a, this, sync);
+    };
+    this.maybeNotify = memo(
+      () => {
+        this.calculateRange();
+        return [
+          this.isScrolling,
+          this.range ? this.range.startIndex : null,
+          this.range ? this.range.endIndex : null
+        ];
+      },
+      (isScrolling) => {
+        this.notify(isScrolling);
+      },
+      {
+        key: false,
+        debug: () => this.options.debug,
+        initialDeps: [
+          this.isScrolling,
+          this.range ? this.range.startIndex : null,
+          this.range ? this.range.endIndex : null
+        ]
+      }
+    );
+    this.cleanup = () => {
+      this.unsubs.filter(Boolean).forEach((d) => d());
+      this.unsubs = [];
+      this.observer.disconnect();
+      if (this.rafId != null && this.targetWindow) {
+        this.targetWindow.cancelAnimationFrame(this.rafId);
+        this.rafId = null;
+      }
+      this.scrollState = null;
+      this.scrollElement = null;
+      this.targetWindow = null;
+    };
+    this._didMount = () => {
+      return () => {
+        this.cleanup();
+      };
+    };
+    this._willUpdate = () => {
+      var _a;
+      const scrollElement = this.options.enabled ? this.options.getScrollElement() : null;
+      if (this.scrollElement !== scrollElement) {
+        this.cleanup();
+        if (!scrollElement) {
+          this.maybeNotify();
+          return;
+        }
+        this.scrollElement = scrollElement;
+        if (this.scrollElement && "ownerDocument" in this.scrollElement) {
+          this.targetWindow = this.scrollElement.ownerDocument.defaultView;
+        } else {
+          this.targetWindow = ((_a = this.scrollElement) == null ? void 0 : _a.window) ?? null;
+        }
+        this.elementsCache.forEach((cached2) => {
+          this.observer.observe(cached2);
+        });
+        this.unsubs.push(
+          this.options.observeElementRect(this, (rect) => {
+            this.scrollRect = rect;
+            this.maybeNotify();
+          })
+        );
+        this.unsubs.push(
+          this.options.observeElementOffset(this, (offset, isScrolling) => {
+            if (this._intendedScrollOffset !== null && Math.abs(offset - this._intendedScrollOffset) < 1.5) {
+              offset = this._intendedScrollOffset;
+            }
+            this._intendedScrollOffset = null;
+            this.scrollAdjustments = 0;
+            this.scrollDirection = isScrolling ? this.getScrollOffset() < offset ? "forward" : "backward" : null;
+            this.scrollOffset = offset;
+            this.isScrolling = isScrolling;
+            this._flushIosDeferredIfReady();
+            if (this.scrollState) {
+              this.scheduleScrollReconcile();
+            }
+            this.maybeNotify();
+          })
+        );
+        if ("addEventListener" in this.scrollElement) {
+          const scrollEl = this.scrollElement;
+          const onTouchStart = () => {
+            this._iosTouching = true;
+            this._iosJustTouchEnded = false;
+            if (this._iosTouchEndTimerId !== null && this.targetWindow != null) {
+              this.targetWindow.clearTimeout(this._iosTouchEndTimerId);
+              this._iosTouchEndTimerId = null;
+            }
+          };
+          const onTouchEnd = () => {
+            this._iosTouching = false;
+            if (!isIOSWebKit() || this.targetWindow == null) {
+              return;
+            }
+            this._iosJustTouchEnded = true;
+            this._iosTouchEndTimerId = this.targetWindow.setTimeout(() => {
+              this._iosJustTouchEnded = false;
+              this._iosTouchEndTimerId = null;
+              this._flushIosDeferredIfReady();
+            }, 150);
+          };
+          scrollEl.addEventListener(
+            "touchstart",
+            onTouchStart,
+            addEventListenerOptions
+          );
+          scrollEl.addEventListener(
+            "touchend",
+            onTouchEnd,
+            addEventListenerOptions
+          );
+          this.unsubs.push(() => {
+            scrollEl.removeEventListener("touchstart", onTouchStart);
+            scrollEl.removeEventListener("touchend", onTouchEnd);
+            if (this._iosTouchEndTimerId !== null && this.targetWindow != null) {
+              this.targetWindow.clearTimeout(this._iosTouchEndTimerId);
+              this._iosTouchEndTimerId = null;
+            }
+          });
+        }
+        this._scrollToOffset(this.getScrollOffset(), {
+          adjustments: void 0,
+          behavior: void 0
+        });
+      }
+      const anchor = this.pendingScrollAnchor;
+      this.pendingScrollAnchor = null;
+      if (anchor && this.scrollElement && this.options.enabled) {
+        const [key2, offset, followOnAppend] = anchor;
+        if (key2 !== null) {
+          const { count: count2, getItemKey } = this.options;
+          let index2 = 0;
+          while (index2 < count2 && getItemKey(index2) !== key2) {
+            index2++;
+          }
+          const item = index2 < count2 ? this.getMeasurements()[index2] : void 0;
+          if (item) {
+            const delta = item.start + offset - this.getScrollOffset();
+            if (!approxEqual(delta, 0)) {
+              this.applyScrollAdjustment(delta);
+            }
+          }
+        }
+        if (followOnAppend) {
+          this.scrollToEnd({ behavior: followOnAppend });
+        }
+      }
+    };
+    this._flushIosDeferredIfReady = () => {
+      if (this._iosDeferredAdjustment === 0) return;
+      if (this.isScrolling) return;
+      if (this._iosTouching) return;
+      if (this._iosJustTouchEnded) return;
+      const cur = this.getScrollOffset();
+      const max = this.getMaxScrollOffset();
+      if (cur < 0 || cur > max) return;
+      const delta = this._iosDeferredAdjustment;
+      this._iosDeferredAdjustment = 0;
+      this._scrollToOffset(cur, {
+        adjustments: this.scrollAdjustments += delta,
+        behavior: void 0
+      });
+    };
+    this.rafId = null;
+    this.getSize = () => {
+      if (!this.options.enabled) {
+        this.scrollRect = null;
+        return 0;
+      }
+      this.scrollRect = this.scrollRect ?? this.options.initialRect;
+      return this.scrollRect[this.options.horizontal ? "width" : "height"];
+    };
+    this.getScrollOffset = () => {
+      if (!this.options.enabled) {
+        this.scrollOffset = null;
+        return 0;
+      }
+      this.scrollOffset = this.scrollOffset ?? (typeof this.options.initialOffset === "function" ? this.options.initialOffset() : this.options.initialOffset);
+      return this.scrollOffset;
+    };
+    this.getFurthestMeasurement = (measurements, index2) => {
+      const furthestMeasurementsFound = /* @__PURE__ */ new Map();
+      const furthestMeasurements = /* @__PURE__ */ new Map();
+      for (let m = index2 - 1; m >= 0; m--) {
+        const measurement = measurements[m];
+        if (furthestMeasurementsFound.has(measurement.lane)) {
+          continue;
+        }
+        const previousFurthestMeasurement = furthestMeasurements.get(
+          measurement.lane
+        );
+        if (previousFurthestMeasurement == null || measurement.end > previousFurthestMeasurement.end) {
+          furthestMeasurements.set(measurement.lane, measurement);
+        } else if (measurement.end < previousFurthestMeasurement.end) {
+          furthestMeasurementsFound.set(measurement.lane, true);
+        }
+        if (furthestMeasurementsFound.size === this.options.lanes) {
+          break;
+        }
+      }
+      return furthestMeasurements.size === this.options.lanes ? Array.from(furthestMeasurements.values()).sort((a, b) => {
+        if (a.end === b.end) {
+          return a.index - b.index;
+        }
+        return a.end - b.end;
+      })[0] : void 0;
+    };
+    this.getMeasurementOptions = memo(
+      () => [
+        this.options.count,
+        this.options.paddingStart,
+        this.options.scrollMargin,
+        this.options.getItemKey,
+        this.options.enabled,
+        this.options.lanes,
+        this.options.laneAssignmentMode
+      ],
+      (count2, paddingStart, scrollMargin, getItemKey, enabled, lanes, laneAssignmentMode) => {
+        const lanesChanged = this.prevLanes !== void 0 && this.prevLanes !== lanes;
+        if (lanesChanged) {
+          this.lanesChangedFlag = true;
+        }
+        this.prevLanes = lanes;
+        this.pendingMin = null;
+        return {
+          count: count2,
+          paddingStart,
+          scrollMargin,
+          getItemKey,
+          enabled,
+          lanes,
+          laneAssignmentMode
+        };
+      },
+      {
+        key: false
+      }
+    );
+    this.getMeasurements = memo(
+      () => [this.getMeasurementOptions(), this.itemSizeCacheVersion],
+      ({
+        count: count2,
+        paddingStart,
+        scrollMargin,
+        getItemKey,
+        enabled,
+        lanes,
+        laneAssignmentMode
+      }, _itemSizeCacheVersion) => {
+        const itemSizeCache = this.itemSizeCache;
+        if (!enabled) {
+          this.measurementsCache = [];
+          this.itemSizeCache.clear();
+          this.laneAssignments.clear();
+          return [];
+        }
+        if (this.laneAssignments.size > count2) {
+          for (const index2 of this.laneAssignments.keys()) {
+            if (index2 >= count2) {
+              this.laneAssignments.delete(index2);
+            }
+          }
+        }
+        if (this.lanesChangedFlag) {
+          this.lanesChangedFlag = false;
+          this.lanesSettling = true;
+          this.measurementsCache = [];
+          this.itemSizeCache.clear();
+          this.laneAssignments.clear();
+          this.pendingMin = null;
+        }
+        if (this.measurementsCache.length === 0 && !this.lanesSettling) {
+          this.measurementsCache = this.options.initialMeasurementsCache;
+          this.measurementsCache.forEach((item) => {
+            this.itemSizeCache.set(item.key, item.size);
+          });
+        }
+        const min = this.lanesSettling ? 0 : this.pendingMin ?? 0;
+        this.pendingMin = null;
+        if (this.lanesSettling && this.measurementsCache.length === count2) {
+          this.lanesSettling = false;
+        }
+        if (lanes === 1) {
+          const gap = this.options.gap;
+          const need = count2 * 2;
+          let flat = this._flatMeasurements;
+          if (!flat || flat.length < need) {
+            const next = new Float64Array(need);
+            if (flat && min > 0) next.set(flat.subarray(0, min * 2));
+            flat = next;
+            this._flatMeasurements = flat;
+          }
+          let runningStart;
+          if (min === 0) {
+            runningStart = paddingStart + scrollMargin;
+          } else {
+            const prevIdx = min - 1;
+            runningStart = flat[prevIdx * 2] + flat[prevIdx * 2 + 1] + gap;
+          }
+          for (let i = min; i < count2; i++) {
+            const key2 = getItemKey(i);
+            const measuredSize = itemSizeCache.get(key2);
+            const size = typeof measuredSize === "number" ? measuredSize : this.options.estimateSize(i);
+            flat[i * 2] = runningStart;
+            flat[i * 2 + 1] = size;
+            runningStart += size + gap;
+          }
+          const view = createLazyMeasurementsView(count2, flat, getItemKey);
+          this.measurementsCache = view;
+          return view;
+        }
+        const measurements = this.measurementsCache.slice(0, min);
+        const laneLastIndex = new Array(lanes).fill(
+          void 0
+        );
+        for (let m = 0; m < min; m++) {
+          const item = measurements[m];
+          if (item) {
+            laneLastIndex[item.lane] = m;
+          }
+        }
+        for (let i = min; i < count2; i++) {
+          const key2 = getItemKey(i);
+          const cachedLane = this.laneAssignments.get(i);
+          let lane;
+          let start;
+          const shouldCacheLane = laneAssignmentMode === "estimate" || itemSizeCache.has(key2);
+          if (cachedLane !== void 0 && this.options.lanes > 1) {
+            lane = cachedLane;
+            const prevIndex = laneLastIndex[lane];
+            const prevInLane = prevIndex !== void 0 ? measurements[prevIndex] : void 0;
+            start = prevInLane ? prevInLane.end + this.options.gap : paddingStart + scrollMargin;
+          } else {
+            const furthestMeasurement = this.options.lanes === 1 ? measurements[i - 1] : this.getFurthestMeasurement(measurements, i);
+            start = furthestMeasurement ? furthestMeasurement.end + this.options.gap : paddingStart + scrollMargin;
+            lane = furthestMeasurement ? furthestMeasurement.lane : i % this.options.lanes;
+            if (this.options.lanes > 1 && shouldCacheLane) {
+              this.laneAssignments.set(i, lane);
+            }
+          }
+          const measuredSize = itemSizeCache.get(key2);
+          const size = typeof measuredSize === "number" ? measuredSize : this.options.estimateSize(i);
+          const end = start + size;
+          measurements[i] = {
+            index: i,
+            start,
+            size,
+            end,
+            key: key2,
+            lane
+          };
+          laneLastIndex[lane] = i;
+        }
+        this.measurementsCache = measurements;
+        return measurements;
+      },
+      {
+        key: false,
+        debug: () => this.options.debug
+      }
+    );
+    this.calculateRange = memo(
+      () => [
+        this.getMeasurements(),
+        this.getSize(),
+        this.getScrollOffset(),
+        this.options.lanes
+      ],
+      (measurements, outerSize, scrollOffset, lanes) => {
+        return this.range = measurements.length > 0 && outerSize > 0 ? calculateRange({
+          measurements,
+          outerSize,
+          scrollOffset,
+          lanes,
+          // Pass the typed array so binary search + forward-walk can
+          // read start/end directly from Float64Array, skipping the
+          // Proxy traps that materialize a full VirtualItem per probe.
+          flat: lanes === 1 && this._flatMeasurements != null ? this._flatMeasurements : null
+        }) : null;
+      },
+      {
+        key: false,
+        debug: () => this.options.debug
+      }
+    );
+    this.getVirtualIndexes = memo(
+      () => {
+        let startIndex = null;
+        let endIndex = null;
+        const range = this.calculateRange();
+        if (range) {
+          startIndex = range.startIndex;
+          endIndex = range.endIndex;
+        }
+        this.maybeNotify.updateDeps([this.isScrolling, startIndex, endIndex]);
+        return [
+          this.options.rangeExtractor,
+          this.options.overscan,
+          this.options.count,
+          startIndex,
+          endIndex
+        ];
+      },
+      (rangeExtractor, overscan, count2, startIndex, endIndex) => {
+        return startIndex === null || endIndex === null ? [] : rangeExtractor({
+          startIndex,
+          endIndex,
+          overscan,
+          count: count2
+        });
+      },
+      {
+        key: false,
+        debug: () => this.options.debug
+      }
+    );
+    this.indexFromElement = (node) => {
+      const attributeName = this.options.indexAttribute;
+      const indexStr = node.getAttribute(attributeName);
+      if (!indexStr) {
+        console.warn(
+          `Missing attribute name '${attributeName}={index}' on measured element.`
+        );
+        return -1;
+      }
+      return parseInt(indexStr, 10);
+    };
+    this.shouldMeasureDuringScroll = (index2) => {
+      var _a;
+      if (!this.scrollState || this.scrollState.behavior !== "smooth") {
+        return true;
+      }
+      const scrollIndex = this.scrollState.index ?? ((_a = this.getVirtualItemForOffset(this.scrollState.lastTargetOffset)) == null ? void 0 : _a.index);
+      if (scrollIndex !== void 0 && this.range) {
+        const bufferSize = Math.max(
+          this.options.overscan,
+          Math.ceil((this.range.endIndex - this.range.startIndex) / 2)
+        );
+        const minIndex = Math.max(0, scrollIndex - bufferSize);
+        const maxIndex = Math.min(
+          this.options.count - 1,
+          scrollIndex + bufferSize
+        );
+        return index2 >= minIndex && index2 <= maxIndex;
+      }
+      return true;
+    };
+    this.measureElement = (node) => {
+      if (!node) {
+        this.elementsCache.forEach((cached2, key22) => {
+          if (!cached2.isConnected) {
+            this.observer.unobserve(cached2);
+            this.elementsCache.delete(key22);
+          }
+        });
+        return;
+      }
+      const index2 = this.indexFromElement(node);
+      const key2 = this.options.getItemKey(index2);
+      const prevNode = this.elementsCache.get(key2);
+      if (prevNode !== node) {
+        if (prevNode) {
+          this.observer.unobserve(prevNode);
+        }
+        this.observer.observe(node);
+        this.elementsCache.set(key2, node);
+      }
+      if ((!this.isScrolling || this.scrollState) && this.shouldMeasureDuringScroll(index2)) {
+        this.resizeItem(index2, this.options.measureElement(node, void 0, this));
+      }
+    };
+    this.resizeItem = (index2, size) => {
+      var _a, _b;
+      if (index2 < 0 || index2 >= this.options.count) return;
+      let cachedSize;
+      let itemStart;
+      let key2;
+      const flat = this._flatMeasurements;
+      if (this.options.lanes === 1 && flat !== null) {
+        key2 = this.options.getItemKey(index2);
+        itemStart = flat[index2 * 2];
+        cachedSize = flat[index2 * 2 + 1];
+      } else {
+        const item = this.measurementsCache[index2];
+        if (!item) return;
+        key2 = item.key;
+        itemStart = item.start;
+        cachedSize = item.size;
+      }
+      const itemSize = this.itemSizeCache.get(key2) ?? cachedSize;
+      const delta = size - itemSize;
+      if (delta !== 0) {
+        const wasAtEnd = this.options.anchorTo === "end" && ((_a = this.scrollState) == null ? void 0 : _a.behavior) !== "smooth" && this.getVirtualDistanceFromEnd() <= this.options.scrollEndThreshold;
+        const prevTotalSize = wasAtEnd ? this.getTotalSize() : 0;
+        const shouldAdjustScroll = ((_b = this.scrollState) == null ? void 0 : _b.behavior) !== "smooth" && (this.shouldAdjustScrollPositionOnItemSizeChange !== void 0 ? this.shouldAdjustScrollPositionOnItemSizeChange(
+          // The callback expects a VirtualItem; build one lazily only
+          // when the consumer actually supplied a custom predicate.
+          this.measurementsCache[index2] ?? {
+            index: index2,
+            key: key2,
+            start: itemStart,
+            size: cachedSize,
+            end: itemStart + cachedSize,
+            lane: 0
+          },
+          delta,
+          this
+        ) : (
+          // Default: adjust scrollTop only when the resize is an above-
+          // viewport item AND we're not actively scrolling backward.
+          // Adjusting during backward scroll fights the user's scroll
+          // direction and produces the "items jump while scrolling up"
+          // jank reported across many issues. Users who want the old
+          // behavior can pass shouldAdjustScrollPositionOnItemSizeChange.
+          itemStart < this.getScrollOffset() + this.scrollAdjustments && this.scrollDirection !== "backward"
+        ));
+        if (this.pendingMin === null || index2 < this.pendingMin) {
+          this.pendingMin = index2;
+        }
+        this.itemSizeCache.set(key2, size);
+        this.itemSizeCacheVersion++;
+        if (wasAtEnd) {
+          this.applyScrollAdjustment(this.getTotalSize() - prevTotalSize);
+        } else if (shouldAdjustScroll) {
+          this.applyScrollAdjustment(delta);
+        }
+        this.notify(false);
+      }
+    };
+    this.getVirtualItems = memo(
+      () => [this.getVirtualIndexes(), this.getMeasurements()],
+      (indexes, measurements) => {
+        const virtualItems = [];
+        for (let k = 0, len = indexes.length; k < len; k++) {
+          const i = indexes[k];
+          const measurement = measurements[i];
+          virtualItems.push(measurement);
+        }
+        return virtualItems;
+      },
+      {
+        key: false,
+        debug: () => this.options.debug
+      }
+    );
+    this.getVirtualItemForOffset = (offset) => {
+      const measurements = this.getMeasurements();
+      if (measurements.length === 0) {
+        return void 0;
+      }
+      const flat = this._flatMeasurements;
+      const useFlat = this.options.lanes === 1 && flat != null;
+      const idx = findNearestBinarySearch(
+        0,
+        measurements.length - 1,
+        useFlat ? (i) => flat[i * 2] : (i) => notUndefined(measurements[i]).start,
+        offset
+      );
+      return notUndefined(measurements[idx]);
+    };
+    this.getMaxScrollOffset = () => {
+      if (!this.scrollElement) return 0;
+      if ("scrollHeight" in this.scrollElement) {
+        return this.options.horizontal ? this.scrollElement.scrollWidth - this.scrollElement.clientWidth : this.scrollElement.scrollHeight - this.scrollElement.clientHeight;
+      } else {
+        const doc = this.scrollElement.document.documentElement;
+        return this.options.horizontal ? doc.scrollWidth - this.scrollElement.innerWidth : doc.scrollHeight - this.scrollElement.innerHeight;
+      }
+    };
+    this.getVirtualDistanceFromEnd = () => {
+      return Math.max(
+        this.getTotalSize() - this.getSize() - this.getScrollOffset(),
+        0
+      );
+    };
+    this.getDistanceFromEnd = () => {
+      return Math.max(this.getMaxScrollOffset() - this.getScrollOffset(), 0);
+    };
+    this.isAtEnd = (threshold = this.options.scrollEndThreshold) => {
+      return this.getDistanceFromEnd() <= threshold;
+    };
+    this.getOffsetForAlignment = (toOffset, align, itemSize = 0) => {
+      if (!this.scrollElement) return 0;
+      const size = this.getSize();
+      const scrollOffset = this.getScrollOffset();
+      if (align === "auto") {
+        align = toOffset >= scrollOffset + size ? "end" : "start";
+      }
+      if (align === "center") {
+        toOffset += (itemSize - size) / 2;
+      } else if (align === "end") {
+        toOffset -= size;
+      }
+      const maxOffset = this.getMaxScrollOffset();
+      return Math.max(Math.min(maxOffset, toOffset), 0);
+    };
+    this.getOffsetForIndex = (index2, align = "auto") => {
+      index2 = Math.max(0, Math.min(index2, this.options.count - 1));
+      const size = this.getSize();
+      const scrollOffset = this.getScrollOffset();
+      const item = this.measurementsCache[index2];
+      if (!item) return;
+      if (align === "auto") {
+        if (item.end >= scrollOffset + size - this.options.scrollPaddingEnd) {
+          align = "end";
+        } else if (item.start <= scrollOffset + this.options.scrollPaddingStart) {
+          align = "start";
+        } else {
+          return [scrollOffset, align];
+        }
+      }
+      if (align === "end" && index2 === this.options.count - 1) {
+        return [this.getMaxScrollOffset(), align];
+      }
+      const toOffset = align === "end" ? item.end + this.options.scrollPaddingEnd : item.start - this.options.scrollPaddingStart;
+      return [
+        this.getOffsetForAlignment(toOffset, align, item.size),
+        align
+      ];
+    };
+    this.scrollToOffset = (toOffset, { align = "start", behavior = "auto" } = {}) => {
+      const offset = this.getOffsetForAlignment(toOffset, align);
+      const now = this.now();
+      this.scrollState = {
+        index: null,
+        align,
+        behavior,
+        startedAt: now,
+        lastTargetOffset: offset,
+        stableFrames: 0
+      };
+      this._scrollToOffset(offset, { adjustments: void 0, behavior });
+      this.scheduleScrollReconcile();
+    };
+    this.scrollToIndex = (index2, {
+      align: initialAlign = "auto",
+      behavior = "auto"
+    } = {}) => {
+      index2 = Math.max(0, Math.min(index2, this.options.count - 1));
+      const offsetInfo = this.getOffsetForIndex(index2, initialAlign);
+      if (!offsetInfo) {
+        return;
+      }
+      const [offset, align] = offsetInfo;
+      const now = this.now();
+      this.scrollState = {
+        index: index2,
+        align,
+        behavior,
+        startedAt: now,
+        lastTargetOffset: offset,
+        stableFrames: 0
+      };
+      this._scrollToOffset(offset, { adjustments: void 0, behavior });
+      this.scheduleScrollReconcile();
+    };
+    this.scrollBy = (delta, { behavior = "auto" } = {}) => {
+      const offset = this.getScrollOffset() + delta;
+      const now = this.now();
+      this.scrollState = {
+        index: null,
+        align: "start",
+        behavior,
+        startedAt: now,
+        lastTargetOffset: offset,
+        stableFrames: 0
+      };
+      this._scrollToOffset(offset, { adjustments: void 0, behavior });
+      this.scheduleScrollReconcile();
+    };
+    this.scrollToEnd = ({ behavior = "auto" } = {}) => {
+      if (this.options.count > 0) {
+        this.scrollToIndex(this.options.count - 1, {
+          align: "end",
+          behavior
+        });
+        return;
+      }
+      this.scrollToOffset(Math.max(this.getTotalSize() - this.getSize(), 0), {
+        behavior
+      });
+    };
+    this.getTotalSize = () => {
+      var _a;
+      const measurements = this.getMeasurements();
+      let end;
+      if (measurements.length === 0) {
+        end = this.options.paddingStart;
+      } else if (this.options.lanes === 1) {
+        const lastIdx = measurements.length - 1;
+        const flat = this._flatMeasurements;
+        if (flat != null) {
+          end = flat[lastIdx * 2] + flat[lastIdx * 2 + 1];
+        } else {
+          end = ((_a = measurements[lastIdx]) == null ? void 0 : _a.end) ?? 0;
+        }
+      } else {
+        const endByLane = Array(this.options.lanes).fill(null);
+        let endIndex = measurements.length - 1;
+        while (endIndex >= 0 && endByLane.some((val) => val === null)) {
+          const item = measurements[endIndex];
+          if (endByLane[item.lane] === null) {
+            endByLane[item.lane] = item.end;
+          }
+          endIndex--;
+        }
+        end = Math.max(...endByLane.filter((val) => val !== null));
+      }
+      return Math.max(
+        end - this.options.scrollMargin + this.options.paddingEnd,
+        0
+      );
+    };
+    this.takeSnapshot = () => {
+      const snapshot = [];
+      if (this.itemSizeCache.size === 0) return snapshot;
+      const m = this.getMeasurements();
+      for (const item of m) {
+        if (item && this.itemSizeCache.has(item.key)) {
+          snapshot.push({
+            index: item.index,
+            key: item.key,
+            start: item.start,
+            size: item.size,
+            end: item.end,
+            lane: item.lane
+          });
+        }
+      }
+      return snapshot;
+    };
+    this._scrollToOffset = (offset, {
+      adjustments,
+      behavior
+    }) => {
+      this._intendedScrollOffset = offset + (adjustments ?? 0);
+      this.options.scrollToFn(offset, { behavior, adjustments }, this);
+    };
+    this.measure = () => {
+      this.pendingMin = null;
+      this.itemSizeCache.clear();
+      this.laneAssignments.clear();
+      this.itemSizeCacheVersion++;
+      this.notify(false);
+    };
+    this.setOptions(opts);
+  }
+  applyScrollAdjustment(delta, behavior) {
+    if (delta === 0) return;
+    if (isIOSWebKit() && (this.isScrolling || this._iosTouching || this._iosJustTouchEnded)) {
+      this._iosDeferredAdjustment += delta;
+    } else {
+      this._scrollToOffset(this.getScrollOffset(), {
+        adjustments: this.scrollAdjustments += delta,
+        behavior
+      });
+    }
+  }
+  scheduleScrollReconcile() {
+    if (!this.targetWindow) {
+      this.scrollState = null;
+      return;
+    }
+    if (this.rafId != null) return;
+    this.rafId = this.targetWindow.requestAnimationFrame(() => {
+      this.rafId = null;
+      this.reconcileScroll();
+    });
+  }
+  reconcileScroll() {
+    if (!this.scrollState) return;
+    const el = this.scrollElement;
+    if (!el) return;
+    const MAX_RECONCILE_MS = 5e3;
+    if (this.now() - this.scrollState.startedAt > MAX_RECONCILE_MS) {
+      this.scrollState = null;
+      return;
+    }
+    const offsetInfo = this.scrollState.index != null ? this.getOffsetForIndex(this.scrollState.index, this.scrollState.align) : void 0;
+    const targetOffset = offsetInfo ? offsetInfo[0] : this.scrollState.lastTargetOffset;
+    const STABLE_FRAMES = 1;
+    const targetChanged = targetOffset !== this.scrollState.lastTargetOffset;
+    if (!targetChanged && approxEqual(targetOffset, this.getScrollOffset())) {
+      this.scrollState.stableFrames++;
+      if (this.scrollState.stableFrames >= STABLE_FRAMES) {
+        if (this.getScrollOffset() !== targetOffset) {
+          this._scrollToOffset(targetOffset, {
+            adjustments: void 0,
+            behavior: "auto"
+          });
+        }
+        this.scrollState = null;
+        return;
+      }
+    } else {
+      this.scrollState.stableFrames = 0;
+      if (targetChanged) {
+        const viewport = this.getSize() || 600;
+        const distance = Math.abs(targetOffset - this.getScrollOffset());
+        const keepSmooth = this.scrollState.behavior === "smooth" && distance > viewport;
+        this.scrollState.lastTargetOffset = targetOffset;
+        if (!keepSmooth) {
+          this.scrollState.behavior = "auto";
+        }
+        this._scrollToOffset(targetOffset, {
+          adjustments: void 0,
+          behavior: keepSmooth ? "smooth" : "auto"
+        });
+      }
+    }
+    this.scheduleScrollReconcile();
+  }
+}
+const findNearestBinarySearch = (low, high, getCurrentValue, value2) => {
+  while (low <= high) {
+    const middle = (low + high) / 2 | 0;
+    const currentValue = getCurrentValue(middle);
+    if (currentValue < value2) {
+      low = middle + 1;
+    } else if (currentValue > value2) {
+      high = middle - 1;
+    } else {
+      return middle;
+    }
+  }
+  if (low > 0) {
+    return low - 1;
+  } else {
+    return 0;
+  }
+};
+function calculateRange({
+  measurements,
+  outerSize,
+  scrollOffset,
+  lanes,
+  flat
+}) {
+  const lastIndex = measurements.length - 1;
+  const getStart = flat ? (index2) => flat[index2 * 2] : (index2) => measurements[index2].start;
+  const getEnd = flat ? (index2) => flat[index2 * 2] + flat[index2 * 2 + 1] : (index2) => measurements[index2].end;
+  if (measurements.length <= lanes) {
+    return {
+      startIndex: 0,
+      endIndex: lastIndex
+    };
+  }
+  let startIndex = findNearestBinarySearch(0, lastIndex, getStart, scrollOffset);
+  let endIndex = startIndex;
+  if (lanes === 1) {
+    while (endIndex < lastIndex && getEnd(endIndex) < scrollOffset + outerSize) {
+      endIndex++;
+    }
+  } else if (lanes > 1) {
+    const endPerLane = Array(lanes).fill(0);
+    while (endIndex < lastIndex && endPerLane.some((pos) => pos < scrollOffset + outerSize)) {
+      const item = measurements[endIndex];
+      endPerLane[item.lane] = item.end;
+      endIndex++;
+    }
+    const startPerLane = Array(lanes).fill(scrollOffset + outerSize);
+    while (startIndex >= 0 && startPerLane.some((pos) => pos >= scrollOffset)) {
+      const item = measurements[startIndex];
+      startPerLane[item.lane] = item.start;
+      startIndex--;
+    }
+    startIndex = Math.max(0, startIndex - startIndex % lanes);
+    endIndex = Math.min(lastIndex, endIndex + (lanes - 1 - endIndex % lanes));
+  }
+  return { startIndex, endIndex };
+}
+const useIsomorphicLayoutEffect$2 = typeof document !== "undefined" ? reactExports.useLayoutEffect : reactExports.useEffect;
+function useVirtualizerBase({
+  useFlushSync = true,
+  ...options
+}) {
+  const rerender = reactExports.useReducer((x) => x + 1, 0)[1];
+  const resolvedOptions = {
+    ...options,
+    onChange: (instance2, sync) => {
+      var _a;
+      if (useFlushSync && sync) {
+        reactDomExports.flushSync(rerender);
+      } else {
+        rerender();
+      }
+      (_a = options.onChange) == null ? void 0 : _a.call(options, instance2, sync);
+    }
+  };
+  const [instance] = reactExports.useState(
+    () => new Virtualizer(resolvedOptions)
+  );
+  instance.setOptions(resolvedOptions);
+  useIsomorphicLayoutEffect$2(() => {
+    return instance._didMount();
+  }, []);
+  useIsomorphicLayoutEffect$2(() => {
+    return instance._willUpdate();
+  });
+  return instance;
+}
+function useVirtualizer(options) {
+  return useVirtualizerBase({
+    observeElementRect,
+    observeElementOffset,
+    scrollToFn: elementScroll,
+    ...options
+  });
+}
+function cleanPath(content) {
+  return content.toLowerCase().split("?")[0].split("#")[0];
+}
+const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|svg|avif)$/i;
+const VIDEO_EXT_RE = /\.(mp4|webm|mov|m4v|ogg)$/i;
+function isStickerVideoContent(content) {
+  const raw = (content ?? "").trim();
+  if (!raw) return false;
+  if (raw.startsWith("data:video")) return true;
+  return VIDEO_EXT_RE.test(cleanPath(raw));
+}
+function isStickerImageContent(content) {
+  const raw = (content ?? "").trim();
+  if (!raw || isStickerVideoContent(raw)) return false;
+  if (raw.startsWith("data:image")) return true;
+  return IMAGE_EXT_RE.test(cleanPath(raw));
+}
+const PREVIEW_MAX$1 = 96;
+function truncateText$2(s, max = PREVIEW_MAX$1) {
+  const t = s.replace(/\s+/g, " ").trim();
+  if (t.length <= max) return t;
+  return t.slice(0, max - 1) + "…";
+}
+function lastMessagePreview(last) {
+  if (!last) return "—";
+  const c = messageContent(last);
+  if (last.type === "text") return truncateText$2(c);
+  if (last.type === "sticker") {
+    return isStickerImageContent(c) || isStickerVideoContent(c) ? "ملصق" : truncateText$2(c, 24);
+  }
+  if (last.type === "image") return last.viewOnce ? "صورة (مرة واحدة)" : "صورة";
+  if (last.type === "drawing") return last.viewOnce ? "رسم (مرة واحدة)" : "رسم";
+  if (last.type === "video") return last.viewOnce ? "فيديو (مرة واحدة)" : "فيديو";
+  if (last.type === "voice") return "رسالة صوتية";
+  if (last.type === "shared_post") return "منشور";
+  if (last.type === "shared_story") return "ستوري";
+  return `[${last.type}]`;
+}
+function chatUnreadCount(c, meId) {
+  const readId = c.lastReadMessageIdByUser?.[meId];
+  const hidden = c.hiddenMessageIdsByUser?.[meId];
+  let readAt = -1;
+  if (readId) {
+    const rm = (c.messages || []).find((m) => m.id === readId);
+    readAt = rm?.createdAt ?? -1;
+  }
+  let count2 = 0;
+  for (const m of c.messages || []) {
+    if (hidden?.includes(m.id)) continue;
+    if (m.senderId === meId) continue;
+    if (m.createdAt > readAt) count2++;
+  }
+  return count2;
+}
+function resolveListTypingPeerId(c, meId, typingUserByChatId) {
+  if (c.isGroup || c.isChannel) return null;
+  const otherId = c.members.find((id) => id !== meId);
+  if (!otherId) return null;
+  const storageId = dmChatId(meId, otherId);
+  const typingUser = typingUserByChatId[storageId] ?? typingUserByChatId[c.id] ?? typingUserByChatId[openChatIdForList(c, meId)];
+  return typingUser === otherId ? otherId : null;
+}
+function openChatIdForList(c, meId) {
+  if (!c.isGroup && !c.isChannel && c.members.length === 2) {
+    const other = c.members.find((id) => id !== meId);
+    if (other) return dmChatId(meId, other);
+  }
+  return c.id;
+}
+function isPeerOnline(c, peerId) {
+  if (!peerId) return false;
+  const last = c.lastOpenAtByUser?.[peerId] ?? 0;
+  return Date.now() - last < 5 * 6e4;
+}
+function listTypingPreview(lang) {
+  return lang === "ar" ? "يكتب…" : "Typing…";
+}
+const CHAT_INBOX_ROW_HEIGHT_PX = 84;
+function ChatInboxVirtualList({ chats, scrollParentRef, renderRow }) {
+  const listRef = reactExports.useRef(null);
+  const virtualizer = useVirtualizer({
+    count: chats.length,
+    getScrollElement: () => scrollParentRef.current,
+    estimateSize: () => CHAT_INBOX_ROW_HEIGHT_PX,
+    overscan: 10,
+    getItemKey: (index2) => chats[index2]?.id ?? index2
+  });
+  const items = virtualizer.getVirtualItems();
+  const totalSize = virtualizer.getTotalSize();
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { ref: listRef, className: "relative w-full", style: { height: totalSize }, children: items.map((vi) => {
+    const chat = chats[vi.index];
+    if (!chat) return null;
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "div",
+      {
+        "data-chat-inbox-index": vi.index,
+        className: "absolute start-0 top-0 w-full",
+        style: {
+          height: vi.size,
+          transform: `translateY(${vi.start}px)`
+        },
+        children: renderRow(chat, vi.index)
+      },
+      vi.key
+    );
+  }) });
+}
+function ChatInboxSkeleton({ rows = 7 }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "animate-pulse", "aria-hidden": true, children: Array.from({ length: rows }, (_, i) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "div",
+    {
+      className: "flex flex-row items-center border-b border-border/40 px-3.5",
+      style: { minHeight: CHAT_INBOX_ROW_HEIGHT_PX },
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-[58px] w-[58px] shrink-0 rounded-full bg-secondary" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ms-3 flex min-w-0 flex-1 flex-col gap-2 py-3", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-4 w-[42%] rounded-md bg-secondary" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-3.5 w-[68%] rounded-md bg-secondary/80" })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "ms-2 h-3 w-10 shrink-0 rounded bg-secondary/70" })
+      ]
+    },
+    i
+  )) });
+}
+function ChatFloatingDatePill({
+  scrollRef,
+  rows,
+  visible,
+  chromeOnWallpaper,
+  dayPillBg,
+  dayPillText
+}) {
+  const [label, setLabel] = reactExports.useState(null);
+  const [show, setShow] = reactExports.useState(false);
+  const hideTimerRef = reactExports.useRef(0);
+  const scrollingRef = reactExports.useRef(false);
+  const dayRows = reactExports.useRef([]);
+  dayRows.current = rows.filter((r2) => r2.kind === "day").map((r2) => ({ key: r2.key, label: r2.label }));
+  const refreshLabel = reactExports.useCallback(() => {
+    const root = scrollRef.current;
+    if (!root || !visible) return;
+    const tops = dayRows.current.map((d) => {
+      const el = root.querySelector(`[data-chat-day="${d.key}"]`);
+      if (!el) return null;
+      const rect = el.getBoundingClientRect();
+      const rootRect = root.getBoundingClientRect();
+      return { label: d.label, top: rect.top - rootRect.top };
+    }).filter((x) => x != null).sort((a, b) => a.top - b.top);
+    if (!tops.length) return;
+    const anchor = 72;
+    let picked = tops[0].label;
+    for (const t of tops) {
+      if (t.top <= anchor) picked = t.label;
+      else break;
+    }
+    setLabel(picked);
+    setShow(true);
+    scrollingRef.current = true;
+    if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
+    hideTimerRef.current = window.setTimeout(() => {
+      scrollingRef.current = false;
+      setShow(false);
+    }, 900);
+  }, [scrollRef, visible]);
+  reactExports.useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !visible) return;
+    const onScroll = () => refreshLabel();
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      el.removeEventListener("scroll", onScroll);
+      if (hideTimerRef.current) window.clearTimeout(hideTimerRef.current);
+    };
+  }, [scrollRef, visible, refreshLabel]);
+  if (!visible || !label) return null;
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "div",
+    {
+      className: "pointer-events-none absolute start-0 end-0 top-2 z-30 flex justify-center transition-opacity duration-300 " + (show || scrollingRef.current ? "opacity-100" : "opacity-0"),
+      "aria-hidden": true,
+      children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "span",
+        {
+          className: "rounded-full px-3.5 py-1.5 text-[12px] font-semibold shadow-md backdrop-blur-md",
+          style: chromeOnWallpaper ? { backgroundColor: "rgba(0,0,0,0.45)", color: "rgba(255,255,255,0.92)" } : dayPillBg ? { backgroundColor: dayPillBg, color: dayPillText } : { backgroundColor: "var(--secondary)", color: "var(--foreground)" },
+          children: label
+        }
+      )
+    }
+  );
+}
+function useDebouncedValue(value2, delayMs = 180) {
+  const [debounced, setDebounced] = reactExports.useState(value2);
+  reactExports.useEffect(() => {
+    const id = window.setTimeout(() => setDebounced(value2), delayMs);
+    return () => window.clearTimeout(id);
+  }, [value2, delayMs]);
+  return debounced;
+}
+const PREFIX = "retweet:chat-draft:";
+function key(chatId, userId) {
+  return `${PREFIX}${userId}:${chatId}`;
+}
+function loadChatDraft(userId, chatId) {
+  if (typeof localStorage === "undefined") return "";
+  try {
+    return localStorage.getItem(key(chatId, userId)) ?? "";
+  } catch {
+    return "";
+  }
+}
+function saveChatDraft(userId, chatId, text) {
+  if (typeof localStorage === "undefined") return;
+  try {
+    const k = key(chatId, userId);
+    const trimmed = text.trim();
+    if (!trimmed) localStorage.removeItem(k);
+    else localStorage.setItem(k, text);
+  } catch {
+  }
+}
+function clearChatDraft(userId, chatId) {
+  if (typeof localStorage === "undefined") return;
+  try {
+    localStorage.removeItem(key(chatId, userId));
+  } catch {
+  }
+}
+function chatHapticLight() {
+  try {
+    navigator.vibrate?.(8);
+  } catch {
+  }
+}
+function chatHapticSuccess() {
+  try {
+    navigator.vibrate?.([10, 40, 12]);
+  } catch {
+  }
+}
 let nativeKeyboardPx = 0;
+let useNativeKeyboardHeight = false;
 let engineRefs = 0;
-let rafLoop = 0;
 let nativeListenersReady = false;
 let nativeBridgeTeardown = null;
+function computeVisualViewportKeyboardInset(layoutH, vvHeight, vvOffsetTop) {
+  const gap = layoutH - vvHeight;
+  if (gap > 48) {
+    return Math.max(0, Math.round(gap));
+  }
+  return Math.max(0, Math.round(gap - vvOffsetTop));
+}
 function readNativeKeyboardInsetFromCss() {
   if (typeof document === "undefined") return 0;
   const raw = getComputedStyle(document.documentElement).getPropertyValue("--retweet-keyboard-inset").trim();
@@ -26997,9 +29173,16 @@ function readChatKeyboardSnapshot() {
   const layoutH = window.innerHeight;
   const vvHeight = vv ? Math.round(vv.height) : layoutH;
   const vvOffsetTop = vv ? Math.round(vv.offsetTop) : 0;
-  const vvInset = Math.max(0, Math.round(layoutH - vvHeight - vvOffsetTop));
+  const vvInset = computeVisualViewportKeyboardInset(layoutH, vvHeight, vvOffsetTop);
   const nativeCssInset = readNativeKeyboardInsetFromCss();
-  const keyboardInset = Math.max(vvInset, nativeKeyboardPx, nativeCssInset);
+  let keyboardInset = vvInset;
+  if (useNativeKeyboardHeight && nativeKeyboardPx > 0) {
+    keyboardInset = nativeKeyboardPx;
+  } else if (nativeKeyboardPx > 0 && vvInset > 0) {
+    keyboardInset = Math.min(vvInset, nativeKeyboardPx);
+  } else {
+    keyboardInset = Math.max(vvInset, nativeKeyboardPx, nativeCssInset);
+  }
   return {
     keyboardInset,
     vvHeight,
@@ -27021,38 +29204,32 @@ function applyChatKeyboardCss() {
   root.style.setProperty("--vv-keyboard-inset", `${snap.keyboardInset}px`);
   root.style.setProperty("--chat-sab-effective", snap.open ? "0px" : "var(--sab)");
   root.classList.toggle("chat-keyboard-open", snap.open);
-  const scrollPad = snap.open ? "calc(12px + var(--chat-composer-h, 72px) + var(--vv-keyboard-inset, 0px))" : "calc(12px + var(--chat-composer-h, 0px))";
+  const scrollPad = snap.open ? "calc(8px + var(--chat-composer-h, 72px))" : "calc(12px + var(--chat-composer-h, 0px))";
   root.style.setProperty("--chat-scroll-padding-bottom", scrollPad);
   return snap;
 }
-function scheduleRafLoop() {
-  if (rafLoop) return;
-  const tick = () => {
-    rafLoop = 0;
-    const snap = applyChatKeyboardCss();
-    if (snap.open) rafLoop = requestAnimationFrame(tick);
-  };
-  rafLoop = requestAnimationFrame(tick);
-}
 function onViewportChange() {
-  const snap = applyChatKeyboardCss();
+  applyChatKeyboardCss();
   dispatchKeyboardSync();
-  if (snap.open) scheduleRafLoop();
 }
 async function ensureNativeKeyboardBridge() {
   if (nativeListenersReady) return;
   nativeListenersReady = true;
   try {
     const [{ Keyboard }, { Capacitor: Capacitor2 }] = await Promise.all([
-      import("./index-BI_cPKYZ.js"),
+      import("./index-DnONLyIX.js"),
       Promise.resolve().then(() => index$1)
     ]);
     if (!Capacitor2.isNativePlatform()) return;
+    useNativeKeyboardHeight = true;
+    try {
+      await Keyboard.setScroll({ isDisabled: true });
+    } catch {
+    }
     const onShow = (info) => {
       nativeKeyboardPx = Math.max(0, Math.round(info.keyboardHeight ?? 0));
-      const snap = applyChatKeyboardCss();
+      applyChatKeyboardCss();
       dispatchKeyboardSync();
-      if (snap.open) scheduleRafLoop();
     };
     const onHide = () => {
       nativeKeyboardPx = 0;
@@ -27067,6 +29244,7 @@ async function ensureNativeKeyboardBridge() {
     ]);
     nativeBridgeTeardown = () => {
       void Promise.all(handles.map((h) => h.remove())).catch(() => void 0);
+      void Keyboard.setScroll({ isDisabled: false }).catch(() => void 0);
     };
   } catch {
   }
@@ -27091,9 +29269,8 @@ function mountChatKeyboardEngine() {
   return () => {
     engineRefs = Math.max(0, engineRefs - 1);
     if (engineRefs > 0) return;
-    if (rafLoop) cancelAnimationFrame(rafLoop);
-    rafLoop = 0;
     nativeKeyboardPx = 0;
+    useNativeKeyboardHeight = false;
     nativeListenersReady = false;
     nativeBridgeTeardown?.();
     nativeBridgeTeardown = null;
@@ -27113,20 +29290,29 @@ function mountChatKeyboardEngine() {
     root.classList.remove("chat-keyboard-open");
   };
 }
+function snapChanged(a, b) {
+  return a.open !== b.open || Math.abs(a.keyboardInset - b.keyboardInset) > 2;
+}
 function useChatKeyboardInsets(enabled) {
   const [snap, setSnap] = reactExports.useState(readChatKeyboardSnapshot);
+  const lastRef = reactExports.useRef(snap);
   reactExports.useEffect(() => {
     const unmountEngine = mountChatKeyboardEngine();
-    const sync = () => setSnap(readChatKeyboardSnapshot());
-    sync();
+    const apply = () => {
+      const next = readChatKeyboardSnapshot();
+      if (!snapChanged(lastRef.current, next)) return;
+      lastRef.current = next;
+      setSnap(next);
+    };
+    apply();
     const vv = window.visualViewport;
-    vv?.addEventListener("resize", sync, { passive: true });
-    vv?.addEventListener("scroll", sync, { passive: true });
-    window.addEventListener("retweet-chat-keyboard-sync", sync);
+    vv?.addEventListener("resize", apply, { passive: true });
+    vv?.addEventListener("scroll", apply, { passive: true });
+    window.addEventListener("retweet-chat-keyboard-sync", apply);
     return () => {
-      vv?.removeEventListener("resize", sync);
-      vv?.removeEventListener("scroll", sync);
-      window.removeEventListener("retweet-chat-keyboard-sync", sync);
+      vv?.removeEventListener("resize", apply);
+      vv?.removeEventListener("scroll", apply);
+      window.removeEventListener("retweet-chat-keyboard-sync", apply);
       unmountEngine();
     };
   }, [enabled]);
@@ -27259,23 +29445,6 @@ function isOwnChatMessage(senderId, state, _options) {
   const viewerId = resolveActiveViewerId(state);
   if (!viewerId || isGuestUserId(viewerId)) return false;
   return senderId === viewerId;
-}
-function cleanPath(content) {
-  return content.toLowerCase().split("?")[0].split("#")[0];
-}
-const IMAGE_EXT_RE = /\.(png|jpe?g|gif|webp|svg|avif)$/i;
-const VIDEO_EXT_RE = /\.(mp4|webm|mov|m4v|ogg)$/i;
-function isStickerVideoContent(content) {
-  const raw = (content ?? "").trim();
-  if (!raw) return false;
-  if (raw.startsWith("data:video")) return true;
-  return VIDEO_EXT_RE.test(cleanPath(raw));
-}
-function isStickerImageContent(content) {
-  const raw = (content ?? "").trim();
-  if (!raw || isStickerVideoContent(raw)) return false;
-  if (raw.startsWith("data:image")) return true;
-  return IMAGE_EXT_RE.test(cleanPath(raw));
 }
 function truncateText$1(s, max) {
   const t = (s ?? "").trim();
@@ -27835,6 +30004,12 @@ async function apiSubmitReport(body) {
 async function apiGetMyModerationStatus() {
   return modFetch("/v1/me/moderation/status", { method: "GET" });
 }
+async function apiDismissModerationNotice(noticeId) {
+  return modFetch("/v1/me/moderation/dismiss-notice", {
+    method: "POST",
+    body: JSON.stringify({ noticeId })
+  });
+}
 async function apiAppealSendOtp() {
   return modFetch("/v1/me/appeal/otp", { method: "POST" });
 }
@@ -27886,6 +30061,15 @@ async function apiFetchBannedUserPreview(userId) {
     `/v1/users/${encodeURIComponent(userId)}/banned-preview`,
     { method: "GET" }
   );
+}
+async function apiAdminLookupUserByUsername(username) {
+  return modFetch(`/v1/admin/moderation/users/by-username/${encodeURIComponent(username)}`, { method: "GET" });
+}
+async function apiAdminRestoreUser(userId, body) {
+  return modFetch(`/v1/admin/moderation/users/${encodeURIComponent(userId)}/restore`, {
+    method: "POST",
+    body: JSON.stringify(body)
+  });
 }
 function ReportFlow({
   reportedUserId,
@@ -28082,8 +30266,8 @@ function ReportFlow({
     }
   );
 }
-const DISMISS_START_PX = 10;
-const DISMISS_FLING_VY = 0.45;
+const DISMISS_START_PX$1 = 10;
+const DISMISS_FLING_VY$1 = 0.45;
 function ReportFlowSheet({
   open,
   onClose,
@@ -28171,19 +30355,19 @@ function ReportFlowSheet({
       d.lastY = e.clientY;
       d.lastT = now;
       if (d.mode === "pending") {
-        if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > DISMISS_START_PX) {
+        if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > DISMISS_START_PX$1) {
           d.mode = "scroll";
           return;
         }
-        if (dy < -DISMISS_START_PX) {
+        if (dy < -DISMISS_START_PX$1) {
           d.mode = "scroll";
           return;
         }
         if (scrollTop > 2 || d.startScrollTop > 2) {
-          if (dy > DISMISS_START_PX) d.mode = "scroll";
+          if (dy > DISMISS_START_PX$1) d.mode = "scroll";
           return;
         }
-        if (dy > DISMISS_START_PX && dy >= Math.abs(dx)) {
+        if (dy > DISMISS_START_PX$1 && dy >= Math.abs(dx)) {
           d.mode = "dismiss";
           setIsDismissDragging(true);
           try {
@@ -28218,7 +30402,7 @@ function ReportFlowSheet({
       if (d.mode === "dismiss") {
         const dy = Math.max(0, e.clientY - d.startY);
         const vh = viewportHRef.current;
-        if (dy > vh * 0.22 || d.velocity > DISMISS_FLING_VY) animateClose();
+        if (dy > vh * 0.22 || d.velocity > DISMISS_FLING_VY$1) animateClose();
         else snapBack();
         return;
       }
@@ -28391,8 +30575,8 @@ function chatWallpaperStorageKeys(chat, ownerId) {
 }
 function loadChatWallpaperForChat(chat, ownerId) {
   const map = readMap();
-  for (const key of chatWallpaperStorageKeys(chat, ownerId)) {
-    const hit = map[key];
+  for (const key2 of chatWallpaperStorageKeys(chat, ownerId)) {
+    const hit = map[key2];
     if (hit) return hit;
   }
   return "default";
@@ -28401,9 +30585,9 @@ function saveChatWallpaperForChat(chat, ownerId, id) {
   const keys = chatWallpaperStorageKeys(chat, ownerId);
   if (keys.length === 0) return;
   const map = readMap();
-  for (const key of keys) {
-    if (id === "default") delete map[key];
-    else map[key] = id;
+  for (const key2 of keys) {
+    if (id === "default") delete map[key2];
+    else map[key2] = id;
   }
   writeMap(map);
 }
@@ -30092,8 +32276,8 @@ function MentionComposerField({
     )
   ] });
 }
-const TW = 800;
-const TH = 400;
+const TW = 400;
+const TH = 800;
 const BR = 12;
 const PR = 20;
 const POCKETS = [
@@ -30207,10 +32391,14 @@ function stepPhysics(balls) {
   }
   return next;
 }
+function remainingForType(type, pocketed) {
+  const all = type === "stripes" ? [9, 10, 11, 12, 13, 14, 15] : [1, 2, 3, 4, 5, 6, 7];
+  return all.filter((id) => !pocketed.includes(id));
+}
 function drawTable(ctx) {
-  ctx.fillStyle = "#166534";
+  ctx.fillStyle = "#14532d";
   ctx.fillRect(0, 0, TW, TH);
-  ctx.fillStyle = "#92400e";
+  ctx.fillStyle = "#78350f";
   ctx.fillRect(0, 0, TW, WALL_T);
   ctx.fillRect(0, WALL_B, TW, TH - WALL_B);
   ctx.fillRect(0, 0, WALL_L, TH);
@@ -30220,19 +32408,25 @@ function drawTable(ctx) {
   for (const p of POCKETS) {
     ctx.beginPath();
     ctx.arc(p.x, p.y, PR, 0, Math.PI * 2);
-    ctx.fillStyle = "#000";
+    ctx.fillStyle = "#0a0a0a";
     ctx.fill();
+    ctx.strokeStyle = "rgba(0,0,0,0.5)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
   }
-  ctx.strokeStyle = "rgba(255,255,255,0.2)";
-  ctx.lineWidth = 1;
+  ctx.strokeStyle = "rgba(255,255,255,0.22)";
+  ctx.lineWidth = 1.5;
   ctx.beginPath();
-  ctx.moveTo(TW * 0.25, WALL_T);
-  ctx.lineTo(TW * 0.25, WALL_B);
+  ctx.moveTo(WALL_L, TH * 0.25);
+  ctx.lineTo(WALL_R, TH * 0.25);
   ctx.stroke();
 }
 function drawBall(ctx, b) {
   if (b.pocketed) return;
   ctx.save();
+  ctx.shadowColor = "rgba(0,0,0,0.35)";
+  ctx.shadowBlur = 4;
+  ctx.shadowOffsetY = 2;
   ctx.beginPath();
   ctx.arc(b.x, b.y, BR, 0, Math.PI * 2);
   const isStripe3 = b.id >= 9 && b.id <= 15;
@@ -30252,6 +32446,7 @@ function drawBall(ctx, b) {
     ctx.fill();
   }
   if (b.id > 0) {
+    ctx.shadowBlur = 0;
     ctx.beginPath();
     ctx.arc(b.x, b.y, BR * 0.42, 0, Math.PI * 2);
     ctx.fillStyle = "#fff";
@@ -30264,37 +32459,47 @@ function drawBall(ctx, b) {
   }
   ctx.beginPath();
   ctx.arc(b.x, b.y, BR, 0, Math.PI * 2);
-  ctx.strokeStyle = "rgba(0,0,0,0.45)";
-  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = "rgba(0,0,0,0.4)";
+  ctx.lineWidth = 1.2;
   ctx.stroke();
   ctx.restore();
 }
 function drawAimLine(ctx, cue, angle, power) {
-  const length = 60 + power * 5;
-  const ex = cue.x - Math.cos(angle) * length;
-  const ey = cue.y - Math.sin(angle) * length;
+  const shotX = Math.cos(angle);
+  const shotY = Math.sin(angle);
+  const guideLen = 90 + power * 4;
+  const gx = cue.x + shotX * guideLen;
+  const gy = cue.y + shotY * guideLen;
   ctx.save();
-  ctx.strokeStyle = "rgba(255,255,255,0.55)";
+  ctx.strokeStyle = "rgba(255,255,255,0.45)";
   ctx.lineWidth = 1.5;
-  ctx.setLineDash([8, 6]);
+  ctx.setLineDash([6, 5]);
   ctx.beginPath();
   ctx.moveTo(cue.x, cue.y);
-  ctx.lineTo(ex, ey);
+  ctx.lineTo(gx, gy);
   ctx.stroke();
   ctx.setLineDash([]);
-  const stickStart = { x: cue.x + Math.cos(angle) * (BR + 4), y: cue.y + Math.sin(angle) * (BR + 4) };
-  const stickEnd = { x: cue.x + Math.cos(angle) * (BR + 4 + 120), y: cue.y + Math.sin(angle) * (BR + 4 + 120) };
-  const grad = ctx.createLinearGradient(stickStart.x, stickStart.y, stickEnd.x, stickEnd.y);
-  grad.addColorStop(0, "#d4a574");
-  grad.addColorStop(0.3, "#c8964a");
-  grad.addColorStop(1, "#5c3317");
+  const pullLen = 55 + power * 7;
+  const backX = cue.x - shotX * (BR + 4);
+  const backY = cue.y - shotY * (BR + 4);
+  const tipX = cue.x - shotX * (BR + 4 + pullLen);
+  const tipY = cue.y - shotY * (BR + 4 + pullLen);
+  const grad = ctx.createLinearGradient(tipX, tipY, backX, backY);
+  grad.addColorStop(0, "#3d2314");
+  grad.addColorStop(0.35, "#8b5a2b");
+  grad.addColorStop(0.7, "#d4a574");
+  grad.addColorStop(1, "#f5deb3");
   ctx.strokeStyle = grad;
-  ctx.lineWidth = 5;
+  ctx.lineWidth = 6;
   ctx.lineCap = "round";
   ctx.beginPath();
-  ctx.moveTo(stickStart.x, stickStart.y);
-  ctx.lineTo(stickEnd.x, stickEnd.y);
+  ctx.moveTo(tipX, tipY);
+  ctx.lineTo(backX, backY);
   ctx.stroke();
+  ctx.fillStyle = "#1a1a1a";
+  ctx.beginPath();
+  ctx.arc(tipX, tipY, 5, 0, Math.PI * 2);
+  ctx.fill();
   ctx.restore();
 }
 async function apiFetch(path, opts = {}) {
@@ -30310,7 +32515,21 @@ async function apiFetch(path, opts = {}) {
     }
   });
 }
-function PoolGame({ roomId, chatId, onClose, onGameEnd }) {
+function SideBallRack({ ballIds, label }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex w-12 shrink-0 flex-col items-center gap-1 py-2", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "mb-1 text-[9px] font-semibold uppercase tracking-wide text-white/40", children: label }),
+    ballIds.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[10px] text-emerald-400/80", children: "تم" }) : ballIds.map((id) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "div",
+      {
+        className: "relative flex h-7 w-7 items-center justify-center rounded-full border border-white/15 shadow-md",
+        style: { background: BALL_COLORS[id] },
+        children: id > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[8px] font-bold text-black/70", children: id })
+      },
+      id
+    ))
+  ] });
+}
+function PoolGame({ roomId, onClose, onGameEnd }) {
   const { state, currentUser } = useApp();
   const me = currentUser;
   const canvasRef = reactExports.useRef(null);
@@ -30319,18 +32538,30 @@ function PoolGame({ roomId, chatId, onClose, onGameEnd }) {
   const [shooting, setShooting] = reactExports.useState(false);
   const [animating, setAnimating] = reactExports.useState(false);
   const [localBalls, setLocalBalls] = reactExports.useState([]);
-  const [aimAngle, setAimAngle] = reactExports.useState(Math.PI);
+  const [aimAngle, setAimAngle] = reactExports.useState(-Math.PI / 2);
   const [power, setPower] = reactExports.useState(0);
   const [aiming, setAiming] = reactExports.useState(false);
-  const [aimStart, setAimStart] = reactExports.useState(null);
   const [timeLeft, setTimeLeft] = reactExports.useState(30);
   const [result, setResult] = reactExports.useState(null);
+  const [goalFlash, setGoalFlash] = reactExports.useState(null);
   const scaleRef = reactExports.useRef(1);
   const animFrameRef = reactExports.useRef(0);
+  const goalTimerRef = reactExports.useRef(null);
   const isMyTurn = room ? room.currentTurnUserId === me.id : false;
   const myType = room ? room.player1Id === me.id ? room.player1Type : room.player2Type : null;
+  const opType = room ? room.player1Id === me.id ? room.player2Type : room.player1Type : null;
   const opponentId = room ? room.player1Id === me.id ? room.player2Id : room.player1Id : null;
   const opponent = opponentId ? state.users.find((u) => u.id === opponentId) : null;
+  const myPocketed = room ? room.player1Id === me.id ? room.player1Pocketed : room.player2Pocketed : [];
+  const opPocketed = room ? room.player1Id === me.id ? room.player2Pocketed : room.player1Pocketed : [];
+  const myRemaining = reactExports.useMemo(
+    () => remainingForType(myType, myPocketed),
+    [myType, myPocketed]
+  );
+  const opRemaining = reactExports.useMemo(
+    () => remainingForType(opType, opPocketed),
+    [opType, opPocketed]
+  );
   reactExports.useEffect(() => {
     if (!apiBackendEnabled()) return;
     void (async () => {
@@ -30353,8 +32584,7 @@ function PoolGame({ roomId, chatId, onClose, onGameEnd }) {
       setAnimating(false);
       setShooting(false);
       if (d.status === "finished") {
-        const won = d.winnerId === me.id;
-        setResult({ won, shown: false });
+        setResult({ won: d.winnerId === me.id, shown: false });
       }
     };
     window.addEventListener("pool:state_update", handle);
@@ -30364,22 +32594,9 @@ function PoolGame({ roomId, chatId, onClose, onGameEnd }) {
       window.removeEventListener("pool:room_created", handle);
     };
   }, [roomId, me.id]);
-  reactExports.useEffect(() => {
-    return () => {
-    };
+  reactExports.useEffect(() => () => {
+    if (goalTimerRef.current) clearTimeout(goalTimerRef.current);
   }, []);
-  reactExports.useEffect(() => {
-    if (!room || room.status !== "active") return;
-    const tick = setInterval(() => {
-      const elapsed = (Date.now() - (room.turnTimerStart ?? Date.now())) / 1e3;
-      const left = Math.max(0, 30 - elapsed);
-      setTimeLeft(Math.round(left));
-      if (left <= 0 && isMyTurn && !shooting && !animating) {
-        void submitShot(localBalls, [], false);
-      }
-    }, 500);
-    return () => clearInterval(tick);
-  }, [room, isMyTurn, shooting, animating, localBalls]);
   const renderCanvas = reactExports.useCallback(() => {
     const canvas2 = canvasRef.current;
     if (!canvas2) return;
@@ -30434,66 +32651,31 @@ function PoolGame({ roomId, chatId, onClose, onGameEnd }) {
       y: (clientY - rect.top) / scale
     };
   };
+  const updateAimFromPos = reactExports.useCallback((pos) => {
+    const cue = localBalls.find((b) => b.id === 0);
+    if (!cue || cue.pocketed) return;
+    const angle = Math.atan2(cue.y - pos.y, cue.x - pos.x);
+    const pull = Math.max(0, dist(cue, pos) - BR - 8);
+    setAimAngle(angle);
+    setPower(Math.min(MAX_POWER, pull / 9));
+  }, [localBalls]);
   const onPointerDown = reactExports.useCallback((e) => {
     if (!isMyTurn || animating || shooting) return;
     const cue = localBalls.find((b) => b.id === 0);
     if (!cue || cue.pocketed) return;
-    const pos = getCanvasPos(e);
-    setAimStart(pos);
     setAiming(true);
-    const angle = Math.atan2(cue.y - pos.y, cue.x - pos.x);
-    setAimAngle(angle);
-    setPower(0);
-  }, [isMyTurn, animating, shooting, localBalls]);
+    updateAimFromPos(getCanvasPos(e));
+  }, [isMyTurn, animating, shooting, localBalls, updateAimFromPos]);
   const onPointerMove = reactExports.useCallback((e) => {
-    if (!aiming || !aimStart) return;
-    const cue = localBalls.find((b) => b.id === 0);
-    if (!cue) return;
-    const pos = getCanvasPos(e);
-    const angle = Math.atan2(cue.y - pos.y, cue.x - pos.x);
-    setAimAngle(angle);
-    const d = Math.hypot(pos.x - aimStart.x, pos.y - aimStart.y);
-    setPower(Math.min(MAX_POWER, d / 8));
-  }, [aiming, aimStart, localBalls]);
-  const onPointerUp = reactExports.useCallback(() => {
     if (!aiming) return;
-    setAiming(false);
-    if (power < 0.3) {
-      setPower(0);
-      return;
-    }
-    shoot();
-  }, [aiming, power]);
-  const shoot = reactExports.useCallback(() => {
-    if (!isMyTurn || animating || shooting) return;
-    setShooting(true);
-    setAnimating(true);
-    const balls = localBalls.map((b) => {
-      if (b.id === 0 && !b.pocketed) {
-        return { ...b, vx: Math.cos(aimAngle) * power, vy: Math.sin(aimAngle) * power };
-      }
-      return { ...b };
-    });
-    animateShot(balls);
-  }, [isMyTurn, animating, shooting, localBalls, aimAngle, power]);
-  const animateShot = reactExports.useCallback((balls) => {
-    let current = balls.map((b) => ({ ...b }));
-    const pocketedBefore = new Set(localBalls.filter((b) => b.pocketed).map((b) => b.id));
-    const step = () => {
-      if (!ballsMoving(current)) {
-        const pocketedThisShot = current.filter((b) => b.pocketed && !pocketedBefore.has(b.id)).map((b) => b.id);
-        const cuePocketed = pocketedThisShot.includes(0);
-        setLocalBalls(current);
-        void submitShot(current, pocketedThisShot, cuePocketed);
-        return;
-      }
-      current = stepPhysics(current);
-      setLocalBalls([...current]);
-      animFrameRef.current = requestAnimationFrame(step);
-    };
-    animFrameRef.current = requestAnimationFrame(step);
-  }, [localBalls]);
-  const submitShot = async (balls, pocketedThisShot, cuePocketed) => {
+    updateAimFromPos(getCanvasPos(e));
+  }, [aiming, updateAimFromPos]);
+  const showGoalFlash = reactExports.useCallback((msg) => {
+    setGoalFlash(msg);
+    if (goalTimerRef.current) clearTimeout(goalTimerRef.current);
+    goalTimerRef.current = setTimeout(() => setGoalFlash(null), 1600);
+  }, []);
+  const submitShot = reactExports.useCallback(async (balls, pocketedThisShot, cuePocketed) => {
     if (!apiBackendEnabled()) return;
     try {
       const r2 = await apiFetch(`/v1/games/pool/${roomId}/shot`, {
@@ -30517,19 +32699,75 @@ function PoolGame({ roomId, chatId, onClose, onGameEnd }) {
       setAnimating(false);
       setPower(0);
     }
-  };
+  }, [roomId, me.id, state.users, onGameEnd]);
+  const animateShot = reactExports.useCallback((balls) => {
+    let current = balls.map((b) => ({ ...b }));
+    const pocketedBefore = new Set(localBalls.filter((b) => b.pocketed).map((b) => b.id));
+    const step = () => {
+      if (!ballsMoving(current)) {
+        const pocketedThisShot = current.filter((b) => b.pocketed && !pocketedBefore.has(b.id)).map((b) => b.id);
+        const cuePocketed = pocketedThisShot.includes(0);
+        const scoredMine = pocketedThisShot.filter((id) => {
+          if (id === 0 || id === 8) return false;
+          const isSolid = id >= 1 && id <= 7;
+          const isStripe3 = id >= 9 && id <= 15;
+          return myType === "solids" && isSolid || myType === "stripes" && isStripe3;
+        });
+        if (scoredMine.length > 0) {
+          showGoalFlash(scoredMine.length > 1 ? `هدف ×${scoredMine.length}!` : "هدف! 🎱");
+        }
+        setLocalBalls(current);
+        void submitShot(current, pocketedThisShot, cuePocketed);
+        return;
+      }
+      current = stepPhysics(current);
+      setLocalBalls([...current]);
+      animFrameRef.current = requestAnimationFrame(step);
+    };
+    animFrameRef.current = requestAnimationFrame(step);
+  }, [localBalls, myType, showGoalFlash, submitShot]);
+  const shoot = reactExports.useCallback(() => {
+    if (!isMyTurn || animating || shooting) return;
+    setShooting(true);
+    setAnimating(true);
+    const balls = localBalls.map((b) => {
+      if (b.id === 0 && !b.pocketed) {
+        return { ...b, vx: Math.cos(aimAngle) * power, vy: Math.sin(aimAngle) * power };
+      }
+      return { ...b };
+    });
+    animateShot(balls);
+  }, [isMyTurn, animating, shooting, localBalls, aimAngle, power, animateShot]);
+  const onPointerUp = reactExports.useCallback(() => {
+    if (!aiming) return;
+    setAiming(false);
+    if (power < 0.35) {
+      setPower(0);
+      return;
+    }
+    shoot();
+  }, [aiming, power, shoot]);
+  reactExports.useEffect(() => {
+    if (!room || room.status !== "active") return;
+    const tick = setInterval(() => {
+      const elapsed = (Date.now() - (room.turnTimerStart ?? Date.now())) / 1e3;
+      const left = Math.max(0, 30 - elapsed);
+      setTimeLeft(Math.round(left));
+      if (left <= 0 && isMyTurn && !shooting && !animating) {
+        void submitShot(localBalls, [], false);
+      }
+    }, 500);
+    return () => clearInterval(tick);
+  }, [room, isMyTurn, shooting, animating, localBalls, submitShot]);
   const forfeit = async () => {
     if (!confirm("هل أنت متأكد من الاستسلام؟")) return;
     await apiFetch(`/v1/games/pool/${roomId}/forfeit`, { method: "POST" });
     onClose();
   };
-  const myPocketed = room ? room.player1Id === me.id ? room.player1Pocketed : room.player2Pocketed : [];
-  const opPocketed = room ? room.player1Id === me.id ? room.player2Pocketed : room.player1Pocketed : [];
   if (result && !result.shown) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-[300] flex items-center justify-center bg-black/80 p-6", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col items-center gap-4 rounded-3xl bg-white p-8 text-center shadow-2xl", children: [
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-[300] flex items-center justify-center bg-black/85 p-6", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col items-center gap-4 rounded-3xl bg-white p-8 text-center shadow-2xl", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-6xl", children: result.won ? "🎉" : "😢" }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-2xl font-bold text-gray-900", children: result.won ? "فزت! 🎱" : "خسرت" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-gray-600", children: result.won ? "أحسنت الأداء!" : "حظ أوفر في المرة القادمة" }),
       /* @__PURE__ */ jsxRuntimeExports.jsx(
         "button",
         {
@@ -30543,79 +32781,120 @@ function PoolGame({ roomId, chatId, onClose, onGameEnd }) {
       )
     ] }) });
   }
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "fixed inset-0 z-[200] flex flex-col bg-[#0d1117]", dir: "ltr", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between px-4 py-2 bg-[#1a2332]", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: forfeit, className: "rounded-xl bg-red-600/20 px-3 py-1.5 text-sm font-semibold text-red-400", children: "استسلام" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-center", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-xs text-gray-400", children: "🎱 بلياردو" }),
-        room && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `text-xs font-bold ${isMyTurn ? "text-green-400" : "text-gray-400"}`, children: isMyTurn ? `دورك ⏱ ${timeLeft}s` : `دور @${opponent?.username ?? "?"}` })
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: onClose, className: "rounded-xl bg-white/10 px-3 py-1.5 text-sm text-white", children: "✕" })
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "fixed inset-0 z-[200] flex flex-col bg-gradient-to-b from-[#0f172a] to-[#020617]", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between px-3 py-2", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          type: "button",
+          onClick: onClose,
+          className: "rounded-full bg-white/10 px-3 py-1.5 text-sm text-white",
+          children: "✕"
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm font-bold text-white/90", children: "بلياردو 8 كرات" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          type: "button",
+          onClick: forfeit,
+          className: "rounded-full bg-red-500/20 px-3 py-1.5 text-xs font-semibold text-red-300",
+          children: "استسلام"
+        }
+      )
     ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between bg-[#111827] px-4 py-2", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-lg", children: myType === "solids" ? "●" : myType === "stripes" ? "◉" : "?" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-xs font-bold text-white", children: [
-            "أنت @",
-            me.username
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex gap-1", children: myPocketed.slice(0, 7).map((id) => /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "h-3 w-3 rounded-full", style: { background: BALL_COLORS[id] } }, id)) })
-        ] })
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-end justify-between px-4 pb-2", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `flex flex-col items-center gap-1 transition-opacity ${!isMyTurn ? "opacity-100" : "opacity-55"}`, children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          Avatar,
+          {
+            name: opponent?.username ?? "?",
+            src: opponent?.avatar,
+            size: 56,
+            ring: !isMyTurn,
+            className: !isMyTurn ? "ring-2 ring-amber-400" : ""
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "max-w-[88px] truncate text-[11px] font-medium text-white/80", children: [
+          "@",
+          opponent?.username ?? "خصم"
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xl font-black tabular-nums text-white", children: opPocketed.length })
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-lg font-bold text-yellow-400", children: [
-        myPocketed.length,
-        " — ",
-        opPocketed.length
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col items-center gap-0.5 px-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-lg", children: "🎱" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: `text-xs font-bold ${isMyTurn ? "text-emerald-400" : "text-white/40"}`, children: isMyTurn ? `دورك · ${timeLeft}s` : "دور الخصم" }),
+        myType && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[10px] text-white/50", children: myType === "solids" ? "صلبة ●" : "مخططة ◉" })
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-row-reverse items-center gap-2", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-lg", children: myType === "solids" ? "◉" : myType === "stripes" ? "●" : "?" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-right", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-xs font-bold text-white", children: [
-            "@",
-            opponent?.username ?? "?"
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex flex-row-reverse gap-1", children: opPocketed.slice(0, 7).map((id) => /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "h-3 w-3 rounded-full", style: { background: BALL_COLORS[id] } }, id)) })
-        ] })
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `flex flex-col items-center gap-1 transition-opacity ${isMyTurn ? "opacity-100" : "opacity-55"}`, children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          Avatar,
+          {
+            name: me.username,
+            src: me.avatar,
+            size: 56,
+            ring: isMyTurn,
+            className: isMyTurn ? "ring-2 ring-emerald-400" : ""
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "max-w-[88px] truncate text-[11px] font-medium text-white/80", children: [
+          "@",
+          me.username
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xl font-black tabular-nums text-emerald-300", children: myPocketed.length })
       ] })
     ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { ref: containerRef, className: "min-h-0 flex-1 flex items-center justify-center p-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-      "canvas",
-      {
-        ref: canvasRef,
-        className: `rounded-lg shadow-2xl ${isMyTurn && !animating ? "cursor-crosshair" : "cursor-default"}`,
-        onMouseDown: onPointerDown,
-        onMouseMove: onPointerMove,
-        onMouseUp: onPointerUp,
-        onTouchStart: onPointerDown,
-        onTouchMove: (e) => {
-          e.preventDefault();
-          onPointerMove(e);
-        },
-        onTouchEnd: onPointerUp,
-        style: { touchAction: "none" }
-      }
-    ) }),
-    aiming && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mx-4 mb-2 flex items-center gap-2", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs text-gray-400", children: "قوة" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex-1 h-3 rounded-full bg-gray-700 overflow-hidden", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative flex min-h-0 flex-1 items-stretch justify-center gap-0 px-1", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(SideBallRack, { ballIds: opRemaining, label: "خصم" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(
         "div",
         {
-          className: "h-full rounded-full transition-none",
-          style: {
-            width: `${power / MAX_POWER * 100}%`,
-            background: `hsl(${120 - power / MAX_POWER * 120},80%,45%)`
-          }
+          ref: containerRef,
+          className: "relative min-h-0 flex-1",
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "canvas",
+              {
+                ref: canvasRef,
+                className: `mx-auto block max-h-full rounded-xl shadow-[0_8px_40px_rgba(0,0,0,0.55)] ${isMyTurn && !animating ? "cursor-crosshair" : "cursor-default"}`,
+                onMouseDown: onPointerDown,
+                onMouseMove: onPointerMove,
+                onMouseUp: onPointerUp,
+                onMouseLeave: () => {
+                  if (aiming) onPointerUp();
+                },
+                onTouchStart: onPointerDown,
+                onTouchMove: (e) => {
+                  e.preventDefault();
+                  onPointerMove(e);
+                },
+                onTouchEnd: onPointerUp,
+                style: { touchAction: "none" }
+              }
+            ),
+            goalFlash && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "pointer-events-none absolute inset-0 flex items-center justify-center", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "animate-bounce rounded-2xl bg-emerald-500/90 px-6 py-3 text-lg font-black text-white shadow-lg", children: goalFlash }) })
+          ]
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(SideBallRack, { ballIds: myRemaining, label: "أنت" })
+    ] }),
+    aiming && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mx-6 mb-3 flex items-center gap-3", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[10px] text-white/50", children: "اسحب للخلف" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-2.5 flex-1 overflow-hidden rounded-full bg-white/10", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "div",
+        {
+          className: "h-full rounded-full bg-gradient-to-r from-lime-400 via-yellow-400 to-red-500 transition-none",
+          style: { width: `${power / MAX_POWER * 100}%` }
         }
       ) }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-xs text-gray-400", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "w-8 text-right text-[10px] tabular-nums text-white/60", children: [
         Math.round(power / MAX_POWER * 100),
         "%"
       ] })
     ] }),
-    !room && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex items-center justify-center py-4 text-gray-400", children: "جاري تحميل اللعبة…" }),
-    room?.foulPending && !isMyTurn && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mx-4 mb-2 rounded-xl bg-red-900/40 px-3 py-2 text-center text-sm text-red-300", children: "فاول — يمكنك وضع الكرة في أي مكان" }),
-    isMyTurn && !animating && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mx-4 mb-2 text-center text-sm text-green-400", children: !room?.breakDone ? "اضغط وسحب للتصويب — ضربة الافتتاح!" : "دورك — صوّب الكرة البيضاء" })
+    !room && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "pb-4 text-center text-sm text-white/40", children: "جاري تحميل اللعبة…" }),
+    room?.foulPending && isMyTurn && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mx-4 mb-2 rounded-xl bg-red-900/50 py-2 text-center text-xs text-red-200", children: "فاول — ضع الكرة البيضاء حيث تريد" }),
+    isMyTurn && !animating && room && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "pb-3 text-center text-xs text-emerald-400/90", children: !room.breakDone ? "حرّك الإصبع حول الكرة ثم اسحب للخلف واترك للضرب" : "صوّب · اسحب العصا للخلف · اترك للضرب" })
   ] });
 }
 const CHAT_DM_MINE_BUBBLE = "#ffffff";
@@ -31048,19 +33327,6 @@ function truncateText(s, max = PREVIEW_MAX) {
   const t = (s ?? "").trim();
   if (t.length <= max) return t;
   return t.slice(0, max) + "…";
-}
-function lastMessagePreview(last) {
-  if (!last) return "—";
-  const c = messageContent(last);
-  if (last.type === "text") return truncateText(c);
-  if (last.type === "sticker") return isStickerImageContent(c) || isStickerVideoContent(c) ? "ملصق" : truncateText(c, 24);
-  if (last.type === "image") return last.viewOnce ? "صورة (مرة واحدة)" : "صورة";
-  if (last.type === "drawing") return last.viewOnce ? "رسم (مرة واحدة)" : "رسم";
-  if (last.type === "video") return last.viewOnce ? "فيديو (مرة واحدة)" : "فيديو";
-  if (last.type === "voice") return "رسالة صوتية";
-  if (last.type === "shared_post") return "منشور";
-  if (last.type === "shared_story") return "ستوري";
-  return `[${last.type}]`;
 }
 function chatReplyPreview(m) {
   const c = messageContent(m);
@@ -31580,7 +33846,19 @@ function ChatListRowWithPeek({
   onRowOpenCommit,
   onStackGestureArm
 }) {
-  const { state, openOrCreateChat, sendMessage, toggleChatListPin, toggleChatMute, deleteChat, isGuest, joinChannel } = useApp();
+  const {
+    state,
+    openOrCreateChat,
+    sendMessage,
+    toggleChatListPin,
+    toggleChatMute,
+    deleteChat,
+    markChatRead,
+    markChatUnread,
+    isGuest,
+    joinChannel
+  } = useApp();
+  const typingUserByChatId = useTypingUsers();
   const t = useT();
   const [peekPx, setPeekPx] = reactExports.useState(0);
   const [cameraDraft, setCameraDraft] = reactExports.useState(null);
@@ -31597,6 +33875,10 @@ function ChatListRowWithPeek({
   const last = peekMessages[peekMessages.length - 1];
   const readId = c.lastReadMessageIdByUser?.[me.id];
   const hasUnread = !!(last && last.senderId !== me.id && last.id !== readId);
+  const unreadCount = hasUnread ? Math.max(1, chatUnreadCount(c, me.id)) : 0;
+  const listTypingPeerId = resolveListTypingPeerId(c, me.id, typingUserByChatId);
+  const peerTypingInList = !!listTypingPeerId;
+  const peerOnlineInList = isPeerOnline(c, otherId);
   const displayName = c.isGroup || c.isChannel ? c.name || "?" : other?.username || "?";
   const avatarSrc = c.isGroup || c.isChannel ? c.avatar : other?.avatar;
   c.id === QURAN_CHANNEL_ID;
@@ -32058,7 +34340,24 @@ function ChatListRowWithPeek({
                 },
                 children: [
                   /* @__PURE__ */ jsxRuntimeExports.jsx(RSocialAvatar, { name: displayName, src: avatarSrc, size: 58 }),
-                  hasUnread && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  peerOnlineInList && !c.isGroup && !c.isChannel && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "span",
+                    {
+                      className: "absolute rounded-full bg-emerald-500 ring-2 ring-background",
+                      style: { width: 14, height: 14, bottom: 8, insetInlineEnd: 8 },
+                      "aria-label": state.language === "ar" ? "متصل" : "Online"
+                    }
+                  ),
+                  hasUnread && unreadCount > 1 && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "span",
+                    {
+                      className: "absolute flex min-w-[20px] items-center justify-center rounded-full bg-[#0095F6] px-1 text-[11px] font-bold text-white ring-2 ring-background",
+                      style: { height: 20, top: 6, insetInlineEnd: 4 },
+                      "aria-hidden": true,
+                      children: unreadCount > 99 ? "99+" : unreadCount
+                    }
+                  ),
+                  hasUnread && unreadCount <= 1 && /* @__PURE__ */ jsxRuntimeExports.jsx(
                     "span",
                     {
                       className: "absolute rounded-full bg-[#0095F6] ring-2 ring-background",
@@ -32093,13 +34392,13 @@ function ChatListRowWithPeek({
                     !c.isGroup && !c.isChannel && (c.streak?.streakCount ?? 0) > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(StreakBadge, { streak: c.streak })
                   ] }),
                   /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-w-0 items-center gap-1.5", children: [
-                    last?.senderId === me.id && /* @__PURE__ */ jsxRuntimeExports.jsx(ChatListOutgoingStatusIcon, { status: last.status }),
+                    last?.senderId === me.id && !peerTypingInList && /* @__PURE__ */ jsxRuntimeExports.jsx(ChatListOutgoingStatusIcon, { status: last.status }),
                     /* @__PURE__ */ jsxRuntimeExports.jsx(
                       "span",
                       {
-                        className: "min-w-0 flex-1 truncate text-[14px] leading-snug select-text " + (hasUnread ? "font-medium text-foreground/80" : "text-muted-foreground"),
+                        className: "min-w-0 flex-1 truncate text-[14px] leading-snug select-text " + (peerTypingInList ? "font-medium text-[#0095F6]" : hasUnread ? "font-medium text-foreground/80" : "text-muted-foreground"),
                         onPointerDown: (e) => e.stopPropagation(),
-                        children: last ? lastMessagePreview(last) : state.language === "ar" ? "لا رسائل بعد" : "No messages yet"
+                        children: peerTypingInList ? listTypingPreview(state.language) : last ? lastMessagePreview(last) : state.language === "ar" ? "لا رسائل بعد" : "No messages yet"
                       }
                     )
                   ] })
@@ -32170,9 +34469,12 @@ function ChatListRowWithPeek({
             ] }),
             [
               {
-                icon: hasUnread ? /* @__PURE__ */ jsxRuntimeExports.jsx(Check, { size: 15, className: "text-blue-500" }) : /* @__PURE__ */ jsxRuntimeExports.jsx(Check, { size: 15, className: "text-blue-500" }),
+                icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Check, { size: 15, className: "text-blue-500" }),
                 label: state.language === "ar" ? hasUnread ? "تعيين كمقروء" : "تعيين كغير مقروء" : hasUnread ? "Mark as read" : "Mark as unread",
                 onClick: () => {
+                  if (hasUnread) markChatRead(c.id);
+                  else markChatUnread(c.id);
+                  chatHapticLight();
                   setRowMenu(null);
                 }
               },
@@ -32985,6 +35287,8 @@ function ChatScreen({
     resetStackToInboxRest
   ]);
   const [search, setSearch] = reactExports.useState("");
+  const debouncedSearch = useDebouncedValue(search.trim().toLowerCase(), 160);
+  const inboxListScrollRef = reactExports.useRef(null);
   const [noteInput, setNoteInput] = reactExports.useState(me.note || "");
   const [editingNote, setEditingNote] = reactExports.useState(false);
   const [showGames, setShowGames] = reactExports.useState(false);
@@ -33381,8 +35685,14 @@ function ChatScreen({
   reactExports.useEffect(() => {
     setProfileNoteReplyDraft("");
   }, [profileNoteReply?.userId, profileNoteReply?.note]);
-  const myChats = state.chats.filter((c) => c.members.includes(me.id) && !c.request);
-  const requests = state.chats.filter((c) => c.members.includes(me.id) && c.request);
+  const myChats = reactExports.useMemo(
+    () => state.chats.filter((c) => c.members.includes(me.id) && !c.request),
+    [state.chats, me.id]
+  );
+  const requests = reactExports.useMemo(
+    () => state.chats.filter((c) => c.members.includes(me.id) && c.request),
+    [state.chats, me.id]
+  );
   const messageRequests = reactExports.useMemo(
     () => requests.filter(
       (c) => !c.isGroup && !c.isChannel && !(c.messages || []).some((m) => m.senderId === me.id)
@@ -33395,14 +35705,19 @@ function ChatScreen({
       (u) => u.id !== me.id && isProfileNoteActive(u) && me.following.includes(u.id) && !me.blocked.includes(u.id) && !u.blocked.includes(me.id)
     )
   ];
-  const filteredChats = myChats.filter((c) => {
-    if (!search.trim()) return true;
-    const q = search.toLowerCase();
-    if (c.isGroup) return (c.name || "").toLowerCase().includes(q);
-    const otherId = c.members.find((id) => id !== me.id);
-    const other = otherId ? userById(state, otherId) : null;
-    return (other?.username ?? "").toLowerCase().includes(q);
-  });
+  const filteredChats = reactExports.useMemo(() => {
+    if (!debouncedSearch) return myChats;
+    const q = debouncedSearch;
+    return myChats.filter((c) => {
+      if (c.isGroup || c.isChannel) return (c.name || "").toLowerCase().includes(q);
+      const otherId = c.members.find((id) => id !== me.id);
+      const other = otherId ? userById(state, otherId) : null;
+      const uname = (other?.username ?? "").toLowerCase();
+      const dname = (other?.displayName ?? "").toLowerCase();
+      const preview = lastMessagePreview((c.messages || [])[(c.messages || []).length - 1]).toLowerCase();
+      return uname.includes(q) || dname.includes(q) || preview.includes(q);
+    });
+  }, [myChats, debouncedSearch, state.users]);
   const sortedFilteredChats = reactExports.useMemo(() => {
     const pins = me.pinnedChatIds || [];
     const lastActivityAt = (c) => {
@@ -33425,7 +35740,7 @@ function ChatScreen({
       if (aPin && bPin) return ia - ib;
       return lastActivityAt(b) - lastActivityAt(a);
     });
-  }, [filteredChats, me.id, me.pinnedChatIds, state.chats]);
+  }, [filteredChats, me.id, me.pinnedChatIds]);
   const [lastStableChats, setLastStableChats] = reactExports.useState([]);
   const [lastStableAt, setLastStableAt] = reactExports.useState(0);
   reactExports.useEffect(() => {
@@ -33438,7 +35753,7 @@ function ChatScreen({
     setLastStableChats([]);
     setLastStableAt(0);
   }, [me.id]);
-  const shouldHoldPreviousChats = !search.trim() && sortedFilteredChats.length === 0 && lastStableChats.length > 0 && Date.now() - lastStableAt < 8e3;
+  const shouldHoldPreviousChats = !debouncedSearch && sortedFilteredChats.length === 0 && lastStableChats.length > 0 && Date.now() - lastStableAt < 8e3;
   const renderedChats = shouldHoldPreviousChats ? lastStableChats : sortedFilteredChats;
   const stackChatOpenKey = stackChat ? openChatIdFor(stackChat, me.id) : null;
   reactExports.useCallback(
@@ -33448,9 +35763,9 @@ function ChatScreen({
   const handleStackRoomAnimatedBack = reactExports.useCallback(() => {
     releaseStackTransitionLock();
     if (stackClosingId) return true;
-    const key = stackChatOpenKey ?? (openChat ? resolveOpenChatId(openChat) : null);
-    if (key) {
-      beginCloseChatThreadRef.current(key);
+    const key2 = stackChatOpenKey ?? (openChat ? resolveOpenChatId(openChat) : null);
+    if (key2) {
+      beginCloseChatThreadRef.current(key2);
       return true;
     }
     closeOpenChat();
@@ -33493,7 +35808,7 @@ function ChatScreen({
     {
       ref: stackInboxRef,
       dir: isRtl ? "rtl" : "ltr",
-      className: "chat-inbox-pane no-scrollbar relative z-[1] flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-none bg-background [transform:translateZ(0)]",
+      className: "chat-inbox-pane no-scrollbar relative z-[1] flex min-h-0 flex-1 flex-col overflow-hidden overscroll-none bg-background [transform:translateZ(0)]",
       "data-no-tab-swipe": true,
       style: stackInboxPointerEvents ? { pointerEvents: stackInboxPointerEvents } : void 0,
       children: [
@@ -33688,31 +36003,46 @@ function ChatScreen({
             }
           )
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "chat-inbox-scroll no-scrollbar", "data-no-tab-swipe": true, children: [
-          renderedChats.map((c) => /* @__PURE__ */ jsxRuntimeExports.jsx(
-            ChatListRowWithPeek,
-            {
-              chat: c,
-              me,
-              onOpenChat: openChatDirect,
-              onOpenProfile,
-              onStackDrag,
-              onStackDragEnd,
-              onStackChromeHide: hideStackChrome,
-              onStackChromeShow: showStackChrome,
-              onRowOpenCommit: handleRowOpenCommit,
-              onStackGestureArm: armStackListGesture
-            },
-            c.id
-          )),
-          renderedChats.length === 0 && !search.trim() && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col items-center justify-center py-16 gap-3 px-6 text-center", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex h-16 w-16 items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-800", children: /* @__PURE__ */ jsxRuntimeExports.jsx(MessageCirclePlus, { size: 28, className: "text-zinc-400" }) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[15px] font-semibold text-zinc-500 dark:text-zinc-400", children: t("noChats") }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[13px] text-zinc-400", children: isRtl ? "ابدأ محادثة جديدة" : "Start a new conversation" })
-          ] }),
-          renderedChats.length === 0 && !!search.trim() && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "py-12 text-center text-[14px] text-zinc-400", children: isRtl ? "لا نتائج لـ «" + search + "»" : `No results for "${search}"` }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-3", "aria-hidden": true })
-        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "div",
+          {
+            ref: inboxListScrollRef,
+            className: "chat-inbox-scroll no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain",
+            "data-no-tab-swipe": true,
+            children: [
+              shouldHoldPreviousChats && renderedChats.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(ChatInboxSkeleton, { rows: 6 }),
+              renderedChats.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                ChatInboxVirtualList,
+                {
+                  chats: renderedChats,
+                  scrollParentRef: inboxListScrollRef,
+                  renderRow: (c) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    ChatListRowWithPeek,
+                    {
+                      chat: c,
+                      me,
+                      onOpenChat: openChatDirect,
+                      onOpenProfile,
+                      onStackDrag,
+                      onStackDragEnd,
+                      onStackChromeHide: hideStackChrome,
+                      onStackChromeShow: showStackChrome,
+                      onRowOpenCommit: handleRowOpenCommit,
+                      onStackGestureArm: armStackListGesture
+                    }
+                  )
+                }
+              ),
+              renderedChats.length === 0 && !search.trim() && !shouldHoldPreviousChats && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col items-center justify-center py-16 gap-3 px-6 text-center", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex h-16 w-16 items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-800", children: /* @__PURE__ */ jsxRuntimeExports.jsx(MessageCirclePlus, { size: 28, className: "text-zinc-400" }) }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[15px] font-semibold text-zinc-500 dark:text-zinc-400", children: t("noChats") }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[13px] text-zinc-400", children: isRtl ? "ابدأ محادثة جديدة" : "Start a new conversation" })
+              ] }),
+              renderedChats.length === 0 && !!debouncedSearch && !shouldHoldPreviousChats && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "py-12 text-center text-[14px] text-zinc-400", children: isRtl ? "لا نتائج لـ «" + search + "»" : `No results for "${search}"` }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-3", "aria-hidden": true })
+            ]
+          }
+        ),
         editingNote && /* @__PURE__ */ jsxRuntimeExports.jsx(
           "div",
           {
@@ -34392,7 +36722,6 @@ function ChatRoom({
     markViewOnceOpened,
     markChatOpened,
     markChatRead,
-    typingUserByChatId,
     joinChannel,
     hideMessageForMe,
     addMessageReaction,
@@ -34403,6 +36732,7 @@ function ChatRoom({
     mergeDiscoveredUsers,
     isGuest
   } = useApp();
+  const typingUserByChatId = useTypingUsers();
   const t = useT();
   const chat = reactExports.useMemo(() => normalizeChatRecord(chatInput), [chatInput]);
   const viewerId = resolveActiveViewerId(state) ?? currentUser?.id ?? "";
@@ -34542,11 +36872,31 @@ function ChatRoom({
     return [...visibleMessages, ...vanishMessages].slice().sort((a, b) => a.createdAt - b.createdAt);
   }, [isDmRoom, visibleMessages, vanishMessages]);
   const [visibleWindowCount, setVisibleWindowCount] = reactExports.useState(60);
+  const [loadingOlderUi, setLoadingOlderUi] = reactExports.useState(false);
   const isLoadingOlderRef = reactExports.useRef(false);
+  const draftSaveTimerRef = reactExports.useRef(0);
+  const [sendPulse, setSendPulse] = reactExports.useState(false);
   reactExports.useEffect(() => {
     setVisibleWindowCount(60);
     isLoadingOlderRef.current = false;
-  }, [chat.id]);
+    setLoadingOlderUi(false);
+    const draft = meId ? loadChatDraft(meId, sendChatId) : "";
+    setText(draft);
+    if (composerInputRef.current) {
+      composerInputRef.current.value = draft;
+    }
+    requestAnimationFrame(() => syncComposerHeight());
+  }, [chat.id, sendChatId, meId, syncComposerHeight]);
+  reactExports.useEffect(() => {
+    if (!meId) return;
+    if (draftSaveTimerRef.current) window.clearTimeout(draftSaveTimerRef.current);
+    draftSaveTimerRef.current = window.setTimeout(() => {
+      saveChatDraft(meId, sendChatId, text);
+    }, 400);
+    return () => {
+      if (draftSaveTimerRef.current) window.clearTimeout(draftSaveTimerRef.current);
+    };
+  }, [text, meId, sendChatId]);
   const windowedMessages = reactExports.useMemo(() => {
     if (displayMessages.length <= visibleWindowCount) return displayMessages;
     return displayMessages.slice(displayMessages.length - visibleWindowCount);
@@ -34573,8 +36923,8 @@ function ChatRoom({
     const el = composerRef.current;
     if (!el || typeof window === "undefined") return;
     const rect = el.getBoundingClientRect();
-    const obstructed = Math.max(rect.height, window.innerHeight - rect.top);
-    const h = Math.ceil(obstructed) + 12;
+    const kbOpen = typeof document !== "undefined" && document.documentElement.classList.contains("chat-keyboard-open");
+    const h = Math.ceil(rect.height) + (kbOpen ? 2 : 8);
     if (h > 0) {
       document.documentElement.style.setProperty("--chat-composer-h", `${h}px`);
     }
@@ -34584,27 +36934,60 @@ function ChatRoom({
     if (!el) return;
     syncComposerDockHeight();
     const top = Math.max(0, el.scrollHeight - el.clientHeight);
+    const dist2 = top - el.scrollTop;
+    if (dist2 < 2) return;
     try {
       el.scrollTo({ top, behavior: "instant" });
     } catch {
       el.scrollTop = top;
     }
   }, [syncComposerDockHeight]);
+  const scrollBottomRafRef = reactExports.useRef(0);
+  const scrollBottomTimerRef = reactExports.useRef(0);
+  const scheduleScrollToBottom = reactExports.useCallback(
+    (opts) => {
+      if (!stickToBottomRef.current) return;
+      cancelAnimationFrame(scrollBottomRafRef.current);
+      scrollBottomRafRef.current = requestAnimationFrame(() => scrollMessagesToBottom());
+      if (opts?.afterMs != null && opts.afterMs > 0) {
+        if (scrollBottomTimerRef.current) window.clearTimeout(scrollBottomTimerRef.current);
+        scrollBottomTimerRef.current = window.setTimeout(() => {
+          scrollBottomTimerRef.current = 0;
+          scrollMessagesToBottom();
+        }, opts.afterMs);
+      }
+    },
+    [scrollMessagesToBottom]
+  );
   const onComposerFocus = reactExports.useCallback(() => {
     stickToBottomRef.current = true;
     try {
       window.scrollTo(0, 0);
     } catch {
     }
-    requestAnimationFrame(() => scrollMessagesToBottom());
-  }, [scrollMessagesToBottom]);
+    scheduleScrollToBottom({ afterMs: 220 });
+  }, [scheduleScrollToBottom]);
+  reactExports.useLayoutEffect(() => {
+    const headerEl = chatHeaderRef.current;
+    if (!headerEl || typeof document === "undefined") return;
+    const syncHeaderH = () => {
+      const hh = Math.ceil(headerEl.getBoundingClientRect().height);
+      if (hh > 0) {
+        document.documentElement.style.setProperty("--chat-header-h", `${hh}px`);
+      }
+    };
+    syncHeaderH();
+    const roHeader = new ResizeObserver(syncHeaderH);
+    roHeader.observe(headerEl);
+    return () => roHeader.disconnect();
+  }, [chat.id, showPrivacyMenu, (chat.pinnedMessageIds || []).length]);
   reactExports.useLayoutEffect(() => {
     const el = composerRef.current;
     if (!el) return;
     syncComposerDockHeight();
     const ro = new ResizeObserver(() => {
       syncComposerDockHeight();
-      if (stickToBottomRef.current) scrollMessagesToBottom();
+      scheduleScrollToBottom();
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -34615,33 +36998,29 @@ function ChatRoom({
     mentionPick,
     plusAttachOpen,
     syncComposerDockHeight,
-    scrollMessagesToBottom
+    scheduleScrollToBottom
   ]);
   reactExports.useEffect(() => {
     if (typeof window === "undefined") return;
     const sync = () => {
       syncComposerDockHeight();
-      if (stickToBottomRef.current) scrollMessagesToBottom();
+      scheduleScrollToBottom();
     };
     window.addEventListener("resize", sync, { passive: true });
     window.addEventListener("orientationchange", sync, { passive: true });
-    window.addEventListener("retweet-chat-keyboard-sync", sync, { passive: true });
     return () => {
       window.removeEventListener("resize", sync);
       window.removeEventListener("orientationchange", sync);
-      window.removeEventListener("retweet-chat-keyboard-sync", sync);
     };
-  }, [syncComposerDockHeight, scrollMessagesToBottom]);
+  }, [syncComposerDockHeight, scheduleScrollToBottom]);
+  const kbOpenPrevRef = reactExports.useRef(false);
   reactExports.useEffect(() => {
+    const wasOpen = kbOpenPrevRef.current;
+    kbOpenPrevRef.current = kbSnap.open;
     if (!kbSnap.open) return;
-    stickToBottomRef.current = true;
-    const t1 = requestAnimationFrame(() => scrollMessagesToBottom());
-    const t2 = window.setTimeout(() => scrollMessagesToBottom(), 120);
-    return () => {
-      cancelAnimationFrame(t1);
-      window.clearTimeout(t2);
-    };
-  }, [kbSnap.open, kbSnap.keyboardInset, scrollMessagesToBottom]);
+    if (!wasOpen) stickToBottomRef.current = true;
+    scheduleScrollToBottom({ afterMs: 280 });
+  }, [kbSnap.open, scheduleScrollToBottom]);
   const scrollAnchorRef = reactExports.useRef({ chatId: "", msgCount: 0 });
   const cameraCaptureRef = reactExports.useRef(null);
   const galleryMediaInputRef = reactExports.useRef(null);
@@ -34847,20 +37226,13 @@ function ChatRoom({
   reactExports.useLayoutEffect(() => {
     const el = messagesScrollRef.current;
     if (!el) return;
-    let raf = 0;
     const ro = new ResizeObserver(() => {
       if (!forceScrollToBottom && !stickToBottomRef.current) return;
-      cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => scrollMessagesToBottom());
+      scheduleScrollToBottom();
     });
     ro.observe(el);
-    const inner = el.firstElementChild;
-    if (inner) ro.observe(inner);
-    return () => {
-      ro.disconnect();
-      cancelAnimationFrame(raf);
-    };
-  }, [chat.id, scrollMessagesToBottom, forceScrollToBottom]);
+    return () => ro.disconnect();
+  }, [chat.id, scheduleScrollToBottom, forceScrollToBottom]);
   reactExports.useLayoutEffect(() => {
     stickToBottomRef.current = true;
     const el = messagesScrollRef.current;
@@ -34901,30 +37273,33 @@ function ChatRoom({
     if (isNewChat) stickToBottomRef.current = true;
     if (!isNewChat && !forceScrollToBottom && count2 === prev.msgCount) return;
     stickToBottomRef.current = true;
-    scrollMessagesToBottom();
-    const inner = requestAnimationFrame(() => {
-      scrollMessagesToBottom();
-      requestAnimationFrame(scrollMessagesToBottom);
-    });
-    return () => cancelAnimationFrame(inner);
-  }, [chat.id, displayMessages.length, messageContext, scrollMessagesToBottom, forceScrollToBottom]);
+    scheduleScrollToBottom();
+    return () => {
+      cancelAnimationFrame(scrollBottomRafRef.current);
+      if (scrollBottomTimerRef.current) window.clearTimeout(scrollBottomTimerRef.current);
+    };
+  }, [chat.id, displayMessages.length, messageContext, scheduleScrollToBottom, forceScrollToBottom]);
   const onMessagesScroll = reactExports.useCallback(() => {
     const el = messagesScrollRef.current;
     if (!el) return;
     const dist2 = el.scrollHeight - el.scrollTop - el.clientHeight;
     stickToBottomRef.current = dist2 < 72;
-    if (el.scrollTop < el.scrollHeight * 0.2 && !isLoadingOlderRef.current) {
+    if (el.scrollTop < el.scrollHeight * 0.2 && !isLoadingOlderRef.current && hasOlderMessages) {
       isLoadingOlderRef.current = true;
+      setLoadingOlderUi(true);
       const prevScrollHeight = el.scrollHeight;
       setVisibleWindowCount((prev) => prev + 40);
-      requestAnimationFrame(() => {
-        if (!messagesScrollRef.current) return;
-        const added = messagesScrollRef.current.scrollHeight - prevScrollHeight;
-        if (added > 0) messagesScrollRef.current.scrollTop += added;
-        isLoadingOlderRef.current = false;
+      void loadChatMessages(chat.id).finally(() => {
+        requestAnimationFrame(() => {
+          if (!messagesScrollRef.current) return;
+          const added = messagesScrollRef.current.scrollHeight - prevScrollHeight;
+          if (added > 0) messagesScrollRef.current.scrollTop += added;
+          isLoadingOlderRef.current = false;
+          setLoadingOlderUi(false);
+        });
       });
     }
-  }, []);
+  }, [hasOlderMessages, loadChatMessages, chat.id]);
   const VANISH_PULL_NEED = 120;
   const VANISH_PULL_HIT_PX = 140;
   const isQuranChannel = chat.id === QURAN_CHANNEL_ID;
@@ -35241,7 +37616,7 @@ function ChatRoom({
         users: state.users,
         onUsernameClick: openMentionProfile
       }),
-      renderHashtag: (h, key) => /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: glassLinks ? "text-zinc-700 dark:text-zinc-300" : "text-primary", children: h }, key)
+      renderHashtag: (h, key2) => /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: glassLinks ? "text-zinc-700 dark:text-zinc-300" : "text-primary", children: h }, key2)
     });
   };
   const renderBubbleContent = (m, mine) => {
@@ -35568,6 +37943,7 @@ function ChatRoom({
   const clearComposer = reactExports.useCallback(() => {
     composerIgnoreInputUntilRef.current = Date.now() + 320;
     setText("");
+    if (meId) clearChatDraft(meId, sendChatId);
     if (composerInputRef.current) {
       composerInputRef.current.value = "";
       composerInputRef.current.style.height = `${CHAT_COMPOSER_LINE_PX}px`;
@@ -35575,7 +37951,7 @@ function ChatRoom({
     }
     setReplyingTo(null);
     setMentionPick(null);
-  }, []);
+  }, [meId, sendChatId]);
   const submitTextMessage = reactExports.useCallback(() => {
     if (composingRef.current) return;
     const body = readComposerBody();
@@ -35598,6 +37974,9 @@ function ChatRoom({
       window.setTimeout(() => setComposerMicCooldown(false), 80);
       return;
     }
+    chatHapticSuccess();
+    setSendPulse(true);
+    window.setTimeout(() => setSendPulse(false), 280);
     window.setTimeout(() => setComposerMicCooldown(false), 480);
     stickToBottomRef.current = true;
     syncComposerDockHeight();
@@ -35770,7 +38149,7 @@ function ChatRoom({
                       ref: chatHeaderRef,
                       dir: useIgDm ? dmDir : "rtl",
                       "data-chat-dismiss-handle": true,
-                      className: "sticky top-0 z-[260] flex w-full shrink-0 items-center gap-2 px-3 py-3 pt-[max(0.75rem,var(--sat))] " + (isQuranChannel ? "bg-zinc-900 text-zinc-100 border-b border-zinc-700" : chromeOnWallpaper ? "border-b border-white/10 bg-black/40 text-white backdrop-blur-xl" : useIgDm && dmPalette ? "border-b border-transparent " + dmPalette.headerTitleClass : "border-b border-border bg-background"),
+                      className: "chat-room-header flex w-full shrink-0 items-center gap-2 px-3 py-3 pt-[max(0.75rem,var(--sat))] " + (isQuranChannel ? "bg-zinc-900 text-zinc-100 border-b border-zinc-700" : chromeOnWallpaper ? "border-b border-white/10 bg-black/40 text-white backdrop-blur-xl" : useIgDm && dmPalette ? "border-b border-transparent " + dmPalette.headerTitleClass : "border-b border-border bg-background"),
                       style: chromeOnWallpaper ? void 0 : useIgDm && !isQuranChannel ? {
                         ...igDmSurfaceStyle,
                         backdropFilter: "blur(24px) saturate(1.6)",
@@ -35948,1148 +38327,1168 @@ function ChatRoom({
                       ]
                     }
                   ),
-                  isDmRoom && vanishMode && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "sr-only", children: "وضع مخفي — الرسائل الجديدة لا تُحفظ بالكامل. اسحب من أسفل منطقة الإدخال إلى الأعلى لتعطيل الوضع وحذف رسائل هذا الوضع." }),
-                  (chat.pinnedMessageIds || []).some((mid) => (chat.messages || []).some((x) => x.id === mid)) && /* @__PURE__ */ jsxRuntimeExports.jsx(
-                    "div",
-                    {
-                      className: "no-scrollbar flex shrink-0 flex-nowrap gap-2 overflow-x-scroll overflow-y-hidden overscroll-x-none border-b px-2 py-1.5 touch-pan-x snap-x snap-mandatory " + (isQuranChannel ? "border-zinc-700 bg-zinc-900/95" : "border-border bg-muted/45"),
-                      children: (chat.pinnedMessageIds || []).filter((mid) => (chat.messages || []).some((x) => x.id === mid)).map((mid) => {
-                        const pm = (chat.messages || []).find((x) => x.id === mid);
-                        return /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                          "button",
-                          {
-                            type: "button",
-                            onClick: () => scrollToMessageId(mid),
-                            className: "flex max-w-[200px] min-w-[118px] shrink-0 snap-start items-center gap-2 rounded-xl border px-2.5 py-1.5 text-start text-xs " + (isQuranChannel ? "border-zinc-600 bg-zinc-800/80 text-zinc-100" : "border-border bg-background/90"),
-                            children: [
-                              /* @__PURE__ */ jsxRuntimeExports.jsx(Pin, { size: 14, className: "shrink-0 opacity-90" }),
-                              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "min-w-0 flex-1 truncate font-medium", children: chatReplyPreview(pm) })
-                            ]
-                          },
-                          mid
-                        );
-                      })
-                    }
-                  ),
-                  chat.isChannel && !isMember && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "px-3 py-3 border-b border-border flex items-center gap-2 shrink-0 " + (isQuranChannel ? "bg-zinc-900 text-zinc-100 border-zinc-700" : "bg-muted/50"), children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm flex-1", children: "انضم للقناة للمتابعة والتفاعل" }),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(
-                      "button",
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "chat-bottom-lift flex min-h-0 flex-1 flex-col overflow-hidden", children: [
+                    isDmRoom && vanishMode && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "sr-only", children: "وضع مخفي — الرسائل الجديدة لا تُحفظ بالكامل. اسحب من أسفل منطقة الإدخال إلى الأعلى لتعطيل الوضع وحذف رسائل هذا الوضع." }),
+                    (chat.pinnedMessageIds || []).some((mid) => (chat.messages || []).some((x) => x.id === mid)) && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "div",
                       {
-                        type: "button",
-                        onClick: () => joinChannel(chat.id),
-                        className: "shrink-0 bg-primary text-primary-foreground px-4 py-2 rounded-2xl text-sm font-semibold",
-                        children: "انضمام"
-                      }
-                    )
-                  ] }),
-                  showDmIntro && /* @__PURE__ */ jsxRuntimeExports.jsx(
-                    ChatDmIntroCard,
-                    {
-                      other,
-                      meId,
-                      state,
-                      isQuran: isQuranChannel,
-                      hasMessages: false,
-                      onOpenProfile: () => reactExports.startTransition(() => onOpenProfile(otherId))
-                    }
-                  ),
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                    "div",
-                    {
-                      ref: messagesScrollRef,
-                      onScroll: onMessagesScroll,
-                      onPointerDownCapture: onMessagesVanishPointerDownCapture,
-                      onPointerMove: handleVanishPullMove,
-                      onPointerUp: handleVanishPullUp,
-                      onPointerCancel: handleVanishPullUp,
-                      dir: "ltr",
-                      className: "chat-scroll-pane chat-no-select no-scrollbar relative z-10 min-h-0 flex-1 touch-pan-y overscroll-none " + (drawComposeOpen ? "overflow-hidden " : "overflow-y-auto ") + (isQuranChannel ? "bg-zinc-950" : chromeOnWallpaper ? "bg-transparent" : useIgDm ? "" : "bg-background"),
-                      style: {
-                        scrollbarWidth: "none",
-                        msOverflowStyle: "none",
-                        overflowAnchor: "none",
-                        ...useIgDm && dmPalette && !chromeOnWallpaper ? igDmSurfaceStyle : {}
-                      },
-                      children: [
-                        /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                          "div",
-                          {
-                            className: "flex min-h-full w-full flex-col justify-end gap-2 px-3 pt-2 " + (isQuranChannel ? "bg-zinc-950" : chromeOnWallpaper ? "bg-transparent" : ""),
-                            style: {
-                              paddingBottom: "12px"
+                        className: "no-scrollbar flex shrink-0 flex-nowrap gap-2 overflow-x-scroll overflow-y-hidden overscroll-x-none border-b px-2 py-1.5 touch-pan-x snap-x snap-mandatory " + (isQuranChannel ? "border-zinc-700 bg-zinc-900/95" : "border-border bg-muted/45"),
+                        children: (chat.pinnedMessageIds || []).filter((mid) => (chat.messages || []).some((x) => x.id === mid)).map((mid) => {
+                          const pm = (chat.messages || []).find((x) => x.id === mid);
+                          return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                            "button",
+                            {
+                              type: "button",
+                              onClick: () => scrollToMessageId(mid),
+                              className: "flex max-w-[200px] min-w-[118px] shrink-0 snap-start items-center gap-2 rounded-xl border px-2.5 py-1.5 text-start text-xs " + (isQuranChannel ? "border-zinc-600 bg-zinc-800/80 text-zinc-100" : "border-border bg-background/90"),
+                              children: [
+                                /* @__PURE__ */ jsxRuntimeExports.jsx(Pin, { size: 14, className: "shrink-0 opacity-90" }),
+                                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "min-w-0 flex-1 truncate font-medium", children: chatReplyPreview(pm) })
+                              ]
                             },
-                            children: [
-                              hasOlderMessages && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex w-full justify-center py-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[11px] text-muted-foreground opacity-60", children: "↑ مرّر للأعلى لتحميل رسائل أقدم" }) }),
-                              rowsToRender.map((row) => {
-                                if (row.kind === "day") {
-                                  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex w-full justify-center py-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-                                    "span",
-                                    {
-                                      className: "rounded-full px-3 py-1 text-[11px] font-medium",
-                                      style: chromeOnWallpaper ? { backgroundColor: "rgba(255,255,255,0.14)", color: "rgba(255,255,255,0.85)" } : dmPalette ? { backgroundColor: dmPalette.dayPillBg, color: dmPalette.dayPillText } : void 0,
-                                      children: row.label
-                                    }
-                                  ) }, row.key);
-                                }
-                                const m = row.message;
-                                const groupSystemEvent = (chat.isGroup || chat.isChannel) && m.type === "text" ? parseGroupSystemEvent(messageContent(m)) : null;
-                                if (groupSystemEvent) {
-                                  const systemMuted = chromeOnWallpaper || dmPalette ? "text-white/70" : "text-muted-foreground";
-                                  const systemUserBtn = "font-semibold text-primary underline-offset-2 hover:underline active:opacity-80";
-                                  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex w-full justify-center px-3 py-3", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                                    "p",
-                                    {
-                                      className: "max-w-[94%] text-center text-[13px] leading-snug font-medium " + (chromeOnWallpaper || dmPalette ? "text-white/90" : "text-foreground/90"),
-                                      children: [
-                                        /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                                          "button",
-                                          {
-                                            type: "button",
-                                            className: systemUserBtn,
-                                            onClick: () => openMentionProfile(groupSystemEvent.actor),
-                                            children: [
-                                              "@",
-                                              groupSystemEvent.actor
-                                            ]
-                                          }
-                                        ),
-                                        " ",
-                                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: systemMuted, children: groupSystemEvent.action }),
-                                        " ",
-                                        /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                                          "button",
-                                          {
-                                            type: "button",
-                                            className: systemUserBtn,
-                                            onClick: () => openMentionProfile(groupSystemEvent.target),
-                                            children: [
-                                              "@",
-                                              groupSystemEvent.target
-                                            ]
-                                          }
-                                        )
-                                      ]
-                                    }
-                                  ) }, m.id);
-                                }
-                                const showPeerAvatar = row.showPeerAvatar;
-                                const mine = isOwnChatMessage(m.senderId, state);
-                                const senderProfile = userById(state, m.senderId);
-                                const mc = messageContent(m);
-                                const bareSticker = m.type === "sticker" && (isStickerImageContent(mc) || isStickerVideoContent(mc));
-                                const bareImage = m.type === "image" && mc.startsWith("data:") && !m.viewOnce;
-                                const bareDrawing = m.type === "drawing" && !!parseDrawingPayload(mc) && !m.viewOnce;
-                                const bareVideo = m.type === "video" && !m.viewOnce;
-                                const bareVoiceBubble = m.type === "voice";
-                                const bareViewOnceMedia = (m.type === "image" || m.type === "video") && !!m.viewOnce && mc.startsWith("data:") || m.type === "drawing" && !!m.viewOnce;
-                                const bareMedia = bareSticker || bareImage || bareVideo || bareViewOnceMedia || bareVoiceBubble || bareDrawing;
-                                const colClass = bareVideo ? CHAT_INLINE_MEDIA_COL : bareVoiceBubble ? "w-max max-w-[min(92vw,288px)] shrink-0" : bareImage || bareDrawing ? CHAT_INLINE_MEDIA_COL : bareSticker || bareViewOnceMedia ? "w-fit max-w-[min(90vw,280px)] shrink" : CHAT_TEXT_BUBBLE_COL;
-                                const bubbleBase = bareMedia ? "text-sm p-0 m-0 bg-transparent shadow-none ring-0 border-0 overflow-visible outline-none" : chatBubbleFilledClass(mine, isQuranChannel, theme, useIgDm);
-                                const bubbleClass = bubbleBase + (!bareMedia && vanishMode && m.id.startsWith("vx_") ? " ring-2 ring-orange-500/50 border border-orange-400/40" : "");
-                                const bubbleInlineStyle = useIgDm && dmPalette && !mine && !bareMedia ? chatDmPeerBubbleStyle(dmPalette) : void 0;
-                                const showBubbleTime = useIgDm && !bareMedia;
-                                return /* @__PURE__ */ jsxRuntimeExports.jsx(
-                                  ChatSwipeMessageRow,
-                                  {
-                                    message: m,
-                                    mine,
-                                    isQuran: isQuranChannel,
-                                    avatarName: !mine && showPeerAvatar ? senderProfile?.username || "?" : void 0,
-                                    avatarSrc: !mine && showPeerAvatar ? senderProfile?.avatar : void 0,
-                                    reservePeerAvatarSlot: !mine && !showPeerAvatar,
-                                    onAvatarClick: !mine ? () => reactExports.startTransition(() => onOpenProfile(m.senderId)) : void 0,
-                                    onSwipeReply: () => {
-                                      swipeReplyLockRef.current = true;
-                                      reactExports.startTransition(() => setReplyingTo(m));
-                                    },
-                                    onPointerDown: onMsgPointerDown,
-                                    onPointerMove: onMsgPointerMove,
-                                    onPointerUp: onMsgPointerUp,
-                                    children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                                      "div",
-                                      {
-                                        ref: (el) => {
-                                          if (el) messageElRefs.current.set(m.id, el);
-                                          else messageElRefs.current.delete(m.id);
-                                        },
-                                        className: "relative flex w-max flex-col gap-0.5 " + colClass + " " + (useIgDm ? chatBubbleAlignClasses(mine) : mine ? "items-end self-end" : "items-start self-start"),
-                                        children: [
-                                          (chat.isGroup || chat.isChannel) && !mine && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-0.5 px-0.5 text-[11px] font-semibold text-muted-foreground", children: chat.groupNicknames?.[m.senderId]?.trim() || senderProfile?.username || "?" }),
-                                          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: bubbleClass, style: bubbleInlineStyle, children: [
-                                            renderBubbleContent(m, mine),
-                                            showBubbleTime && /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                                              "div",
-                                              {
-                                                className: "mt-0.5 flex items-center justify-end gap-0.5",
-                                                style: useIgDm && dmPalette ? { color: mine ? dmPalette.mineTime : dmPalette.peerTime } : void 0,
-                                                children: [
-                                                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[11px] tabular-nums leading-none", children: formatChatBubbleTime(m.createdAt, state.language) }),
-                                                  mine && !vanishMode && /* @__PURE__ */ jsxRuntimeExports.jsx(ChatMessageStatus, { status: m.status, mine: true, compact: true })
-                                                ]
-                                              }
-                                            ),
-                                            mine && !vanishMode && !useIgDm && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "mt-1 flex justify-end", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChatMessageStatus, { status: m.status, mine: true, compact: true }) })
-                                          ] }),
-                                          m.reactions && m.reactions.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(
-                                            "div",
-                                            {
-                                              className: "-mt-2 z-[1] flex flex-wrap items-center gap-0.5 " + (useIgDm ? chatReactionAlignClasses(mine) : mine ? "self-end pe-1" : "self-start ps-1"),
-                                              children: aggregateReactions(m.reactions).map(([emoji, count2]) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                                                "span",
-                                                {
-                                                  className: "inline-flex items-center gap-0.5 rounded-full bg-black/5 px-1.5 py-0.5 text-sm dark:bg-white/10 " + (isQuranChannel ? "text-zinc-100" : "text-foreground"),
-                                                  children: [
-                                                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "leading-none", children: emoji }),
-                                                    count2 > 1 && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[10px] font-semibold opacity-75", children: count2 })
-                                                  ]
-                                                },
-                                                emoji
-                                              ))
-                                            }
-                                          )
-                                        ]
-                                      }
-                                    )
-                                  },
-                                  m.id
-                                );
-                              }),
-                              seenFooter && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-end text-[11px] px-1 pt-1 " + (isQuranChannel ? "text-zinc-500" : "text-muted-foreground"), children: seenFooter }),
-                              isDmRoom && myOutgoing.length > 0 && !seenFooter && !useIgDm && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex justify-end px-1 pt-0.5", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChatMessageStatus, { status: myOutgoing[myOutgoing.length - 1]?.status, mine: true, compact: true }) })
-                            ]
-                          }
-                        ),
-                        isDmRoom && canPost && /* @__PURE__ */ jsxRuntimeExports.jsx(
-                          "div",
-                          {
-                            role: "presentation",
-                            "aria-hidden": true,
-                            className: "pointer-events-auto absolute inset-x-0 bottom-0 z-[12] h-14 touch-none",
-                            onPointerDown: (e) => {
-                              if (e.pointerType === "mouse" && e.button !== 0) return;
-                              const t2 = e.target;
-                              if (t2.closest("button, a, input, textarea, select")) return;
-                              handleVanishPullDown(e);
-                            },
-                            onPointerMove: handleVanishPullMove,
-                            onPointerUp: handleVanishPullUp,
-                            onPointerCancel: handleVanishPullUp
-                          }
-                        ),
-                        drawComposeOpen && /* @__PURE__ */ jsxRuntimeExports.jsx(
-                          ChatDrawComposeModal,
-                          {
-                            overMessages: true,
-                            isQuranChannel,
-                            senderName: me.username,
-                            senderAvatar: me.avatar,
-                            onClose: () => setDrawComposeOpen(false),
-                            onSend: ({ type, content, viewOnce }) => {
-                              const rt = replyingTo ? { id: replyingTo.id, content: chatReplyPreview(replyingTo), type: replyingTo.type } : void 0;
-                              dispatchSend({
-                                type,
-                                content,
-                                ...viewOnce ? { viewOnce: true } : {},
-                                ...rt ? { replyTo: rt } : {}
-                              });
-                              setReplyingTo(null);
-                            }
-                          }
-                        )
-                      ]
-                    }
-                  ),
-                  messageContext && (() => {
-                    const m = messageContext;
-                    const mine = isOwnChatMessage(m.senderId, state);
-                    const mc = messageContent(m);
-                    const bareSticker = m.type === "sticker" && (isStickerImageContent(mc) || isStickerVideoContent(mc));
-                    const bareImage = m.type === "image" && mc.startsWith("data:") && !m.viewOnce;
-                    const bareDrawing = m.type === "drawing" && !!parseDrawingPayload(mc) && !m.viewOnce;
-                    const bareVideo = m.type === "video" && !m.viewOnce;
-                    const bareVoiceBubble = m.type === "voice";
-                    const bareViewOnceMedia = (m.type === "image" || m.type === "video") && !!m.viewOnce && mc.startsWith("data:") || m.type === "drawing" && !!m.viewOnce;
-                    const bubbleClass = bareSticker || bareImage || bareVideo || bareViewOnceMedia || bareVoiceBubble || bareDrawing ? "text-sm p-0 m-0 bg-transparent shadow-none ring-0 border-0 overflow-visible outline-none" : chatBubbleFilledClass(mine, isQuranChannel, theme, useIgDm) + " shadow-lg";
-                    const ctxBubbleStyle = useIgDm && dmPalette && !mine ? chatDmPeerBubbleStyle(dmPalette) : void 0;
-                    const closeCtx = () => {
-                      setMoreReactionEmoji(false);
-                      setMessageContext(null);
-                    };
-                    const copyContext = async () => {
-                      try {
-                        if (m.type === "text") await navigator.clipboard.writeText(m.content);
-                        else if (m.type === "shared_post") {
-                          const base = typeof window !== "undefined" ? `${window.location.origin}${window.location.pathname}` : "";
-                          await navigator.clipboard.writeText(`${base}?post=${encodeURIComponent(m.content)}`);
-                        } else if (m.type === "shared_story") {
-                          const base = typeof window !== "undefined" ? `${window.location.origin}${window.location.pathname}` : "";
-                          await navigator.clipboard.writeText(`${base}?story=${encodeURIComponent(m.content)}`);
-                        } else if ((m.type === "image" || m.type === "video") && m.viewOnce) {
-                          await navigator.clipboard.writeText(m.type === "image" ? "[صورة مرة واحدة]" : "[فيديو مرة واحدة]");
-                        } else if (m.type === "drawing" && m.viewOnce) {
-                          await navigator.clipboard.writeText("[رسم مرة واحدة]");
-                        } else if (m.type === "sticker" && !isStickerImageContent(m.content) && !isStickerVideoContent(m.content)) {
-                          await navigator.clipboard.writeText(m.content);
-                        } else if (typeof m.content === "string" && m.content.length < 4e5) {
-                          await navigator.clipboard.writeText(m.content);
-                        } else {
-                          await navigator.clipboard.writeText(`[${m.type}]`);
-                        }
-                      } catch {
-                        try {
-                          await navigator.clipboard.writeText(chatReplyPreview(m));
-                        } catch {
-                        }
+                            mid
+                          );
+                        })
                       }
-                      alert(t("msgCopied"));
-                      closeCtx();
-                    };
-                    const forwardContext = () => {
-                      closeCtx();
-                      setForwardingMessage(m);
-                    };
-                    return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "absolute inset-0 z-[280] flex flex-col", role: "dialog", "aria-modal": "true", children: [
+                    ),
+                    chat.isChannel && !isMember && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "px-3 py-3 border-b border-border flex items-center gap-2 shrink-0 " + (isQuranChannel ? "bg-zinc-900 text-zinc-100 border-zinc-700" : "bg-muted/50"), children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm flex-1", children: "انضم للقناة للمتابعة والتفاعل" }),
                       /* @__PURE__ */ jsxRuntimeExports.jsx(
                         "button",
                         {
                           type: "button",
-                          className: "absolute inset-0 bg-black/35 backdrop-blur-2xl",
-                          "aria-label": t("msgCloseMenu"),
-                          onClick: closeCtx
+                          onClick: () => joinChannel(chat.id),
+                          className: "shrink-0 bg-primary text-primary-foreground px-4 py-2 rounded-2xl text-sm font-semibold",
+                          children: "انضمام"
+                        }
+                      )
+                    ] }),
+                    showDmIntro && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      ChatDmIntroCard,
+                      {
+                        other,
+                        meId,
+                        state,
+                        isQuran: isQuranChannel,
+                        hasMessages: false,
+                        onOpenProfile: () => reactExports.startTransition(() => onOpenProfile(otherId))
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden", children: [
+                      useIgDm && chatTimelineRows && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                        ChatFloatingDatePill,
+                        {
+                          scrollRef: messagesScrollRef,
+                          rows: chatTimelineRows,
+                          visible: !drawComposeOpen && displayMessages.length > 0,
+                          chromeOnWallpaper,
+                          dayPillBg: dmPalette?.dayPillBg,
+                          dayPillText: dmPalette?.dayPillText
                         }
                       ),
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "pointer-events-none relative z-10 flex flex-1 flex-col items-center justify-center px-3 py-8", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "pointer-events-auto flex w-full max-w-[min(92vw,380px)] flex-col items-stretch gap-2", children: [
-                        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-wrap items-center justify-center gap-1 rounded-full border border-white/10 bg-zinc-900/90 px-2 py-2 shadow-xl backdrop-blur-md", children: [
-                          QUICK_REACTION_EMOJIS.map((emoji) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                        "div",
+                        {
+                          ref: messagesScrollRef,
+                          onScroll: onMessagesScroll,
+                          onPointerDownCapture: onMessagesVanishPointerDownCapture,
+                          onPointerMove: handleVanishPullMove,
+                          onPointerUp: handleVanishPullUp,
+                          onPointerCancel: handleVanishPullUp,
+                          dir: "ltr",
+                          className: "chat-scroll-pane chat-no-select no-scrollbar relative min-h-0 flex-1 touch-pan-y overscroll-none " + (drawComposeOpen ? "overflow-hidden " : "overflow-y-auto ") + (isQuranChannel ? "bg-zinc-950" : chromeOnWallpaper ? "bg-transparent" : useIgDm ? "" : "bg-background"),
+                          style: {
+                            scrollbarWidth: "none",
+                            msOverflowStyle: "none",
+                            overflowAnchor: "none",
+                            ...useIgDm && dmPalette && !chromeOnWallpaper ? igDmSurfaceStyle : {}
+                          },
+                          children: [
+                            /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                              "div",
+                              {
+                                className: "flex min-h-full w-full flex-col justify-end gap-2 px-3 pt-2 " + (isQuranChannel ? "bg-zinc-950" : chromeOnWallpaper ? "bg-transparent" : ""),
+                                style: {
+                                  paddingBottom: "12px"
+                                },
+                                children: [
+                                  (hasOlderMessages || loadingOlderUi) && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex w-full justify-center py-2", "aria-busy": loadingOlderUi, children: loadingOlderUi ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-1.5", children: [
+                                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "h-2 w-2 animate-pulse rounded-full bg-muted-foreground/50" }),
+                                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "h-2 w-2 animate-pulse rounded-full bg-muted-foreground/40 [animation-delay:120ms]" }),
+                                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "h-2 w-2 animate-pulse rounded-full bg-muted-foreground/30 [animation-delay:240ms]" })
+                                  ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[11px] text-muted-foreground opacity-60", children: state.language === "ar" ? "↑ رسائل أقدم" : "↑ Older messages" }) }),
+                                  rowsToRender.map((row) => {
+                                    if (row.kind === "day") {
+                                      return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "data-chat-day": row.key, className: "flex w-full justify-center py-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+                                        "span",
+                                        {
+                                          className: "rounded-full px-3 py-1 text-[11px] font-medium",
+                                          style: chromeOnWallpaper ? { backgroundColor: "rgba(255,255,255,0.14)", color: "rgba(255,255,255,0.85)" } : dmPalette ? { backgroundColor: dmPalette.dayPillBg, color: dmPalette.dayPillText } : void 0,
+                                          children: row.label
+                                        }
+                                      ) }, row.key);
+                                    }
+                                    const m = row.message;
+                                    const groupSystemEvent = (chat.isGroup || chat.isChannel) && m.type === "text" ? parseGroupSystemEvent(messageContent(m)) : null;
+                                    if (groupSystemEvent) {
+                                      const systemMuted = chromeOnWallpaper || dmPalette ? "text-white/70" : "text-muted-foreground";
+                                      const systemUserBtn = "font-semibold text-primary underline-offset-2 hover:underline active:opacity-80";
+                                      return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex w-full justify-center px-3 py-3", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                                        "p",
+                                        {
+                                          className: "max-w-[94%] text-center text-[13px] leading-snug font-medium " + (chromeOnWallpaper || dmPalette ? "text-white/90" : "text-foreground/90"),
+                                          children: [
+                                            /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                                              "button",
+                                              {
+                                                type: "button",
+                                                className: systemUserBtn,
+                                                onClick: () => openMentionProfile(groupSystemEvent.actor),
+                                                children: [
+                                                  "@",
+                                                  groupSystemEvent.actor
+                                                ]
+                                              }
+                                            ),
+                                            " ",
+                                            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: systemMuted, children: groupSystemEvent.action }),
+                                            " ",
+                                            /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                                              "button",
+                                              {
+                                                type: "button",
+                                                className: systemUserBtn,
+                                                onClick: () => openMentionProfile(groupSystemEvent.target),
+                                                children: [
+                                                  "@",
+                                                  groupSystemEvent.target
+                                                ]
+                                              }
+                                            )
+                                          ]
+                                        }
+                                      ) }, m.id);
+                                    }
+                                    const showPeerAvatar = row.showPeerAvatar;
+                                    const mine = isOwnChatMessage(m.senderId, state);
+                                    const senderProfile = userById(state, m.senderId);
+                                    const mc = messageContent(m);
+                                    const bareSticker = m.type === "sticker" && (isStickerImageContent(mc) || isStickerVideoContent(mc));
+                                    const bareImage = m.type === "image" && mc.startsWith("data:") && !m.viewOnce;
+                                    const bareDrawing = m.type === "drawing" && !!parseDrawingPayload(mc) && !m.viewOnce;
+                                    const bareVideo = m.type === "video" && !m.viewOnce;
+                                    const bareVoiceBubble = m.type === "voice";
+                                    const bareViewOnceMedia = (m.type === "image" || m.type === "video") && !!m.viewOnce && mc.startsWith("data:") || m.type === "drawing" && !!m.viewOnce;
+                                    const bareMedia = bareSticker || bareImage || bareVideo || bareViewOnceMedia || bareVoiceBubble || bareDrawing;
+                                    const colClass = bareVideo ? CHAT_INLINE_MEDIA_COL : bareVoiceBubble ? "w-max max-w-[min(92vw,288px)] shrink-0" : bareImage || bareDrawing ? CHAT_INLINE_MEDIA_COL : bareSticker || bareViewOnceMedia ? "w-fit max-w-[min(90vw,280px)] shrink" : CHAT_TEXT_BUBBLE_COL;
+                                    const bubbleBase = bareMedia ? "text-sm p-0 m-0 bg-transparent shadow-none ring-0 border-0 overflow-visible outline-none" : chatBubbleFilledClass(mine, isQuranChannel, theme, useIgDm);
+                                    const bubbleClass = bubbleBase + (!bareMedia && vanishMode && m.id.startsWith("vx_") ? " ring-2 ring-orange-500/50 border border-orange-400/40" : "");
+                                    const bubbleInlineStyle = useIgDm && dmPalette && !mine && !bareMedia ? chatDmPeerBubbleStyle(dmPalette) : void 0;
+                                    const showBubbleTime = useIgDm && !bareMedia;
+                                    return /* @__PURE__ */ jsxRuntimeExports.jsx(
+                                      ChatSwipeMessageRow,
+                                      {
+                                        message: m,
+                                        mine,
+                                        isQuran: isQuranChannel,
+                                        avatarName: !mine && showPeerAvatar ? senderProfile?.username || "?" : void 0,
+                                        avatarSrc: !mine && showPeerAvatar ? senderProfile?.avatar : void 0,
+                                        reservePeerAvatarSlot: !mine && !showPeerAvatar,
+                                        onAvatarClick: !mine ? () => reactExports.startTransition(() => onOpenProfile(m.senderId)) : void 0,
+                                        onSwipeReply: () => {
+                                          swipeReplyLockRef.current = true;
+                                          reactExports.startTransition(() => setReplyingTo(m));
+                                        },
+                                        onPointerDown: onMsgPointerDown,
+                                        onPointerMove: onMsgPointerMove,
+                                        onPointerUp: onMsgPointerUp,
+                                        children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                                          "div",
+                                          {
+                                            ref: (el) => {
+                                              if (el) messageElRefs.current.set(m.id, el);
+                                              else messageElRefs.current.delete(m.id);
+                                            },
+                                            className: "relative flex w-max flex-col gap-0.5 " + colClass + " " + (useIgDm ? chatBubbleAlignClasses(mine) : mine ? "items-end self-end" : "items-start self-start"),
+                                            children: [
+                                              (chat.isGroup || chat.isChannel) && !mine && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-0.5 px-0.5 text-[11px] font-semibold text-muted-foreground", children: chat.groupNicknames?.[m.senderId]?.trim() || senderProfile?.username || "?" }),
+                                              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: bubbleClass, style: bubbleInlineStyle, children: [
+                                                renderBubbleContent(m, mine),
+                                                showBubbleTime && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                                                  "div",
+                                                  {
+                                                    className: "mt-0.5 flex items-center justify-end gap-0.5",
+                                                    style: useIgDm && dmPalette ? { color: mine ? dmPalette.mineTime : dmPalette.peerTime } : void 0,
+                                                    children: [
+                                                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[11px] tabular-nums leading-none", children: formatChatBubbleTime(m.createdAt, state.language) }),
+                                                      mine && !vanishMode && /* @__PURE__ */ jsxRuntimeExports.jsx(ChatMessageStatus, { status: m.status, mine: true, compact: true })
+                                                    ]
+                                                  }
+                                                ),
+                                                mine && !vanishMode && !useIgDm && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "mt-1 flex justify-end", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChatMessageStatus, { status: m.status, mine: true, compact: true }) })
+                                              ] }),
+                                              m.reactions && m.reactions.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                                                "div",
+                                                {
+                                                  className: "-mt-2 z-[1] flex flex-wrap items-center gap-0.5 " + (useIgDm ? chatReactionAlignClasses(mine) : mine ? "self-end pe-1" : "self-start ps-1"),
+                                                  children: aggregateReactions(m.reactions).map(([emoji, count2]) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                                                    "span",
+                                                    {
+                                                      className: "inline-flex items-center gap-0.5 rounded-full bg-black/5 px-1.5 py-0.5 text-sm dark:bg-white/10 " + (isQuranChannel ? "text-zinc-100" : "text-foreground"),
+                                                      children: [
+                                                        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "leading-none", children: emoji }),
+                                                        count2 > 1 && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[10px] font-semibold opacity-75", children: count2 })
+                                                      ]
+                                                    },
+                                                    emoji
+                                                  ))
+                                                }
+                                              )
+                                            ]
+                                          }
+                                        )
+                                      },
+                                      m.id
+                                    );
+                                  }),
+                                  seenFooter && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-end text-[11px] px-1 pt-1 " + (isQuranChannel ? "text-zinc-500" : "text-muted-foreground"), children: seenFooter }),
+                                  isDmRoom && myOutgoing.length > 0 && !seenFooter && !useIgDm && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex justify-end px-1 pt-0.5", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChatMessageStatus, { status: myOutgoing[myOutgoing.length - 1]?.status, mine: true, compact: true }) })
+                                ]
+                              }
+                            ),
+                            isDmRoom && canPost && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                              "div",
+                              {
+                                role: "presentation",
+                                "aria-hidden": true,
+                                className: "pointer-events-auto absolute inset-x-0 bottom-0 z-[12] h-14 touch-none",
+                                onPointerDown: (e) => {
+                                  if (e.pointerType === "mouse" && e.button !== 0) return;
+                                  const t2 = e.target;
+                                  if (t2.closest("button, a, input, textarea, select")) return;
+                                  handleVanishPullDown(e);
+                                },
+                                onPointerMove: handleVanishPullMove,
+                                onPointerUp: handleVanishPullUp,
+                                onPointerCancel: handleVanishPullUp
+                              }
+                            ),
+                            drawComposeOpen && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                              ChatDrawComposeModal,
+                              {
+                                overMessages: true,
+                                isQuranChannel,
+                                senderName: me.username,
+                                senderAvatar: me.avatar,
+                                onClose: () => setDrawComposeOpen(false),
+                                onSend: ({ type, content, viewOnce }) => {
+                                  const rt = replyingTo ? { id: replyingTo.id, content: chatReplyPreview(replyingTo), type: replyingTo.type } : void 0;
+                                  dispatchSend({
+                                    type,
+                                    content,
+                                    ...viewOnce ? { viewOnce: true } : {},
+                                    ...rt ? { replyTo: rt } : {}
+                                  });
+                                  setReplyingTo(null);
+                                }
+                              }
+                            )
+                          ]
+                        }
+                      )
+                    ] }),
+                    messageContext && (() => {
+                      const m = messageContext;
+                      const mine = isOwnChatMessage(m.senderId, state);
+                      const mc = messageContent(m);
+                      const bareSticker = m.type === "sticker" && (isStickerImageContent(mc) || isStickerVideoContent(mc));
+                      const bareImage = m.type === "image" && mc.startsWith("data:") && !m.viewOnce;
+                      const bareDrawing = m.type === "drawing" && !!parseDrawingPayload(mc) && !m.viewOnce;
+                      const bareVideo = m.type === "video" && !m.viewOnce;
+                      const bareVoiceBubble = m.type === "voice";
+                      const bareViewOnceMedia = (m.type === "image" || m.type === "video") && !!m.viewOnce && mc.startsWith("data:") || m.type === "drawing" && !!m.viewOnce;
+                      const bubbleClass = bareSticker || bareImage || bareVideo || bareViewOnceMedia || bareVoiceBubble || bareDrawing ? "text-sm p-0 m-0 bg-transparent shadow-none ring-0 border-0 overflow-visible outline-none" : chatBubbleFilledClass(mine, isQuranChannel, theme, useIgDm) + " shadow-lg";
+                      const ctxBubbleStyle = useIgDm && dmPalette && !mine ? chatDmPeerBubbleStyle(dmPalette) : void 0;
+                      const closeCtx = () => {
+                        setMoreReactionEmoji(false);
+                        setMessageContext(null);
+                      };
+                      const copyContext = async () => {
+                        try {
+                          if (m.type === "text") await navigator.clipboard.writeText(m.content);
+                          else if (m.type === "shared_post") {
+                            const base = typeof window !== "undefined" ? `${window.location.origin}${window.location.pathname}` : "";
+                            await navigator.clipboard.writeText(`${base}?post=${encodeURIComponent(m.content)}`);
+                          } else if (m.type === "shared_story") {
+                            const base = typeof window !== "undefined" ? `${window.location.origin}${window.location.pathname}` : "";
+                            await navigator.clipboard.writeText(`${base}?story=${encodeURIComponent(m.content)}`);
+                          } else if ((m.type === "image" || m.type === "video") && m.viewOnce) {
+                            await navigator.clipboard.writeText(m.type === "image" ? "[صورة مرة واحدة]" : "[فيديو مرة واحدة]");
+                          } else if (m.type === "drawing" && m.viewOnce) {
+                            await navigator.clipboard.writeText("[رسم مرة واحدة]");
+                          } else if (m.type === "sticker" && !isStickerImageContent(m.content) && !isStickerVideoContent(m.content)) {
+                            await navigator.clipboard.writeText(m.content);
+                          } else if (typeof m.content === "string" && m.content.length < 4e5) {
+                            await navigator.clipboard.writeText(m.content);
+                          } else {
+                            await navigator.clipboard.writeText(`[${m.type}]`);
+                          }
+                        } catch {
+                          try {
+                            await navigator.clipboard.writeText(chatReplyPreview(m));
+                          } catch {
+                          }
+                        }
+                        alert(t("msgCopied"));
+                        closeCtx();
+                      };
+                      const forwardContext = () => {
+                        closeCtx();
+                        setForwardingMessage(m);
+                      };
+                      return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "absolute inset-0 z-[280] flex flex-col", role: "dialog", "aria-modal": "true", children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsx(
+                          "button",
+                          {
+                            type: "button",
+                            className: "absolute inset-0 bg-black/35 backdrop-blur-2xl",
+                            "aria-label": t("msgCloseMenu"),
+                            onClick: closeCtx
+                          }
+                        ),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "pointer-events-none relative z-10 flex flex-1 flex-col items-center justify-center px-3 py-8", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "pointer-events-auto flex w-full max-w-[min(92vw,380px)] flex-col items-stretch gap-2", children: [
+                          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-wrap items-center justify-center gap-1 rounded-full border border-white/10 bg-zinc-900/90 px-2 py-2 shadow-xl backdrop-blur-md", children: [
+                            QUICK_REACTION_EMOJIS.map((emoji) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+                              "button",
+                              {
+                                type: "button",
+                                className: "rounded-full px-2 py-1 text-2xl leading-none transition hover:bg-white/10 active:scale-90",
+                                onClick: () => {
+                                  addMessageReaction(chat.id, m.id, emoji);
+                                  closeCtx();
+                                },
+                                children: emoji
+                              },
+                              emoji
+                            )),
+                            /* @__PURE__ */ jsxRuntimeExports.jsx(
+                              "button",
+                              {
+                                type: "button",
+                                className: "ms-1 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-zinc-100 hover:bg-white/20",
+                                "aria-label": "المزيد من الإيموجيات",
+                                onClick: (e) => {
+                                  e.stopPropagation();
+                                  setMoreReactionEmoji((v) => !v);
+                                },
+                                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 20 })
+                              }
+                            )
+                          ] }),
+                          moreReactionEmoji && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "max-h-[44vh] overflow-y-auto rounded-2xl border border-white/10 bg-zinc-950/95 p-2 grid grid-cols-7 gap-0.5 shadow-xl", children: EXTENDED_REACTION_EMOJIS.map((emoji, idx) => /* @__PURE__ */ jsxRuntimeExports.jsx(
                             "button",
                             {
                               type: "button",
-                              className: "rounded-full px-2 py-1 text-2xl leading-none transition hover:bg-white/10 active:scale-90",
+                              className: "text-2xl p-1.5 rounded-lg hover:bg-white/10 active:scale-90 font-ios-emoji leading-none",
                               onClick: () => {
                                 addMessageReaction(chat.id, m.id, emoji);
                                 closeCtx();
                               },
                               children: emoji
                             },
-                            emoji
-                          )),
-                          /* @__PURE__ */ jsxRuntimeExports.jsx(
-                            "button",
-                            {
-                              type: "button",
-                              className: "ms-1 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-zinc-100 hover:bg-white/20",
-                              "aria-label": "المزيد من الإيموجيات",
-                              onClick: (e) => {
-                                e.stopPropagation();
-                                setMoreReactionEmoji((v) => !v);
-                              },
-                              children: /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 20 })
-                            }
-                          )
-                        ] }),
-                        moreReactionEmoji && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "max-h-[44vh] overflow-y-auto rounded-2xl border border-white/10 bg-zinc-950/95 p-2 grid grid-cols-7 gap-0.5 shadow-xl", children: EXTENDED_REACTION_EMOJIS.map((emoji, idx) => /* @__PURE__ */ jsxRuntimeExports.jsx(
-                          "button",
-                          {
-                            type: "button",
-                            className: "text-2xl p-1.5 rounded-lg hover:bg-white/10 active:scale-90 font-ios-emoji leading-none",
-                            onClick: () => {
-                              addMessageReaction(chat.id, m.id, emoji);
-                              closeCtx();
-                            },
-                            children: emoji
-                          },
-                          `${emoji}-${idx}`
-                        )) }),
-                        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "self-center max-w-[85%] " + (mine ? "ms-2" : "me-2"), children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: bubbleClass, style: ctxBubbleStyle, children: [
-                          renderBubbleContent(m, mine),
-                          mine && !vanishMode && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "mt-1 flex justify-end", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChatMessageStatus, { status: m.status, mine: true, compact: true }) })
-                        ] }) }),
-                        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "overflow-hidden rounded-2xl border border-white/10 bg-zinc-900/95 text-zinc-50 shadow-2xl backdrop-blur-md", children: [
-                          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "border-b border-white/10 px-4 pb-2 pt-3 text-xs text-zinc-400", children: formatMsgContextTime(m.createdAt, state.language) }),
-                          /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                            "button",
-                            {
-                              type: "button",
-                              className: "flex w-full items-center gap-3 px-4 py-3.5 text-start text-sm hover:bg-white/5 active:bg-white/10",
-                              onClick: () => {
-                                setReplyingTo(m);
-                                closeCtx();
-                              },
-                              children: [
-                                /* @__PURE__ */ jsxRuntimeExports.jsx(Reply, { size: 20, className: "shrink-0 opacity-90" }),
-                                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex-1", children: t("msgReply") })
-                              ]
-                            }
-                          ),
-                          /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", className: "flex w-full items-center gap-3 border-t border-white/5 px-4 py-3.5 text-start text-sm hover:bg-white/5", onClick: forwardContext, children: [
-                            /* @__PURE__ */ jsxRuntimeExports.jsx(Forward, { size: 20, className: "shrink-0 opacity-90" }),
-                            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex-1", children: t("msgForward") })
-                          ] }),
-                          /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", className: "flex w-full items-center gap-3 border-t border-white/5 px-4 py-3.5 text-start text-sm hover:bg-white/5", onClick: copyContext, children: [
-                            /* @__PURE__ */ jsxRuntimeExports.jsx(Copy, { size: 20, className: "shrink-0 opacity-90" }),
-                            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex-1", children: t("msgCopy") })
-                          ] }),
-                          m.type === "sticker" && /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                            "button",
-                            {
-                              type: "button",
-                              className: "flex w-full items-center gap-3 border-t border-white/5 px-4 py-3.5 text-start text-sm hover:bg-white/5",
-                              onClick: () => {
-                                addFavoriteStickerContent(m.content);
-                                alert(t("stickerFavoriteAdded"));
-                                closeCtx();
-                              },
-                              children: [
-                                /* @__PURE__ */ jsxRuntimeExports.jsx(Star, { size: 20, className: "shrink-0 opacity-90" }),
-                                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex-1", children: t("stickerAddFavorite") })
-                              ]
-                            }
-                          ),
-                          (chat.pinnedMessageIds || []).includes(m.id) ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                            "button",
-                            {
-                              type: "button",
-                              className: "flex w-full items-center gap-3 border-t border-white/5 px-4 py-3.5 text-start text-sm hover:bg-white/5",
-                              onClick: () => {
-                                unpinChatMessage(chat.id, m.id);
-                                closeCtx();
-                              },
-                              children: [
-                                /* @__PURE__ */ jsxRuntimeExports.jsx(Pin, { size: 20, className: "shrink-0 opacity-90" }),
-                                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex-1", children: t("msgUnpin") })
-                              ]
-                            }
-                          ) : /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                            "button",
-                            {
-                              type: "button",
-                              className: "flex w-full items-center gap-3 border-t border-white/5 px-4 py-3.5 text-start text-sm hover:bg-white/5",
-                              onClick: () => {
-                                pinChatMessage(chat.id, m.id);
-                                closeCtx();
-                              },
-                              children: [
-                                /* @__PURE__ */ jsxRuntimeExports.jsx(Pin, { size: 20, className: "shrink-0 opacity-90" }),
-                                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex-1", children: t("msgPin") })
-                              ]
-                            }
-                          ),
-                          /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                            "button",
-                            {
-                              type: "button",
-                              className: "flex w-full items-center gap-3 border-t border-white/5 px-4 py-3.5 text-start text-sm hover:bg-white/5",
-                              onClick: () => {
-                                hideMessageForMe(chat.id, m.id);
-                                closeCtx();
-                              },
-                              children: [
-                                /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 20, className: "shrink-0 opacity-90" }),
-                                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex-1", children: t("msgDeleteForYou") })
-                              ]
-                            }
-                          ),
-                          /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                            "button",
-                            {
-                              type: "button",
-                              className: "flex w-full items-center gap-3 border-t border-white/5 px-4 py-3.5 text-start text-sm text-red-400 hover:bg-red-500/10",
-                              onClick: () => {
-                                alert(t("msgReportThanks"));
-                                closeCtx();
-                              },
-                              children: [
-                                /* @__PURE__ */ jsxRuntimeExports.jsx(Flag, { size: 20, className: "shrink-0" }),
-                                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex-1", children: t("msgReport") })
-                              ]
-                            }
-                          ),
-                          /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                            "button",
-                            {
-                              type: "button",
-                              className: "flex w-full items-center gap-3 border-t border-white/5 px-4 py-3.5 text-start text-sm text-zinc-300 hover:bg-white/5",
-                              onClick: () => alert(t("msgMoreSoon")),
-                              children: [
-                                /* @__PURE__ */ jsxRuntimeExports.jsx(Ellipsis, { size: 20, className: "shrink-0 opacity-80" }),
-                                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex-1", children: t("msgMore") }),
-                                /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronRight, { size: 18, className: "shrink-0 opacity-60" })
-                              ]
-                            }
-                          )
-                        ] })
-                      ] }) })
-                    ] });
-                  })(),
-                  showPoolInviteModal && /* @__PURE__ */ jsxRuntimeExports.jsx(
-                    "div",
-                    {
-                      className: "absolute inset-0 z-[80] flex items-end bg-black/60",
-                      onClick: () => setShowPoolInviteModal(false),
-                      children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                        "div",
-                        {
-                          className: "w-full rounded-t-3xl bg-background p-5 shadow-2xl",
-                          onClick: (e) => e.stopPropagation(),
-                          children: [
-                            /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "mb-4 text-center text-base font-bold", children: "اختر لعبة 🎮" }),
+                            `${emoji}-${idx}`
+                          )) }),
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "self-center max-w-[85%] " + (mine ? "ms-2" : "me-2"), children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: bubbleClass, style: ctxBubbleStyle, children: [
+                            renderBubbleContent(m, mine),
+                            mine && !vanishMode && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "mt-1 flex justify-end", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChatMessageStatus, { status: m.status, mine: true, compact: true }) })
+                          ] }) }),
+                          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "overflow-hidden rounded-2xl border border-white/10 bg-zinc-900/95 text-zinc-50 shadow-2xl backdrop-blur-md", children: [
+                            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "border-b border-white/10 px-4 pb-2 pt-3 text-xs text-zinc-400", children: formatMsgContextTime(m.createdAt, state.language) }),
                             /* @__PURE__ */ jsxRuntimeExports.jsxs(
                               "button",
                               {
                                 type: "button",
-                                className: "flex w-full items-center gap-4 rounded-2xl bg-secondary p-4 text-start hover:bg-secondary/80 active:scale-[0.98] transition-transform",
+                                className: "flex w-full items-center gap-3 px-4 py-3.5 text-start text-sm hover:bg-white/5 active:bg-white/10",
                                 onClick: () => {
-                                  setShowPoolInviteModal(false);
-                                  const content = `__game_invite__:pool:${meId}:${Date.now()}`;
-                                  dispatchSend({ type: "text", content });
+                                  setReplyingTo(m);
+                                  closeCtx();
                                 },
                                 children: [
-                                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-4xl", children: "🎱" }),
-                                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-                                    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "font-bold text-foreground", children: "بلياردو 8 كرات" }),
-                                    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-sm text-muted-foreground", children: "تحدَّ صديقك في لعبة بلياردو ملحمية" })
-                                  ] })
+                                  /* @__PURE__ */ jsxRuntimeExports.jsx(Reply, { size: 20, className: "shrink-0 opacity-90" }),
+                                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex-1", children: t("msgReply") })
+                                ]
+                              }
+                            ),
+                            /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", className: "flex w-full items-center gap-3 border-t border-white/5 px-4 py-3.5 text-start text-sm hover:bg-white/5", onClick: forwardContext, children: [
+                              /* @__PURE__ */ jsxRuntimeExports.jsx(Forward, { size: 20, className: "shrink-0 opacity-90" }),
+                              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex-1", children: t("msgForward") })
+                            ] }),
+                            /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", className: "flex w-full items-center gap-3 border-t border-white/5 px-4 py-3.5 text-start text-sm hover:bg-white/5", onClick: copyContext, children: [
+                              /* @__PURE__ */ jsxRuntimeExports.jsx(Copy, { size: 20, className: "shrink-0 opacity-90" }),
+                              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex-1", children: t("msgCopy") })
+                            ] }),
+                            m.type === "sticker" && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                              "button",
+                              {
+                                type: "button",
+                                className: "flex w-full items-center gap-3 border-t border-white/5 px-4 py-3.5 text-start text-sm hover:bg-white/5",
+                                onClick: () => {
+                                  addFavoriteStickerContent(m.content);
+                                  alert(t("stickerFavoriteAdded"));
+                                  closeCtx();
+                                },
+                                children: [
+                                  /* @__PURE__ */ jsxRuntimeExports.jsx(Star, { size: 20, className: "shrink-0 opacity-90" }),
+                                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex-1", children: t("stickerAddFavorite") })
+                                ]
+                              }
+                            ),
+                            (chat.pinnedMessageIds || []).includes(m.id) ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                              "button",
+                              {
+                                type: "button",
+                                className: "flex w-full items-center gap-3 border-t border-white/5 px-4 py-3.5 text-start text-sm hover:bg-white/5",
+                                onClick: () => {
+                                  unpinChatMessage(chat.id, m.id);
+                                  closeCtx();
+                                },
+                                children: [
+                                  /* @__PURE__ */ jsxRuntimeExports.jsx(Pin, { size: 20, className: "shrink-0 opacity-90" }),
+                                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex-1", children: t("msgUnpin") })
+                                ]
+                              }
+                            ) : /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                              "button",
+                              {
+                                type: "button",
+                                className: "flex w-full items-center gap-3 border-t border-white/5 px-4 py-3.5 text-start text-sm hover:bg-white/5",
+                                onClick: () => {
+                                  pinChatMessage(chat.id, m.id);
+                                  closeCtx();
+                                },
+                                children: [
+                                  /* @__PURE__ */ jsxRuntimeExports.jsx(Pin, { size: 20, className: "shrink-0 opacity-90" }),
+                                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex-1", children: t("msgPin") })
+                                ]
+                              }
+                            ),
+                            /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                              "button",
+                              {
+                                type: "button",
+                                className: "flex w-full items-center gap-3 border-t border-white/5 px-4 py-3.5 text-start text-sm hover:bg-white/5",
+                                onClick: () => {
+                                  hideMessageForMe(chat.id, m.id);
+                                  closeCtx();
+                                },
+                                children: [
+                                  /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 20, className: "shrink-0 opacity-90" }),
+                                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex-1", children: t("msgDeleteForYou") })
+                                ]
+                              }
+                            ),
+                            /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                              "button",
+                              {
+                                type: "button",
+                                className: "flex w-full items-center gap-3 border-t border-white/5 px-4 py-3.5 text-start text-sm text-red-400 hover:bg-red-500/10",
+                                onClick: () => {
+                                  alert(t("msgReportThanks"));
+                                  closeCtx();
+                                },
+                                children: [
+                                  /* @__PURE__ */ jsxRuntimeExports.jsx(Flag, { size: 20, className: "shrink-0" }),
+                                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex-1", children: t("msgReport") })
+                                ]
+                              }
+                            ),
+                            /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                              "button",
+                              {
+                                type: "button",
+                                className: "flex w-full items-center gap-3 border-t border-white/5 px-4 py-3.5 text-start text-sm text-zinc-300 hover:bg-white/5",
+                                onClick: () => alert(t("msgMoreSoon")),
+                                children: [
+                                  /* @__PURE__ */ jsxRuntimeExports.jsx(Ellipsis, { size: 20, className: "shrink-0 opacity-80" }),
+                                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex-1", children: t("msgMore") }),
+                                  /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronRight, { size: 18, className: "shrink-0 opacity-60" })
                                 ]
                               }
                             )
-                          ]
-                        }
-                      )
-                    }
-                  ),
-                  localPoolRoomId && /* @__PURE__ */ jsxRuntimeExports.jsx(
-                    PoolGame,
-                    {
-                      roomId: localPoolRoomId,
-                      chatId: sendChatId,
-                      onClose: () => setLocalPoolRoomId(null),
-                      onGameEnd: (winnerId, winnerName) => {
-                        setLocalPoolRoomId(null);
-                        const resultText = `🎱 انتهت المباراة
-الفائز: @${winnerName ?? "؟"}`;
-                        dispatchSend({ type: "text", content: resultText });
-                      }
-                    },
-                    localPoolRoomId
-                  ),
-                  showStickers && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(
-                      "button",
+                          ] })
+                        ] }) })
+                      ] });
+                    })(),
+                    showPoolInviteModal && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "div",
                       {
-                        type: "button",
-                        className: "absolute inset-0 z-[34] bg-black/25",
-                        "aria-label": "إغلاق الملصقات",
-                        onClick: () => setShowStickers(false)
-                      }
-                    ),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "relative z-[36] shrink-0 max-h-[72vh]", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-                      ChatStickerPicker,
-                      {
-                        isQuranChannel,
-                        userStickers: state.stickers.filter((s) => s.userId === me.id),
-                        favoriteStickerContents: me.favoriteStickerContents || [],
-                        createdStickerContents: me.createdStickerContents || [],
-                        onPick: pickSticker,
-                        onClose: () => setShowStickers(false)
-                      }
-                    ) })
-                  ] }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx(
-                    "div",
-                    {
-                      ref: composerRef,
-                      className: "chat-composer-dock isolate " + (chromeOnWallpaper ? "backdrop-blur-xl bg-black/30" : ""),
-                      style: { ["--chat-composer-bottom-pad"]: composerBottomPad },
-                      children: !canPost ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                        "div",
-                        {
-                          className: "p-4 text-center text-sm border-t border-border pb-[var(--chat-composer-bottom-pad)]  " + (isQuranChannel ? "text-zinc-400 bg-zinc-900 border-zinc-700" : "text-muted-foreground bg-background"),
-                          children: [
-                            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "inline-flex items-center gap-1.5 rounded-full bg-secondary px-3 py-1.5 text-xs font-semibold text-foreground", children: [
-                              /* @__PURE__ */ jsxRuntimeExports.jsx(Lock, { size: 14 }),
-                              "الكتابة مقفلة"
-                            ] }),
-                            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-sm", children: blockedComposerReason || t("onlyOwner") })
-                          ]
-                        }
-                      ) : /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                        "div",
-                        {
-                          className: isQuranChannel ? "border-t border-zinc-700 bg-zinc-900" : "bg-transparent",
-                          children: [
-                            replyingTo && /* @__PURE__ */ jsxRuntimeExports.jsx(
-                              ChatComposerReplyBar,
-                              {
-                                isQuran: isQuranChannel,
-                                authorLabel: replyingTo.senderId === me.id ? `${t("chatReplyingTo")} · رسالتك` : `${t("chatReplyingTo")} @${userById(state, replyingTo.senderId)?.username || "?"}`,
-                                preview: chatReplyPreview(replyingTo),
-                                onClose: () => setReplyingTo(null)
-                              }
-                            ),
-                            !chat.isChannel && mentionPick && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "max-h-40 overflow-y-auto border-b border-border/60 bg-card px-2 py-1", children: [
+                        className: "absolute inset-0 z-[80] flex items-end bg-black/60",
+                        onClick: () => setShowPoolInviteModal(false),
+                        children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                          "div",
+                          {
+                            className: "w-full rounded-t-3xl bg-background p-5 shadow-2xl",
+                            onClick: (e) => e.stopPropagation(),
+                            children: [
+                              /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "mb-4 text-center text-base font-bold", children: "اختر لعبة 🎮" }),
                               /* @__PURE__ */ jsxRuntimeExports.jsxs(
                                 "button",
                                 {
                                   type: "button",
-                                  className: "flex w-full items-center gap-2 rounded-xl px-2 py-2 text-sm font-semibold hover:bg-secondary",
-                                  onClick: () => pickMention("all"),
+                                  className: "flex w-full items-center gap-4 rounded-2xl bg-secondary p-4 text-start hover:bg-secondary/80 active:scale-[0.98] transition-transform",
+                                  onClick: () => {
+                                    setShowPoolInviteModal(false);
+                                    const content = `__game_invite__:pool:${meId}:${Date.now()}`;
+                                    dispatchSend({ type: "text", content });
+                                  },
                                   children: [
-                                    /* @__PURE__ */ jsxRuntimeExports.jsx(AtSign, { size: 16, className: "shrink-0 text-primary" }),
-                                    "منشن عام (@all) — إشعار للجميع"
+                                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-4xl", children: "🎱" }),
+                                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+                                      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "font-bold text-foreground", children: "بلياردو 8 كرات" }),
+                                      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-sm text-muted-foreground", children: "تحدَّ صديقك في لعبة بلياردو ملحمية" })
+                                    ] })
                                   ]
                                 }
-                              ),
-                              groupMentionOptions.map((u) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                                "button",
-                                {
-                                  type: "button",
-                                  className: "flex w-full items-center gap-2 rounded-xl px-2 py-2 text-sm hover:bg-secondary",
-                                  onClick: () => pickMention(u.username),
-                                  children: [
-                                    /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u.username, src: u.avatar, size: 28 }),
-                                    "@",
-                                    u.username
-                                  ]
-                                },
-                                u.id
-                              ))
-                            ] }),
-                            /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                              "form",
-                              {
-                                onSubmit: (e) => {
-                                  e.preventDefault();
-                                  submitTextMessage();
-                                },
-                                className: "chat-composer-bar bg-transparent px-3 pt-2 pb-2",
-                                children: [
-                                  useIgDm ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { dir: "ltr", className: "relative flex min-h-[44px] items-end gap-2.5", children: [
-                                    /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                                      "div",
-                                      {
-                                        dir: "ltr",
-                                        className: "flex min-h-[44px] min-w-0 flex-1 flex-nowrap items-center gap-0.5 rounded-[24px] px-2 py-1",
-                                        style: dmPalette ? {
-                                          backgroundColor: chromeOnWallpaper ? "rgba(255,255,255,0.12)" : dmPalette.composerField
-                                        } : void 0,
-                                        children: [
-                                          !composerHasText && (recording ? /* @__PURE__ */ jsxRuntimeExports.jsx(
-                                            "button",
-                                            {
-                                              type: "button",
-                                              className: "flex h-8 w-8 shrink-0 touch-manipulation items-center justify-center rounded-full text-red-500 " + (dmPalette?.composerIconClass ?? "hover:bg-white/10"),
-                                              "aria-label": t("stop"),
-                                              onClick: stopRecording,
-                                              children: /* @__PURE__ */ jsxRuntimeExports.jsx(Square, { size: 15, fill: "currentColor" })
-                                            }
-                                          ) : composerMicCooldown ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-8 w-8 shrink-0 touch-none pointer-events-none", "aria-hidden": true }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-                                            /* @__PURE__ */ jsxRuntimeExports.jsx(
-                                              "button",
-                                              {
-                                                type: "button",
-                                                className: "flex h-8 w-8 shrink-0 touch-manipulation items-center justify-center rounded-full transition " + (dmPalette?.composerIconClass ?? "text-zinc-300 hover:bg-white/10"),
-                                                style: { touchAction: "none" },
-                                                "aria-label": "تسجيل صوتي",
-                                                onClick: () => {
-                                                  if (Date.now() < blockMicUntilRef.current) return;
-                                                  void startRecording();
-                                                },
-                                                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Mic, { size: 19, strokeWidth: 2 })
-                                              }
-                                            ),
-                                            /* @__PURE__ */ jsxRuntimeExports.jsx(
-                                              "button",
-                                              {
-                                                type: "button",
-                                                ...galleryLongPressBtnProps,
-                                                className: "flex h-8 w-8 shrink-0 touch-manipulation items-center justify-center rounded-full transition " + (dmPalette?.composerIconClass ?? "text-zinc-300 hover:bg-white/10"),
-                                                "aria-label": "معرض الصور",
-                                                onClick: () => {
-                                                  setPlusAttachOpen(false);
-                                                  onGalleryButtonClick();
-                                                },
-                                                onPointerDown: (e) => {
-                                                  setPlusAttachOpen(false);
-                                                  onGalleryPointerDown(e);
-                                                },
-                                                onPointerMove: onGalleryPointerMove,
-                                                onPointerUp: clearGalleryLongPress,
-                                                onPointerCancel: clearGalleryLongPress,
-                                                onPointerLeave: clearGalleryLongPress,
-                                                onTouchStart: onGalleryTouchStart,
-                                                onTouchMove: onGalleryTouchMove,
-                                                onTouchEnd: onGalleryTouchEnd,
-                                                onTouchCancel: onGalleryTouchEnd,
-                                                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Image$1, { size: 19, strokeWidth: 2 })
-                                              }
-                                            ),
-                                            /* @__PURE__ */ jsxRuntimeExports.jsx(
-                                              "button",
-                                              {
-                                                type: "button",
-                                                className: "flex h-8 w-8 shrink-0 touch-manipulation items-center justify-center rounded-full transition " + (dmPalette?.composerIconClass ?? "text-zinc-300 hover:bg-white/10"),
-                                                "aria-label": "إيموجي وملصقات",
-                                                onClick: () => {
-                                                  setPlusAttachOpen(false);
-                                                  toggleStickerPanel();
-                                                },
-                                                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Sticker, { size: 19, strokeWidth: 2 })
-                                              }
-                                            )
-                                          ] })),
-                                          /* @__PURE__ */ jsxRuntimeExports.jsx(
-                                            MentionComposerField,
-                                            {
-                                              textareaRef: composerInputRef,
-                                              rows: 1,
-                                              dir: "auto",
-                                              value: text,
-                                              onChange: onComposerChange,
-                                              mentionVariant: "composer",
-                                              wrapperClassName: "chat-allow-select min-w-0 flex-1",
-                                              overlayClassName: "py-1.5 text-[16px] leading-5 " + (dmPalette ? dmPalette.composerTextClass : "text-white"),
-                                              onCompositionStart: () => {
-                                                composingRef.current = true;
-                                              },
-                                              onCompositionEnd: (e) => {
-                                                composingRef.current = false;
-                                                onComposerChange(e.currentTarget.value);
-                                              },
-                                              onKeyDown: (e) => {
-                                                if (e.key === "Enter" && !e.shiftKey) {
-                                                  e.preventDefault();
-                                                  submitTextMessage();
-                                                }
-                                              },
-                                              onFocus: onComposerFocus,
-                                              placeholder: t("typeMessage"),
-                                              "aria-label": t("typeMessage"),
-                                              className: "chat-allow-select no-scrollbar min-h-[20px] min-w-0 max-h-[100px] flex-1 resize-none overflow-y-hidden py-1.5 text-[16px] leading-5 whitespace-pre-wrap break-words bg-transparent outline-none " + (dmPalette ? dmPalette.composerTextClass + " " + dmPalette.composerPlaceholderClass : "text-white caret-white placeholder:text-zinc-500"),
-                                              style: { height: CHAT_COMPOSER_LINE_PX }
-                                            }
-                                          ),
-                                          composerHasText ? /* @__PURE__ */ jsxRuntimeExports.jsx(
-                                            "button",
-                                            {
-                                              type: "button",
-                                              className: "relative z-[57] flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full shadow-[0_2px_12px_rgba(0,0,0,0.18)] transition-all duration-150 hover:opacity-90 active:scale-[0.88]",
-                                              style: {
-                                                background: "rgba(255,255,255,1)",
-                                                color: "#000"
-                                              },
-                                              "aria-label": t("send"),
-                                              onPointerUp: (e) => {
-                                                e.preventDefault();
-                                                e.stopPropagation();
-                                                blockMicUntilRef.current = Date.now() + 520;
-                                                submitTextMessage();
-                                              },
-                                              children: /* @__PURE__ */ jsxRuntimeExports.jsx(Send, { size: 17, strokeWidth: 2.5, className: "pointer-events-none ltr:-rotate-12", style: { color: "#000" } })
-                                            }
-                                          ) : null
-                                        ]
-                                      }
-                                    ),
-                                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { ref: plusAttachMenuRef, className: "relative shrink-0", children: [
-                                      /* @__PURE__ */ jsxRuntimeExports.jsx(
-                                        "button",
-                                        {
-                                          type: "button",
-                                          className: "flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full transition active:scale-[0.88] hover:opacity-90 " + (dmPalette?.composerIconClass ?? "text-white/80 hover:bg-white/10"),
-                                          "aria-label": "إرفاق",
-                                          onPointerDown: (e) => e.stopPropagation(),
-                                          onClick: (e) => {
-                                            e.stopPropagation();
-                                            setPlusAttachOpen((o) => !o);
-                                          },
-                                          children: /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 20, strokeWidth: 2.25 })
-                                        }
-                                      ),
-                                      plusAttachOpen && /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                                        "div",
-                                        {
-                                          className: "absolute bottom-[calc(100%+12px)] end-0 z-[60] min-w-[13rem] overflow-hidden rounded-[22px] py-1.5",
-                                          style: {
-                                            backdropFilter: "blur(28px) saturate(1.8)",
-                                            WebkitBackdropFilter: "blur(28px) saturate(1.8)",
-                                            background: igDmSurfaceStyle?.backgroundColor === "#000000" || igDmSurfaceStyle?.backgroundColor === "#000" ? "rgba(30,30,30,0.88)" : "rgba(255,255,255,0.82)",
-                                            border: igDmSurfaceStyle?.backgroundColor === "#000000" || igDmSurfaceStyle?.backgroundColor === "#000" ? "0.5px solid rgba(255,255,255,0.12)" : "0.5px solid rgba(0,0,0,0.08)",
-                                            boxShadow: "0 8px 40px rgba(0,0,0,0.30), 0 2px 8px rgba(0,0,0,0.15)"
-                                          },
-                                          children: [
-                                            /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                                              "button",
-                                              {
-                                                type: "button",
-                                                className: "flex w-full items-center gap-3 px-4 py-3 text-start text-[14px] font-medium transition-colors duration-100 " + (dmPalette?.attachMenuItemClass ?? "text-white hover:bg-white/10"),
-                                                onClick: () => {
-                                                  setPlusAttachOpen(false);
-                                                  setInstagramCameraOpen(true);
-                                                },
-                                                children: [
-                                                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex h-7 w-7 items-center justify-center rounded-full bg-white/15", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Camera, { size: 15, strokeWidth: 2 }) }),
-                                                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: state.language === "ar" ? "كاميرا" : "Camera" })
-                                                ]
-                                              }
-                                            ),
-                                            /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                                              "button",
-                                              {
-                                                type: "button",
-                                                className: "flex w-full items-center gap-3 px-4 py-3 text-start text-[14px] font-medium transition-colors duration-100 " + (dmPalette?.attachMenuItemClass ?? "text-white hover:bg-white/10"),
-                                                onClick: () => {
-                                                  setPlusAttachOpen(false);
-                                                  galleryMediaInputRef.current?.click();
-                                                },
-                                                children: [
-                                                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex h-7 w-7 items-center justify-center rounded-full bg-white/15", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Image$1, { size: 15, strokeWidth: 2 }) }),
-                                                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: state.language === "ar" ? "الصور" : "Photos" })
-                                                ]
-                                              }
-                                            ),
-                                            /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                                              "button",
-                                              {
-                                                type: "button",
-                                                disabled: isGuest,
-                                                className: "flex w-full items-center gap-3 px-4 py-3 text-start text-[14px] font-medium transition-colors duration-100 " + (dmPalette?.attachMenuItemClass ?? "text-white hover:bg-white/10") + (isGuest ? " cursor-not-allowed opacity-40" : ""),
-                                                onClick: openGalleryVideoVoiceStudio,
-                                                children: [
-                                                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex h-7 w-7 items-center justify-center rounded-full bg-white/15", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Video, { size: 15, strokeWidth: 2 }) }),
-                                                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: state.language === "ar" ? "استديو — مقطع كصوت" : "Studio — voice clip" })
-                                                ]
-                                              }
-                                            ),
-                                            /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                                              "button",
-                                              {
-                                                type: "button",
-                                                disabled: isGuest,
-                                                className: "flex w-full items-center gap-3 px-4 py-3 text-start text-[14px] font-medium transition-colors duration-100 " + (dmPalette?.attachMenuItemClass ?? "text-white hover:bg-white/10") + (isGuest ? " cursor-not-allowed opacity-40" : ""),
-                                                onClick: () => {
-                                                  setPlusAttachOpen(false);
-                                                  if (isGuest) {
-                                                    notifyGuestActionBlocked();
-                                                    return;
-                                                  }
-                                                  setShowStickers(true);
-                                                },
-                                                children: [
-                                                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex h-7 w-7 items-center justify-center rounded-full bg-white/15", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Sticker, { size: 15, strokeWidth: 2 }) }),
-                                                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: state.language === "ar" ? "ملصقات" : "Stickers" })
-                                                ]
-                                              }
-                                            ),
-                                            /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                                              "button",
-                                              {
-                                                type: "button",
-                                                disabled: isGuest,
-                                                className: "flex w-full items-center gap-3 px-4 py-3 text-start text-[14px] font-medium transition-colors duration-100 " + (dmPalette?.attachMenuItemClass ?? "text-white hover:bg-white/10") + (isGuest ? " cursor-not-allowed opacity-40" : ""),
-                                                onClick: () => {
-                                                  setPlusAttachOpen(false);
-                                                  if (isGuest) {
-                                                    notifyGuestActionBlocked();
-                                                    return;
-                                                  }
-                                                  setDrawComposeOpen(true);
-                                                },
-                                                children: [
-                                                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex h-7 w-7 items-center justify-center rounded-full bg-white/15", children: /* @__PURE__ */ jsxRuntimeExports.jsx(PenLine, { size: 15, strokeWidth: 2 }) }),
-                                                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: state.language === "ar" ? "رسم وكتابة" : "Draw" })
-                                                ]
-                                              }
-                                            ),
-                                            isDmRoom && /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                                              "button",
-                                              {
-                                                type: "button",
-                                                disabled: isGuest,
-                                                className: "flex w-full items-center gap-3 px-4 py-3 text-start text-[14px] font-medium transition-colors duration-100 " + (dmPalette?.attachMenuItemClass ?? "text-white hover:bg-white/10") + (isGuest ? " cursor-not-allowed opacity-40" : ""),
-                                                onClick: () => {
-                                                  setPlusAttachOpen(false);
-                                                  if (isGuest) {
-                                                    notifyGuestActionBlocked();
-                                                    return;
-                                                  }
-                                                  setShowPoolInviteModal(true);
-                                                },
-                                                children: [
-                                                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex h-7 w-7 items-center justify-center rounded-full bg-white/15 text-[13px]", children: "🎱" }),
-                                                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: state.language === "ar" ? "إنشاء لعبة" : "Game" })
-                                                ]
-                                              }
-                                            )
-                                          ]
-                                        }
-                                      )
-                                    ] })
-                                  ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { dir: "ltr", className: "relative flex min-h-[44px] items-end gap-2.5", children: [
-                                    /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                                      "div",
-                                      {
-                                        className: "relative flex min-h-[44px] min-w-0 flex-1 flex-nowrap items-center gap-0.5 rounded-[24px] px-2 py-1 " + (isQuranChannel ? "bg-zinc-900" : "bg-secondary/80 dark:bg-zinc-800/90"),
-                                        children: [
-                                          !composerHasText && !recording && !composerMicCooldown && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-                                            /* @__PURE__ */ jsxRuntimeExports.jsx(
-                                              "button",
-                                              {
-                                                type: "button",
-                                                className: "flex h-8 w-8 shrink-0 touch-manipulation items-center justify-center rounded-full text-foreground/85 transition hover:bg-black/[0.06] dark:hover:bg-white/10 " + (isQuranChannel ? "text-zinc-200" : ""),
-                                                "aria-label": "تسجيل صوتي",
-                                                onClick: () => {
-                                                  if (Date.now() < blockMicUntilRef.current) return;
-                                                  void startRecording();
-                                                },
-                                                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Mic, { size: 19, strokeWidth: 2, className: "pointer-events-none" })
-                                              }
-                                            ),
-                                            /* @__PURE__ */ jsxRuntimeExports.jsx(
-                                              "button",
-                                              {
-                                                type: "button",
-                                                ...galleryLongPressBtnProps,
-                                                className: "flex h-8 w-8 shrink-0 touch-manipulation items-center justify-center rounded-full text-foreground/85 transition hover:bg-black/[0.06] dark:hover:bg-white/10 " + (isQuranChannel ? "text-zinc-200" : ""),
-                                                style: { touchAction: "none" },
-                                                "aria-label": "معرض الصور",
-                                                onClick: () => {
-                                                  setPlusAttachOpen(false);
-                                                  onGalleryButtonClick();
-                                                },
-                                                onPointerDown: (e) => {
-                                                  setPlusAttachOpen(false);
-                                                  onGalleryPointerDown(e);
-                                                },
-                                                onPointerMove: onGalleryPointerMove,
-                                                onPointerUp: clearGalleryLongPress,
-                                                onPointerCancel: clearGalleryLongPress,
-                                                onPointerLeave: clearGalleryLongPress,
-                                                onTouchStart: onGalleryTouchStart,
-                                                onTouchMove: onGalleryTouchMove,
-                                                onTouchEnd: onGalleryTouchEnd,
-                                                onTouchCancel: onGalleryTouchEnd,
-                                                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Image$1, { size: 19, strokeWidth: 2 })
-                                              }
-                                            ),
-                                            /* @__PURE__ */ jsxRuntimeExports.jsx(
-                                              "button",
-                                              {
-                                                type: "button",
-                                                className: "flex h-8 w-8 shrink-0 touch-manipulation items-center justify-center rounded-full text-foreground/85 transition hover:bg-black/[0.06] dark:hover:bg-white/10 " + (isQuranChannel ? "text-zinc-200" : ""),
-                                                "aria-label": "ملصقات",
-                                                onClick: () => {
-                                                  setPlusAttachOpen(false);
-                                                  toggleStickerPanel();
-                                                },
-                                                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Sticker, { size: 19, strokeWidth: 2 })
-                                              }
-                                            )
-                                          ] }),
-                                          recording && /* @__PURE__ */ jsxRuntimeExports.jsx(
-                                            "button",
-                                            {
-                                              type: "button",
-                                              className: "flex h-8 w-8 shrink-0 touch-manipulation items-center justify-center rounded-full text-destructive hover:bg-destructive/10",
-                                              "aria-label": t("stop"),
-                                              onClick: stopRecording,
-                                              children: /* @__PURE__ */ jsxRuntimeExports.jsx(Square, { size: 15, fill: "currentColor" })
-                                            }
-                                          ),
-                                          composerMicCooldown && !composerHasText && !recording && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-8 w-8 shrink-0 touch-none pointer-events-none", "aria-hidden": true }),
-                                          /* @__PURE__ */ jsxRuntimeExports.jsx(
-                                            MentionComposerField,
-                                            {
-                                              textareaRef: composerInputRef,
-                                              rows: 1,
-                                              dir: "auto",
-                                              value: text,
-                                              onChange: onComposerChange,
-                                              mentionVariant: isQuranChannel ? "composerQuran" : "composer",
-                                              wrapperClassName: "chat-allow-select min-w-0 flex-1",
-                                              overlayClassName: "py-1.5 text-[16px] leading-5 " + (isQuranChannel ? "text-emerald-50" : "text-zinc-900 dark:text-zinc-50"),
-                                              onCompositionStart: () => {
-                                                composingRef.current = true;
-                                              },
-                                              onCompositionEnd: (e) => {
-                                                composingRef.current = false;
-                                                onComposerChange(e.currentTarget.value);
-                                              },
-                                              onKeyDown: (e) => {
-                                                if (e.key === "Enter" && !e.shiftKey) {
-                                                  e.preventDefault();
-                                                  submitTextMessage();
-                                                }
-                                              },
-                                              onFocus: onComposerFocus,
-                                              placeholder: t("typeMessage"),
-                                              "aria-label": t("typeMessage"),
-                                              className: "chat-allow-select no-scrollbar min-h-[20px] min-w-0 max-h-[100px] flex-1 resize-none overflow-y-hidden py-1.5 text-[16px] leading-5 whitespace-pre-wrap break-words outline-none " + (isQuranChannel ? "caret-emerald-200 placeholder:text-emerald-200/55" : "caret-zinc-800 placeholder:text-zinc-500/65 dark:caret-zinc-200 dark:placeholder:text-zinc-400/60"),
-                                              style: { height: CHAT_COMPOSER_LINE_PX }
-                                            }
-                                          ),
-                                          composerHasText ? /* @__PURE__ */ jsxRuntimeExports.jsx(
-                                            "button",
-                                            {
-                                              type: "button",
-                                              className: "relative z-[57] flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full bg-[#0084ff] text-white shadow-sm transition hover:bg-[#0073e6] active:scale-[0.97]",
-                                              "aria-label": t("send"),
-                                              onPointerUp: (e) => {
-                                                e.preventDefault();
-                                                e.stopPropagation();
-                                                blockMicUntilRef.current = Date.now() + 520;
-                                                submitTextMessage();
-                                              },
-                                              children: /* @__PURE__ */ jsxRuntimeExports.jsx(Send, { size: 18, strokeWidth: 2.25, className: "pointer-events-none ltr:-rotate-12" })
-                                            }
-                                          ) : null
-                                        ]
-                                      }
-                                    ),
-                                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { ref: plusAttachMenuRef, className: "relative shrink-0", children: [
-                                      /* @__PURE__ */ jsxRuntimeExports.jsx(
-                                        "button",
-                                        {
-                                          type: "button",
-                                          className: "flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full text-foreground/90 transition hover:bg-black/[0.06] dark:hover:bg-white/10 " + (isQuranChannel ? "text-zinc-200" : ""),
-                                          "aria-label": "إرفاق",
-                                          onPointerDown: (e) => e.stopPropagation(),
-                                          onClick: (e) => {
-                                            e.stopPropagation();
-                                            setPlusAttachOpen((o) => !o);
-                                          },
-                                          children: /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 19, strokeWidth: 2.25 })
-                                        }
-                                      ),
-                                      plusAttachOpen && /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                                        "div",
-                                        {
-                                          className: "absolute bottom-[calc(100%+10px)] end-0 z-[60] min-w-[12rem] overflow-hidden rounded-2xl border py-1 shadow-xl " + (isQuranChannel ? "border-zinc-700 bg-zinc-900" : "border-border bg-popover"),
-                                          children: [
-                                            /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                                              "button",
-                                              {
-                                                type: "button",
-                                                className: "flex w-full items-center gap-3 px-4 py-3 text-start text-sm transition hover:bg-secondary " + (isQuranChannel ? "text-zinc-100" : ""),
-                                                onClick: () => {
-                                                  setPlusAttachOpen(false);
-                                                  setInstagramCameraOpen(true);
-                                                },
-                                                children: [
-                                                  /* @__PURE__ */ jsxRuntimeExports.jsx(Camera, { size: 18 }),
-                                                  " ",
-                                                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: state.language === "ar" ? "كاميرا" : "Camera" })
-                                                ]
-                                              }
-                                            ),
-                                            /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                                              "button",
-                                              {
-                                                type: "button",
-                                                disabled: isGuest,
-                                                className: "flex w-full items-center gap-3 px-4 py-3 text-start text-sm transition hover:bg-secondary " + (isQuranChannel ? "text-zinc-100" : "") + (isGuest ? " cursor-not-allowed opacity-40" : ""),
-                                                onClick: () => {
-                                                  setPlusAttachOpen(false);
-                                                  if (isGuest) {
-                                                    notifyGuestActionBlocked();
-                                                    return;
-                                                  }
-                                                  setDrawComposeOpen(true);
-                                                },
-                                                children: [
-                                                  /* @__PURE__ */ jsxRuntimeExports.jsx(PenLine, { size: 18 }),
-                                                  " ",
-                                                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "رسم وكتابة" })
-                                                ]
-                                              }
-                                            ),
-                                            /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                                              "button",
-                                              {
-                                                type: "button",
-                                                disabled: isGuest,
-                                                className: "flex w-full items-center gap-3 px-4 py-3 text-start text-sm transition hover:bg-secondary " + (isQuranChannel ? "text-zinc-100" : "") + (isGuest ? " cursor-not-allowed opacity-40" : ""),
-                                                onClick: openGalleryVideoVoiceStudio,
-                                                children: [
-                                                  /* @__PURE__ */ jsxRuntimeExports.jsx(Video, { size: 18 }),
-                                                  " ",
-                                                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "استديو — مقطع كصوت" })
-                                                ]
-                                              }
-                                            ),
-                                            isDmRoom && /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                                              "button",
-                                              {
-                                                type: "button",
-                                                disabled: isGuest,
-                                                className: "flex w-full items-center gap-3 px-4 py-3 text-start text-sm transition hover:bg-secondary " + (isQuranChannel ? "text-zinc-100" : "") + (isGuest ? " cursor-not-allowed opacity-40" : ""),
-                                                onClick: () => {
-                                                  setPlusAttachOpen(false);
-                                                  if (isGuest) {
-                                                    notifyGuestActionBlocked();
-                                                    return;
-                                                  }
-                                                  setShowPoolInviteModal(true);
-                                                },
-                                                children: [
-                                                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "🎱" }),
-                                                  " ",
-                                                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "إنشاء لعبة" })
-                                                ]
-                                              }
-                                            )
-                                          ]
-                                        }
-                                      )
-                                    ] })
-                                  ] }),
-                                  /* @__PURE__ */ jsxRuntimeExports.jsx(
-                                    "input",
-                                    {
-                                      ref: galleryMediaInputRef,
-                                      type: "file",
-                                      accept: "image/*,video/*",
-                                      hidden: true,
-                                      onChange: onGalleryMediaPick
-                                    }
-                                  ),
-                                  /* @__PURE__ */ jsxRuntimeExports.jsx(
-                                    "input",
-                                    {
-                                      ref: galleryVideoVoiceInputRef,
-                                      type: "file",
-                                      accept: "video/*,audio/*",
-                                      hidden: true,
-                                      onChange: onGalleryVideoVoicePick
-                                    }
-                                  ),
-                                  /* @__PURE__ */ jsxRuntimeExports.jsx(
-                                    "input",
-                                    {
-                                      ref: cameraCaptureRef,
-                                      type: "file",
-                                      accept: "image/*,video/*",
-                                      capture: "environment",
-                                      className: "hidden",
-                                      onChange: (e) => {
-                                        const f = e.target.files?.[0];
-                                        e.target.value = "";
-                                        if (!f) return;
-                                        const kind = f.type.startsWith("video") ? "video" : "image";
-                                        const r2 = new FileReader();
-                                        r2.onload = () => setCameraCompose({ kind, dataUrl: String(r2.result) });
-                                        r2.readAsDataURL(f);
-                                      }
-                                    }
-                                  )
-                                ]
-                              }
-                            )
-                          ]
+                              )
+                            ]
+                          }
+                        )
+                      }
+                    ),
+                    localPoolRoomId && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      PoolGame,
+                      {
+                        roomId: localPoolRoomId,
+                        chatId: sendChatId,
+                        onClose: () => setLocalPoolRoomId(null),
+                        onGameEnd: (winnerId, winnerName) => {
+                          setLocalPoolRoomId(null);
+                          const resultText = `🎱 انتهت المباراة
+الفائز: @${winnerName ?? "؟"}`;
+                          dispatchSend({ type: "text", content: resultText });
                         }
-                      )
-                    }
-                  ),
+                      },
+                      localPoolRoomId
+                    ),
+                    showStickers && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx(
+                        "button",
+                        {
+                          type: "button",
+                          className: "absolute inset-0 z-[34] bg-black/25",
+                          "aria-label": "إغلاق الملصقات",
+                          onClick: () => setShowStickers(false)
+                        }
+                      ),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "relative z-[36] shrink-0 max-h-[72vh]", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+                        ChatStickerPicker,
+                        {
+                          isQuranChannel,
+                          userStickers: state.stickers.filter((s) => s.userId === me.id),
+                          favoriteStickerContents: me.favoriteStickerContents || [],
+                          createdStickerContents: me.createdStickerContents || [],
+                          onPick: pickSticker,
+                          onClose: () => setShowStickers(false)
+                        }
+                      ) })
+                    ] }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "chat-composer-spacer", "aria-hidden": true }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "div",
+                      {
+                        ref: composerRef,
+                        className: "chat-composer-dock isolate " + (chromeOnWallpaper ? "backdrop-blur-xl bg-black/30" : ""),
+                        style: { ["--chat-composer-bottom-pad"]: composerBottomPad },
+                        children: !canPost ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                          "div",
+                          {
+                            className: "p-4 text-center text-sm border-t border-border pb-[var(--chat-composer-bottom-pad)]  " + (isQuranChannel ? "text-zinc-400 bg-zinc-900 border-zinc-700" : "text-muted-foreground bg-background"),
+                            children: [
+                              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "inline-flex items-center gap-1.5 rounded-full bg-secondary px-3 py-1.5 text-xs font-semibold text-foreground", children: [
+                                /* @__PURE__ */ jsxRuntimeExports.jsx(Lock, { size: 14 }),
+                                "الكتابة مقفلة"
+                              ] }),
+                              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-sm", children: blockedComposerReason || t("onlyOwner") })
+                            ]
+                          }
+                        ) : /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                          "div",
+                          {
+                            className: isQuranChannel ? "border-t border-zinc-700 bg-zinc-900" : "bg-transparent",
+                            children: [
+                              replyingTo && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                                ChatComposerReplyBar,
+                                {
+                                  isQuran: isQuranChannel,
+                                  authorLabel: replyingTo.senderId === me.id ? `${t("chatReplyingTo")} · رسالتك` : `${t("chatReplyingTo")} @${userById(state, replyingTo.senderId)?.username || "?"}`,
+                                  preview: chatReplyPreview(replyingTo),
+                                  onClose: () => setReplyingTo(null)
+                                }
+                              ),
+                              !chat.isChannel && mentionPick && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "max-h-40 overflow-y-auto border-b border-border/60 bg-card px-2 py-1", children: [
+                                /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                                  "button",
+                                  {
+                                    type: "button",
+                                    className: "flex w-full items-center gap-2 rounded-xl px-2 py-2 text-sm font-semibold hover:bg-secondary",
+                                    onClick: () => pickMention("all"),
+                                    children: [
+                                      /* @__PURE__ */ jsxRuntimeExports.jsx(AtSign, { size: 16, className: "shrink-0 text-primary" }),
+                                      "منشن عام (@all) — إشعار للجميع"
+                                    ]
+                                  }
+                                ),
+                                groupMentionOptions.map((u) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                                  "button",
+                                  {
+                                    type: "button",
+                                    className: "flex w-full items-center gap-2 rounded-xl px-2 py-2 text-sm hover:bg-secondary",
+                                    onClick: () => pickMention(u.username),
+                                    children: [
+                                      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u.username, src: u.avatar, size: 28 }),
+                                      "@",
+                                      u.username
+                                    ]
+                                  },
+                                  u.id
+                                ))
+                              ] }),
+                              /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                                "form",
+                                {
+                                  onSubmit: (e) => {
+                                    e.preventDefault();
+                                    submitTextMessage();
+                                  },
+                                  className: "chat-composer-bar bg-transparent px-3 pt-2 pb-2",
+                                  children: [
+                                    useIgDm ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { dir: "ltr", className: "relative flex min-h-[44px] items-end gap-2.5", children: [
+                                      /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                                        "div",
+                                        {
+                                          dir: "ltr",
+                                          className: "flex min-h-[44px] min-w-0 flex-1 flex-nowrap items-center gap-0.5 rounded-[24px] px-2 py-1",
+                                          style: dmPalette ? {
+                                            backgroundColor: chromeOnWallpaper ? "rgba(255,255,255,0.12)" : dmPalette.composerField
+                                          } : void 0,
+                                          children: [
+                                            !composerHasText && (recording ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+                                              "button",
+                                              {
+                                                type: "button",
+                                                className: "flex h-8 w-8 shrink-0 touch-manipulation items-center justify-center rounded-full text-red-500 " + (dmPalette?.composerIconClass ?? "hover:bg-white/10"),
+                                                "aria-label": t("stop"),
+                                                onClick: stopRecording,
+                                                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Square, { size: 15, fill: "currentColor" })
+                                              }
+                                            ) : composerMicCooldown ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-8 w-8 shrink-0 touch-none pointer-events-none", "aria-hidden": true }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+                                              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                                                "button",
+                                                {
+                                                  type: "button",
+                                                  className: "flex h-8 w-8 shrink-0 touch-manipulation items-center justify-center rounded-full transition " + (dmPalette?.composerIconClass ?? "text-zinc-300 hover:bg-white/10"),
+                                                  style: { touchAction: "none" },
+                                                  "aria-label": "تسجيل صوتي",
+                                                  onClick: () => {
+                                                    if (Date.now() < blockMicUntilRef.current) return;
+                                                    void startRecording();
+                                                  },
+                                                  children: /* @__PURE__ */ jsxRuntimeExports.jsx(Mic, { size: 19, strokeWidth: 2 })
+                                                }
+                                              ),
+                                              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                                                "button",
+                                                {
+                                                  type: "button",
+                                                  ...galleryLongPressBtnProps,
+                                                  className: "flex h-8 w-8 shrink-0 touch-manipulation items-center justify-center rounded-full transition " + (dmPalette?.composerIconClass ?? "text-zinc-300 hover:bg-white/10"),
+                                                  "aria-label": "معرض الصور",
+                                                  onClick: () => {
+                                                    setPlusAttachOpen(false);
+                                                    onGalleryButtonClick();
+                                                  },
+                                                  onPointerDown: (e) => {
+                                                    setPlusAttachOpen(false);
+                                                    onGalleryPointerDown(e);
+                                                  },
+                                                  onPointerMove: onGalleryPointerMove,
+                                                  onPointerUp: clearGalleryLongPress,
+                                                  onPointerCancel: clearGalleryLongPress,
+                                                  onPointerLeave: clearGalleryLongPress,
+                                                  onTouchStart: onGalleryTouchStart,
+                                                  onTouchMove: onGalleryTouchMove,
+                                                  onTouchEnd: onGalleryTouchEnd,
+                                                  onTouchCancel: onGalleryTouchEnd,
+                                                  children: /* @__PURE__ */ jsxRuntimeExports.jsx(Image$1, { size: 19, strokeWidth: 2 })
+                                                }
+                                              ),
+                                              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                                                "button",
+                                                {
+                                                  type: "button",
+                                                  className: "flex h-8 w-8 shrink-0 touch-manipulation items-center justify-center rounded-full transition " + (dmPalette?.composerIconClass ?? "text-zinc-300 hover:bg-white/10"),
+                                                  "aria-label": "إيموجي وملصقات",
+                                                  onClick: () => {
+                                                    setPlusAttachOpen(false);
+                                                    toggleStickerPanel();
+                                                  },
+                                                  children: /* @__PURE__ */ jsxRuntimeExports.jsx(Sticker, { size: 19, strokeWidth: 2 })
+                                                }
+                                              )
+                                            ] })),
+                                            /* @__PURE__ */ jsxRuntimeExports.jsx(
+                                              MentionComposerField,
+                                              {
+                                                textareaRef: composerInputRef,
+                                                rows: 1,
+                                                dir: "auto",
+                                                value: text,
+                                                onChange: onComposerChange,
+                                                mentionVariant: "composer",
+                                                wrapperClassName: "chat-allow-select min-w-0 flex-1",
+                                                overlayClassName: "py-1.5 text-[16px] leading-5 " + (dmPalette ? dmPalette.composerTextClass : "text-white"),
+                                                onCompositionStart: () => {
+                                                  composingRef.current = true;
+                                                },
+                                                onCompositionEnd: (e) => {
+                                                  composingRef.current = false;
+                                                  onComposerChange(e.currentTarget.value);
+                                                },
+                                                onKeyDown: (e) => {
+                                                  if (e.key === "Enter" && !e.shiftKey) {
+                                                    e.preventDefault();
+                                                    submitTextMessage();
+                                                  }
+                                                },
+                                                onFocus: onComposerFocus,
+                                                placeholder: t("typeMessage"),
+                                                "aria-label": t("typeMessage"),
+                                                className: "chat-allow-select no-scrollbar min-h-[20px] min-w-0 max-h-[100px] flex-1 resize-none overflow-y-hidden py-1.5 text-[16px] leading-5 whitespace-pre-wrap break-words bg-transparent outline-none " + (dmPalette ? dmPalette.composerTextClass + " " + dmPalette.composerPlaceholderClass : "text-white caret-white placeholder:text-zinc-500"),
+                                                style: { height: CHAT_COMPOSER_LINE_PX }
+                                              }
+                                            ),
+                                            composerHasText ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+                                              "button",
+                                              {
+                                                type: "button",
+                                                className: "relative z-[57] flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full shadow-[0_2px_12px_rgba(0,0,0,0.18)] transition-all duration-150 hover:opacity-90 active:scale-[0.88] " + (sendPulse ? "chat-send-pulse" : ""),
+                                                style: {
+                                                  background: "rgba(255,255,255,1)",
+                                                  color: "#000"
+                                                },
+                                                "aria-label": t("send"),
+                                                onPointerUp: (e) => {
+                                                  e.preventDefault();
+                                                  e.stopPropagation();
+                                                  blockMicUntilRef.current = Date.now() + 520;
+                                                  submitTextMessage();
+                                                },
+                                                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Send, { size: 17, strokeWidth: 2.5, className: "pointer-events-none ltr:-rotate-12", style: { color: "#000" } })
+                                              }
+                                            ) : null
+                                          ]
+                                        }
+                                      ),
+                                      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { ref: plusAttachMenuRef, className: "relative shrink-0", children: [
+                                        /* @__PURE__ */ jsxRuntimeExports.jsx(
+                                          "button",
+                                          {
+                                            type: "button",
+                                            className: "flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full transition active:scale-[0.88] hover:opacity-90 " + (dmPalette?.composerIconClass ?? "text-white/80 hover:bg-white/10"),
+                                            "aria-label": "إرفاق",
+                                            onPointerDown: (e) => e.stopPropagation(),
+                                            onClick: (e) => {
+                                              e.stopPropagation();
+                                              setPlusAttachOpen((o) => !o);
+                                            },
+                                            children: /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 20, strokeWidth: 2.25 })
+                                          }
+                                        ),
+                                        plusAttachOpen && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                                          "div",
+                                          {
+                                            className: "absolute bottom-[calc(100%+12px)] end-0 z-[60] min-w-[13rem] overflow-hidden rounded-[22px] py-1.5",
+                                            style: {
+                                              backdropFilter: "blur(28px) saturate(1.8)",
+                                              WebkitBackdropFilter: "blur(28px) saturate(1.8)",
+                                              background: igDmSurfaceStyle?.backgroundColor === "#000000" || igDmSurfaceStyle?.backgroundColor === "#000" ? "rgba(30,30,30,0.88)" : "rgba(255,255,255,0.82)",
+                                              border: igDmSurfaceStyle?.backgroundColor === "#000000" || igDmSurfaceStyle?.backgroundColor === "#000" ? "0.5px solid rgba(255,255,255,0.12)" : "0.5px solid rgba(0,0,0,0.08)",
+                                              boxShadow: "0 8px 40px rgba(0,0,0,0.30), 0 2px 8px rgba(0,0,0,0.15)"
+                                            },
+                                            children: [
+                                              /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                                                "button",
+                                                {
+                                                  type: "button",
+                                                  className: "flex w-full items-center gap-3 px-4 py-3 text-start text-[14px] font-medium transition-colors duration-100 " + (dmPalette?.attachMenuItemClass ?? "text-white hover:bg-white/10"),
+                                                  onClick: () => {
+                                                    setPlusAttachOpen(false);
+                                                    setInstagramCameraOpen(true);
+                                                  },
+                                                  children: [
+                                                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex h-7 w-7 items-center justify-center rounded-full bg-white/15", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Camera, { size: 15, strokeWidth: 2 }) }),
+                                                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: state.language === "ar" ? "كاميرا" : "Camera" })
+                                                  ]
+                                                }
+                                              ),
+                                              /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                                                "button",
+                                                {
+                                                  type: "button",
+                                                  className: "flex w-full items-center gap-3 px-4 py-3 text-start text-[14px] font-medium transition-colors duration-100 " + (dmPalette?.attachMenuItemClass ?? "text-white hover:bg-white/10"),
+                                                  onClick: () => {
+                                                    setPlusAttachOpen(false);
+                                                    galleryMediaInputRef.current?.click();
+                                                  },
+                                                  children: [
+                                                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex h-7 w-7 items-center justify-center rounded-full bg-white/15", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Image$1, { size: 15, strokeWidth: 2 }) }),
+                                                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: state.language === "ar" ? "الصور" : "Photos" })
+                                                  ]
+                                                }
+                                              ),
+                                              /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                                                "button",
+                                                {
+                                                  type: "button",
+                                                  disabled: isGuest,
+                                                  className: "flex w-full items-center gap-3 px-4 py-3 text-start text-[14px] font-medium transition-colors duration-100 " + (dmPalette?.attachMenuItemClass ?? "text-white hover:bg-white/10") + (isGuest ? " cursor-not-allowed opacity-40" : ""),
+                                                  onClick: openGalleryVideoVoiceStudio,
+                                                  children: [
+                                                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex h-7 w-7 items-center justify-center rounded-full bg-white/15", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Video, { size: 15, strokeWidth: 2 }) }),
+                                                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: state.language === "ar" ? "استديو — مقطع كصوت" : "Studio — voice clip" })
+                                                  ]
+                                                }
+                                              ),
+                                              /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                                                "button",
+                                                {
+                                                  type: "button",
+                                                  disabled: isGuest,
+                                                  className: "flex w-full items-center gap-3 px-4 py-3 text-start text-[14px] font-medium transition-colors duration-100 " + (dmPalette?.attachMenuItemClass ?? "text-white hover:bg-white/10") + (isGuest ? " cursor-not-allowed opacity-40" : ""),
+                                                  onClick: () => {
+                                                    setPlusAttachOpen(false);
+                                                    if (isGuest) {
+                                                      notifyGuestActionBlocked();
+                                                      return;
+                                                    }
+                                                    setShowStickers(true);
+                                                  },
+                                                  children: [
+                                                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex h-7 w-7 items-center justify-center rounded-full bg-white/15", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Sticker, { size: 15, strokeWidth: 2 }) }),
+                                                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: state.language === "ar" ? "ملصقات" : "Stickers" })
+                                                  ]
+                                                }
+                                              ),
+                                              /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                                                "button",
+                                                {
+                                                  type: "button",
+                                                  disabled: isGuest,
+                                                  className: "flex w-full items-center gap-3 px-4 py-3 text-start text-[14px] font-medium transition-colors duration-100 " + (dmPalette?.attachMenuItemClass ?? "text-white hover:bg-white/10") + (isGuest ? " cursor-not-allowed opacity-40" : ""),
+                                                  onClick: () => {
+                                                    setPlusAttachOpen(false);
+                                                    if (isGuest) {
+                                                      notifyGuestActionBlocked();
+                                                      return;
+                                                    }
+                                                    setDrawComposeOpen(true);
+                                                  },
+                                                  children: [
+                                                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex h-7 w-7 items-center justify-center rounded-full bg-white/15", children: /* @__PURE__ */ jsxRuntimeExports.jsx(PenLine, { size: 15, strokeWidth: 2 }) }),
+                                                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: state.language === "ar" ? "رسم وكتابة" : "Draw" })
+                                                  ]
+                                                }
+                                              ),
+                                              isDmRoom && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                                                "button",
+                                                {
+                                                  type: "button",
+                                                  disabled: isGuest,
+                                                  className: "flex w-full items-center gap-3 px-4 py-3 text-start text-[14px] font-medium transition-colors duration-100 " + (dmPalette?.attachMenuItemClass ?? "text-white hover:bg-white/10") + (isGuest ? " cursor-not-allowed opacity-40" : ""),
+                                                  onClick: () => {
+                                                    setPlusAttachOpen(false);
+                                                    if (isGuest) {
+                                                      notifyGuestActionBlocked();
+                                                      return;
+                                                    }
+                                                    setShowPoolInviteModal(true);
+                                                  },
+                                                  children: [
+                                                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex h-7 w-7 items-center justify-center rounded-full bg-white/15 text-[13px]", children: "🎱" }),
+                                                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: state.language === "ar" ? "إنشاء لعبة" : "Game" })
+                                                  ]
+                                                }
+                                              )
+                                            ]
+                                          }
+                                        )
+                                      ] })
+                                    ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { dir: "ltr", className: "relative flex min-h-[44px] items-end gap-2.5", children: [
+                                      /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                                        "div",
+                                        {
+                                          className: "relative flex min-h-[44px] min-w-0 flex-1 flex-nowrap items-center gap-0.5 rounded-[24px] px-2 py-1 " + (isQuranChannel ? "bg-zinc-900" : "bg-secondary/80 dark:bg-zinc-800/90"),
+                                          children: [
+                                            !composerHasText && !recording && !composerMicCooldown && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+                                              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                                                "button",
+                                                {
+                                                  type: "button",
+                                                  className: "flex h-8 w-8 shrink-0 touch-manipulation items-center justify-center rounded-full text-foreground/85 transition hover:bg-black/[0.06] dark:hover:bg-white/10 " + (isQuranChannel ? "text-zinc-200" : ""),
+                                                  "aria-label": "تسجيل صوتي",
+                                                  onClick: () => {
+                                                    if (Date.now() < blockMicUntilRef.current) return;
+                                                    void startRecording();
+                                                  },
+                                                  children: /* @__PURE__ */ jsxRuntimeExports.jsx(Mic, { size: 19, strokeWidth: 2, className: "pointer-events-none" })
+                                                }
+                                              ),
+                                              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                                                "button",
+                                                {
+                                                  type: "button",
+                                                  ...galleryLongPressBtnProps,
+                                                  className: "flex h-8 w-8 shrink-0 touch-manipulation items-center justify-center rounded-full text-foreground/85 transition hover:bg-black/[0.06] dark:hover:bg-white/10 " + (isQuranChannel ? "text-zinc-200" : ""),
+                                                  style: { touchAction: "none" },
+                                                  "aria-label": "معرض الصور",
+                                                  onClick: () => {
+                                                    setPlusAttachOpen(false);
+                                                    onGalleryButtonClick();
+                                                  },
+                                                  onPointerDown: (e) => {
+                                                    setPlusAttachOpen(false);
+                                                    onGalleryPointerDown(e);
+                                                  },
+                                                  onPointerMove: onGalleryPointerMove,
+                                                  onPointerUp: clearGalleryLongPress,
+                                                  onPointerCancel: clearGalleryLongPress,
+                                                  onPointerLeave: clearGalleryLongPress,
+                                                  onTouchStart: onGalleryTouchStart,
+                                                  onTouchMove: onGalleryTouchMove,
+                                                  onTouchEnd: onGalleryTouchEnd,
+                                                  onTouchCancel: onGalleryTouchEnd,
+                                                  children: /* @__PURE__ */ jsxRuntimeExports.jsx(Image$1, { size: 19, strokeWidth: 2 })
+                                                }
+                                              ),
+                                              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                                                "button",
+                                                {
+                                                  type: "button",
+                                                  className: "flex h-8 w-8 shrink-0 touch-manipulation items-center justify-center rounded-full text-foreground/85 transition hover:bg-black/[0.06] dark:hover:bg-white/10 " + (isQuranChannel ? "text-zinc-200" : ""),
+                                                  "aria-label": "ملصقات",
+                                                  onClick: () => {
+                                                    setPlusAttachOpen(false);
+                                                    toggleStickerPanel();
+                                                  },
+                                                  children: /* @__PURE__ */ jsxRuntimeExports.jsx(Sticker, { size: 19, strokeWidth: 2 })
+                                                }
+                                              )
+                                            ] }),
+                                            recording && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                                              "button",
+                                              {
+                                                type: "button",
+                                                className: "flex h-8 w-8 shrink-0 touch-manipulation items-center justify-center rounded-full text-destructive hover:bg-destructive/10",
+                                                "aria-label": t("stop"),
+                                                onClick: stopRecording,
+                                                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Square, { size: 15, fill: "currentColor" })
+                                              }
+                                            ),
+                                            composerMicCooldown && !composerHasText && !recording && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-8 w-8 shrink-0 touch-none pointer-events-none", "aria-hidden": true }),
+                                            /* @__PURE__ */ jsxRuntimeExports.jsx(
+                                              MentionComposerField,
+                                              {
+                                                textareaRef: composerInputRef,
+                                                rows: 1,
+                                                dir: "auto",
+                                                value: text,
+                                                onChange: onComposerChange,
+                                                mentionVariant: isQuranChannel ? "composerQuran" : "composer",
+                                                wrapperClassName: "chat-allow-select min-w-0 flex-1",
+                                                overlayClassName: "py-1.5 text-[16px] leading-5 " + (isQuranChannel ? "text-emerald-50" : "text-zinc-900 dark:text-zinc-50"),
+                                                onCompositionStart: () => {
+                                                  composingRef.current = true;
+                                                },
+                                                onCompositionEnd: (e) => {
+                                                  composingRef.current = false;
+                                                  onComposerChange(e.currentTarget.value);
+                                                },
+                                                onKeyDown: (e) => {
+                                                  if (e.key === "Enter" && !e.shiftKey) {
+                                                    e.preventDefault();
+                                                    submitTextMessage();
+                                                  }
+                                                },
+                                                onFocus: onComposerFocus,
+                                                placeholder: t("typeMessage"),
+                                                "aria-label": t("typeMessage"),
+                                                className: "chat-allow-select no-scrollbar min-h-[20px] min-w-0 max-h-[100px] flex-1 resize-none overflow-y-hidden py-1.5 text-[16px] leading-5 whitespace-pre-wrap break-words outline-none " + (isQuranChannel ? "caret-emerald-200 placeholder:text-emerald-200/55" : "caret-zinc-800 placeholder:text-zinc-500/65 dark:caret-zinc-200 dark:placeholder:text-zinc-400/60"),
+                                                style: { height: CHAT_COMPOSER_LINE_PX }
+                                              }
+                                            ),
+                                            composerHasText ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+                                              "button",
+                                              {
+                                                type: "button",
+                                                className: "relative z-[57] flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full bg-[#0084ff] text-white shadow-sm transition hover:bg-[#0073e6] active:scale-[0.97]",
+                                                "aria-label": t("send"),
+                                                onPointerUp: (e) => {
+                                                  e.preventDefault();
+                                                  e.stopPropagation();
+                                                  blockMicUntilRef.current = Date.now() + 520;
+                                                  submitTextMessage();
+                                                },
+                                                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Send, { size: 18, strokeWidth: 2.25, className: "pointer-events-none ltr:-rotate-12" })
+                                              }
+                                            ) : null
+                                          ]
+                                        }
+                                      ),
+                                      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { ref: plusAttachMenuRef, className: "relative shrink-0", children: [
+                                        /* @__PURE__ */ jsxRuntimeExports.jsx(
+                                          "button",
+                                          {
+                                            type: "button",
+                                            className: "flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full text-foreground/90 transition hover:bg-black/[0.06] dark:hover:bg-white/10 " + (isQuranChannel ? "text-zinc-200" : ""),
+                                            "aria-label": "إرفاق",
+                                            onPointerDown: (e) => e.stopPropagation(),
+                                            onClick: (e) => {
+                                              e.stopPropagation();
+                                              setPlusAttachOpen((o) => !o);
+                                            },
+                                            children: /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 19, strokeWidth: 2.25 })
+                                          }
+                                        ),
+                                        plusAttachOpen && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                                          "div",
+                                          {
+                                            className: "absolute bottom-[calc(100%+10px)] end-0 z-[60] min-w-[12rem] overflow-hidden rounded-2xl border py-1 shadow-xl " + (isQuranChannel ? "border-zinc-700 bg-zinc-900" : "border-border bg-popover"),
+                                            children: [
+                                              /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                                                "button",
+                                                {
+                                                  type: "button",
+                                                  className: "flex w-full items-center gap-3 px-4 py-3 text-start text-sm transition hover:bg-secondary " + (isQuranChannel ? "text-zinc-100" : ""),
+                                                  onClick: () => {
+                                                    setPlusAttachOpen(false);
+                                                    setInstagramCameraOpen(true);
+                                                  },
+                                                  children: [
+                                                    /* @__PURE__ */ jsxRuntimeExports.jsx(Camera, { size: 18 }),
+                                                    " ",
+                                                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: state.language === "ar" ? "كاميرا" : "Camera" })
+                                                  ]
+                                                }
+                                              ),
+                                              /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                                                "button",
+                                                {
+                                                  type: "button",
+                                                  disabled: isGuest,
+                                                  className: "flex w-full items-center gap-3 px-4 py-3 text-start text-sm transition hover:bg-secondary " + (isQuranChannel ? "text-zinc-100" : "") + (isGuest ? " cursor-not-allowed opacity-40" : ""),
+                                                  onClick: () => {
+                                                    setPlusAttachOpen(false);
+                                                    if (isGuest) {
+                                                      notifyGuestActionBlocked();
+                                                      return;
+                                                    }
+                                                    setDrawComposeOpen(true);
+                                                  },
+                                                  children: [
+                                                    /* @__PURE__ */ jsxRuntimeExports.jsx(PenLine, { size: 18 }),
+                                                    " ",
+                                                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "رسم وكتابة" })
+                                                  ]
+                                                }
+                                              ),
+                                              /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                                                "button",
+                                                {
+                                                  type: "button",
+                                                  disabled: isGuest,
+                                                  className: "flex w-full items-center gap-3 px-4 py-3 text-start text-sm transition hover:bg-secondary " + (isQuranChannel ? "text-zinc-100" : "") + (isGuest ? " cursor-not-allowed opacity-40" : ""),
+                                                  onClick: openGalleryVideoVoiceStudio,
+                                                  children: [
+                                                    /* @__PURE__ */ jsxRuntimeExports.jsx(Video, { size: 18 }),
+                                                    " ",
+                                                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "استديو — مقطع كصوت" })
+                                                  ]
+                                                }
+                                              ),
+                                              isDmRoom && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                                                "button",
+                                                {
+                                                  type: "button",
+                                                  disabled: isGuest,
+                                                  className: "flex w-full items-center gap-3 px-4 py-3 text-start text-sm transition hover:bg-secondary " + (isQuranChannel ? "text-zinc-100" : "") + (isGuest ? " cursor-not-allowed opacity-40" : ""),
+                                                  onClick: () => {
+                                                    setPlusAttachOpen(false);
+                                                    if (isGuest) {
+                                                      notifyGuestActionBlocked();
+                                                      return;
+                                                    }
+                                                    setShowPoolInviteModal(true);
+                                                  },
+                                                  children: [
+                                                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "🎱" }),
+                                                    " ",
+                                                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "إنشاء لعبة" })
+                                                  ]
+                                                }
+                                              )
+                                            ]
+                                          }
+                                        )
+                                      ] })
+                                    ] }),
+                                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                                      "input",
+                                      {
+                                        ref: galleryMediaInputRef,
+                                        type: "file",
+                                        accept: "image/*,video/*",
+                                        hidden: true,
+                                        onChange: onGalleryMediaPick
+                                      }
+                                    ),
+                                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                                      "input",
+                                      {
+                                        ref: galleryVideoVoiceInputRef,
+                                        type: "file",
+                                        accept: "video/*,audio/*",
+                                        hidden: true,
+                                        onChange: onGalleryVideoVoicePick
+                                      }
+                                    ),
+                                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                                      "input",
+                                      {
+                                        ref: cameraCaptureRef,
+                                        type: "file",
+                                        accept: "image/*,video/*",
+                                        capture: "environment",
+                                        className: "hidden",
+                                        onChange: (e) => {
+                                          const f = e.target.files?.[0];
+                                          e.target.value = "";
+                                          if (!f) return;
+                                          const kind = f.type.startsWith("video") ? "video" : "image";
+                                          const r2 = new FileReader();
+                                          r2.onload = () => setCameraCompose({ kind, dataUrl: String(r2.result) });
+                                          r2.readAsDataURL(f);
+                                        }
+                                      }
+                                    )
+                                  ]
+                                }
+                              )
+                            ]
+                          }
+                        )
+                      }
+                    )
+                  ] }),
                   /* @__PURE__ */ jsxRuntimeExports.jsx(
                     InstagramCamera,
                     {
@@ -37803,7 +40202,7 @@ function ProfileTweetCard({
         users,
         onUserClick: (userId) => reactExports.startTransition(() => onOpenProfile(userId))
       }),
-      renderHashtag: (h, key) => /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-primary", children: h }, key)
+      renderHashtag: (h, key2) => /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-primary", children: h }, key2)
     });
   }, [livePost.text, users, onOpenProfile]);
   const actionBtn = "inline-flex items-center gap-1 rounded-md py-1 text-foreground/85 transition active:scale-95";
@@ -37985,7 +40384,7 @@ function ProfileFeedItem({
         users: state.users,
         onUserClick: (userId) => reactExports.startTransition(() => onOpenProfile(userId, returnCtx(false)))
       }),
-      renderHashtag: (h, key) => /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-primary", children: h }, key)
+      renderHashtag: (h, key2) => /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-primary", children: h }, key2)
     });
   }, [post.text, state.users, onOpenProfile]);
   if (!author) return null;
@@ -38366,6 +40765,24 @@ function AppOfficialBanner({
     }
   );
 }
+function SupportOfficialBanner({
+  user
+}) {
+  if (!isSupportOfficialAccount(user) && !user.supportOfficialVerified) return null;
+  const body = user.supportOfficialLabel?.trim() || "هذا هو حساب الدعم الرسمي لتطبيق Retweet — للمساعدة والبلاغات وطلبات التوثيق.";
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "div",
+    {
+      className: "mt-3 rounded-xl border border-emerald-500/35 bg-gradient-to-b from-emerald-950/90 via-emerald-900/80 to-teal-950/90 px-4 py-3.5 shadow-[0_2px_14px_rgba(16,185,129,0.2)]",
+      role: "note",
+      "aria-label": "حساب الدعم الرسمي",
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[15px] font-bold leading-snug text-emerald-100", children: "🛟 حساب الدعم الرسمي" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-[13px] leading-relaxed text-emerald-100/85", children: body })
+      ]
+    }
+  );
+}
 function SafetyActionSheet({
   reportedUserId,
   reportedUsername,
@@ -38439,6 +40856,325 @@ function SafetyActionSheet({
       ]
     }
   ) });
+}
+const DISMISS_START_PX = 8;
+const DISMISS_FLING_VY = 0.45;
+function BottomDismissSheet({
+  open,
+  onClose,
+  title,
+  subtitle,
+  children,
+  zIndex = 130
+}) {
+  const [dismissY, setDismissY] = reactExports.useState(0);
+  const [dismissSpring, setDismissSpring] = reactExports.useState(false);
+  const [isDismissDragging, setIsDismissDragging] = reactExports.useState(false);
+  const dragRef = reactExports.useRef(null);
+  const scrollRef = reactExports.useRef(null);
+  const panelRef = reactExports.useRef(null);
+  const closeTimerRef = reactExports.useRef(null);
+  const panelHeightRef = reactExports.useRef(420);
+  reactExports.useEffect(() => {
+    if (!open) {
+      setDismissY(0);
+      setDismissSpring(false);
+      setIsDismissDragging(false);
+      dragRef.current = null;
+    }
+  }, [open]);
+  reactExports.useEffect(() => {
+    if (!open || !panelRef.current) return;
+    const el = panelRef.current;
+    const ro = new ResizeObserver(() => {
+      panelHeightRef.current = Math.max(280, el.offsetHeight);
+    });
+    ro.observe(el);
+    panelHeightRef.current = Math.max(280, el.offsetHeight);
+    return () => ro.disconnect();
+  }, [open]);
+  const finishClose = reactExports.useCallback(() => {
+    onClose();
+  }, [onClose]);
+  const snapBack = reactExports.useCallback(() => {
+    if (closeTimerRef.current != null) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+    setDismissSpring(true);
+    setDismissY(0);
+    setIsDismissDragging(false);
+    window.setTimeout(() => setDismissSpring(false), 320);
+  }, []);
+  const animateClose = reactExports.useCallback(() => {
+    const h = panelHeightRef.current;
+    setDismissSpring(true);
+    setDismissY(h);
+    setIsDismissDragging(false);
+    if (closeTimerRef.current != null) window.clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = window.setTimeout(() => {
+      closeTimerRef.current = null;
+      finishClose();
+    }, 280);
+  }, [finishClose]);
+  const readScrollTop = reactExports.useCallback(() => scrollRef.current?.scrollTop ?? 0, []);
+  const beginPanelDrag = reactExports.useCallback(
+    (e) => {
+      if (e.button !== 0) return;
+      const target = e.target;
+      if (target.closest("[data-no-sheet-drag]")) return;
+      dragRef.current = {
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        lastY: e.clientY,
+        lastT: performance.now(),
+        velocity: 0,
+        startScrollTop: readScrollTop(),
+        mode: "pending"
+      };
+      setDismissSpring(false);
+    },
+    [readScrollTop]
+  );
+  const movePanelDrag = reactExports.useCallback(
+    (e) => {
+      const d = dragRef.current;
+      if (!d || e.pointerId !== d.pointerId) return;
+      const dx = e.clientX - d.startX;
+      const dy = e.clientY - d.startY;
+      const scrollTop = readScrollTop();
+      const now = performance.now();
+      const dt = Math.max(1, now - d.lastT);
+      d.velocity = (e.clientY - d.lastY) / dt;
+      d.lastY = e.clientY;
+      d.lastT = now;
+      if (d.mode === "pending") {
+        if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > DISMISS_START_PX) {
+          d.mode = "scroll";
+          return;
+        }
+        if (dy < -DISMISS_START_PX) {
+          d.mode = "scroll";
+          return;
+        }
+        if (scrollTop > 2 || d.startScrollTop > 2) {
+          if (dy > DISMISS_START_PX) d.mode = "scroll";
+          return;
+        }
+        if (dy > DISMISS_START_PX && dy >= Math.abs(dx)) {
+          d.mode = "dismiss";
+          setIsDismissDragging(true);
+          try {
+            panelRef.current?.setPointerCapture(e.pointerId);
+          } catch {
+          }
+        } else {
+          return;
+        }
+      }
+      if (d.mode === "scroll") return;
+      if (d.mode === "dismiss") {
+        e.preventDefault();
+        const el = scrollRef.current;
+        if (el) el.scrollTop = 0;
+        setDismissY(Math.max(0, dy));
+      }
+    },
+    [readScrollTop]
+  );
+  const endPanelDrag = reactExports.useCallback(
+    (e) => {
+      const d = dragRef.current;
+      dragRef.current = null;
+      try {
+        if (panelRef.current?.hasPointerCapture?.(e.pointerId)) {
+          panelRef.current.releasePointerCapture(e.pointerId);
+        }
+      } catch {
+      }
+      if (!d || e.pointerId !== d.pointerId) return;
+      if (d.mode === "dismiss") {
+        const dy = Math.max(0, e.clientY - d.startY);
+        const h = panelHeightRef.current;
+        if (dy > h * 0.22 || d.velocity > DISMISS_FLING_VY) animateClose();
+        else snapBack();
+        return;
+      }
+      setIsDismissDragging(false);
+    },
+    [animateClose, snapBack]
+  );
+  if (!open || typeof document === "undefined") return null;
+  const dismissProgress = dismissY / Math.max(1, panelHeightRef.current);
+  const backdropOpacity = Math.max(0, 0.45 * (1 - dismissProgress));
+  return reactDomExports.createPortal(
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "div",
+      {
+        className: "fixed inset-0 flex flex-col justify-end",
+        style: { zIndex },
+        role: "dialog",
+        "aria-modal": true,
+        "aria-label": title,
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "div",
+            {
+              className: "absolute inset-0 bg-black",
+              style: {
+                opacity: backdropOpacity,
+                transition: dismissSpring ? "opacity 0.28s ease-out" : "none"
+              },
+              "aria-hidden": true,
+              onClick: () => animateClose()
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "div",
+            {
+              ref: panelRef,
+              className: "relative z-10 mx-auto flex w-full max-w-md flex-col overflow-hidden rounded-t-3xl bg-background shadow-2xl touch-manipulation animate-in slide-in-from-bottom duration-300",
+              style: {
+                maxHeight: "min(88dvh, 720px)",
+                transform: `translate3d(0, ${dismissY}px, 0)`,
+                transition: dismissSpring ? "transform 0.32s cubic-bezier(0.22, 1, 0.36, 1)" : "none",
+                willChange: "transform",
+                paddingBottom: "max(0.75rem, var(--sab, 0px))",
+                touchAction: isDismissDragging ? "none" : "manipulation"
+              },
+              onClick: (e) => e.stopPropagation(),
+              onPointerDown: beginPanelDrag,
+              onPointerMove: movePanelDrag,
+              onPointerUp: endPanelDrag,
+              onPointerCancel: endPanelDrag,
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                  "div",
+                  {
+                    "data-sheet-drag-handle": true,
+                    className: "flex shrink-0 flex-col items-center border-b border-border bg-background",
+                    children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-2.5 h-1 w-10 shrink-0 rounded-full bg-muted-foreground/35" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "py-2 text-center text-[11px] font-medium text-muted-foreground", children: "اسحب للأسفل للإغلاق" })
+                    ]
+                  }
+                ),
+                (title || subtitle) && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { dir: "rtl", className: "shrink-0 border-b border-border px-4 py-3 text-start", children: [
+                  title ? /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-[15px] font-semibold text-foreground", children: title }) : null,
+                  subtitle ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-[12px] leading-relaxed text-muted-foreground", children: subtitle }) : null
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "div",
+                  {
+                    ref: scrollRef,
+                    className: "min-h-0 flex-1 overflow-y-auto overscroll-y-contain",
+                    style: { pointerEvents: isDismissDragging ? "none" : "auto" },
+                    children
+                  }
+                )
+              ]
+            }
+          )
+        ]
+      }
+    ),
+    document.body
+  );
+}
+function BlockConfirmSheet({
+  open,
+  onClose,
+  username,
+  mode: mode2,
+  onConfirm
+}) {
+  const [phase, setPhase] = reactExports.useState("confirm");
+  const [error, setError] = reactExports.useState("");
+  reactExports.useEffect(() => {
+    if (!open) {
+      setPhase("confirm");
+      setError("");
+    }
+  }, [open]);
+  const handleConfirm = reactExports.useCallback(() => {
+    setError("");
+    setPhase("loading");
+    void onConfirm().then((r2) => {
+      if (!r2.ok) {
+        setPhase("confirm");
+        setError(r2.error || "تعذر تنفيذ العملية");
+        return;
+      }
+      setPhase("success");
+      window.setTimeout(() => {
+        onClose();
+      }, 1100);
+    });
+  }, [onConfirm, onClose]);
+  const isBlock = mode2 === "block";
+  const title = isBlock ? "تأكيد حظر الحساب" : "إلغاء الحظر";
+  const subtitle = isBlock ? `هل أنت متأكد أنك تريد حظر @${username}؟ سيتم إلغاء المتابعة وطلبات المتابعة بينكما ولن ترى منشوراته.` : `هل تريد إلغاء حظر @${username}؟ لن تُستعاد المتابعة تلقائياً.`;
+  const successTitle = isBlock ? "تم حظر الحساب" : "تم إلغاء الحظر";
+  const successHint = isBlock ? "لم يعد بينكما متابعة — كأنكما لم تكونا متابعين لبعض." : "يمكنك متابعته من جديد إذا رغبت.";
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    BottomDismissSheet,
+    {
+      open,
+      onClose: phase === "success" ? () => {
+      } : onClose,
+      zIndex: 10060,
+      children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "div",
+        {
+          dir: "rtl",
+          className: "border-t-4 border-destructive bg-gradient-to-b from-destructive/[0.08] to-background px-4 pb-6 pt-2 " + (phase === "success" ? "text-center" : "text-start"),
+          children: phase === "success" ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col items-center py-6", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "ban-success-burst relative mb-4 flex h-[5.5rem] w-[5.5rem] items-center justify-center", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ban-success-ring absolute inset-0 rounded-full border-2 border-emerald-500/50", "aria-hidden": true }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ban-success-check relative flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600 shadow-[0_0_20px_rgba(16,185,129,0.3)]", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Check, { size: 42, strokeWidth: 2.5, "aria-hidden": true }) })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "ban-success-title text-lg font-bold text-foreground", children: successTitle }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "ban-success-sub mt-1.5 text-sm text-muted-foreground", children: [
+              "@",
+              username
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "ban-success-sub mt-2 max-w-[280px] text-xs leading-relaxed text-muted-foreground", children: successHint })
+          ] }, `success-${mode2}`) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-4 flex items-center gap-3", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-destructive/20 text-destructive ring-2 ring-destructive/25", children: /* @__PURE__ */ jsxRuntimeExports.jsx(UserX, { size: 24, "aria-hidden": true }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-base font-bold text-destructive", children: title }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-[13px] leading-relaxed text-muted-foreground", children: subtitle })
+              ] })
+            ] }),
+            error ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive", children: error }) : null,
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col gap-2", "data-no-sheet-drag": true, children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  type: "button",
+                  disabled: phase === "loading",
+                  onClick: handleConfirm,
+                  className: "w-full rounded-xl bg-destructive py-3.5 text-[15px] font-bold text-white shadow-md transition-transform active:scale-[0.98] disabled:opacity-60",
+                  children: phase === "loading" ? "جاري التنفيذ…" : isBlock ? "حظر الحساب" : "إلغاء الحظر"
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  type: "button",
+                  onClick: onClose,
+                  className: "w-full rounded-xl bg-secondary py-3 text-[15px] font-semibold text-foreground",
+                  children: "تراجع"
+                }
+              )
+            ] })
+          ] })
+        }
+      )
+    }
+  );
 }
 function BannedProfileView({ username }) {
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-h-[50vh] flex-col items-center justify-center px-6 text-center", children: [
@@ -39818,11 +42554,11 @@ function requireDijkstra() {
        */
       PriorityQueue: {
         make: function(opts) {
-          var T = dijkstra2.PriorityQueue, t = {}, key;
+          var T = dijkstra2.PriorityQueue, t = {}, key2;
           opts = opts || {};
-          for (key in T) {
-            if (T.hasOwnProperty(key)) {
-              t[key] = T[key];
+          for (key2 in T) {
+            if (T.hasOwnProperty(key2)) {
+              t[key2] = T[key2];
             }
           }
           t.queue = [];
@@ -39974,18 +42710,18 @@ function requireSegments() {
         const currentNodeIds = [];
         for (let j = 0; j < nodeGroup.length; j++) {
           const node = nodeGroup[j];
-          const key = "" + i + j;
-          currentNodeIds.push(key);
-          table[key] = { node, lastCount: 0 };
-          graph[key] = {};
+          const key2 = "" + i + j;
+          currentNodeIds.push(key2);
+          table[key2] = { node, lastCount: 0 };
+          graph[key2] = {};
           for (let n = 0; n < prevNodeIds.length; n++) {
             const prevNodeId = prevNodeIds[n];
             if (table[prevNodeId] && table[prevNodeId].node.mode === node.mode) {
-              graph[prevNodeId][key] = getSegmentBitsLength(table[prevNodeId].lastCount + node.length, node.mode) - getSegmentBitsLength(table[prevNodeId].lastCount, node.mode);
+              graph[prevNodeId][key2] = getSegmentBitsLength(table[prevNodeId].lastCount + node.length, node.mode) - getSegmentBitsLength(table[prevNodeId].lastCount, node.mode);
               table[prevNodeId].lastCount += node.length;
             } else {
               if (table[prevNodeId]) table[prevNodeId].lastCount = node.length;
-              graph[prevNodeId][key] = getSegmentBitsLength(node.length, node.mode) + 4 + Mode.getCharCountIndicator(node.mode, version2);
+              graph[prevNodeId][key2] = getSegmentBitsLength(node.length, node.mode) + 4 + Mode.getCharCountIndicator(node.mode, version2);
             }
           }
         }
@@ -43232,18 +45968,27 @@ function ProfileScreen({
     state,
     currentUser,
     toggleFollow,
-    toggleBlock,
+    toggleBlockWithSync,
     addHighlight,
     recordProfileVisit,
     acceptFollowRequest,
     declineFollowRequest,
     isGuest,
     refreshSocialRelation,
-    mergeDiscoveredUsers
+    mergeDiscoveredUsers,
+    refreshProfilePostsFromServer
   } = useApp();
   const t = useT();
   const rawU = userById(state, userId);
   const u = rawU ? withFounderProfileFields(rawU) : null;
+  const profileAuthorIds = reactExports.useMemo(
+    () => new Set(profilePostAuthorIds(userId, rawU ?? u)),
+    [userId, rawU, u]
+  );
+  const postByProfileAuthor = reactExports.useMemo(
+    () => (p) => profileAuthorIds.has(p.userId),
+    [profileAuthorIds]
+  );
   const [tab, setTab] = reactExports.useState("all");
   const [profileFeed, setProfileFeed] = reactExports.useState(null);
   const [showFollowers, setShowFollowers] = reactExports.useState(null);
@@ -43251,6 +45996,7 @@ function ProfileScreen({
   const [safetyOpen, setSafetyOpen] = reactExports.useState(false);
   const [reportOpen, setReportOpen] = reactExports.useState(false);
   const [profileBanned, setProfileBanned] = reactExports.useState(false);
+  const [blockConfirmOpen, setBlockConfirmOpen] = reactExports.useState(false);
   reactExports.useEffect(() => {
     if (!userId || userId === currentUser?.id || !apiBackendEnabled()) {
       setProfileBanned(false);
@@ -43302,12 +46048,12 @@ function ProfileScreen({
       let list;
       const gridTab = d.profileGridTab === "posts" ? "all" : d.profileGridTab;
       if (gridTab === "all")
-        list = sortProfilePostsNewestFirst(state.posts.filter((p) => p.userId === userId));
+        list = sortProfilePostsNewestFirst(state.posts.filter(postByProfileAuthor));
       else if (gridTab === "tweets")
-        list = sortProfilePostsNewestFirst(state.posts.filter((p) => p.userId === userId && isDisplayTweet(p)));
+        list = sortProfilePostsNewestFirst(state.posts.filter((p) => postByProfileAuthor(p) && isDisplayTweet(p)));
       else if (gridTab === "reposts")
-        list = sortProfilePostsNewestFirst(state.posts.filter((p) => p.reposts.includes(userId)));
-      else list = sortProfilePostsNewestFirst(state.posts.filter((p) => p.userId === userId && isReelFeedPost(p)));
+        list = sortProfilePostsNewestFirst(state.posts.filter((p) => p.reposts.some((id) => profileAuthorIds.has(id))));
+      else list = sortProfilePostsNewestFirst(state.posts.filter((p) => postByProfileAuthor(p) && isReelFeedPost(p)));
       const orderedIds = list.map((p) => p.id);
       const idx = orderedIds.indexOf(d.postId);
       setTab(gridTab);
@@ -43322,7 +46068,7 @@ function ProfileScreen({
     };
     window.addEventListener("retweet-restore-profile-feed", h);
     return () => window.removeEventListener("retweet-restore-profile-feed", h);
-  }, [userId, state.posts, state.users]);
+  }, [userId, state.posts, state.users, postByProfileAuthor, profileAuthorIds]);
   const myStoriesSorted = reactExports.useMemo(() => {
     if (!currentUser) return [];
     return state.stories.filter((st) => st.userId === currentUser.id).slice().sort((a, b) => b.createdAt - a.createdAt);
@@ -43333,20 +46079,20 @@ function ProfileScreen({
     return formatCompactCount(resolveDisplayFollowerCount(usr));
   }, [state.users, userId, socialHydratedAt]);
   const myAllFeed = reactExports.useMemo(
-    () => sortProfilePostsNewestFirst(state.posts.filter((p) => p.userId === userId)),
-    [state.posts, userId]
+    () => sortProfilePostsNewestFirst(state.posts.filter(postByProfileAuthor)),
+    [state.posts, postByProfileAuthor]
   );
   const myTweets = reactExports.useMemo(
-    () => sortProfilePostsNewestFirst(state.posts.filter((p) => p.userId === userId && isDisplayTweet(p))),
-    [state.posts, userId]
+    () => sortProfilePostsNewestFirst(state.posts.filter((p) => postByProfileAuthor(p) && isDisplayTweet(p))),
+    [state.posts, postByProfileAuthor]
   );
   const myReposts = reactExports.useMemo(
-    () => sortProfilePostsNewestFirst(state.posts.filter((p) => p.reposts.includes(userId))),
-    [state.posts, userId]
+    () => sortProfilePostsNewestFirst(state.posts.filter((p) => p.reposts.some((id) => profileAuthorIds.has(id)))),
+    [state.posts, profileAuthorIds]
   );
   const myReels = reactExports.useMemo(
-    () => sortProfilePostsNewestFirst(state.posts.filter((p) => p.userId === userId && isReelFeedPost(p))),
-    [state.posts, userId]
+    () => sortProfilePostsNewestFirst(state.posts.filter((p) => postByProfileAuthor(p) && isReelFeedPost(p))),
+    [state.posts, postByProfileAuthor]
   );
   const tabPosts = tab === "all" ? myAllFeed : tab === "tweets" ? myTweets : tab === "reposts" ? myReposts : myReels;
   const publicChannels = reactExports.useMemo(() => {
@@ -43359,6 +46105,10 @@ function ProfileScreen({
     visitRecordedFor.current = null;
     setTab("all");
   }, [userId]);
+  reactExports.useEffect(() => {
+    if (!userId || !apiBackendEnabled() || !getApiToken()) return;
+    void refreshProfilePostsFromServer(userId);
+  }, [userId, refreshProfilePostsFromServer]);
   reactExports.useEffect(() => {
     const usr = userById(state, userId);
     if (!currentUser || !usr || currentUser.id === usr.id) return;
@@ -43413,10 +46163,11 @@ function ProfileScreen({
   }
   const canView = canViewProfile(state, currentUser?.id || null, u.id);
   const canSeePrivateContent = canViewPrivatePosts(state, currentUser?.id || null, u.id);
-  const isFollowing = currentUser?.following.includes(u.id);
-  const isFollowedBy = !!(currentUser && u.followers.includes(currentUser.id));
+  const isFollowing = !!(currentUser && userIsFollowing(state, currentUser.id, u.id));
+  const theyFollowMe = !!(currentUser && theyFollowViewer(state, currentUser.id, u.id));
+  const isMutualFollow = !!(currentUser && isMutual(state, currentUser.id, u.id));
   const pendingFollowOut = !!(currentUser?.followRequestOut || []).includes(u.id);
-  const showFollowBack = !isMe && isFollowedBy && !isFollowing && !pendingFollowOut;
+  const showFollowBack = !isMe && theyFollowMe && !isFollowing && !pendingFollowOut;
   const isBlocked = currentUser?.blocked.includes(u.id);
   const isHiddenByBlock = !!(currentUser && currentUser.blocked.includes(u.id));
   const hideFollowStatsFromVisitor = !isMe && u.hideFollowListsFromOthers === true;
@@ -43445,9 +46196,8 @@ function ProfileScreen({
             setMenuOpen(false);
             return;
           }
-          toggleBlock(u.id);
           setMenuOpen(false);
-          alert(isBlocked ? t("unblock") : t("blocked"));
+          setBlockConfirmOpen(true);
         },
         className: "w-full text-start px-3 py-2.5 hover:bg-secondary text-destructive text-sm border-t border-border",
         children: [
@@ -43498,7 +46248,7 @@ function ProfileScreen({
       }
     )
   ] });
-  const followLabel = isFollowing ? t("following") : pendingFollowOut ? "طلب مرسل" : showFollowBack ? t("followBack") : u.isPrivate ? "طلب متابعة" : t("follow");
+  const followLabel = isMutualFollow ? t("mutualFriends") : isFollowing ? t("followingDone") : pendingFollowOut ? "طلب مرسل" : showFollowBack ? t("followBack") : u.isPrivate ? "طلب متابعة" : t("follow");
   const openHighlight = (h) => {
     let slides = h.slides?.length ? [...h.slides] : [];
     if (slides.length === 0 && (h.storyIds || []).length > 0) {
@@ -43715,6 +46465,7 @@ function ProfileScreen({
             /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-3 min-w-0", children: /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "truncate text-[15px] font-semibold leading-snug text-zinc-900 dark:text-zinc-50", children: profileDisplayName }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(FounderOfficialBanner, { user: u }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(AppOfficialBanner, { user: u }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(SupportOfficialBanner, { user: u }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-2 flex items-start gap-2", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1 min-w-0", children: [
               u.bio?.trim() ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-sm whitespace-pre-wrap mt-0", children: renderMentionHashtagNodes(u.bio, {
                 renderMention: createMentionRenderer({
@@ -43730,7 +46481,7 @@ function ProfileScreen({
                     })();
                   }
                 }),
-                renderHashtag: (h, key) => /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-primary", children: h }, key)
+                renderHashtag: (h, key2) => /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-primary", children: h }, key2)
               }) }) : null,
               u.profileLink?.trim() && /* @__PURE__ */ jsxRuntimeExports.jsxs("a", { href: u.profileLink.startsWith("http") ? u.profileLink : `https://${u.profileLink}`, target: "_blank", rel: "noreferrer", className: "mt-2 inline-flex items-center gap-1 text-sm text-primary break-all", children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsx(Link, { size: 14 }),
@@ -43785,7 +46536,15 @@ function ProfileScreen({
               )) })
             ] }),
             isMe ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-2 mt-4", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: onEdit, className: "flex-1 bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 py-2.5 rounded-xl font-semibold text-sm", children: "Edit Profile" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  type: "button",
+                  onClick: () => onEdit?.(),
+                  className: "flex-1 touch-manipulation bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 py-2.5 rounded-xl font-semibold text-sm transition active:scale-[0.98] active:opacity-90",
+                  children: t("edit")
+                }
+              ),
               /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: shareProfile, className: "flex-1 bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 py-2.5 rounded-xl font-semibold text-sm", children: "Share Profile" })
             ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex flex-col gap-2 mt-4", children: canView && !isHiddenByBlock && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
               /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-2 items-stretch", children: [
@@ -44013,6 +46772,25 @@ function ProfileScreen({
         targetType: "user"
       }
     ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      BlockConfirmSheet,
+      {
+        open: blockConfirmOpen && !isMe,
+        onClose: () => setBlockConfirmOpen(false),
+        username: u.username,
+        mode: isBlocked ? "unblock" : "block",
+        onConfirm: async () => {
+          if (isGuest) {
+            notifyGuestActionBlocked();
+            return { ok: false, error: "سجّل الدخول أولاً" };
+          }
+          const wasBlocked = !!currentUser?.blocked.includes(u.id);
+          const r2 = await toggleBlockWithSync(u.id);
+          if (r2.ok && wasBlocked) refreshSocialRelation(u.id);
+          return r2;
+        }
+      }
+    ),
     safetyOpen && !isMe && /* @__PURE__ */ jsxRuntimeExports.jsx(
       SafetyActionSheet,
       {
@@ -44026,8 +46804,8 @@ function ProfileScreen({
             notifyGuestActionBlocked();
             return;
           }
-          toggleBlock(u.id);
-          alert(isBlocked ? t("unblock") : t("blocked"));
+          setSafetyOpen(false);
+          setBlockConfirmOpen(true);
         },
         onRestrict: () => alert("تم تقييد الحساب محلياً"),
         onMute: () => alert("تم كتم إشعارات هذا الحساب")
@@ -44562,14 +47340,14 @@ function _objectSpread2(target) {
   for (var i = 1; i < arguments.length; i++) {
     var source = arguments[i] != null ? arguments[i] : {};
     if (i % 2) {
-      ownKeys(Object(source), true).forEach(function(key) {
-        _defineProperty(target, key, source[key]);
+      ownKeys(Object(source), true).forEach(function(key2) {
+        _defineProperty(target, key2, source[key2]);
       });
     } else if (Object.getOwnPropertyDescriptors) {
       Object.defineProperties(target, Object.getOwnPropertyDescriptors(source));
     } else {
-      ownKeys(Object(source)).forEach(function(key) {
-        Object.defineProperty(target, key, Object.getOwnPropertyDescriptor(source, key));
+      ownKeys(Object(source)).forEach(function(key2) {
+        Object.defineProperty(target, key2, Object.getOwnPropertyDescriptor(source, key2));
       });
     }
   }
@@ -44588,16 +47366,16 @@ function _typeof(obj) {
   }
   return _typeof(obj);
 }
-function _defineProperty(obj, key, value2) {
-  if (key in obj) {
-    Object.defineProperty(obj, key, {
+function _defineProperty(obj, key2, value2) {
+  if (key2 in obj) {
+    Object.defineProperty(obj, key2, {
       value: value2,
       enumerable: true,
       configurable: true,
       writable: true
     });
   } else {
-    obj[key] = value2;
+    obj[key2] = value2;
   }
   return obj;
 }
@@ -44605,25 +47383,25 @@ function _objectWithoutPropertiesLoose(source, excluded) {
   if (source == null) return {};
   var target = {};
   var sourceKeys = Object.keys(source);
-  var key, i;
+  var key2, i;
   for (i = 0; i < sourceKeys.length; i++) {
-    key = sourceKeys[i];
-    if (excluded.indexOf(key) >= 0) continue;
-    target[key] = source[key];
+    key2 = sourceKeys[i];
+    if (excluded.indexOf(key2) >= 0) continue;
+    target[key2] = source[key2];
   }
   return target;
 }
 function _objectWithoutProperties(source, excluded) {
   if (source == null) return {};
   var target = _objectWithoutPropertiesLoose(source, excluded);
-  var key, i;
+  var key2, i;
   if (Object.getOwnPropertySymbols) {
     var sourceSymbolKeys = Object.getOwnPropertySymbols(source);
     for (i = 0; i < sourceSymbolKeys.length; i++) {
-      key = sourceSymbolKeys[i];
-      if (excluded.indexOf(key) >= 0) continue;
-      if (!Object.prototype.propertyIsEnumerable.call(source, key)) continue;
-      target[key] = source[key];
+      key2 = sourceSymbolKeys[i];
+      if (excluded.indexOf(key2) >= 0) continue;
+      if (!Object.prototype.propertyIsEnumerable.call(source, key2)) continue;
+      target[key2] = source[key2];
     }
   }
   return target;
@@ -44740,8 +47518,8 @@ var isEqual = function isEqual2(left, right) {
   }
   var l = left;
   var r2 = right;
-  var pred = function pred2(key) {
-    return isEqual2(l[key], r2[key]);
+  var pred = function pred2(key2) {
+    return isEqual2(l[key2], r2[key2]);
   };
   return allKeys.every(pred);
 };
@@ -44749,18 +47527,18 @@ var extractAllowedOptionsUpdates = function extractAllowedOptionsUpdates2(option
   if (!isUnknownObject(options)) {
     return null;
   }
-  return Object.keys(options).reduce(function(newOptions, key) {
-    var isUpdated = !isUnknownObject(prevOptions) || !isEqual(options[key], prevOptions[key]);
-    if (immutableKeys.includes(key)) {
+  return Object.keys(options).reduce(function(newOptions, key2) {
+    var isUpdated = !isUnknownObject(prevOptions) || !isEqual(options[key2], prevOptions[key2]);
+    if (immutableKeys.includes(key2)) {
       if (isUpdated) {
-        console.warn("Unsupported prop change: options.".concat(key, " is not a mutable property."));
+        console.warn("Unsupported prop change: options.".concat(key2, " is not a mutable property."));
       }
       return newOptions;
     }
     if (!isUpdated) {
       return newOptions;
     }
-    return _objectSpread2(_objectSpread2({}, newOptions || {}), {}, _defineProperty({}, key, options[key]));
+    return _objectSpread2(_objectSpread2({}, newOptions || {}), {}, _defineProperty({}, key2, options[key2]));
   }, null);
 };
 var INVALID_STRIPE_ERROR$1 = "Invalid prop `stripe` supplied to `Elements`. We recommend using the `loadStripe` utility from `@stripe/stripe-js`. See https://stripe.com/docs/stripe-js/react#elements-props-stripe for details.";
@@ -45516,6 +48294,138 @@ function AdminVerificationPanel() {
     ] }, req.id))
   ] });
 }
+function AdminBanConfirmSheet({
+  open,
+  onClose,
+  username,
+  action,
+  onConfirm
+}) {
+  const [phase, setPhase] = reactExports.useState("confirm");
+  const [error, setError] = reactExports.useState("");
+  reactExports.useEffect(() => {
+    if (!open) {
+      setPhase("confirm");
+      setError("");
+    }
+  }, [open]);
+  const permanent = action === "perm_ban";
+  const appealHold = action === "ban";
+  const title = permanent ? "حظر نهائي للحساب" : appealHold ? "حظر الحساب" : "حظر مؤقت للحساب";
+  const subtitle = permanent ? `هل أنت متأكد من حظر @${username} نهائياً؟ لن يتمكن من استخدام التطبيق ولا يمكنه تقديم طعن.` : appealHold ? `هل أنت متأكد من حظر @${username}؟ لا مدة زمنية — يبقى محظوراً حتى يقدّم طعناً للمراجعة.` : `هل أنت متأكد من حظر @${username} مؤقتاً (7 أيام)؟`;
+  const handleConfirm = reactExports.useCallback(async () => {
+    setError("");
+    setPhase("loading");
+    const r2 = await onConfirm();
+    if (!r2.ok) {
+      setPhase("confirm");
+      setError(r2.error || "تعذر تنفيذ الحظر");
+      return;
+    }
+    setPhase("success");
+    window.setTimeout(() => {
+      onClose();
+    }, 1500);
+  }, [onConfirm, onClose]);
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    BottomDismissSheet,
+    {
+      open,
+      onClose: phase === "loading" ? () => {
+      } : onClose,
+      zIndex: 320,
+      children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "div",
+        {
+          dir: "rtl",
+          className: "border-t-4 border-destructive px-4 pb-6 pt-2 " + (phase === "success" ? "text-center" : "text-start"),
+          children: phase === "success" ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col items-center py-8", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "ban-success-check mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-600", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Check, { size: 44, strokeWidth: 2.5, "aria-hidden": true }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-lg font-bold text-foreground", children: "تم حظر الحساب" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-2 text-sm text-muted-foreground", children: [
+              "@",
+              username
+            ] })
+          ] }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-4 flex items-center gap-3", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-destructive/15 text-destructive", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Ban, { size: 24, "aria-hidden": true }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-base font-bold text-foreground", children: title }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-[13px] leading-relaxed text-muted-foreground", children: subtitle })
+              ] })
+            ] }),
+            error ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mb-3 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive", children: error }) : null,
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col gap-2", "data-no-sheet-drag": true, children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  type: "button",
+                  disabled: phase === "loading",
+                  onClick: () => void handleConfirm(),
+                  className: "w-full rounded-xl bg-destructive py-3.5 text-[15px] font-bold text-white disabled:opacity-60",
+                  children: phase === "loading" ? "جاري التنفيذ…" : permanent ? "تأكيد الحظر النهائي" : appealHold ? "تأكيد الحظر" : "تأكيد الحظر المؤقت"
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  type: "button",
+                  disabled: phase === "loading",
+                  onClick: onClose,
+                  className: "w-full rounded-xl bg-secondary py-3 text-[15px] font-semibold disabled:opacity-60",
+                  children: "إلغاء"
+                }
+              )
+            ] })
+          ] })
+        }
+      )
+    }
+  );
+}
+const CATEGORY_LABEL = Object.fromEntries(
+  REPORT_CATEGORIES.map((c) => [c.id, c.labelAr])
+);
+function isOpenReport(status) {
+  return status === "pending" || status === "under_review";
+}
+function isOpenAppeal(status) {
+  return status === "pending" || status === "under_review";
+}
+function reportStatusUi(status) {
+  switch (status) {
+    case "approved":
+      return { label: "تم القبول", badge: "bg-emerald-500/15 text-emerald-600" };
+    case "rejected":
+      return { label: "تم الرفض", badge: "bg-destructive/15 text-destructive" };
+    case "escalated":
+      return { label: "مُصعَّد", badge: "bg-amber-500/15 text-amber-700 dark:text-amber-400" };
+    case "under_review":
+      return { label: "قيد المراجعة", badge: "bg-primary/15 text-primary" };
+    default:
+      return { label: "قيد الانتظار", badge: "bg-secondary text-muted-foreground" };
+  }
+}
+function appealStatusUi(status) {
+  switch (status) {
+    case "approved":
+      return { label: "تم قبول الطعن", badge: "bg-emerald-500/15 text-emerald-600" };
+    case "rejected":
+      return { label: "تم رفض الطعن", badge: "bg-destructive/15 text-destructive" };
+    case "under_review":
+      return { label: "قيد المراجعة", badge: "bg-primary/15 text-primary" };
+    default:
+      return { label: "قيد الانتظار", badge: "bg-secondary text-muted-foreground" };
+  }
+}
+const STATUS_LABEL = {
+  ACTIVE: "نشط",
+  TEMP_BANNED: "حظر مؤقت",
+  BANNED: "حظر",
+  PERMANENTLY_BANNED: "معطّل نهائياً",
+  RESTRICTED: "مقيّد",
+  SHADOW_BANNED: "حظر خفي"
+};
 function ModerationDashboard() {
   const [tab, setTab] = reactExports.useState("reports");
   const [reports, setReports] = reactExports.useState([]);
@@ -45524,6 +48434,13 @@ function ModerationDashboard() {
   const [selected, setSelected] = reactExports.useState(null);
   const [loading, setLoading] = reactExports.useState(true);
   const [err, setErr] = reactExports.useState("");
+  const [busyId, setBusyId] = reactExports.useState(null);
+  const [pendingBan, setPendingBan] = reactExports.useState(null);
+  const [restoreQuery, setRestoreQuery] = reactExports.useState("");
+  const [restoreLookup, setRestoreLookup] = reactExports.useState(null);
+  const [restoreNote, setRestoreNote] = reactExports.useState("");
+  const [restoreBusy, setRestoreBusy] = reactExports.useState(false);
+  const [restoreMsg, setRestoreMsg] = reactExports.useState("");
   const load = reactExports.useCallback(async () => {
     setLoading(true);
     if (tab === "reports") {
@@ -45550,28 +48467,62 @@ function ModerationDashboard() {
     void load();
   }, [load]);
   const review = async (action) => {
-    if (!selected) return;
+    if (!selected || !isOpenReport(selected.status)) return;
+    if (action === "ban" || action === "temp_ban" || action === "perm_ban") {
+      setPendingBan({ action, report: selected });
+      return;
+    }
+    setBusyId(selected.id);
     const r2 = await apiAdminReviewReport(selected.id, {
       action,
       reason: "انتهاك إرشادات المجتمع",
       guideline: selected.category,
       durationHours: action === "temp_ban" ? 168 : void 0,
-      status: action === "ignore" ? "rejected" : "approved"
+      ...action === "ignore" ? { status: "rejected" } : {}
     });
+    setBusyId(null);
     if (!r2.ok) alert(r2.error);
     else {
       setSelected(null);
       void load();
     }
   };
-  const decideAppeal = async (id, decision) => {
-    const r2 = await apiAdminDecideAppeal(id, decision);
-    if (!r2.ok) alert(r2.error);
-    else {
-      alert(r2.data.messageAr);
-      void load();
-    }
+  const executePlatformBan = async () => {
+    if (!pendingBan) return { ok: false, error: "لا يوجد بلاغ" };
+    const { action, report } = pendingBan;
+    setBusyId(report.id);
+    const r2 = await apiAdminReviewReport(report.id, {
+      action,
+      reason: "انتهاك إرشادات المجتمع",
+      guideline: report.category,
+      durationHours: action === "temp_ban" ? 168 : void 0
+    });
+    setBusyId(null);
+    if (!r2.ok) return { ok: false, error: r2.error };
+    setPendingBan(null);
+    setSelected(null);
+    void load();
+    return { ok: true };
   };
+  const decideAppeal = async (id, decision) => {
+    const appeal = appeals.find((a) => a.id === id);
+    if (!appeal || !isOpenAppeal(appeal.status)) return;
+    setBusyId(id);
+    const r2 = await apiAdminDecideAppeal(id, decision);
+    setBusyId(null);
+    if (!r2.ok) {
+      alert(r2.error);
+      void load();
+      return;
+    }
+    setAppeals(
+      (prev) => prev.map(
+        (a) => a.id === id ? { ...a, status: decision === "approve" ? "approved" : "rejected", updatedAt: Date.now() } : a
+      )
+    );
+  };
+  const selectedOpen = selected ? isOpenReport(selected.status) : false;
+  const selectedUi = selected ? reportStatusUi(selected.status) : null;
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mx-4 mt-4 space-y-3 pb-24", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-lg font-bold", children: "لوحة الإشراف" }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-2", children: [
@@ -45592,73 +48543,324 @@ function ModerationDashboard() {
           className: "flex-1 rounded-lg py-2 text-sm font-semibold " + (tab === "appeals" ? "bg-primary text-primary-foreground" : "bg-secondary"),
           children: "الطعون"
         }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          type: "button",
+          onClick: () => setTab("restore"),
+          className: "flex-1 rounded-lg py-2 text-sm font-semibold " + (tab === "restore" ? "bg-primary text-primary-foreground" : "bg-secondary"),
+          children: "استعادة"
+        }
       )
     ] }),
-    tab === "reports" && /* @__PURE__ */ jsxRuntimeExports.jsx(
-      "input",
-      {
-        value: filter,
-        onChange: (e) => setFilter(e.target.value),
-        placeholder: "بحث…",
-        className: "w-full rounded-xl border border-border bg-card px-3 py-2 text-sm"
-      }
-    ),
-    err && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-destructive", children: err }),
-    loading && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-muted-foreground", children: "جاري التحميل…" }),
-    tab === "reports" && reports.map((rep) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
-      "button",
-      {
-        type: "button",
-        onClick: () => setSelected(rep),
-        className: "w-full rounded-xl border border-border bg-card p-3 text-start",
-        children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground", children: rep.status }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "font-medium", children: rep.category }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-xs truncate", children: [
-            "مُبلَّغ: ",
-            rep.reportedUserId
-          ] })
-        ]
-      },
-      rep.id
-    )),
-    tab === "appeals" && appeals.map((a) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl border border-border bg-card p-3", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground", children: a.status }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm line-clamp-3", children: a.message }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-2 flex gap-2", children: [
+    tab === "restore" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-3 rounded-xl border border-border bg-card p-3", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm font-semibold", children: "استعادة حساب (بعد مراجعة دعم)" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs leading-relaxed text-muted-foreground", children: "للحسابات المعطّلة نهائياً بعد تبين الظلم — يُرسل إيميل اعتذار وفك الحظر النهائي." }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "input",
+        {
+          value: restoreQuery,
+          onChange: (e) => setRestoreQuery(e.target.value),
+          placeholder: "اسم المستخدم مثل nw3",
+          className: "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm",
+          dir: "ltr"
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          type: "button",
+          disabled: restoreBusy || !restoreQuery.trim(),
+          className: "w-full rounded-lg bg-secondary py-2 text-sm font-semibold disabled:opacity-50",
+          onClick: () => {
+            setRestoreMsg("");
+            setRestoreLookup(null);
+            setRestoreBusy(true);
+            void apiAdminLookupUserByUsername(restoreQuery.trim().replace(/^@/, "")).then((r2) => {
+              setRestoreBusy(false);
+              if (!r2.ok) {
+                setRestoreMsg(r2.error);
+                return;
+              }
+              setRestoreLookup(r2.data);
+            });
+          },
+          children: "بحث عن الحساب"
+        }
+      ),
+      restoreLookup && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-lg bg-secondary/50 px-3 py-2 text-sm", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "font-semibold", children: [
+          "@",
+          restoreLookup.user.username
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground", children: restoreLookup.user.id }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-1", children: [
+          "الحالة:",
+          " ",
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "font-medium", children: STATUS_LABEL[restoreLookup.state.accountStatus] ?? restoreLookup.state.accountStatus })
+        ] }),
+        restoreLookup.state.banReason ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-xs text-muted-foreground", children: restoreLookup.state.banReason }) : null
+      ] }),
+      restoreLookup?.banned ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "button",
+          "textarea",
           {
-            type: "button",
-            onClick: () => void decideAppeal(a.id, "approve"),
-            className: "flex-1 rounded-lg bg-emerald-600 py-1.5 text-xs font-semibold text-white",
-            children: "قبول"
+            value: restoreNote,
+            onChange: (e) => setRestoreNote(e.target.value),
+            placeholder: "ملاحظة داخلية (اختياري) — مثال: مراجعة دعم — ظلم",
+            className: "min-h-[72px] w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
           }
         ),
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           "button",
           {
             type: "button",
-            onClick: () => void decideAppeal(a.id, "reject"),
-            className: "flex-1 rounded-lg bg-destructive py-1.5 text-xs font-semibold text-white",
-            children: "رفض"
+            disabled: restoreBusy,
+            className: "w-full rounded-lg bg-emerald-600 py-2.5 text-sm font-bold text-white disabled:opacity-50",
+            onClick: () => {
+              if (!restoreLookup) return;
+              setRestoreBusy(true);
+              setRestoreMsg("");
+              void apiAdminRestoreUser(restoreLookup.user.id, {
+                note: restoreNote.trim() || "مراجعة دعم — استعادة بعد ظلم",
+                wrongfulPermanent: restoreLookup.permanentlyDisabled
+              }).then((r2) => {
+                setRestoreBusy(false);
+                if (!r2.ok) {
+                  setRestoreMsg(r2.error);
+                  return;
+                }
+                setRestoreMsg(r2.data.messageAr + " — تم إرسال إيميل للمستخدم إن وُجد بريد.");
+                setRestoreLookup(null);
+                setRestoreQuery("");
+                setRestoreNote("");
+              });
+            },
+            children: restoreBusy ? "جاري الاستعادة…" : "استعادة الحساب وإرسال الإيميل"
           }
         )
-      ] })
-    ] }, a.id)),
+      ] }) : restoreLookup ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-muted-foreground", children: "الحساب غير معطّل — لا حاجة للاستعادة." }) : null,
+      restoreMsg ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "p",
+        {
+          className: "text-sm " + (restoreMsg.includes("تم") ? "text-emerald-600" : "text-destructive"),
+          children: restoreMsg
+        }
+      ) : null
+    ] }),
+    tab === "reports" && /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "input",
+      {
+        value: filter,
+        onChange: (e) => setFilter(e.target.value),
+        placeholder: "بحث باسم المستخدم أو المعرف…",
+        className: "w-full rounded-xl border border-border bg-card px-3 py-2 text-sm"
+      }
+    ),
+    err && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-destructive", children: err }),
+    loading && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-muted-foreground", children: "جاري التحميل…" }),
+    tab === "reports" && reports.map((rep) => {
+      const ui = reportStatusUi(rep.status);
+      const open = isOpenReport(rep.status);
+      const reportedName = rep.reportedUsername?.trim() || rep.reportedUserId;
+      return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "div",
+        {
+          className: "w-full rounded-xl border border-border bg-card p-3 text-start",
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-start justify-between gap-2", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground", children: "المُبلَّغ عنه" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "truncate font-semibold", children: [
+                  "@",
+                  reportedName
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-0.5 text-xs text-muted-foreground", children: CATEGORY_LABEL[rep.category] ?? rep.category })
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "span",
+                {
+                  className: "shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold " + ui.badge,
+                  children: ui.label
+                }
+              )
+            ] }),
+            open ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                type: "button",
+                onClick: () => setSelected(rep),
+                className: "mt-3 w-full rounded-lg bg-primary py-2 text-xs font-semibold text-primary-foreground",
+                children: "مراجعة البلاغ"
+              }
+            ) : /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-[11px] text-muted-foreground", children: "تم البت — لا يمكن تعديل القرار" })
+          ]
+        },
+        rep.id
+      );
+    }),
+    tab === "appeals" && appeals.map((a) => {
+      const ui = appealStatusUi(a.status);
+      const open = isOpenAppeal(a.status);
+      const name = a.username?.trim() || a.userId;
+      const deciding = busyId === a.id;
+      return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl border border-border bg-card p-3", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-start justify-between gap-2", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground", children: "مقدّم الطعن" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "truncate font-semibold", children: [
+              "@",
+              name
+            ] })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "span",
+            {
+              className: "shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold " + ui.badge,
+              children: ui.label
+            }
+          )
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-sm line-clamp-3 text-muted-foreground", children: a.message }),
+        open ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-3 flex gap-2", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              type: "button",
+              disabled: deciding,
+              onClick: () => void decideAppeal(a.id, "approve"),
+              className: "flex-1 rounded-lg bg-emerald-600 py-2 text-xs font-semibold text-white disabled:opacity-50",
+              children: deciding ? "جاري…" : "قبول"
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              type: "button",
+              disabled: deciding,
+              onClick: () => void decideAppeal(a.id, "reject"),
+              className: "flex-1 rounded-lg bg-destructive py-2 text-xs font-semibold text-white disabled:opacity-50",
+              children: deciding ? "جاري…" : "رفض"
+            }
+          )
+        ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-[11px] text-muted-foreground", children: "تم البت — لا يمكن تعديل القرار" })
+      ] }, a.id);
+    }),
+    pendingBan && /* @__PURE__ */ jsxRuntimeExports.jsx(
+      AdminBanConfirmSheet,
+      {
+        open: true,
+        onClose: () => setPendingBan(null),
+        username: pendingBan.report.reportedUsername?.trim() || pendingBan.report.reportedUserId,
+        action: pendingBan.action,
+        onConfirm: executePlatformBan
+      }
+    ),
     selected && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-[300] flex items-end justify-center bg-black/50 p-4", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "w-full max-w-md rounded-2xl bg-background p-4", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "font-bold", children: "مراجعة بلاغ" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-sm", children: selected.category }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground mt-1", children: selected.evidence?.text }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4 grid grid-cols-2 gap-2", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => void review("ignore"), className: "rounded-lg bg-secondary py-2 text-xs", children: "تجاهل" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => void review("warn"), className: "rounded-lg bg-secondary py-2 text-xs", children: "تحذير" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => void review("temp_ban"), className: "rounded-lg bg-amber-600 py-2 text-xs text-white", children: "حظر مؤقت" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => void review("perm_ban"), className: "rounded-lg bg-destructive py-2 text-xs text-white", children: "حظر نهائي" })
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-start justify-between gap-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "font-bold", children: "مراجعة بلاغ" }),
+        selectedUi && /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "span",
+          {
+            className: "shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold " + selectedUi.badge,
+            children: selectedUi.label
+          }
+        )
       ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => setSelected(null), className: "mt-3 w-full text-sm text-muted-foreground", children: "إغلاق" })
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-2 text-sm font-semibold", children: [
+        "@",
+        selected.reportedUsername?.trim() || selected.reportedUserId
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground", children: CATEGORY_LABEL[selected.category] ?? selected.category }),
+      selected.evidence?.text && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-xs text-muted-foreground", children: selected.evidence.text }),
+      selectedOpen ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4 grid grid-cols-2 gap-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            type: "button",
+            disabled: !!busyId,
+            onClick: () => void review("ignore"),
+            className: "rounded-lg bg-secondary py-2 text-xs disabled:opacity-50",
+            children: "تجاهل (رفض)"
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            type: "button",
+            disabled: !!busyId,
+            onClick: () => void review("warn"),
+            className: "rounded-lg bg-secondary py-2 text-xs disabled:opacity-50",
+            children: "تحذير"
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            type: "button",
+            disabled: !!busyId,
+            onClick: () => void review("temp_ban"),
+            className: "rounded-lg bg-destructive/90 py-2 text-xs font-semibold text-white disabled:opacity-50",
+            children: "حظر مؤقت (7 أيام)"
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            type: "button",
+            disabled: !!busyId,
+            onClick: () => void review("ban"),
+            className: "rounded-lg bg-destructive/90 py-2 text-xs font-semibold text-white disabled:opacity-50",
+            children: "حظر"
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            type: "button",
+            disabled: !!busyId,
+            onClick: () => void review("perm_ban"),
+            className: "col-span-2 rounded-lg bg-destructive py-2 text-xs font-semibold text-white disabled:opacity-50",
+            children: "حظر نهائي"
+          }
+        )
+      ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-4 rounded-lg bg-secondary/60 px-3 py-2 text-center text-sm text-muted-foreground", children: "تم البت في هذا البلاغ ولا يمكن تغيير القرار." }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          type: "button",
+          onClick: () => setSelected(null),
+          className: "mt-3 w-full text-sm text-muted-foreground",
+          children: "إغلاق"
+        }
+      )
     ] }) })
   ] });
+}
+async function apiGetSecurity() {
+  const res = await apiFetch$1("/v1/me/security");
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) return { ok: false, error: data.error || "تعذر التحميل" };
+  return { ok: true, data };
+}
+async function apiSetTwoFactor(enabled, password) {
+  const res = await apiFetch$1("/v1/me/two-factor", {
+    method: "PUT",
+    body: JSON.stringify({ enabled, password })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) return { ok: false, error: data.error || "تعذر الحفظ" };
+  return { ok: true, data };
+}
+async function apiRevokeTrustedDevices(password) {
+  const res = await apiFetch$1("/v1/me/trusted-devices/revoke-all", {
+    method: "POST",
+    body: JSON.stringify({ password })
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) return { ok: false, error: data.error || "تعذر التنفيذ" };
+  return { ok: true, message: data.message };
 }
 const SEGMENT_MS = 8e3;
 function StoriesArchiveViewer({
@@ -46224,6 +49426,122 @@ function SettingsHeader({
     }
   );
 }
+function SecuritySettingsPanel({ onBack }) {
+  const [summary, setSummary] = reactExports.useState(null);
+  const [loading, setLoading] = reactExports.useState(true);
+  const [pwd, setPwd] = reactExports.useState("");
+  const [busy, setBusy] = reactExports.useState(false);
+  const [msg, setMsg] = reactExports.useState(null);
+  reactExports.useEffect(() => {
+    void (async () => {
+      setLoading(true);
+      const r2 = await apiGetSecurity();
+      if (r2.ok) setSummary(r2.data);
+      setLoading(false);
+    })();
+  }, []);
+  const refresh = async () => {
+    const r2 = await apiGetSecurity();
+    if (r2.ok) setSummary(r2.data);
+  };
+  const toggle2fa = async (enabled) => {
+    if (!pwd.trim()) {
+      setMsg("أدخل كلمة المرور الحالية للتأكيد");
+      return;
+    }
+    setBusy(true);
+    setMsg(null);
+    const r2 = await apiSetTwoFactor(enabled, pwd);
+    setBusy(false);
+    if (!r2.ok) {
+      setMsg(r2.error);
+      return;
+    }
+    setSummary(r2.data);
+    setPwd("");
+    setMsg(enabled ? "تم تفعيل المصادقة الثنائية" : "تم إيقاف المصادقة الثنائية");
+  };
+  const revokeDevices = async () => {
+    if (!pwd.trim()) {
+      setMsg("أدخل كلمة المرور الحالية");
+      return;
+    }
+    if (!confirm("إزالة كل الأجهزة الموثوقة؟ سيُطلب كود بريد عند الدخول من أي جهاز.")) return;
+    setBusy(true);
+    setMsg(null);
+    const r2 = await apiRevokeTrustedDevices(pwd);
+    setBusy(false);
+    if (!r2.ok) {
+      setMsg(r2.error);
+      return;
+    }
+    setPwd("");
+    setMsg(r2.message || "تمت الإزالة");
+    await refresh();
+  };
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "settings-screen-root min-h-full w-full overflow-x-hidden bg-background pb-10", dir: "rtl", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsHeader, { title: "الأمان", onBack, navScope: "local" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mx-4 mt-4 space-y-4", children: [
+      loading && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-muted-foreground", children: "جاري التحميل…" }),
+      summary && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsCard, { children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "px-4 py-3", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between gap-3", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm font-semibold text-foreground", children: "المصادقة الثنائية" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-0.5 text-xs text-muted-foreground", children: "كود بريد عند كل تسجيل دخول" })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            IgToggle,
+            {
+              on: summary.twoFactorEnabled,
+              onToggle: () => void toggle2fa(!summary.twoFactorEnabled)
+            }
+          )
+        ] }) }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-xs leading-relaxed text-muted-foreground px-1", children: [
+          "عند الدخول من ",
+          /* @__PURE__ */ jsxRuntimeExports.jsx("strong", { children: "جهاز جديد" }),
+          " يُرسل كود تحقق إلى بريدك تلقائياً (حتى بدون تفعيل المصادقة الثنائية). بعد إدخال الكود يُوثَّق الجهاز."
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "space-y-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "input",
+          {
+            value: pwd,
+            onChange: (e) => setPwd(e.target.value),
+            type: "password",
+            placeholder: "كلمة المرور الحالية",
+            className: "w-full rounded-xl border border-border bg-input px-4 py-3 text-sm text-foreground",
+            autoComplete: "current-password"
+          }
+        ) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsCard, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "px-4 py-3", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-sm font-semibold text-foreground flex items-center gap-2", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Smartphone, { className: "h-4 w-4" }),
+            "أجهزة موثوقة (",
+            summary.trustedDeviceCount,
+            ")"
+          ] }),
+          summary.trustedDevices.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("ul", { className: "mt-2 space-y-1.5", children: summary.trustedDevices.map((d, i) => /* @__PURE__ */ jsxRuntimeExports.jsxs("li", { className: "text-xs text-muted-foreground", children: [
+            d.label,
+            " · آخر دخول",
+            " ",
+            new Date(d.lastSeenAt).toLocaleDateString("ar")
+          ] }, i)) }) : /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-xs text-muted-foreground", children: "لا توجد أجهزة موثوقة بعد" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              type: "button",
+              disabled: busy,
+              onClick: () => void revokeDevices(),
+              className: "mt-3 w-full rounded-xl border border-red-500/30 bg-red-500/10 py-2.5 text-sm font-semibold text-red-400 disabled:opacity-50",
+              children: "إزالة جميع الأجهزة الموثوقة"
+            }
+          )
+        ] }) })
+      ] }),
+      msg && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: `text-sm px-1 ${msg.includes("تعذر") || msg.includes("غير") ? "text-red-400" : "text-emerald-400"}`, children: msg })
+    ] })
+  ] });
+}
 function SettingsScreen({
   onBack,
   onOpenAccounts
@@ -46234,7 +49552,7 @@ function SettingsScreen({
     currentUser,
     logout,
     updateProfile,
-    toggleBlock,
+    toggleBlockWithSync,
     toggleCloseFriend,
     changeOwnPassword,
     hardResyncFromServer
@@ -46249,11 +49567,13 @@ function SettingsScreen({
   const t = useT();
   const me = currentUser;
   const [subView, setSubView] = reactExports.useState(null);
+  const [accountsCenterOpen, setAccountsCenterOpen] = reactExports.useState(false);
   const [oldP, setOldP] = reactExports.useState("");
   const [newP, setNewP] = reactExports.useState("");
   const [isAdmin, setIsAdmin] = reactExports.useState(false);
   const [isModerator, setIsModerator] = reactExports.useState(false);
   const blockedUsers = state.users.filter((u) => (me.blocked ?? []).includes(u.id));
+  const [unblockTarget, setUnblockTarget] = reactExports.useState(null);
   reactExports.useEffect(() => {
     void (async () => {
       const token = getApiToken();
@@ -46320,6 +49640,7 @@ function SettingsScreen({
   };
   const subTitle = (k) => {
     if (k === "adminModeration") return "لوحة الإشراف";
+    if (k === "security") return "الأمان";
     const map = {
       accountInfo: "accountInfo",
       changePwd: "changePwd",
@@ -46359,6 +49680,9 @@ function SettingsScreen({
   }
   if (subView === "notifications") {
     return /* @__PURE__ */ jsxRuntimeExports.jsx(PlaceholderPanel, { title: t("notificationsSettings"), hint: t("comingSoonPanel"), onBack: () => setSubView(null) });
+  }
+  if (subView === "security") {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(SecuritySettingsPanel, { onBack: () => setSubView(null) });
   }
   if (subView === "subscription") {
     return /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -46461,52 +49785,122 @@ function SettingsScreen({
   }
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "settings-screen-root min-h-full w-full max-w-full overflow-x-hidden bg-background pb-10", dir: "rtl", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsHeader, { title: t("settingsActivity"), onBack, navScope: "local" }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { dir: "rtl", className: "mx-4 mt-2 overflow-hidden rounded-2xl border border-border bg-card", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "border-b border-border px-4 py-4 text-start", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-[15px] font-semibold text-foreground", children: t("accountsCenter") }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-[12px] leading-relaxed text-muted-foreground", children: t("accountsCenterDesc") })
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "divide-y divide-border", children: [
-        onOpenAccounts ? /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsRow, { icon: Users, label: t("activeAccountsAdd"), chevron: true, onClick: onOpenAccounts }) : null,
-        getUserEntitlements(me).isVerified ? /* @__PURE__ */ jsxRuntimeExports.jsx(
-          SettingsRow,
-          {
-            icon: BadgeCheck,
-            label: t("verifiedAccount"),
-            chevron: true,
-            onClick: () => setSubView("verify")
-          }
-        ) : /* @__PURE__ */ jsxRuntimeExports.jsx(
-          SettingsRow,
-          {
-            icon: BadgeCheck,
-            label: "Get Verified",
-            chevron: true,
-            onClick: () => setSubView("verify")
-          }
-        ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsRow, { icon: CircleUser, label: t("accountInfo"), chevron: true, onClick: () => setSubView("accountInfo") }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsRow, { icon: KeyRound, label: t("changePwd"), chevron: true, onClick: () => setSubView("changePwd") }),
-        isAdmin ? /* @__PURE__ */ jsxRuntimeExports.jsx(
-          SettingsRow,
-          {
-            icon: BadgeCheck,
-            label: "لوحة طلبات التوثيق",
-            chevron: true,
-            onClick: () => setSubView("adminVerify")
-          }
-        ) : null,
-        isModerator ? /* @__PURE__ */ jsxRuntimeExports.jsx(
-          SettingsRow,
-          {
-            icon: Shield,
-            label: "لوحة الإشراف والبلاغات",
-            chevron: true,
-            onClick: () => setSubView("adminModeration")
-          }
-        ) : null
-      ] })
-    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsCard, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+      SettingsRow,
+      {
+        icon: Users,
+        label: t("accountsCenter"),
+        chevron: true,
+        onClick: () => setAccountsCenterOpen(true)
+      }
+    ) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      BottomDismissSheet,
+      {
+        open: accountsCenterOpen,
+        onClose: () => setAccountsCenterOpen(false),
+        title: t("accountsCenter"),
+        subtitle: t("accountsCenterDesc"),
+        zIndex: 140,
+        children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { dir: "rtl", className: "pb-2 pt-1", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(SettingsCard, { children: [
+          onOpenAccounts ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+            SettingsRow,
+            {
+              icon: Users,
+              label: t("activeAccountsAdd"),
+              chevron: true,
+              onClick: () => {
+                setAccountsCenterOpen(false);
+                onOpenAccounts();
+              }
+            }
+          ) : null,
+          getUserEntitlements(me).isVerified ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+            SettingsRow,
+            {
+              icon: BadgeCheck,
+              label: t("verifiedAccount"),
+              chevron: true,
+              onClick: () => {
+                setAccountsCenterOpen(false);
+                setSubView("verify");
+              }
+            }
+          ) : /* @__PURE__ */ jsxRuntimeExports.jsx(
+            SettingsRow,
+            {
+              icon: BadgeCheck,
+              label: "Get Verified",
+              chevron: true,
+              onClick: () => {
+                setAccountsCenterOpen(false);
+                setSubView("verify");
+              }
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            SettingsRow,
+            {
+              icon: CircleUser,
+              label: t("accountInfo"),
+              chevron: true,
+              onClick: () => {
+                setAccountsCenterOpen(false);
+                setSubView("accountInfo");
+              }
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            SettingsRow,
+            {
+              icon: KeyRound,
+              label: t("changePwd"),
+              chevron: true,
+              onClick: () => {
+                setAccountsCenterOpen(false);
+                setSubView("changePwd");
+              }
+            }
+          ),
+          apiBackendEnabled() ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+            SettingsRow,
+            {
+              icon: ShieldCheck,
+              label: "الأمان والمصادقة الثنائية",
+              chevron: true,
+              onClick: () => {
+                setAccountsCenterOpen(false);
+                setSubView("security");
+              }
+            }
+          ) : null,
+          isAdmin ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+            SettingsRow,
+            {
+              icon: BadgeCheck,
+              label: "لوحة طلبات التوثيق",
+              chevron: true,
+              onClick: () => {
+                setAccountsCenterOpen(false);
+                setSubView("adminVerify");
+              }
+            }
+          ) : null,
+          isModerator ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+            SettingsRow,
+            {
+              icon: Shield,
+              label: "لوحة الإشراف والبلاغات",
+              chevron: true,
+              onClick: () => {
+                setAccountsCenterOpen(false);
+                setSubView("adminModeration");
+              }
+            }
+          ) : null
+        ] }) })
+      }
+    ),
     /* @__PURE__ */ jsxRuntimeExports.jsx(SectionGap, {}),
     /* @__PURE__ */ jsxRuntimeExports.jsx(SectionTitle, { children: t("howYouUseApp") }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs(SettingsCard, { children: [
@@ -46632,7 +50026,7 @@ function SettingsScreen({
         "button",
         {
           type: "button",
-          onClick: () => toggleBlock(u.id),
+          onClick: () => setUnblockTarget({ id: u.id, username: u.username }),
           className: "rounded-lg bg-secondary px-3 py-1.5 text-xs font-medium text-foreground",
           children: t("unblockUser")
         }
@@ -46675,7 +50069,17 @@ function SettingsScreen({
           t("logout")
         ]
       }
-    ) })
+    ) }),
+    unblockTarget && /* @__PURE__ */ jsxRuntimeExports.jsx(
+      BlockConfirmSheet,
+      {
+        open: true,
+        onClose: () => setUnblockTarget(null),
+        username: unblockTarget.username,
+        mode: "unblock",
+        onConfirm: () => toggleBlockWithSync(unblockTarget.id)
+      }
+    )
   ] });
 }
 const nid = () => Math.random().toString(36).slice(2, 11);
@@ -48941,10 +52345,10 @@ var handleScroll = function(axis, endTarget, event, sourceDelta, noOverscroll) {
       break;
     }
     var _a = getScrollVariables(axis, target), position = _a[0], scroll_1 = _a[1], capacity = _a[2];
-    var elementScroll = scroll_1 - capacity - directionFactor * position;
-    if (position || elementScroll) {
+    var elementScroll2 = scroll_1 - capacity - directionFactor * position;
+    if (position || elementScroll2) {
       if (elementCouldBeScrolled(axis, target)) {
-        availableScroll += elementScroll;
+        availableScroll += elementScroll2;
         availableScrollTop += position;
       }
     }
@@ -49913,13 +53317,13 @@ const cache = /* @__PURE__ */ new WeakMap();
 function set(el, styles, ignoreCache = false) {
   if (!el || !(el instanceof HTMLElement)) return;
   let originalStyles = {};
-  Object.entries(styles).forEach(([key, value2]) => {
-    if (key.startsWith("--")) {
-      el.style.setProperty(key, value2);
+  Object.entries(styles).forEach(([key2, value2]) => {
+    if (key2.startsWith("--")) {
+      el.style.setProperty(key2, value2);
       return;
     }
-    originalStyles[key] = el.style[key];
-    el.style[key] = value2;
+    originalStyles[key2] = el.style[key2];
+    el.style[key2] = value2;
   });
   if (ignoreCache) return;
   cache.set(el, originalStyles);
@@ -51371,7 +54775,7 @@ function EditProfileScreen({ onBack }) {
       setSaving(false);
     }
   };
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative p-4 space-y-4", children: [
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative min-h-dvh p-4 space-y-4 pb-[max(1.5rem,var(--sab))]", children: [
     (saving || avatarBusy) && /* @__PURE__ */ jsxRuntimeExports.jsx(
       "div",
       {
@@ -51640,8 +55044,9 @@ function AuthScreen(props) {
         if (r2.requiresOtp) {
           loginIdentifierRef.current = form.username.trim();
           setLoginAwaitingOtp(true);
+          const reasonMsg = r2.otpReason === "new_device" ? "جهاز جديد — " : r2.otpReason === "two_factor" ? "المصادقة الثنائية مفعّلة — " : "";
           setInfo(
-            `أُرسل كود التحقق إلى ${r2.emailHint || "بريدك الإلكتروني"}. أدخل الـ 6 أرقام للمتابعة.`
+            `${reasonMsg}أُرسل كود التحقق إلى ${r2.emailHint || "بريدك الإلكتروني"}. أدخل الـ 6 أرقام للمتابعة.`
           );
           return;
         }
@@ -52385,6 +55790,52 @@ function useNavDoubleTap(onSingle, onDouble) {
     }, DOUBLE_TAP_MS);
   }, [onSingle, onDouble]);
 }
+const SEVERE_BAN_CATEGORY_IDS = /* @__PURE__ */ new Set([
+  "nudity",
+  "terrorism",
+  "child_exploitation"
+]);
+const SEVERE_TEXT_NEEDLES = [
+  "nudity",
+  "sexual",
+  "terrorism",
+  "child_exploitation",
+  "child exploitation",
+  "عري",
+  "نشاط جنسي",
+  "إرهاب",
+  "ارهاب",
+  "استغلال أطفال",
+  "استغلال اطفال"
+];
+const SEVERE_BAN_CONDUCT_LINE = "لعن الله ابو هالشوارب";
+const DEFAULT_BAN_TYPE_LABEL = "مخالفة إرشادات المجتمع";
+function resolveBanTypeLabel(banInfo) {
+  const guidelineKey = (banInfo.banGuideline || "").trim();
+  if (guidelineKey) {
+    const byId = REPORT_CATEGORIES.find((c) => c.id === guidelineKey);
+    if (byId) return byId.labelAr;
+    const byIdLoose = REPORT_CATEGORIES.find((c) => c.id === guidelineKey.toLowerCase());
+    if (byIdLoose) return byIdLoose.labelAr;
+  }
+  const blob = `${banInfo.banReason} ${banInfo.banGuideline}`.toLowerCase();
+  for (const cat of REPORT_CATEGORIES) {
+    if (blob.includes(cat.id.replace(/_/g, " ")) || blob.includes(cat.labelAr.toLowerCase())) {
+      return cat.labelAr;
+    }
+  }
+  const reason = banInfo.banReason?.trim();
+  if (reason && reason !== DEFAULT_BAN_TYPE_LABEL) return reason;
+  return DEFAULT_BAN_TYPE_LABEL;
+}
+function banShowsSevereConductLine(banInfo) {
+  const guidelineKey = (banInfo.banGuideline || "").trim().toLowerCase();
+  if (guidelineKey && SEVERE_BAN_CATEGORY_IDS.has(guidelineKey)) {
+    return true;
+  }
+  const blob = `${banInfo.banReason} ${banInfo.banGuideline}`.toLowerCase();
+  return SEVERE_TEXT_NEEDLES.some((n) => blob.includes(n));
+}
 function AppealFlow({
   banInfo,
   onBack,
@@ -52397,15 +55848,25 @@ function AppealFlow({
   const [message, setMessage] = reactExports.useState("");
   const [emailVerified, setEmailVerified] = reactExports.useState(false);
   const [err, setErr] = reactExports.useState("");
+  const [otpSending, setOtpSending] = reactExports.useState(false);
+  const otpSendLock = reactExports.useRef(false);
   const sendOtp = async () => {
+    if (otpSendLock.current) return;
+    otpSendLock.current = true;
+    setOtpSending(true);
     setErr("");
-    const r2 = await apiAppealSendOtp();
-    if (!r2.ok) {
-      setErr(r2.error);
-      return;
+    try {
+      const r2 = await apiAppealSendOtp();
+      if (!r2.ok) {
+        setErr(r2.error);
+        return;
+      }
+      setEmailHint(r2.data.emailHint);
+      setStep("otp");
+    } finally {
+      otpSendLock.current = false;
+      setOtpSending(false);
     }
-    setEmailHint(r2.data.emailHint);
-    setStep("otp");
   };
   const verifyOtp = async () => {
     setErr("");
@@ -52452,9 +55913,10 @@ function AppealFlow({
           "button",
           {
             type: "button",
+            disabled: otpSending,
             onClick: () => void sendOtp(),
-            className: "w-full rounded-xl bg-primary py-3 font-semibold text-primary-foreground",
-            children: "التحقق من البريد"
+            className: "w-full rounded-xl bg-primary py-3 font-semibold text-primary-foreground disabled:opacity-60",
+            children: otpSending ? "جاري الإرسال…" : "التحقق من البريد"
           }
         )
       ] }),
@@ -52542,6 +56004,14 @@ function BanScreen({
   onLogout
 }) {
   const [appeal, setAppeal] = reactExports.useState(false);
+  const [pendingPulse, setPendingPulse] = reactExports.useState(false);
+  const [menuOpen, setMenuOpen] = reactExports.useState(false);
+  reactExports.useEffect(() => {
+    if (!hasPendingAppeal) return;
+    setPendingPulse(true);
+    const t = window.setTimeout(() => setPendingPulse(false), 1200);
+    return () => window.clearTimeout(t);
+  }, [hasPendingAppeal]);
   if (appeal && banInfo.canAppeal && !hasPendingAppeal) {
     return /* @__PURE__ */ jsxRuntimeExports.jsx(
       AppealFlow,
@@ -52556,63 +56026,318 @@ function BanScreen({
     );
   }
   const permanent = banInfo.permanentlyDisabled || banInfo.accountStatus === "PERMANENTLY_BANNED";
+  const appealHoldBan = banInfo.accountStatus === "BANNED";
   const bannedDate = new Date(banInfo.bannedAt).toLocaleDateString("ar");
-  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex min-h-dvh flex-col bg-background px-6 py-10", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center text-center", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: banInfo.username, src: banInfo.avatar, size: 88, className: "mb-4" }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-lg font-bold", children: [
-      "@",
-      banInfo.username
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-6 flex h-14 w-14 items-center justify-center rounded-full bg-destructive/10 text-destructive", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Ban, { size: 28 }) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "mt-4 text-xl font-bold", children: permanent ? "تم تعطيل حسابك نهائياً" : "تم حظر حسابك" }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-3 text-sm text-muted-foreground leading-relaxed", children: permanent ? "Your account has been permanently disabled." : "This account has been banned." }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("dl", { className: "mt-6 w-full space-y-2 rounded-2xl border border-border bg-card p-4 text-start text-sm", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { className: "text-muted-foreground", children: "السبب" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { className: "font-medium", children: banInfo.banReason })
-      ] }),
-      banInfo.banGuideline && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { className: "text-muted-foreground", children: "إرشاد المجتمع" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: banInfo.banGuideline })
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { className: "text-muted-foreground", children: "تاريخ الحظر" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: bannedDate })
-      ] }),
-      banInfo.banExpiresAt && !permanent && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { className: "text-muted-foreground", children: "ينتهي في" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: new Date(banInfo.banExpiresAt).toLocaleString("ar") })
-      ] })
-    ] }),
-    hasPendingAppeal && !permanent && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-6 w-full rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200", children: "طلب الطعن قيد الانتظار. لا يمكنك إرسال طعن جديد حتى يتم الرد من الدعم." }),
-    banInfo.canAppeal && !permanent && !hasPendingAppeal && /* @__PURE__ */ jsxRuntimeExports.jsx(
+  const banTypeLabel = resolveBanTypeLabel(banInfo);
+  const showSevereLine = banShowsSevereConductLine(banInfo);
+  const detailReason = banInfo.banReason?.trim() && banInfo.banReason.trim() !== banTypeLabel && banInfo.banReason.trim() !== "انتهاك إرشادات المجتمع" ? banInfo.banReason.trim() : null;
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative flex min-h-dvh flex-col bg-background pb-[max(1.5rem,var(--sab,0px))]", children: [
+    onLogout ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex shrink-0 justify-start px-4 pt-[max(0.75rem,var(--sat,0px))]", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
       "button",
       {
         type: "button",
-        onClick: () => setAppeal(true),
-        className: "mt-6 w-full rounded-xl bg-primary py-3 font-semibold text-primary-foreground",
-        children: "طعن (Appeal)"
+        "aria-label": "خيارات",
+        "aria-haspopup": "dialog",
+        "aria-expanded": menuOpen,
+        onClick: () => setMenuOpen(true),
+        className: "flex h-10 w-10 items-center justify-center rounded-full text-foreground hover:bg-muted/80 active:bg-muted",
+        children: /* @__PURE__ */ jsxRuntimeExports.jsx(EllipsisVertical, { size: 22, strokeWidth: 2 })
+      }
+    ) }) : null,
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center px-6 py-6 text-center", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: banInfo.username, src: banInfo.avatar, size: 88, className: "mb-4" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-lg font-bold", children: [
+        "@",
+        banInfo.username
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-6 flex h-14 w-14 items-center justify-center rounded-full bg-destructive/10 text-destructive", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Ban, { size: 28 }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "mt-4 text-xl font-bold", children: permanent ? "تم تعطيل حسابك نهائياً" : "تم حظر حسابك" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-3 text-sm text-muted-foreground leading-relaxed", children: permanent ? "Your account has been permanently disabled." : appealHoldBan ? "يبقى حسابك محظوراً حتى تقدّم طعناً للمراجعة." : "This account has been banned." }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-5 w-full rounded-2xl border border-destructive/35 bg-destructive/8 px-4 py-3.5 text-start shadow-sm", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs font-medium uppercase tracking-wide text-destructive/90", children: "نوع الحظر" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1.5 text-[15px] font-bold leading-snug text-foreground", children: banTypeLabel }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-xs text-muted-foreground", children: "هذا هو سبب تعطيل حسابك وفق سياسات المنصة" })
+      ] }),
+      showSevereLine ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "div",
+        {
+          className: "mt-3 w-full rounded-xl border-2 border-red-500 bg-red-500/20 px-4 py-3.5 text-center shadow-[0_0_20px_rgba(239,68,68,0.25)]",
+          role: "note",
+          children: /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[17px] font-extrabold leading-snug text-red-600 dark:text-red-400", children: SEVERE_BAN_CONDUCT_LINE })
+        }
+      ) : null,
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("dl", { className: "mt-6 w-full space-y-2 rounded-2xl border border-border bg-card p-4 text-start text-sm", children: [
+        detailReason ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { className: "text-muted-foreground", children: "تفاصيل إضافية" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { className: "font-medium", children: detailReason })
+        ] }) : null,
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { className: "text-muted-foreground", children: "تاريخ الحظر" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: bannedDate })
+        ] }),
+        appealHoldBan && !permanent && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { className: "text-muted-foreground", children: "مدة الحظر" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: "حتى تقديم طعن — لا يُرفع تلقائياً" })
+        ] }),
+        banInfo.banExpiresAt && !permanent && !appealHoldBan && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("dt", { className: "text-muted-foreground", children: "ينتهي في" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("dd", { children: new Date(banInfo.banExpiresAt).toLocaleString("ar") })
+        ] })
+      ] }),
+      hasPendingAppeal && !permanent && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "div",
+        {
+          className: "mt-6 w-full rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200 " + (pendingPulse ? "moderation-pending-flash" : ""),
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "font-semibold text-amber-100", children: "طلب الطعن قيد المراجعة" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-amber-200/90", children: "تم استلام طعنك. سنُبلغك هنا فور صدور القرار — لا حاجة لإعادة الإرسال." })
+          ]
+        }
+      ),
+      banInfo.canAppeal && !permanent && !hasPendingAppeal && /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          type: "button",
+          onClick: () => setAppeal(true),
+          className: "mt-6 w-full rounded-xl bg-primary py-3 font-semibold text-primary-foreground",
+          children: "طعن (Appeal)"
+        }
+      )
+    ] }),
+    onLogout ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+      BottomDismissSheet,
+      {
+        open: menuOpen,
+        onClose: () => setMenuOpen(false),
+        title: "خيارات",
+        zIndex: 20100,
+        children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { dir: "rtl", className: "px-4 pb-4 pt-2", "data-no-sheet-drag": true, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "button",
+          {
+            type: "button",
+            className: "flex w-full items-center justify-center gap-2 rounded-2xl py-3.5 text-[15px] font-semibold text-red-500 active:bg-destructive/10 dark:text-red-400",
+            onClick: () => {
+              setMenuOpen(false);
+              onLogout();
+            },
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(LogOut, { size: 18 }),
+              "تسجيل الخروج"
+            ]
+          }
+        ) })
+      }
+    ) : null
+  ] });
+}
+function ModerationNoticeScreen({
+  notice,
+  onContinue,
+  variant = "fullscreen"
+}) {
+  const [entered, setEntered] = reactExports.useState(false);
+  const isWarning = notice.kind === "warning";
+  const isRestore = notice.kind === "account_restored";
+  const inGate = variant === "gate";
+  reactExports.useEffect(() => {
+    const id = requestAnimationFrame(() => setEntered(true));
+    return () => cancelAnimationFrame(id);
+  }, [notice.id]);
+  const rootClass = inGate ? "flex min-h-dvh flex-1 flex-col items-center justify-center px-6 py-10 text-center" : "flex min-h-dvh flex-col items-center justify-center bg-background px-6 text-center";
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { dir: "rtl", className: rootClass, children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "img",
+      {
+        src: logo,
+        alt: "Retweet",
+        className: "mb-6 h-16 w-16 select-none object-contain dark:invert transition-all duration-700 " + (entered ? "scale-100 opacity-100" : "scale-90 opacity-0"),
+        draggable: false
       }
     ),
-    onLogout && /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onLogout, className: "mt-3 w-full text-sm text-muted-foreground", children: "تسجيل الخروج" })
-  ] }) });
-}
-function AccountRestoredScreen({ onContinue }) {
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-h-dvh flex-col items-center justify-center bg-background px-6 text-center", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-5 flex h-28 w-28 items-center justify-center rounded-full border-4 border-emerald-500/40 bg-emerald-500/15 text-emerald-500", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-6xl leading-none", children: "✓" }) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "text-2xl font-extrabold", children: "تمت استعادة حسابك" }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-sm text-muted-foreground", children: "تم قبول الطعن. يمكنك الآن استخدام الحساب بشكل طبيعي." }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "div",
+      {
+        className: "moderation-restore-pop mb-5 flex h-[7.5rem] w-[7.5rem] items-center justify-center rounded-full transition-all duration-700 ease-out " + (isWarning ? "border-4 border-amber-500/45 bg-amber-500/15 text-amber-600" : "border-4 border-emerald-500/40 bg-emerald-500/15 text-emerald-600") + (entered ? " scale-100 opacity-100" : " scale-75 opacity-0"),
+        children: isWarning ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "moderation-warning-shake inline-flex", children: /* @__PURE__ */ jsxRuntimeExports.jsx(TriangleAlert, { size: 52, strokeWidth: 2.2, "aria-hidden": true }) }) : /* @__PURE__ */ jsxRuntimeExports.jsx(Check, { size: 52, strokeWidth: 2.5, "aria-hidden": true })
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "h1",
+      {
+        className: "text-2xl font-extrabold transition-all duration-500 delay-150 " + (entered ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0"),
+        children: notice.titleAr
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "p",
+      {
+        className: "mt-3 max-w-sm text-[15px] leading-relaxed text-muted-foreground transition-all duration-500 delay-300 " + (entered ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0"),
+        children: notice.messageAr
+      }
+    ),
+    isWarning && (notice.guidelineAr || notice.reasonDetail) ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "div",
+      {
+        className: "mt-5 w-full max-w-sm rounded-2xl border border-amber-500/35 bg-amber-500/10 px-4 py-3.5 text-start transition-all duration-500 delay-[380ms] " + (entered ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0"),
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400", children: "سبب التحذير" }),
+          notice.guidelineAr ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-[15px] font-bold leading-snug text-foreground", children: notice.guidelineAr }) : null,
+          notice.reasonDetail ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-xs text-muted-foreground", children: "تفاصيل المخالفة" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-sm font-medium leading-relaxed text-foreground", children: notice.reasonDetail })
+          ] }) : null
+        ]
+      }
+    ) : null,
+    isRestore ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "p",
+      {
+        className: "mt-3 text-sm font-medium text-emerald-600 transition-all duration-500 delay-[420ms] " + (entered ? "opacity-100" : "opacity-0"),
+        children: "تم فك الحظر النهائي — مرحباً بعودتك"
+      }
+    ) : null,
     /* @__PURE__ */ jsxRuntimeExports.jsx(
       "button",
       {
         type: "button",
         onClick: onContinue,
-        className: "mt-8 w-full max-w-sm rounded-xl bg-primary py-3 font-semibold text-primary-foreground",
-        children: "متابعة"
+        className: "moderation-restore-pop mt-8 w-full max-w-sm rounded-xl py-3.5 text-[15px] font-bold text-primary-foreground transition-all duration-500 delay-500 " + (isWarning ? "bg-amber-600 hover:bg-amber-600/90" : "bg-primary") + (entered ? " translate-y-0 opacity-100" : " translate-y-3 opacity-0"),
+        children: isWarning ? "فهمت" : "متابعة إلى التطبيق"
       }
     )
   ] });
 }
+function ModerationGateShell({
+  banInfo,
+  notice,
+  animateOpen = false,
+  hasPendingAppeal,
+  onAppealSubmitted,
+  onLogout,
+  onNoticeDismiss
+}) {
+  const [open, setOpen] = reactExports.useState(!animateOpen);
+  const showNotice = !!notice;
+  reactExports.useEffect(() => {
+    if (!animateOpen) {
+      setOpen(true);
+      return;
+    }
+    setOpen(false);
+    const id = requestAnimationFrame(() => setOpen(true));
+    return () => cancelAnimationFrame(id);
+  }, [animateOpen, banInfo?.bannedAt, notice?.id]);
+  reactExports.useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [open]);
+  const ariaLabel = showNotice ? notice.kind === "warning" ? "تحذير من الإشراف" : "تم استعادة الحساب" : "تم حظر الحساب";
+  const shell = /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "div",
+    {
+      dir: "rtl",
+      className: "ban-reveal-root fixed inset-0 z-[20050] flex justify-center bg-black/50 " + (open ? "ban-reveal-root--open" : ""),
+      role: "alertdialog",
+      "aria-modal": true,
+      "aria-label": ariaLabel,
+      children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "div",
+        {
+          className: "ban-reveal-panel relative flex h-dvh w-full max-w-md flex-col overflow-hidden overflow-y-auto bg-background shadow-2xl will-change-transform",
+          children: showNotice ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+            ModerationNoticeScreen,
+            {
+              notice,
+              variant: "gate",
+              onContinue: onNoticeDismiss
+            },
+            notice.id
+          ) : banInfo ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+            BanScreen,
+            {
+              banInfo,
+              hasPendingAppeal,
+              onAppealSubmitted,
+              onLogout
+            }
+          ) : null
+        }
+      )
+    }
+  );
+  if (typeof document === "undefined") return shell;
+  return reactDomExports.createPortal(shell, document.body);
+}
+const ACCOUNT_MODERATION_EVENT = "retweet-account-moderation";
+function isBannedAccountStatus(status) {
+  return status === "BANNED" || status === "TEMP_BANNED" || status === "PERMANENTLY_BANNED";
+}
+function moderationNoticeShownKey(userId, noticeId) {
+  return `retweet_mod_notice_shown_${userId}_${noticeId}`;
+}
+function restoredAppealShownKey(userId, appealId) {
+  return moderationNoticeShownKey(userId, appealId);
+}
+function hasModerationNoticeBeenShown(userId, noticeId) {
+  if (!userId || !noticeId || typeof localStorage === "undefined") return false;
+  try {
+    return localStorage.getItem(moderationNoticeShownKey(userId, noticeId)) === "1";
+  } catch {
+    return false;
+  }
+}
+function hasRestoredAppealBeenShown(userId, appealId) {
+  return hasModerationNoticeBeenShown(userId, appealId);
+}
+function markModerationNoticeShown(userId, noticeId) {
+  if (!userId || !noticeId || typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(moderationNoticeShownKey(userId, noticeId), "1");
+  } catch {
+  }
+}
+function markRestoredAppealShown(userId, appealId) {
+  markModerationNoticeShown(userId, appealId);
+}
+function dispatchAccountModeration(detail) {
+  if (typeof window === "undefined") return;
+  try {
+    window.dispatchEvent(
+      new CustomEvent(ACCOUNT_MODERATION_EVENT, { detail })
+    );
+  } catch {
+  }
+}
+async function notifyAccountBannedFromResponse(res) {
+  if (res.status !== 403) return;
+  try {
+    const data = await res.clone().json();
+    if (data.error === "account_banned" && data.banInfo) {
+      dispatchAccountModeration({
+        banInfo: data.banInfo,
+        accountStatus: data.banInfo.accountStatus
+      });
+    }
+  } catch {
+  }
+}
+const accountModerationBridge = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+  __proto__: null,
+  ACCOUNT_MODERATION_EVENT,
+  dispatchAccountModeration,
+  hasModerationNoticeBeenShown,
+  hasRestoredAppealBeenShown,
+  isBannedAccountStatus,
+  markModerationNoticeShown,
+  markRestoredAppealShown,
+  moderationNoticeShownKey,
+  notifyAccountBannedFromResponse,
+  restoredAppealShownKey
+}, Symbol.toStringTag, { value: "Module" }));
 const NAV_ICON = "pointer-events-none h-6 w-6 shrink-0 text-white";
 const NAV_MSG_ICON = "pointer-events-none h-[26px] w-[26px] shrink-0 text-white";
 function App() {
@@ -52632,8 +56357,13 @@ function App() {
   } = useApp();
   const t = useT();
   const [banInfo, setBanInfo] = reactExports.useState(null);
+  const [banPresentation, setBanPresentation] = reactExports.useState(null);
+  const moderationReadyRef = reactExports.useRef(false);
+  const hadActiveAppRef = reactExports.useRef(false);
   const [appealPending, setAppealPending] = reactExports.useState(false);
-  const [restoredAppealId, setRestoredAppealId] = reactExports.useState(null);
+  const [pendingModerationNotice, setPendingModerationNotice] = reactExports.useState(
+    null
+  );
   const [tab, setTab] = reactExports.useState("home");
   const [modal, setModal] = reactExports.useState(null);
   const [createInitial, setCreateInitial] = reactExports.useState(null);
@@ -52839,41 +56569,150 @@ function App() {
     if (!peerId || peerId === currentUser.id) return;
     void switchAccount(peerId);
   }, [isGuest, accountSwitching, currentUser, switchAccount]);
+  const showModerationNoticeIfNeeded = reactExports.useCallback(
+    (notice, userId) => {
+      if (!notice?.id || hasModerationNoticeBeenShown(userId, notice.id)) {
+        setPendingModerationNotice(null);
+        return;
+      }
+      setPendingModerationNotice(notice);
+      if (notice.kind === "account_restored" || notice.kind === "warning") {
+        setBanInfo(null);
+        setBanPresentation(null);
+      }
+    },
+    []
+  );
+  const applyActiveBan = reactExports.useCallback(
+    (info) => {
+      setAppealPending(false);
+      setPendingModerationNotice(null);
+      setBanInfo(info);
+      setBanPresentation(
+        moderationReadyRef.current && hadActiveAppRef.current ? "overlay" : "gate"
+      );
+      try {
+        window.dispatchEvent(new CustomEvent("retweet-close-modals"));
+      } catch {
+      }
+    },
+    []
+  );
   reactExports.useEffect(() => {
     if (!currentUser || isGuest || !apiBackendEnabled()) {
+      moderationReadyRef.current = false;
+      hadActiveAppRef.current = false;
       setBanInfo(null);
+      setBanPresentation(null);
       setAppealPending(false);
-      setRestoredAppealId(null);
+      setPendingModerationNotice(null);
       return;
     }
     void apiGetMyModerationStatus().then((r2) => {
+      moderationReadyRef.current = true;
       if (!r2.ok) {
         setBanInfo(null);
+        setBanPresentation(null);
         setAppealPending(false);
-        setRestoredAppealId(null);
+        setPendingModerationNotice(null);
+        hadActiveAppRef.current = true;
         return;
       }
-      setBanInfo(r2.data.banInfo ?? null);
+      if (r2.data.pendingNotice && !hasModerationNoticeBeenShown(currentUser.id, r2.data.pendingNotice.id)) {
+        showModerationNoticeIfNeeded(r2.data.pendingNotice, currentUser.id);
+        setAppealPending(false);
+        hadActiveAppRef.current = true;
+        return;
+      }
+      if (r2.data.banInfo && isBannedAccountStatus(r2.data.accountStatus)) {
+        applyActiveBan(r2.data.banInfo);
+        return;
+      }
+      setBanInfo(null);
+      setBanPresentation(null);
+      setPendingModerationNotice(null);
       setAppealPending(
         !!r2.data.activeAppeal && (r2.data.activeAppeal.status === "pending" || r2.data.activeAppeal.status === "under_review")
       );
-      const approvedId = r2.data.latestAppeal?.status === "approved" ? r2.data.latestAppeal.id : null;
-      if (approvedId) {
-        const shownKey = `retweet_restored_shown_${currentUser.id}_${approvedId}`;
-        const alreadyShown = localStorage.getItem(shownKey) === "1";
-        setRestoredAppealId(alreadyShown ? null : approvedId);
-      } else {
-        setRestoredAppealId(null);
-      }
+      hadActiveAppRef.current = true;
     });
+    const applyModeration = async (d) => {
+      if (d.pendingNotice) {
+        showModerationNoticeIfNeeded(d.pendingNotice, currentUser.id);
+        try {
+          window.dispatchEvent(new CustomEvent("retweet-close-modals"));
+        } catch {
+        }
+        return;
+      }
+      if (d.restored || d.appealApproved) {
+        setAppealPending(false);
+        const notice = d.pendingNotice ?? await apiGetMyModerationStatus().then((s) => s.ok ? s.data.pendingNotice : null);
+        if (notice) {
+          showModerationNoticeIfNeeded(notice, currentUser.id);
+        } else {
+          setBanInfo(null);
+          setBanPresentation(null);
+        }
+        try {
+          window.dispatchEvent(new CustomEvent("retweet-close-modals"));
+        } catch {
+        }
+        return;
+      }
+      if (!isBannedAccountStatus(d.accountStatus) && !d.banInfo) return;
+      if (d.banInfo) {
+        applyActiveBan(d.banInfo);
+        return;
+      }
+      const r2 = await apiGetMyModerationStatus();
+      if (r2.ok && r2.data.banInfo && isBannedAccountStatus(r2.data.accountStatus)) {
+        applyActiveBan(r2.data.banInfo);
+      }
+    };
     const onMod = (e) => {
       const d = e.detail;
-      if (d?.banInfo) setBanInfo(d.banInfo);
-      if (d?.accountStatus === "ACTIVE") setBanInfo(null);
-      if (d?.accountStatus === "ACTIVE") setAppealPending(false);
+      if (!d) return;
+      void applyModeration(d);
     };
-    window.addEventListener("retweet-account-moderation", onMod);
-    return () => window.removeEventListener("retweet-account-moderation", onMod);
+    window.addEventListener(ACCOUNT_MODERATION_EVENT, onMod);
+    return () => window.removeEventListener(ACCOUNT_MODERATION_EVENT, onMod);
+  }, [currentUser?.id, isGuest, applyActiveBan, showModerationNoticeIfNeeded]);
+  reactExports.useEffect(() => {
+    if (!moderationReadyRef.current) return;
+    if (currentUser && !isGuest && !banInfo && !pendingModerationNotice) {
+      hadActiveAppRef.current = true;
+    }
+  }, [currentUser, isGuest, banInfo, pendingModerationNotice]);
+  reactExports.useEffect(() => {
+    if (!currentUser || isGuest || !apiBackendEnabled()) return;
+    let cancelled = false;
+    const tick = async () => {
+      if (cancelled || document.hidden) return;
+      const r2 = await apiGetMyModerationStatus();
+      if (cancelled || !r2.ok) return;
+      if (r2.data.pendingNotice && !hasModerationNoticeBeenShown(currentUser.id, r2.data.pendingNotice.id)) {
+        dispatchAccountModeration({ pendingNotice: r2.data.pendingNotice, accountStatus: "ACTIVE" });
+        return;
+      }
+      if (r2.data.banInfo && isBannedAccountStatus(r2.data.accountStatus)) {
+        dispatchAccountModeration({
+          banInfo: r2.data.banInfo,
+          accountStatus: r2.data.accountStatus
+        });
+      }
+    };
+    void tick();
+    const id = window.setInterval(() => void tick(), 12e3);
+    const onVis = () => {
+      if (document.visibilityState === "visible") void tick();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+    };
   }, [currentUser?.id, isGuest]);
   reactExports.useEffect(() => {
     const onSwitchFail = (e) => {
@@ -53219,7 +57058,10 @@ function App() {
           setViewProfileId(null);
         },
         onBack: viewProfileId && viewProfileId !== currentUser.id ? popProfileScreenBack : void 0,
-        onEdit: () => setModal("edit"),
+        onEdit: () => {
+          blurActiveElement();
+          setModal("edit");
+        },
         onOpenAccountSwitcher: isGuest ? void 0 : () => setModal("switcher"),
         onOpenSettings: isGuest ? void 0 : () => setModal("settings"),
         onOpenVisitors: isGuest ? void 0 : () => setModal("visitors"),
@@ -53375,26 +57217,22 @@ function App() {
       `switch-${accountSessionKey}`
     );
   }
-  if (restoredAppealId && currentUser && !isGuest) {
+  const showModerationGate = !isGuest && currentUser && (pendingModerationNotice || banInfo && banPresentation === "gate");
+  if (showModerationGate) {
     return /* @__PURE__ */ jsxRuntimeExports.jsx(
-      AccountRestoredScreen,
+      ModerationGateShell,
       {
-        onContinue: () => {
-          const shownKey = `retweet_restored_shown_${currentUser.id}_${restoredAppealId}`;
-          localStorage.setItem(shownKey, "1");
-          setRestoredAppealId(null);
-        }
-      }
-    );
-  }
-  if (banInfo && !isGuest) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx(
-      BanScreen,
-      {
-        banInfo,
+        banInfo: pendingModerationNotice ? null : banInfo,
+        notice: pendingModerationNotice,
         hasPendingAppeal: appealPending,
         onAppealSubmitted: () => setAppealPending(true),
-        onLogout: () => logout()
+        onLogout: () => logout(),
+        onNoticeDismiss: () => {
+          if (!pendingModerationNotice) return;
+          markModerationNoticeShown(currentUser.id, pendingModerationNotice.id);
+          void apiDismissModerationNotice(pendingModerationNotice.id);
+          setPendingModerationNotice(null);
+        }
       }
     );
   }
@@ -53412,10 +57250,11 @@ function App() {
   const hideAppHeader = tab === "chat" || tab === "search" || tab === "reels" || onProfileTab || viewingOtherUserProfile || storyFullscreen || postDetailOpen || settingsImmersive;
   const hideBottomBar = immersiveOverlay && !chatExitNavActive || storyFullscreen || !!profileOverlayUserId || settingsImmersive || reportSheetOpen || reelsCommentsOpen || chatCreateSheetOpen || cameraFullscreenOpen || storyGalleryOpen;
   const showBottomNav = !hideBottomBar || chatExitNavActive;
+  const banOverlayActive = !!(banInfo && banPresentation === "overlay" && !isGuest);
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "div",
     {
-      className: "retweet-no-select-pane select-none relative mx-auto flex w-full max-w-md flex-col overflow-x-hidden overscroll-none bg-background supports-[height:100dvh] " + (immersiveOverlay || settingsImmersive ? "h-dvh max-h-dvh overflow-hidden pt-0" : "h-dvh max-h-dvh overflow-hidden pt-[var(--sat,0px)]"),
+      className: "retweet-no-select-pane select-none relative mx-auto flex w-full max-w-md flex-col overflow-x-hidden overscroll-none bg-background supports-[height:100dvh] " + (banOverlayActive ? "pointer-events-none " : "") + (immersiveOverlay || settingsImmersive ? "h-dvh max-h-dvh overflow-hidden pt-0" : "h-dvh max-h-dvh overflow-hidden pt-[var(--sat,0px)]"),
       style: {
         [NAV_FLOAT_INSET_CSS_VAR]: NAV_FLOAT_INSET_DEFAULT,
         [NAV_SCROLL_PADDING_CSS_VAR]: NAV_SCROLL_PADDING_DEFAULT
@@ -53559,7 +57398,7 @@ function App() {
             },
             onBack: closeProfileOverlay,
             onEdit: () => {
-              closeProfileOverlay();
+              blurActiveElement();
               setModal("edit");
             },
             onOpenAccountSwitcher: isGuest ? void 0 : () => {
@@ -53634,7 +57473,16 @@ function App() {
             )
           }
         ),
-        modal === "edit" && /* @__PURE__ */ jsxRuntimeExports.jsx(AppDismissSheet, { onClose: () => setModal(null), children: /* @__PURE__ */ jsxRuntimeExports.jsx(EditProfileScreen, { onBack: () => setModal(null) }) }),
+        modal === "edit" && /* @__PURE__ */ jsxRuntimeExports.jsx(
+          AppDismissSheet,
+          {
+            onClose: () => setModal(null),
+            overlayZIndex: 300,
+            animateOnMount: true,
+            contentClassName: "min-h-dvh bg-background text-foreground",
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx(EditProfileScreen, { onBack: () => setModal(null) })
+          }
+        ),
         modal === "notifications" && /* @__PURE__ */ jsxRuntimeExports.jsx(NotificationsPanel, { onClose: () => setModal(null), onOpenProfile: openProfile, onOpenChat: goChat }),
         modal === "visitors" && /* @__PURE__ */ jsxRuntimeExports.jsx(AppDismissSheet, { onClose: () => setModal(null), contentClassName: "bg-background", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "p-4", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between gap-2 mb-3", children: [
@@ -53764,6 +57612,19 @@ function App() {
             draft: storyCameraDraft,
             language: state.language,
             onClose: () => setStoryCameraDraft(null)
+          }
+        ),
+        banOverlayActive && banInfo && !pendingModerationNotice && /* @__PURE__ */ jsxRuntimeExports.jsx(
+          ModerationGateShell,
+          {
+            animateOpen: true,
+            banInfo,
+            notice: null,
+            hasPendingAppeal: appealPending,
+            onAppealSubmitted: () => setAppealPending(true),
+            onLogout: () => logout(),
+            onNoticeDismiss: () => {
+            }
           }
         )
       ]

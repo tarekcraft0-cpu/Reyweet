@@ -105,7 +105,7 @@ function ChatSwipeMessageRowInner({
   return (
     <div
       data-mine={mine ? "1" : "0"}
-      className="chat-msg-row w-full touch-manipulation select-none"
+      className="chat-msg-row chat-msg-enter w-full touch-manipulation select-none"
       style={{
         direction: "ltr",
         display: "flex",

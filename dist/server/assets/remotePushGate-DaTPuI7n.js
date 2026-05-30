@@ -12,14 +12,15 @@ function resetServerHydrated() {
   hydrated = false;
   serverOwnerPostCount = 0;
 }
-function shouldAllowRemotePush(state) {
+function shouldAllowRemotePush(state, opts) {
+  if (opts?.force) return true;
   if (!hydrated) return false;
   const uid = state.currentUserId;
   if (!uid) return true;
   const mine = (state.posts || []).filter((p) => p.userId === uid).length;
-  if (serverOwnerPostCount >= 2 && mine + 1 < serverOwnerPostCount) {
+  if (serverOwnerPostCount > 0 && mine === 0) {
     console.warn(
-      `[Retweet] تجاهل رفع لقطة قديمة (${mine} محلي / ${serverOwnerPostCount} على الخادم)`
+      `[Retweet] تجاهل رفع لقطة بلا منشورات (${serverOwnerPostCount} على الخادم)`
     );
     return false;
   }

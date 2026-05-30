@@ -58,7 +58,20 @@ import { SharedGroupInvitePreview } from "../chat/SharedGroupInvitePreview";
 import { ChatNoteReplyBubble, ChatStoryReplyStack } from "../chat/ChatReplyContext";
 import { ChatSwipeMessageRow } from "../chat/ChatSwipeMessageRow";
 import { ChatMessageStatus, ChatListOutgoingStatusIcon } from "../chat/ChatMessageStatus";
+import { ChatInboxVirtualList } from "../chat/ChatInboxVirtualList";
+import { ChatInboxSkeleton } from "../chat/ChatInboxSkeleton";
+import { ChatFloatingDatePill } from "../chat/ChatFloatingDatePill";
 import { flushTypingStop, scheduleTypingPulse } from "@/lib/chatRealtimeExtras";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+import {
+  lastMessagePreview,
+  resolveListTypingPeerId,
+  isPeerOnline,
+  listTypingPreview,
+  chatUnreadCount,
+} from "@/lib/chatInboxUtils";
+import { clearChatDraft, loadChatDraft, saveChatDraft } from "@/lib/chatDraftStorage";
+import { chatHapticLight, chatHapticSuccess } from "@/lib/chatHaptics";
 import { useChatKeyboardInsets } from "@/hooks/useChatKeyboardInsets";
 import { chatComposerBottomPadding } from "@/hooks/useVisualViewportLayout";
 import { compressChatMediaFile } from "@/lib/chatMediaCompress";
@@ -390,20 +403,6 @@ function truncateText(s: string, max = PREVIEW_MAX) {
   const t = (s ?? "").trim();
   if (t.length <= max) return t;
   return t.slice(0, max) + "…";
-}
-
-function lastMessagePreview(last: Message | undefined): string {
-  if (!last) return "—";
-  const c = messageContent(last);
-  if (last.type === "text") return truncateText(c);
-  if (last.type === "sticker") return (isStickerImageContent(c) || isStickerVideoContent(c)) ? "ملصق" : truncateText(c, 24);
-  if (last.type === "image") return last.viewOnce ? "صورة (مرة واحدة)" : "صورة";
-  if (last.type === "drawing") return last.viewOnce ? "رسم (مرة واحدة)" : "رسم";
-  if (last.type === "video") return last.viewOnce ? "فيديو (مرة واحدة)" : "فيديو";
-  if (last.type === "voice") return "رسالة صوتية";
-  if (last.type === "shared_post") return "منشور";
-  if (last.type === "shared_story") return "ستوري";
-  return `[${last.type}]`;
 }
 
 /** نفس معاينة الرسالة المختصرة داخل ChatRoom (مثبتات، رد، حافظة، نسخ…) */
@@ -1070,7 +1069,19 @@ function ChatListRowWithPeek({
   /** يحرّر قفل سحب عالق قبل لمسة جديدة */
   onStackGestureArm?: () => void;
 }) {
-  const { state, openOrCreateChat, sendMessage, toggleChatListPin, toggleChatMute, deleteChat, isGuest, joinChannel } = useApp();
+  const {
+    state,
+    openOrCreateChat,
+    sendMessage,
+    toggleChatListPin,
+    toggleChatMute,
+    deleteChat,
+    markChatRead,
+    markChatUnread,
+    isGuest,
+    joinChannel,
+  } = useApp();
+  const typingUserByChatId = useTypingUsers();
   const t = useT();
   const [peekPx, setPeekPx] = useState(0);
   const [cameraDraft, setCameraDraft] = useState<CameraComposeDraft | null>(null);
@@ -1089,6 +1100,10 @@ function ChatListRowWithPeek({
   const last = peekMessages[peekMessages.length - 1];
   const readId = c.lastReadMessageIdByUser?.[me.id];
   const hasUnread = !!(last && last.senderId !== me.id && last.id !== readId);
+  const unreadCount = hasUnread ? Math.max(1, chatUnreadCount(c, me.id)) : 0;
+  const listTypingPeerId = resolveListTypingPeerId(c, me.id, typingUserByChatId);
+  const peerTypingInList = !!listTypingPeerId;
+  const peerOnlineInList = isPeerOnline(c, otherId);
   const displayName = (c.isGroup || c.isChannel) ? c.name || "?" : other?.username || "?";
   const avatarSrc = (c.isGroup || c.isChannel) ? c.avatar : other?.avatar;
   const isQuranPeek = c.id === QURAN_CHANNEL_ID;
@@ -1937,7 +1952,23 @@ function ChatListRowWithPeek({
             }}
           >
             <RSocialAvatar name={displayName} src={avatarSrc} size={58} />
-            {hasUnread && (
+            {peerOnlineInList && !c.isGroup && !c.isChannel && (
+              <span
+                className="absolute rounded-full bg-emerald-500 ring-2 ring-background"
+                style={{ width: 14, height: 14, bottom: 8, insetInlineEnd: 8 }}
+                aria-label={state.language === "ar" ? "متصل" : "Online"}
+              />
+            )}
+            {hasUnread && unreadCount > 1 && (
+              <span
+                className="absolute flex min-w-[20px] items-center justify-center rounded-full bg-[#0095F6] px-1 text-[11px] font-bold text-white ring-2 ring-background"
+                style={{ height: 20, top: 6, insetInlineEnd: 4 }}
+                aria-hidden
+              >
+                {unreadCount > 99 ? "99+" : unreadCount}
+              </span>
+            )}
+            {hasUnread && unreadCount <= 1 && (
               <span
                 className="absolute rounded-full bg-[#0095F6] ring-2 ring-background"
                 style={{ width: 13, height: 13, bottom: 9, insetInlineStart: 9 }}
@@ -1973,14 +2004,27 @@ function ChatListRowWithPeek({
               )}
             </div>
             <div className="flex min-w-0 items-center gap-1.5">
-              {last?.senderId === me.id && (
+              {last?.senderId === me.id && !peerTypingInList && (
                 <ChatListOutgoingStatusIcon status={last.status} />
               )}
               <span
-                className={"min-w-0 flex-1 truncate text-[14px] leading-snug select-text " + (hasUnread ? "font-medium text-foreground/80" : "text-muted-foreground")}
+                className={
+                  "min-w-0 flex-1 truncate text-[14px] leading-snug select-text " +
+                  (peerTypingInList
+                    ? "font-medium text-[#0095F6]"
+                    : hasUnread
+                      ? "font-medium text-foreground/80"
+                      : "text-muted-foreground")
+                }
                 onPointerDown={e => e.stopPropagation()}
               >
-                {last ? lastMessagePreview(last) : (state.language === "ar" ? "لا رسائل بعد" : "No messages yet")}
+                {peerTypingInList
+                  ? listTypingPreview(state.language)
+                  : last
+                    ? lastMessagePreview(last)
+                    : state.language === "ar"
+                      ? "لا رسائل بعد"
+                      : "No messages yet"}
               </span>
             </div>
           </button>
@@ -2046,9 +2090,14 @@ function ChatListRowWithPeek({
             {/* Menu items */}
             {[
               {
-                icon: hasUnread ? <Check size={15} className="text-blue-500" /> : <Check size={15} className="text-blue-500" />,
+                icon: <Check size={15} className="text-blue-500" />,
                 label: state.language === "ar" ? (hasUnread ? "تعيين كمقروء" : "تعيين كغير مقروء") : (hasUnread ? "Mark as read" : "Mark as unread"),
-                onClick: () => { setRowMenu(null); },
+                onClick: () => {
+                  if (hasUnread) markChatRead(c.id);
+                  else markChatUnread(c.id);
+                  chatHapticLight();
+                  setRowMenu(null);
+                },
               },
               {
                 icon: isListPinned
@@ -2941,6 +2990,8 @@ export function ChatScreen({
   ]);
 
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search.trim().toLowerCase(), 160);
+  const inboxListScrollRef = useRef<HTMLDivElement>(null);
   const [noteInput, setNoteInput] = useState(me.note || "");
   const [editingNote, setEditingNote] = useState(false);
   const [showGames, setShowGames] = useState(false);
@@ -3415,14 +3466,19 @@ export function ChatScreen({
     ),
   ];
 
-  const filteredChats = myChats.filter(c => {
-    if (!search.trim()) return true;
-    const q = search.toLowerCase();
-    if (c.isGroup) return (c.name || "").toLowerCase().includes(q);
-    const otherId = c.members.find(id => id !== me.id);
-    const other = otherId ? userById(state, otherId) : null;
-    return (other?.username ?? "").toLowerCase().includes(q);
-  });
+  const filteredChats = useMemo(() => {
+    if (!debouncedSearch) return myChats;
+    const q = debouncedSearch;
+    return myChats.filter(c => {
+      if (c.isGroup || c.isChannel) return (c.name || "").toLowerCase().includes(q);
+      const otherId = c.members.find(id => id !== me.id);
+      const other = otherId ? userById(state, otherId) : null;
+      const uname = (other?.username ?? "").toLowerCase();
+      const dname = (other?.displayName ?? "").toLowerCase();
+      const preview = lastMessagePreview((c.messages || [])[(c.messages || []).length - 1]).toLowerCase();
+      return uname.includes(q) || dname.includes(q) || preview.includes(q);
+    });
+  }, [myChats, debouncedSearch, state.users]);
 
   /** المثبتة أولاً (حسب ترتيب التثبيت)، ثم الباقي بآخر نشاط رسالة (الأحدث فوق) */
   const sortedFilteredChats = useMemo(() => {
@@ -3467,7 +3523,7 @@ export function ChatScreen({
     setLastStableAt(0);
   }, [me.id]);
   const shouldHoldPreviousChats =
-    !search.trim() &&
+    !debouncedSearch &&
     sortedFilteredChats.length === 0 &&
     lastStableChats.length > 0 &&
     Date.now() - lastStableAt < 8000;
@@ -3563,7 +3619,7 @@ export function ChatScreen({
     <div
       ref={stackInboxRef}
       dir={isRtl ? "rtl" : "ltr"}
-      className="chat-inbox-pane no-scrollbar relative z-[1] flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-none bg-background [transform:translateZ(0)]"
+      className="chat-inbox-pane no-scrollbar relative z-[1] flex min-h-0 flex-1 flex-col overflow-hidden overscroll-none bg-background [transform:translateZ(0)]"
       data-no-tab-swipe
       style={stackInboxPointerEvents ? { pointerEvents: stackInboxPointerEvents } : undefined}
     >
@@ -3785,25 +3841,36 @@ export function ChatScreen({
           SECTION 4 — CONVERSATION LIST
           Each row is rendered by ChatListRowWithPeek
           ══════════════════════════════════════════════════ */}
-      <div className="chat-inbox-scroll no-scrollbar" data-no-tab-swipe>
-        {renderedChats.map(c => (
-          <ChatListRowWithPeek
-            key={c.id}
-            chat={c}
-            me={me}
-            onOpenChat={openChatDirect}
-            onOpenProfile={onOpenProfile}
-            onStackDrag={onStackDrag}
-            onStackDragEnd={onStackDragEnd}
-            onStackChromeHide={hideStackChrome}
-            onStackChromeShow={showStackChrome}
-            onRowOpenCommit={handleRowOpenCommit}
-            onStackGestureArm={armStackListGesture}
+      <div
+        ref={inboxListScrollRef}
+        className="chat-inbox-scroll no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain"
+        data-no-tab-swipe
+      >
+        {shouldHoldPreviousChats && renderedChats.length === 0 && <ChatInboxSkeleton rows={6} />}
+
+        {renderedChats.length > 0 && (
+          <ChatInboxVirtualList
+            chats={renderedChats}
+            scrollParentRef={inboxListScrollRef}
+            renderRow={c => (
+              <ChatListRowWithPeek
+                chat={c}
+                me={me}
+                onOpenChat={openChatDirect}
+                onOpenProfile={onOpenProfile}
+                onStackDrag={onStackDrag}
+                onStackDragEnd={onStackDragEnd}
+                onStackChromeHide={hideStackChrome}
+                onStackChromeShow={showStackChrome}
+                onRowOpenCommit={handleRowOpenCommit}
+                onStackGestureArm={armStackListGesture}
+              />
+            )}
           />
-        ))}
+        )}
 
         {/* Empty state */}
-        {renderedChats.length === 0 && !search.trim() && (
+        {renderedChats.length === 0 && !search.trim() && !shouldHoldPreviousChats && (
           <div className="flex flex-col items-center justify-center py-16 gap-3 px-6 text-center">
             <span className="flex h-16 w-16 items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-800">
               <MessageCirclePlus size={28} className="text-zinc-400" />
@@ -3812,8 +3879,10 @@ export function ChatScreen({
             <p className="text-[13px] text-zinc-400">{isRtl ? "ابدأ محادثة جديدة" : "Start a new conversation"}</p>
           </div>
         )}
-        {renderedChats.length === 0 && !!search.trim() && (
-          <p className="py-12 text-center text-[14px] text-zinc-400">{isRtl ? "لا نتائج لـ «" + search + "»" : `No results for "${search}"`}</p>
+        {renderedChats.length === 0 && !!debouncedSearch && !shouldHoldPreviousChats && (
+          <p className="py-12 text-center text-[14px] text-zinc-400">
+            {isRtl ? "لا نتائج لـ «" + search + "»" : `No results for "${search}"`}
+          </p>
         )}
 
         <div className="h-3" aria-hidden />
@@ -4748,13 +4817,34 @@ function ChatRoom({
 
   /** عدد الرسائل المعروضة في النافذة — يبدأ بـ 60 ويزيد عند التمرير للأعلى */
   const [visibleWindowCount, setVisibleWindowCount] = useState(60);
+  const [loadingOlderUi, setLoadingOlderUi] = useState(false);
   const isLoadingOlderRef = useRef(false);
+  const draftSaveTimerRef = useRef(0);
+  const [sendPulse, setSendPulse] = useState(false);
 
-  /** إعادة ضبط النافذة عند تبديل المحادثة */
+  /** إعادة ضبط النافذة عند تبديل المحادثة + استعادة المسودة */
   useEffect(() => {
     setVisibleWindowCount(60);
     isLoadingOlderRef.current = false;
-  }, [chat.id]);
+    setLoadingOlderUi(false);
+    const draft = meId ? loadChatDraft(meId, sendChatId) : "";
+    setText(draft);
+    if (composerInputRef.current) {
+      composerInputRef.current.value = draft;
+    }
+    requestAnimationFrame(() => syncComposerHeight());
+  }, [chat.id, sendChatId, meId, syncComposerHeight]);
+
+  useEffect(() => {
+    if (!meId) return;
+    if (draftSaveTimerRef.current) window.clearTimeout(draftSaveTimerRef.current);
+    draftSaveTimerRef.current = window.setTimeout(() => {
+      saveChatDraft(meId, sendChatId, text);
+    }, 400);
+    return () => {
+      if (draftSaveTimerRef.current) window.clearTimeout(draftSaveTimerRef.current);
+    };
+  }, [text, meId, sendChatId]);
 
   /** الرسائل المعروضة فعلياً — آخر N رسالة فقط */
   const windowedMessages = useMemo(() => {
@@ -5187,19 +5277,22 @@ function ChatRoom({
     stickToBottomRef.current = dist < 72;
 
     // عند التمرير للأعلى وبلوغ الـ 20% العلوية — نوسّع النافذة
-    if (el.scrollTop < el.scrollHeight * 0.20 && !isLoadingOlderRef.current) {
+    if (el.scrollTop < el.scrollHeight * 0.20 && !isLoadingOlderRef.current && hasOlderMessages) {
       isLoadingOlderRef.current = true;
+      setLoadingOlderUi(true);
       const prevScrollHeight = el.scrollHeight;
       setVisibleWindowCount(prev => prev + 40);
-      // حافظ على موضع التمرير بعد إضافة رسائل قديمة
-      requestAnimationFrame(() => {
-        if (!messagesScrollRef.current) return;
-        const added = messagesScrollRef.current.scrollHeight - prevScrollHeight;
-        if (added > 0) messagesScrollRef.current.scrollTop += added;
-        isLoadingOlderRef.current = false;
+      void loadChatMessages(chat.id).finally(() => {
+        requestAnimationFrame(() => {
+          if (!messagesScrollRef.current) return;
+          const added = messagesScrollRef.current.scrollHeight - prevScrollHeight;
+          if (added > 0) messagesScrollRef.current.scrollTop += added;
+          isLoadingOlderRef.current = false;
+          setLoadingOlderUi(false);
+        });
       });
     }
-  }, []);
+  }, [hasOlderMessages, loadChatMessages, chat.id]);
 
   const VANISH_PULL_NEED = 120;
   /** ارتفاع النطاق من أسفل منطقة التمرير لبدء سحب الوضع المخفي */
@@ -5941,6 +6034,7 @@ function ChatRoom({
   const clearComposer = useCallback(() => {
     composerIgnoreInputUntilRef.current = Date.now() + 320;
     setText("");
+    if (meId) clearChatDraft(meId, sendChatId);
     if (composerInputRef.current) {
       composerInputRef.current.value = "";
       composerInputRef.current.style.height = `${CHAT_COMPOSER_LINE_PX}px`;
@@ -5948,7 +6042,7 @@ function ChatRoom({
     }
     setReplyingTo(null);
     setMentionPick(null);
-  }, []);
+  }, [meId, sendChatId]);
 
   const submitTextMessage = useCallback(() => {
     if (composingRef.current) return;
@@ -5974,6 +6068,9 @@ function ChatRoom({
       window.setTimeout(() => setComposerMicCooldown(false), 80);
       return;
     }
+    chatHapticSuccess();
+    setSendPulse(true);
+    window.setTimeout(() => setSendPulse(false), 280);
     window.setTimeout(() => setComposerMicCooldown(false), 480);
     stickToBottomRef.current = true;
     syncComposerDockHeight();
@@ -6474,6 +6571,17 @@ function ChatRoom({
         />
       )}
 
+      <div className="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden">
+        {useIgDm && chatTimelineRows && (
+          <ChatFloatingDatePill
+            scrollRef={messagesScrollRef}
+            rows={chatTimelineRows}
+            visible={!drawComposeOpen && displayMessages.length > 0}
+            chromeOnWallpaper={chromeOnWallpaper}
+            dayPillBg={dmPalette?.dayPillBg}
+            dayPillText={dmPalette?.dayPillText}
+          />
+        )}
       <div
         ref={messagesScrollRef}
         onScroll={onMessagesScroll}
@@ -6483,7 +6591,7 @@ function ChatRoom({
         onPointerCancel={handleVanishPullUp}
         dir="ltr"
         className={
-          "chat-scroll-pane chat-no-select no-scrollbar relative z-10 min-h-0 flex-1 touch-pan-y overscroll-none " +
+          "chat-scroll-pane chat-no-select no-scrollbar relative min-h-0 flex-1 touch-pan-y overscroll-none " +
           (drawComposeOpen ? "overflow-hidden " : "overflow-y-auto ") +
           (isQuranChannel ? "bg-zinc-950" : chromeOnWallpaper ? "bg-transparent" : useIgDm ? "" : "bg-background")
         }
@@ -6503,15 +6611,25 @@ function ChatRoom({
             paddingBottom: "12px",
           }}
         >
-        {hasOlderMessages && (
-          <div className="flex w-full justify-center py-2">
-            <span className="text-[11px] text-muted-foreground opacity-60">↑ مرّر للأعلى لتحميل رسائل أقدم</span>
+        {(hasOlderMessages || loadingOlderUi) && (
+          <div className="flex w-full justify-center py-2" aria-busy={loadingOlderUi}>
+            {loadingOlderUi ? (
+              <div className="flex gap-1.5">
+                <span className="h-2 w-2 animate-pulse rounded-full bg-muted-foreground/50" />
+                <span className="h-2 w-2 animate-pulse rounded-full bg-muted-foreground/40 [animation-delay:120ms]" />
+                <span className="h-2 w-2 animate-pulse rounded-full bg-muted-foreground/30 [animation-delay:240ms]" />
+              </div>
+            ) : (
+              <span className="text-[11px] text-muted-foreground opacity-60">
+                {state.language === "ar" ? "↑ رسائل أقدم" : "↑ Older messages"}
+              </span>
+            )}
           </div>
         )}
         {rowsToRender.map(row => {
           if (row.kind === "day") {
             return (
-              <div key={row.key} className="flex w-full justify-center py-2">
+              <div key={row.key} data-chat-day={row.key} className="flex w-full justify-center py-2">
                 <span
                   className="rounded-full px-3 py-1 text-[11px] font-medium"
                   style={
@@ -6736,6 +6854,7 @@ function ChatRoom({
             }}
           />
         )}
+      </div>
       </div>
 
       {messageContext &&
@@ -7237,7 +7356,10 @@ function ChatRoom({
               {composerHasText ? (
                 <button
                   type="button"
-                  className="relative z-[57] flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full shadow-[0_2px_12px_rgba(0,0,0,0.18)] transition-all duration-150 hover:opacity-90 active:scale-[0.88]"
+                  className={
+                    "relative z-[57] flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full shadow-[0_2px_12px_rgba(0,0,0,0.18)] transition-all duration-150 hover:opacity-90 active:scale-[0.88] " +
+                    (sendPulse ? "chat-send-pulse" : "")
+                  }
                   style={{
                     background: "rgba(255,255,255,1)",
                     color: "#000",

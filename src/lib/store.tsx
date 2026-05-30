@@ -1397,6 +1397,8 @@ interface Ctx {
   addMediaNote: (kind: MediaNote["kind"], targetId: ID, text: string) => void;
   markChatOpened: (chatId: ID) => void;
   markChatRead: (chatId: ID) => void;
+  /** تعيين المحادثة غير مقروءة (مؤشر في القائمة) */
+  markChatUnread: (chatId: ID) => void;
   /** معرّف الطرف الذي يكتب الآن في محادثة (DM) */
   typingUserByChatId: Record<ID, ID>;
   /** رد على نوت صديق: يفتح/يحدّث الخاص ويرسل رسالة فيها سياق النوت */
@@ -4759,6 +4761,43 @@ export function AppProvider({
     },
     [setState],
   );
+
+  const markChatUnread: Ctx["markChatUnread"] = useCallback(
+    (chatId) => {
+      setState((s) => {
+        if (!s.currentUserId || isGuestUserId(s.currentUserId)) return s;
+        const meId = s.currentUserId;
+        const chat = s.chats.find((c) => c.id === chatId);
+        if (!chat) return s;
+        const msgs = chat.messages || [];
+        let markBeforeId = "";
+        for (let i = msgs.length - 1; i >= 0; i--) {
+          const m = msgs[i]!;
+          if (m.senderId === meId) continue;
+          if (i > 0) markBeforeId = msgs[i - 1]!.id;
+          break;
+        }
+        if (!markBeforeId && msgs.some((m) => m.senderId !== meId)) markBeforeId = "";
+        const current = chat.lastReadMessageIdByUser?.[meId];
+        if (current === markBeforeId) return s;
+        return {
+          ...s,
+          chats: s.chats.map((c) =>
+            c.id !== chatId
+              ? c
+              : {
+                  ...c,
+                  lastReadMessageIdByUser: {
+                    ...(c.lastReadMessageIdByUser || {}),
+                    [meId]: markBeforeId,
+                  },
+                },
+          ),
+        };
+      });
+    },
+    [setState],
+  );
   const recordProfileVisit: Ctx["recordProfileVisit"] = (targetUserId) => {
     setState((s) => {
       if (!s.currentUserId || isGuestUserId(s.currentUserId) || s.currentUserId === targetUserId)
@@ -5698,6 +5737,7 @@ export function AppProvider({
     addMediaNote,
     markChatOpened,
     markChatRead,
+    markChatUnread,
     replyToMediaNoteAsDm,
     replyToProfileNoteAsDm,
     recordProfileVisit,
