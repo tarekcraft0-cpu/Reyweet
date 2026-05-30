@@ -5,17 +5,13 @@ let engineRefs = 0;
 let nativeListenersReady = false;
 let nativeBridgeTeardown: (() => void) | null = null;
 
-/** عند فتح الكيبورد لا نطرح offsetTop — يخلق فراغاً فوق الكيبورد على iOS */
+/** ارتفاع الكيبورد من visualViewport (أدق من Capacitor وحده على iOS) */
 function computeVisualViewportKeyboardInset(
   layoutH: number,
   vvHeight: number,
   vvOffsetTop: number,
 ): number {
-  const gap = layoutH - vvHeight;
-  if (gap > 48) {
-    return Math.max(0, Math.round(gap));
-  }
-  return Math.max(0, Math.round(gap - vvOffsetTop));
+  return Math.max(0, Math.round(layoutH - vvHeight - vvOffsetTop));
 }
 
 export type ChatKeyboardSnapshot = {
@@ -45,16 +41,27 @@ export function readChatKeyboardSnapshot(): ChatKeyboardSnapshot {
   const vvInset = computeVisualViewportKeyboardInset(layoutH, vvHeight, vvOffsetTop);
   const nativeCssInset = readNativeKeyboardInsetFromCss();
 
-  /** iOS/Capacitor: نأخذ الأكبر بين visualViewport وارتفاع الكيبورد الأصلي — min كان يترك فراغاً بين الشريط والكيبورد */
-  let keyboardInset = Math.max(vvInset, nativeKeyboardPx, nativeCssInset);
-  if (keyboardInset < 8 && useNativeKeyboardHeight && nativeKeyboardPx > 0) {
+  const kbBodyMode =
+    typeof document !== "undefined" &&
+    document.documentElement.classList.contains("retweet-kb-body-resize");
+  const bodyShrunk =
+    typeof document !== "undefined" &&
+    !!document.body &&
+    layoutH - document.body.getBoundingClientRect().height > 24;
+  const naturalResize = kbBodyMode || bodyShrunk;
+
+  /** مع resize:body يتقلص body — لا نرفع الشريط يدوياً (تجنّب فراغ مزدوج مع Swift inset) */
+  let keyboardInset = naturalResize ? 0 : Math.max(vvInset, nativeKeyboardPx, nativeCssInset);
+  if (!naturalResize && keyboardInset < 8 && nativeKeyboardPx > 0) {
     keyboardInset = nativeKeyboardPx;
   }
+  const kbOpenSignal = vvInset > 8 || nativeKeyboardPx > 8 || nativeCssInset > 8 || bodyShrunk;
+  const open = naturalResize ? kbOpenSignal : keyboardInset > 8;
   return {
     keyboardInset,
     vvHeight,
     vvOffsetTop,
-    open: keyboardInset > 8,
+    open,
   };
 }
 
@@ -86,6 +93,11 @@ function onViewportChange() {
   dispatchKeyboardSync();
 }
 
+/** يُستدعى مرة عند فتح التطبيق الأصلي — يفعّل resize:body طوال الجلسة */
+export async function initNativeKeyboardLayout(): Promise<void> {
+  await ensureNativeKeyboardBridge();
+}
+
 async function ensureNativeKeyboardBridge() {
   if (nativeListenersReady) return;
   nativeListenersReady = true;
@@ -96,8 +108,10 @@ async function ensureNativeKeyboardBridge() {
     ]);
     if (!Capacitor.isNativePlatform()) return;
     useNativeKeyboardHeight = true;
+    document.documentElement.classList.add("retweet-kb-body-resize");
     try {
-      await Keyboard.setScroll({ isDisabled: true });
+      const { KeyboardResize } = await import("@capacitor/keyboard");
+      await Keyboard.setResizeMode({ mode: KeyboardResize.Body });
     } catch {
       /* ignore */
     }
@@ -122,7 +136,7 @@ async function ensureNativeKeyboardBridge() {
 
     nativeBridgeTeardown = () => {
       void Promise.all(handles.map(h => h.remove())).catch(() => undefined);
-      void Keyboard.setScroll({ isDisabled: false }).catch(() => undefined);
+      document.documentElement.classList.remove("retweet-kb-body-resize");
     };
   } catch {
     /* متصفح / ويب */
@@ -157,10 +171,6 @@ export function mountChatKeyboardEngine(): () => void {
     engineRefs = Math.max(0, engineRefs - 1);
     if (engineRefs > 0) return;
     nativeKeyboardPx = 0;
-    useNativeKeyboardHeight = false;
-    nativeListenersReady = false;
-    nativeBridgeTeardown?.();
-    nativeBridgeTeardown = null;
     vv?.removeEventListener("resize", onViewportChange);
     vv?.removeEventListener("scroll", onViewportChange);
     window.removeEventListener("resize", onViewportChange);
@@ -175,5 +185,6 @@ export function mountChatKeyboardEngine(): () => void {
     root.style.removeProperty("--chat-sab-effective");
     root.style.removeProperty("--chat-scroll-padding-bottom");
     root.classList.remove("chat-keyboard-open");
+    applyChatKeyboardCss();
   };
 }

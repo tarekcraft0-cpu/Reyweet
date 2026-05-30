@@ -33,6 +33,7 @@ export function useVisualViewportLayout(): VisualViewportLayout {
   const [layout, setLayout] = useState(readVisualViewportLayout);
   const prevInsetRef = useRef(layout.keyboardInset);
   const prevHeightRef = useRef(layout.height);
+  const prevOpenRef = useRef(layout.keyboardInset > 8);
 
   useEffect(() => {
     const vv = window.visualViewport;
@@ -45,8 +46,9 @@ export function useVisualViewportLayout(): VisualViewportLayout {
         const next = readVisualViewportLayout();
 
         // re-render React فقط عند تغيّر حالة الكيبورد (مفتوح/مغلق)
-        const wasOpen = prevInsetRef.current > 8;
-        const isOpen = next.keyboardInset > 8;
+        const wasOpen = prevInsetRef.current > 8 || prevOpenRef.current;
+        const isOpen = next.open;
+        prevOpenRef.current = isOpen;
         const heightDelta = Math.abs(next.height - prevHeightRef.current);
         prevInsetRef.current = next.keyboardInset;
         prevHeightRef.current = next.height;

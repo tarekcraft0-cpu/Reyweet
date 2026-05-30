@@ -11,7 +11,8 @@ const config: CapacitorConfig = {
   webDir: "dist",
   plugins: {
     Keyboard: {
-      resize: "none",
+      /** body = يتقلص محتوى الويب فوق الكيبورد (شريط الكتابة يلتصق تلقائياً) */
+      resize: "body",
     },
   },
   ios: {

@@ -8,6 +8,7 @@ import logo from "@/assets/logo.png";
 import { logAuthRoute } from "@/lib/authRouteDebug";
 import { clearStaleApiConfig, probeHealth } from "@/lib/apiConfig";
 import { isNativeCapacitorShell, isPublicAppHost, isVpsProductionHost } from "@/lib/apiUrlPolicy";
+import { initNativeKeyboardLayout } from "@/lib/chatKeyboardInsets";
 import { warmGlobalPointerBackRouter } from "@/lib/globalPointerBackRouter";
 import {
   installNativeTextSelectionGuard,
@@ -37,6 +38,9 @@ export function WebAppRoot() {
     installNativeTextSelectionGuard();
     warmGlobalPointerBackRouter();
     clearStaleApiConfig();
+    if (isNativeCapacitorShell()) {
+      void initNativeKeyboardLayout();
+    }
     logAuthRoute("webapp-root-mount", {
       apiEnabled: apiBackendEnabled(),
       hasToken: !!getApiToken(),
@@ -186,9 +190,16 @@ export function WebAppRoot() {
     );
   }
 
+  const nativeShell = isNativeCapacitorShell();
+
   return (
     <div
-      className="relative mx-auto min-h-dvh w-full max-w-md overflow-x-hidden bg-background text-start supports-[height:100dvh]:min-h-dvh"
+      className={
+        "relative mx-auto w-full max-w-md overflow-x-hidden bg-background text-start " +
+        (nativeShell
+          ? "flex h-full min-h-0 flex-col"
+          : "min-h-dvh supports-[height:100dvh]:min-h-dvh")
+      }
       {...nativeNoSelectCaptureHandlers}
     >
       <AppProvider initialState={bootState ?? undefined}>

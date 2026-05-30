@@ -171,6 +171,21 @@ function patchIosEmbeddedCapConfig() {
   capJson.appId = appId;
   capJson.appName = "Reyweet";
   capJson.webDir = "public";
+  let rootCap = {};
+  try {
+    rootCap = JSON.parse(fs.readFileSync(path.join(root, "capacitor.config.json"), "utf8"));
+  } catch {
+    try {
+      const ts = fs.readFileSync(path.join(root, "capacitor.config.ts"), "utf8");
+      const resize = ts.match(/resize:\s*["'](\w+)["']/)?.[1];
+      if (resize) rootCap = { plugins: { Keyboard: { resize } } };
+    } catch {
+      /* ignore */
+    }
+  }
+  if (rootCap.plugins) {
+    capJson.plugins = { ...(capJson.plugins || {}), ...rootCap.plugins };
+  }
   if (!Array.isArray(capJson.packageClassList)) {
     capJson.packageClassList = [];
   }

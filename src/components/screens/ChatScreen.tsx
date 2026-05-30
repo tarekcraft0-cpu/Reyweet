@@ -74,6 +74,7 @@ import { clearChatDraft, loadChatDraft, saveChatDraft } from "@/lib/chatDraftSto
 import { chatHapticLight, chatHapticSuccess } from "@/lib/chatHaptics";
 import { useChatKeyboardInsets } from "@/hooks/useChatKeyboardInsets";
 import { chatComposerBottomPadding } from "@/hooks/useVisualViewportLayout";
+import { isNativeCapacitorShell } from "@/lib/apiUrlPolicy";
 import { compressChatMediaFile } from "@/lib/chatMediaCompress";
 import { isOwnChatMessage, resolveActiveViewerId } from "@/lib/chatViewer";
 import { messageContent, normalizeChatRecord } from "@/lib/chatNormalize";
@@ -4925,8 +4926,13 @@ function ChatRoom({
     } catch {
       /* ignore */
     }
-    scheduleScrollToBottom({ afterMs: 220 });
-  }, [scheduleScrollToBottom]);
+    scheduleScrollToBottom({ afterMs: 80 });
+    window.setTimeout(() => {
+      syncComposerDockHeight();
+      scheduleScrollToBottom();
+    }, 120);
+    window.setTimeout(() => scheduleScrollToBottom(), 280);
+  }, [scheduleScrollToBottom, syncComposerDockHeight]);
 
   useLayoutEffect(() => {
     const headerEl = chatHeaderRef.current;
@@ -6201,6 +6207,7 @@ function ChatRoom({
     );
   }
   const me = currentUser;
+  const nativeShell = isNativeCapacitorShell();
 
   return (
     <div
@@ -6210,7 +6217,9 @@ function ChatRoom({
       className={
         (embedInStack
           ? "chat-room-viewport relative flex h-full min-h-0 w-full flex-col overflow-hidden overscroll-none pointer-events-auto touch-manipulation "
-          : "chat-room-solo fixed inset-x-0 z-[200] box-border flex justify-center overflow-hidden overscroll-none pointer-events-none touch-manipulation ") +
+          : (nativeShell
+              ? "chat-room-solo absolute inset-0 z-[200] box-border flex justify-center overflow-hidden overscroll-none pointer-events-none touch-manipulation "
+              : "chat-room-solo fixed inset-x-0 z-[200] box-border flex justify-center overflow-hidden overscroll-none pointer-events-none touch-manipulation ")) +
         (useIgDm ? "" : "bg-background")
       }
       style={
@@ -6219,13 +6228,18 @@ function ChatRoom({
               ...(!embedInStack ? panelDismissTouchStyle : {}),
               ...(useIgDm && dmPalette && !chromeOnWallpaper ? igDmSurfaceStyle : {}),
             }
-          : {
-              top: 0,
-              height: "100dvh",
-              maxHeight: "100dvh",
-              ...panelDismissTouchStyle,
-              ...(useIgDm && dmPalette && !chromeOnWallpaper ? igDmSurfaceStyle : {}),
-            }
+          : nativeShell
+            ? {
+                ...panelDismissTouchStyle,
+                ...(useIgDm && dmPalette && !chromeOnWallpaper ? igDmSurfaceStyle : {}),
+              }
+            : {
+                top: 0,
+                height: "100dvh",
+                maxHeight: "100dvh",
+                ...panelDismissTouchStyle,
+                ...(useIgDm && dmPalette && !chromeOnWallpaper ? igDmSurfaceStyle : {}),
+              }
       }
       {...(chatEdgeSwipeOnly
         ? {}

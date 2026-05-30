@@ -37,6 +37,7 @@ import {
   SearchTabPanel,
 } from "./MainTabPanels";
 import { apiBackendEnabled, getApiToken } from "@/lib/apiBackend";
+import { isNativeCapacitorShell } from "@/lib/apiUrlPolicy";
 import { logAuthRoute } from "@/lib/authRouteDebug";
 import { isGuestUserId } from "@/lib/guestUser";
 import { PROFILE_RETURN_POST_KEY, type ProfileReturnContext } from "@/lib/types";
@@ -1145,16 +1146,25 @@ export function App() {
     storyGalleryOpen;
   const showBottomNav = !hideBottomBar || chatExitNavActive;
   const banOverlayActive = !!(banInfo && banPresentation === "overlay" && !isGuest);
+  const nativeShell = isNativeCapacitorShell();
+  const appShellHeight = nativeShell
+    ? "h-full max-h-full min-h-0"
+    : immersiveOverlay || settingsImmersive
+      ? "h-dvh max-h-dvh"
+      : "h-dvh max-h-dvh";
 
   return (
     <div
       key={accountSessionKey}
       className={
-        "retweet-no-select-pane select-none relative mx-auto flex w-full max-w-md flex-col overflow-x-hidden overscroll-none bg-background supports-[height:100dvh] " +
+        "retweet-no-select-pane select-none relative mx-auto flex w-full max-w-md flex-col overflow-x-hidden overscroll-none bg-background " +
+        (nativeShell ? "" : "supports-[height:100dvh] ") +
         (banOverlayActive ? "pointer-events-none " : "") +
-        (immersiveOverlay || settingsImmersive
-          ? "h-dvh max-h-dvh overflow-hidden pt-0"
-          : "h-dvh max-h-dvh overflow-hidden pt-[var(--sat,0px)]")
+        appShellHeight +
+        " overflow-hidden " +
+        (immersiveOverlay || settingsImmersive || nativeShell
+          ? "pt-0"
+          : "pt-[var(--sat,0px)]")
       }
       style={
         {
