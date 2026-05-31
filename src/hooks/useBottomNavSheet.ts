@@ -6,6 +6,8 @@ import {
   type CSSProperties,
 } from "react";
 export const NAV_HIDE_PROGRESS_CSS_VAR = "--retweet-nav-hide-progress";
+/** إزاحة أفقية لغرفة المحادثة — يُطبَّق على الشريط السفلي أثناء سحب الخروج */
+export const CHAT_DISMISS_ROOM_TX_VAR = "--retweet-chat-dismiss-room-tx";
 export const REELS_NAV_COLLAPSE_PROGRESS_VAR = "--retweet-reels-nav-collapse-progress";
 
 const DEFAULT_TRAVEL_PX = 72;
@@ -56,6 +58,7 @@ export function useBottomNavSheet(options?: {
     document.documentElement.style.setProperty(REELS_NAV_COLLAPSE_PROGRESS_VAR, "0");
     return () => {
       document.documentElement.style.removeProperty(NAV_HIDE_PROGRESS_CSS_VAR);
+      document.documentElement.style.removeProperty(CHAT_DISMISS_ROOM_TX_VAR);
       document.documentElement.style.removeProperty(REELS_NAV_COLLAPSE_PROGRESS_VAR);
     };
   }, []);
@@ -65,7 +68,7 @@ export function useBottomNavSheet(options?: {
 
   const navStyle: CSSProperties = externalDrive
     ? {
-        transform: `translate3d(0, calc(var(${NAV_HIDE_PROGRESS_CSS_VAR}, 0) * ${travel}px), 0)`,
+        transform: `translate3d(var(${CHAT_DISMISS_ROOM_TX_VAR}, 0px), 0, 0)`,
         transformOrigin: "50% 100%",
         transition: "none",
         willChange: "transform",

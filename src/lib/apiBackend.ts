@@ -22,7 +22,6 @@ import { isGuestUserId } from "./guestUser";
 import { scopeAppStateToAccount } from "./scopeAppState";
 import { isReactNativeWebView } from "./nativeShell";
 import { isGroupMembershipSystemContent } from "./groupSystemMessages";
-import { DEFAULT_AVATAR_DATA_URI } from "./defaultAvatar";
 import { getDeviceLabel, getOrCreateDeviceFingerprint } from "./deviceFingerprint";
 import { normalizeRemoteAppState } from "./stateNormalizeBridge";
 import { apiCacheGet, apiCacheGetOrFetch, apiCacheInvalidate, apiCacheSet } from "./apiCache";
@@ -505,7 +504,8 @@ export function userFromSearchResult(row: ApiSearchUser): User {
     displayName: row.displayName?.trim() || undefined,
     email: "",
     password: "",
-    avatar: row.avatar || DEFAULT_AVATAR_DATA_URI,
+    avatar:
+      typeof row.avatar === "string" && row.avatar.trim() ? row.avatar.trim() : "",
     bio: row.bio ?? "",
     isPrivate: row.isPrivate === true,
     followers: Array.isArray(row.followers) ? row.followers : [],

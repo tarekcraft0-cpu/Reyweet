@@ -1,4 +1,4 @@
-import { isPointerOnDismissEdge, type DismissGestureProfile } from "@/lib/edgeSwipeDismiss";
+import { isPointerInChatDismissStartZone, isPointerOnDismissEdge, type DismissGestureProfile } from "@/lib/edgeSwipeDismiss";
 
 /**
  * طبقة سحب للخلف — يُسجَّل كل SlideDismissShell / غرفة محادثة.
@@ -28,15 +28,16 @@ function topLayer(): PointerBackLayer | undefined {
   return undefined;
 }
 
-function isHeaderBackHandle(target: EventTarget | null): boolean {
+function isHeaderBackButton(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
-  return !!target.closest("[data-chat-dismiss-handle], [data-chat-back-btn], [data-profile-back-btn]");
+  return !!target.closest("[data-chat-back-btn], [data-profile-back-btn]");
 }
 
 function isInteractiveTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
+  if (isHeaderBackButton(target)) return true;
   return !!target.closest(
-    "button, a, input, select, textarea, label, [role='switch'], [role='button'], [data-no-dismiss-drag], [data-profile-menu-btn], [data-profile-back-btn], [data-chat-privacy-menu-btn], [data-profile-menu], [data-chat-privacy-menu]",
+    "button, a, input, select, textarea, label, [role='switch'], [role='button'], [data-no-dismiss-drag], [data-profile-menu-btn], [data-chat-privacy-menu-btn], [data-profile-menu], [data-chat-privacy-menu]",
   );
 }
 
@@ -53,9 +54,15 @@ function installDocumentRouter() {
     const rect = root.getBoundingClientRect();
     const profile =
       root.dataset.chatDismissRtl === "1" ? "chat" : (layer.dismissProfile ?? "app");
-    if (isInteractiveTarget(e.target) || isHeaderBackHandle(e.target)) return;
+    if (isInteractiveTarget(e.target)) return;
     if (document.documentElement.dataset.chatThreadOpen === "1" && profile === "app") return;
-    if (!isPointerOnDismissEdge(e.clientX, rect, profile)) return;
+    if (
+      profile === "chat"
+        ? !isPointerInChatDismissStartZone(e.clientX, rect, e.target)
+        : !isPointerOnDismissEdge(e.clientX, rect, profile)
+    ) {
+      return;
+    }
     activePointerId = e.pointerId;
     activeLayerId = layer.id;
     layer.onEdgePointerDown(e);

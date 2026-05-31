@@ -8,6 +8,12 @@ export const EDGE_SWIPE_HIT_PX = 30;
 /** حافة الرجوع في المحادثة — يمين الشاشة فقط (بجانب زر الرجوع) */
 export const CHAT_EDGE_SWIPE_HIT_PX = 48;
 
+/** نسبة عرض الشاشة من اليمين — سحب WhatsApp/Instagram من الهيدر أو الجنب */
+export const CHAT_PANEL_DISMISS_ZONE_FRACTION = 0.42;
+
+/** عتبة إغلاق المحادثة — أقل = يغلق أسرع (WhatsApp ~35%) */
+export const CHAT_DISMISS_COMMIT_FRACTION = 0.34;
+
 /** أقل سحب أفقي لبدء الإيماءة من منتصف اللوحة */
 export const PANEL_SWIPE_COMMIT_PX = 10;
 
@@ -142,7 +148,7 @@ export function chatDismissReleaseTarget(
   velocityX = 0,
 ): number {
   const w = Math.max(260, widthPx);
-  const threshold = Math.max(w * 0.28, 64);
+  const threshold = Math.max(w * CHAT_DISMISS_COMMIT_FRACTION, 56);
   const flingLeft = velocityX <= -CHAT_DISMISS_FLING_VX;
   const flingCancel = velocityX >= CHAT_DISMISS_FLING_VX * 0.85;
   if (flingLeft) return -w;
@@ -181,6 +187,7 @@ export function chatDismissPanelTranslate(fingerTx: number, widthPx: number): nu
 /**
  * إغلاق المحادثة RTL: الإصبع يمين→يسار — الغرفة تخرج لليسار، القائمة تدخل من اليمين.
  * pull=0 (مفتوح): inbox=+w, room=0 — pull=w (مغلق): inbox=0, room=-w
+ * القائمة الخلفية تتصغّر قليلاً (parallax) مثل WhatsApp / Instagram Direct.
  */
 export function chatStackDismissTransforms(dragTx: number, widthPx: number) {
   try {
@@ -189,16 +196,46 @@ export function chatStackDismissTransforms(dragTx: number, widthPx: number) {
     const pull = -t;
     const progress = Math.max(0, Math.min(1, 1 - pull / w));
     const inboxTx = Math.round(w - pull);
+    const inboxScale = 0.92 + 0.08 * progress;
+    const roomRadius = Math.round(pull / w * 18);
     return {
       progress,
-      inbox: `translate3d(${inboxTx}px, 0, 0)`,
+      dismissPull: pull / w,
+      roomRadius,
+      inbox: `translate3d(${inboxTx}px, 0, 0) scale(${inboxScale.toFixed(4)})`,
       room: `translate3d(${inboxTx - w}px, 0, 0)`,
     };
   } catch {
     return {
       progress: 0,
-      inbox: "translate3d(0px, 0, 0)",
+      dismissPull: 0,
+      roomRadius: 0,
+      inbox: "translate3d(0px, 0, 0) scale(1)",
       room: "translate3d(0px, 0, 0)",
     };
   }
+}
+
+/** هل اللمس في منطقة بدء سحب إغلاق المحادثة (حافة / هيدر / يمين اللوحة) */
+export function isPointerInChatDismissStartZone(
+  clientX: number,
+  containerRect: Pick<DOMRect, "left" | "width">,
+  target: EventTarget | null,
+  opts?: { edgePx?: number; panelFraction?: number },
+): boolean {
+  if (isPointerOnPhysicalChatBackEdge(clientX, containerRect, opts?.edgePx ?? CHAT_EDGE_SWIPE_HIT_PX)) {
+    return true;
+  }
+  const x = clientX - containerRect.left;
+  const w = containerRect.width;
+  if (w > 0 && x >= w * (1 - (opts?.panelFraction ?? CHAT_PANEL_DISMISS_ZONE_FRACTION))) {
+    return true;
+  }
+  if (!(target instanceof HTMLElement)) return false;
+  const header = target.closest("[data-chat-dismiss-handle]");
+  if (!header) return false;
+  if (target.closest("[data-chat-back-btn], [data-no-dismiss-drag], button, a, input, select, textarea")) {
+    return false;
+  }
+  return true;
 }

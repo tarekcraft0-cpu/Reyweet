@@ -5141,7 +5141,7 @@ export function AppProvider({
           id: u.id,
           username: u.username,
           displayName: u.displayName,
-          avatar: u.avatar ?? u.username.slice(0, 2),
+          avatar: u.avatar?.trim() || "",
           bio: u.bio,
           verified: u.verified,
           founderVerified: u.founderVerified,

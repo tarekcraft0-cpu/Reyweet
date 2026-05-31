@@ -1,6 +1,7 @@
 import type { ID, User } from "./types";
 import type { ApiSearchUser } from "./apiBackend";
 import { userFromSearchResult } from "./apiBackend";
+import { DEFAULT_AVATAR_DATA_URI } from "./defaultAvatar";
 import { isRenderableMediaUrl } from "./mediaUrl";
 
 /** يمنع crash عند حقول مصفوفة ناقصة (حساب جديد / stub / لقطة قديمة) */
@@ -144,8 +145,7 @@ export function mergeDirectoryUser(prev: User | undefined, row: ApiSearchUser): 
       row.displayName !== undefined
         ? row.displayName?.trim() || undefined
         : prev.displayName,
-    avatar:
-      stub.avatar && isRenderableMediaUrl(stub.avatar) ? stub.avatar : prev.avatar,
+    avatar: pickAvatar(stub.avatar, prev.avatar, stub.username || prev.username),
     bio: row.bio !== undefined ? (row.bio ?? "") : prev.bio,
     verified: stub.verified === true || prev.verified === true,
     founderVerified: stub.founderVerified === true || prev.founderVerified === true,

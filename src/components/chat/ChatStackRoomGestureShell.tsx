@@ -44,7 +44,7 @@ export function ChatStackRoomGestureShell({
         data-chat-stack-room
         data-chat-dismiss-rtl="1"
         className={
-          "chat-no-select chat-room-stack absolute inset-0 z-[2] flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-background [transform:translateZ(0)] " +
+          "chat-no-select chat-room-stack absolute inset-0 z-[2] flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-background [transform:translateZ(0)] chat-room-stack-dismiss " +
           (interactive ? "pointer-events-auto touch-manipulation" : "pointer-events-none")
         }
       >

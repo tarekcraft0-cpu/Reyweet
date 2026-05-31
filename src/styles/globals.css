@@ -610,6 +610,20 @@ html.retweet-overscroll-lock body {
   background: transparent;
 }
 
+/* غرفة المحادثة أثناء سحب الخروج — ظل وزوايا مثل WhatsApp / Instagram Direct */
+.chat-room-stack-dismiss {
+  border-top-left-radius: var(--retweet-chat-room-radius, 0);
+  border-bottom-left-radius: var(--retweet-chat-room-radius, 0);
+  box-shadow: calc(-1 * var(--retweet-chat-dismiss-pull, 0) * 14px) 0
+    calc(var(--retweet-chat-dismiss-pull, 0) * 32px) rgba(0, 0, 0, calc(var(--retweet-chat-dismiss-pull, 0) * 0.2));
+  will-change: transform;
+}
+
+.chat-inbox-pane {
+  transform-origin: center right;
+  will-change: transform;
+}
+
 /* لوحات التطبيق (تنبيهات، إعدادات، …) */
 .app-dismiss-sheet-panel,
 .notifications-panel-scroll {

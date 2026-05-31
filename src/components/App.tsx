@@ -46,7 +46,7 @@ import { useT } from "@/lib/i18n";
 import { Home, Search, Camera, Plus, Menu, ChevronDown, ChevronRight, Heart, Lock, Footprints, EyeOff, ArrowRight } from "lucide-react";
 import { BottomNavSheet } from "./BottomNavSheet";
 import { useBottomNavDragContext } from "@/lib/bottomNavDragContext";
-import { NAV_HIDE_PROGRESS_CSS_VAR } from "@/hooks/useBottomNavSheet";
+import { NAV_HIDE_PROGRESS_CSS_VAR, CHAT_DISMISS_ROOM_TX_VAR } from "@/hooks/useBottomNavSheet";
 import {
   BOTTOM_NAV_TAB_COUNT,
   navIndexToTab,
@@ -891,10 +891,9 @@ export function App() {
       setChatExitNavActive(nextActive);
     }
     try {
-      if (progress == null) {
+      if (!nextActive) {
         document.documentElement.style.removeProperty(NAV_HIDE_PROGRESS_CSS_VAR);
-      } else {
-        document.documentElement.style.setProperty(NAV_HIDE_PROGRESS_CSS_VAR, String(progress));
+        document.documentElement.style.removeProperty(CHAT_DISMISS_ROOM_TX_VAR);
       }
     } catch {
       /* ignore */
@@ -1122,7 +1121,7 @@ export function App() {
 
   const showChatThreadChrome = tab === "chat" && chatThreadOpen;
   /** محادثة مفتوحة — إخفاء الشريط السفلي وملء الشاشة (يُحدَّث من ChatScreen عبر onThreadOpen) */
-  /** أثناء السحب التفاعلي يبقى الشريط السفلي ظاهراً ويتحرك عبر NAV_HIDE_PROGRESS */
+  /** أثناء سحب الخروج: الشريط يتحرك أفقياً مع لوحة المحادثة (ليس من تحت لأعلى) */
   const chatImmersiveMode =
     tab === "chat" && chatThreadOpen && !chatExitNavActive;
   const postImmersiveMode = postDetailOpen;

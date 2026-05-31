@@ -7,7 +7,7 @@ import { BottomNavTabRow } from "./BottomNavTabRow";
 type Props = {
   progressIndex: number;
   onSelectTabIndex: (index: number) => void;
-  /** أثناء سحب خروج المحادثة — التقدّم يُكتب في NAV_HIDE_PROGRESS_CSS_VAR */
+  /** أثناء سحب خروج المحادثة — الشريط يتبع إزاحة الغرفة أفقياً */
   externalHideDrive?: boolean;
   children: ReactNode;
 };

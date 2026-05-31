@@ -1,4 +1,7 @@
-import { NAV_HIDE_PROGRESS_CSS_VAR } from "@/hooks/useBottomNavSheet";
+import {
+  CHAT_DISMISS_ROOM_TX_VAR,
+  NAV_HIDE_PROGRESS_CSS_VAR,
+} from "@/hooks/useBottomNavSheet";
 import {
   chatStackOpenFromLeftTransforms,
   SLIDE_DISMISS_EASE,
@@ -25,12 +28,23 @@ export function publishChatStackCssProgress(progress: number): number {
   return clamped;
 }
 
+export function clearChatDismissRoomTx(): void {
+  if (typeof document === "undefined") return;
+  document.documentElement.style.removeProperty(CHAT_DISMISS_ROOM_TX_VAR);
+}
+
+export function publishChatDismissRoomTx(roomTxPx: number): void {
+  if (typeof document === "undefined") return;
+  document.documentElement.style.setProperty(CHAT_DISMISS_ROOM_TX_VAR, `${Math.round(roomTxPx)}px`);
+}
+
 export function clearChatStackCssProgress(): void {
   if (typeof document === "undefined") return;
   document.documentElement.style.removeProperty(CHAT_STACK_PROGRESS_VAR);
+  clearChatDismissRoomTx();
 }
 
-/** يحرّك الشريط السفلي مع تقدّم المكدس (فتح أو إغلاق) دون إخفاء مفاجئ */
+/** يحرّك الشريط السفلي عمودياً — فقط عند فتح المحادثة من القائمة (ليس سحب الخروج) */
 export function syncStackNavHideProgress(progress: number | null): void {
   if (typeof document === "undefined") return;
   if (progress == null) {
@@ -74,18 +88,26 @@ export function applyCloseStackTransforms(
   cap: number,
   layers: StackLayerRefs,
   animate: boolean,
-): number {
-  const { progress, inbox, room } = chatStackDismissTransforms(dragTx, cap);
-  const transition = animate ? `transform ${SLIDE_DISMISS_MS}ms ${SLIDE_DISMISS_EASE}` : "none";
+): { progress: number; dismissPull: number; roomRadius: number } {
+  const { progress, dismissPull, roomRadius, inbox, room } = chatStackDismissTransforms(dragTx, cap);
+  const transition = animate
+    ? `transform ${SLIDE_DISMISS_MS}ms cubic-bezier(0.32, 0.72, 0, 1)`
+    : "none";
   if (layers.inboxEl) {
     layers.inboxEl.style.transform = inbox;
+    layers.inboxEl.style.transformOrigin = "center right";
     layers.inboxEl.style.transition = transition;
   }
   if (layers.roomEl) {
     layers.roomEl.style.transform = room;
     layers.roomEl.style.transition = transition;
+    layers.roomEl.style.setProperty("--retweet-chat-room-radius", `${roomRadius}px`);
+    layers.roomEl.style.setProperty("--retweet-chat-dismiss-pull", String(dismissPull));
   }
-  return progress;
+  const w = Math.max(260, Math.round(Number.isFinite(cap) ? cap : 390));
+  const pullPx = dismissPull * w;
+  publishChatDismissRoomTx(Math.round(w - pullPx) - w);
+  return { progress, dismissPull, roomRadius };
 }
 
 /** إنهاء سحب فتح المحادثة من القائمة */

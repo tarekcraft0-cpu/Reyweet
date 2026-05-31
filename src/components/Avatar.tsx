@@ -2,7 +2,7 @@ import { cn } from "@/lib/utils";
 import { getMediaServingOrigin, resolveMediaUrl } from "@/lib/mediaUrl";
 import { isVideoMediaRef } from "@/lib/postMedia";
 import { DEFAULT_AVATAR_DATA_URI } from "@/lib/defaultAvatar";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 interface Props {
   name?: string;
@@ -32,8 +32,6 @@ function isRenderableAvatarImageUrl(src: string): boolean {
 export function Avatar({ name = "?", src, size = 40, className, ring, ringSeen, priority = false }: Props) {
   const [imgFailed, setImgFailed] = useState(false);
   const [videoFailed, setVideoFailed] = useState(false);
-  const [visible, setVisible] = useState(priority);
-  const rootRef = useRef<HTMLDivElement>(null);
   const resolvedSrc = useMemo(() => {
     const resolved = resolveMediaUrl(src);
     if (resolved) return resolved;
@@ -50,32 +48,8 @@ export function Avatar({ name = "?", src, size = 40, className, ring, ringSeen, 
     setVideoFailed(false);
   }, [resolvedSrc]);
 
-  useEffect(() => {
-    if (priority) {
-      setVisible(true);
-      return;
-    }
-    const el = rootRef.current;
-    if (!el || typeof IntersectionObserver === "undefined") {
-      setVisible(true);
-      return;
-    }
-    const io = new IntersectionObserver(
-      entries => {
-        if (entries.some(e => e.isIntersecting)) {
-          setVisible(true);
-          io.disconnect();
-        }
-      },
-      { rootMargin: "80px" },
-    );
-    io.observe(el);
-    return () => io.disconnect();
-  }, [priority, resolvedSrc]);
-
-  const showVideo = !!(visible && resolvedSrc && isVideoAvatar && !videoFailed);
+  const showVideo = !!(resolvedSrc && isVideoAvatar && !videoFailed);
   const showImg = !!(
-    visible &&
     resolvedSrc &&
     !isVideoAvatar &&
     isRenderableAvatarImageUrl(resolvedSrc) &&
@@ -93,7 +67,6 @@ export function Avatar({ name = "?", src, size = 40, className, ring, ringSeen, 
 
   const inner = (
     <div
-      ref={rootRef}
       className={cn(
         "rounded-full bg-secondary text-secondary-foreground flex items-center justify-center overflow-hidden font-semibold select-none",
         className

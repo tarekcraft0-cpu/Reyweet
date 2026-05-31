@@ -19,7 +19,7 @@ import {
   SLIDE_DISMISS_EASE,
   isDocumentRtl,
 } from "@/hooks/useSlideDismissBack";
-import { isChatDismissSwipeDelta } from "@/lib/edgeSwipeDismiss";
+import { chatDismissReleaseTarget, isChatDismissSwipeDelta } from "@/lib/edgeSwipeDismiss";
 import {
   applyCloseStackTransforms,
   applyOpenStackTransforms,
@@ -140,9 +140,6 @@ export const CHAT_DISMISS_PULL_CSS_VAR = "--retweet-chat-dismiss-pull";
 /** ارتفاع شريط الرأس — يُستثنى من حافة السحب اليمنى حتى لا تغطي زر الرجوع */
 const CHAT_ROOM_HEADER_EDGE_INSET_PX = 72;
 export { CHAT_STACK_PROGRESS_VAR } from "@/lib/chatStackGestureEngine";
-/** دخول المحادثة بالنقر — انزلاق مكدس تفاعلي (نفس إحساس السحب) */
-const CHAT_TAP_OPEN_MS = 320;
-const CHAT_TAP_OPEN_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
 /** ارتفاع سطر شريط الكتابة (text-[16px] + leading-5) */
 /** منع تحديد iOS على زر المعرض — الضغط المطوّل يفتح فيديو كرسالة صوتية */
 const galleryLongPressBtnProps = {
@@ -1059,6 +1056,7 @@ const ChatListRowWithPeek = memo(function ChatListRowWithPeek({
   onStackChromeHide,
   onStackChromeShow,
   onRowOpenCommit,
+  onPrefetchChat,
   onStackGestureArm,
 }: {
   chat: Chat;
@@ -1073,6 +1071,8 @@ const ChatListRowWithPeek = memo(function ChatListRowWithPeek({
   onStackChromeShow?: () => void;
   /** مسار واحد لإنهاء السحب/النقر — يمنع فتح مكرر */
   onRowOpenCommit?: (chatId: string, px: number, mode: "tap" | "swipe-end") => void;
+  /** يبدأ جلب الرسائل عند اللمس — قبل فتح الغرفة */
+  onPrefetchChat?: (chatId: string) => void;
   /** يحرّر قفل سحب عالق قبل لمسة جديدة */
   onStackGestureArm?: () => void;
 }) {
@@ -1423,6 +1423,7 @@ const ChatListRowWithPeek = memo(function ChatListRowWithPeek({
       pointerId: e.pointerId,
       downAt: Date.now(),
     };
+    onPrefetchChat?.(chatRowOpenId);
     rowOpenArmedRef.current = false;
     try {
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -2227,7 +2228,7 @@ export function ChatScreen({
   const currentUser = useCurrentUser();
   const isGuest = useIsGuestSelector();
   const accountSessionKey = useAccountSessionKey();
-  const { openOrCreateChat, setNote, sendMessage, replyToProfileNoteAsDm } = useAppActions();
+  const { openOrCreateChat, setNote, sendMessage, replyToProfileNoteAsDm, loadChatMessages } = useAppActions();
   const lang = useAppLanguage();
   const theme = useAppTheme();
   const users = useAppSelector(s => s.users);
@@ -2350,8 +2351,14 @@ export function ChatScreen({
       const { inboxEl, roomEl } = stackLayers();
       if (!animate && inboxEl) inboxEl.style.willChange = "transform";
       if (!animate && roomEl) roomEl.style.willChange = "transform";
-      const progress = applyCloseStackTransforms(clampedTx, cap, { inboxEl, roomEl }, animate);
+      const { progress, dismissPull } = applyCloseStackTransforms(clampedTx, cap, { inboxEl, roomEl }, animate);
       stackProgressRef.current = progress;
+      if (typeof document !== "undefined") {
+        document.documentElement.style.setProperty(
+          CHAT_DISMISS_PULL_CSS_VAR,
+          String(Math.max(0, Math.min(1, dismissPull))),
+        );
+      }
       if (animate) {
         if (inboxEl) inboxEl.style.willChange = "auto";
         if (roomEl) roomEl.style.willChange = "auto";
@@ -2360,12 +2367,13 @@ export function ChatScreen({
       stackRoomDriveRef.current = "close";
       stackRoomDismissRef.current = true;
       publishChatStackCssProgress(progress);
-      if (stackRoomDismissRef.current) {
+      if (stackRoomDismissRef.current && dismissPull > 0.001) {
         if (animate || Math.abs(progress - stackNavDismissProgressRef.current) > 0.012) {
           stackNavDismissProgressRef.current = progress;
-          syncStackNavHideProgress(progress);
-          onExitNavRevealProgress?.(progress);
+          onExitNavRevealProgress?.(1);
         }
+      } else if (stackRoomDismissRef.current && dismissPull <= 0.001 && !animate) {
+        onExitNavRevealProgress?.(null);
       }
     } catch (err) {
       console.warn("[chat-room-close-drag]", err);
@@ -2388,6 +2396,17 @@ export function ChatScreen({
       clearChatStackCssProgress();
       syncStackNavHideProgress(null);
       onExitNavRevealProgress?.(null);
+      if (typeof document !== "undefined") {
+        document.documentElement.style.removeProperty(CHAT_DISMISS_PULL_CSS_VAR);
+      }
+      const { inboxEl, roomEl } = stackLayers();
+      if (inboxEl) {
+        inboxEl.style.transformOrigin = "";
+      }
+      if (roomEl) {
+        roomEl.style.removeProperty("--retweet-chat-room-radius");
+        roomEl.style.removeProperty("--retweet-chat-dismiss-pull");
+      }
       applyStackLayerTransforms(0, !!opts?.animate);
     },
     [applyStackLayerTransforms, onExitNavRevealProgress],
@@ -2437,7 +2456,6 @@ export function ChatScreen({
       /** محادثة مفتوحة: سحب الرجوع من الغرفة له الأولوية — لا يحجبه قفل المكدس */
       if (openChat) {
         const cap = Math.max(260, stackCapRef.current);
-        const threshold = Math.max(cap * CHAT_STACK_OPEN_FRACTION, 64);
         if (phase === "start" || phase === "move") {
           if (phase === "start") {
             setStackRoomDismissDragging(true);
@@ -2452,7 +2470,7 @@ export function ChatScreen({
         setStackRoomDismissDragging(false);
         lastRoomDismissTxRef.current = 0;
         stackNavDismissProgressRef.current = -1;
-        const closing = tx <= -threshold;
+        const closing = chatDismissReleaseTarget(tx, cap, 0) !== 0;
         if (closing) {
           beginCloseChatThreadRef.current(resolveOpenChatId(openChat));
           return;
@@ -2480,8 +2498,7 @@ export function ChatScreen({
         return;
       }
       const cap = Math.max(260, stackCapRef.current);
-      const threshold = Math.max(cap * CHAT_STACK_OPEN_FRACTION, 64);
-      const closing = tx <= -threshold;
+      const closing = chatDismissReleaseTarget(tx, cap, 0) !== 0;
       if (!closing) {
         stackRoomDriveRef.current = "idle";
         stackRoomDismissRef.current = false;
@@ -2720,17 +2737,18 @@ export function ChatScreen({
         return;
       }
 
+      void loadChatMessages(canonical);
+
       ++stackNavGenerationRef.current;
-      const gen = stackNavGenerationRef.current;
       stackTransitionLockRef.current = true;
       stackListGestureCommitRef.current = true;
       stackOpenDragRef.current = false;
       stackSwipeOpeningRef.current = false;
-      stackRoomDriveRef.current = "open";
+      stackRoomDriveRef.current = "idle";
       stackRoomDismissRef.current = false;
       stackNavTargetRef.current = canonical;
-      stackTapTransitionRef.current = true;
-      setStackGestureLocked(true);
+      stackTapTransitionRef.current = false;
+      setStackGestureLocked(false);
       setStackClosingId(null);
       setStackDragChatId(null);
       stackDragPreviewIdRef.current = null;
@@ -2739,57 +2757,39 @@ export function ChatScreen({
 
       flushSync(() => {
         setOpenChat(canonical);
-        stackProgressRef.current = 0;
-        setStackProgress(0);
+        stackProgressRef.current = 1;
+        setStackProgress(1);
         setStackSpring(false);
       });
       onActiveChatChange?.(canonical);
 
-      applyStackLayerTransforms(0, false);
-      publishChatStackCssProgress(0);
-      syncStackNavHideProgress(0.04);
-      onExitNavRevealProgress?.(0.04);
-      try {
-        void stackInboxRef.current?.offsetWidth;
-        void stackRoomRef.current?.offsetWidth;
-      } catch {
-        /* ignore */
-      }
-
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          if (gen !== stackNavGenerationRef.current || !stackTapTransitionRef.current) return;
-          syncStackNavHideProgress(1);
-          onExitNavRevealProgress?.(1);
-          stackProgressRef.current = 1;
-          setStackProgress(1);
-          setStackSpring(true);
-          publishStackProgressVisual(1, true, true);
-          window.setTimeout(() => {
-            if (gen !== stackNavGenerationRef.current) return;
-            setStackSpring(false);
-            stackTapTransitionRef.current = false;
-            syncStackNavHideProgress(null);
-            onExitNavRevealProgress?.(null);
-            releaseStackTransitionLock();
-            requestStackRoomScrollBottom();
-          }, CHAT_TAP_OPEN_MS);
-        });
-      });
+      applyStackLayerTransforms(1, false);
+      publishChatStackCssProgress(1);
+      syncStackNavHideProgress(null);
+      onExitNavRevealProgress?.(null);
+      releaseStackTransitionLock();
+      requestStackRoomScrollBottom();
     },
     [
       resolveOpenChatId,
       isChatThreadFullyOpen,
       commitStackOpen,
       stackDragChatId,
+      loadChatMessages,
       hideStackChrome,
       onActiveChatChange,
       applyStackLayerTransforms,
-      publishStackProgressVisual,
       onExitNavRevealProgress,
       releaseStackTransitionLock,
       requestStackRoomScrollBottom,
     ],
+  );
+
+  const prefetchChatMessages = useCallback(
+    (id: string) => {
+      void loadChatMessages(resolveOpenChatId(id));
+    },
+    [loadChatMessages, resolveOpenChatId],
   );
 
   /** إغلاق المحادثة المفتوحة — مسار بسيط بدون portal */
@@ -3011,6 +3011,8 @@ export function ChatScreen({
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search.trim().toLowerCase(), 160);
   const inboxListScrollRef = useRef<HTMLDivElement>(null);
+  const inboxVirtualListAnchorRef = useRef<HTMLDivElement>(null);
+  const [inboxVirtualScrollMargin, setInboxVirtualScrollMargin] = useState(0);
   const [noteInput, setNoteInput] = useState(me.note || "");
   const [editingNote, setEditingNote] = useState(false);
   const [showGames, setShowGames] = useState(false);
@@ -3143,8 +3145,9 @@ export function ChatScreen({
         stackNavDismissProgressRef.current = -1;
         setStackRoomDismissDragging(false);
         onExitNavRevealProgress?.(null);
+        clearChatStackCssProgress();
         if (typeof document !== "undefined") {
-          document.documentElement.style.removeProperty(CHAT_STACK_PROGRESS_VAR);
+          document.documentElement.style.removeProperty(CHAT_DISMISS_PULL_CSS_VAR);
         }
         applyStackLayerTransforms(0, false);
         showStackChrome();
@@ -3628,6 +3631,35 @@ export function ChatScreen({
 
   const isRtl = lang === "ar";
 
+  useLayoutEffect(() => {
+    const scrollEl = inboxListScrollRef.current;
+    const anchorEl = inboxVirtualListAnchorRef.current;
+    if (!scrollEl || !anchorEl) return;
+    const measure = () => {
+      const scrollTop = scrollEl.getBoundingClientRect().top;
+      const anchorTop = anchorEl.getBoundingClientRect().top;
+      setInboxVirtualScrollMargin(Math.max(0, Math.round(anchorTop - scrollTop)));
+    };
+    measure();
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(measure) : null;
+    ro?.observe(scrollEl);
+    ro?.observe(anchorEl);
+    window.addEventListener("resize", measure);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [
+    hideInboxTopChrome,
+    showInboxNotesStrip,
+    showInboxChatTitle,
+    profileNoteReply,
+    isGuest,
+    noteUsers.length,
+    debouncedSearch,
+    renderedChats.length,
+  ]);
+
   /* ─────────────────────────────────────────────────────────
    * CHAT INBOX — rebuilt from scratch (Snapchat-inspired)
    * All flex rows use dir-aware ordering:
@@ -3642,7 +3674,11 @@ export function ChatScreen({
       data-no-tab-swipe
       style={stackInboxPointerEvents ? { pointerEvents: stackInboxPointerEvents } : undefined}
     >
-
+      <div
+        ref={inboxListScrollRef}
+        className="chat-inbox-scroll no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain"
+        data-no-tab-swipe
+      >
       {/* Top area: Instagram Direct structure. No profile avatar here. */}
       {!hideInboxTopChrome && (
         <div className="shrink-0 px-4 pb-2 pt-[max(0.75rem,max(0.75rem, var(--sat)))]">
@@ -3860,17 +3896,14 @@ export function ChatScreen({
           SECTION 4 — CONVERSATION LIST
           Each row is rendered by ChatListRowWithPeek
           ══════════════════════════════════════════════════ */}
-      <div
-        ref={inboxListScrollRef}
-        className="chat-inbox-scroll no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain"
-        data-no-tab-swipe
-      >
+      <div ref={inboxVirtualListAnchorRef}>
         {shouldHoldPreviousChats && renderedChats.length === 0 && <ChatInboxSkeleton rows={6} />}
 
         {renderedChats.length > 0 && (
           <ChatInboxVirtualList
             chats={renderedChats}
             scrollParentRef={inboxListScrollRef}
+            scrollMargin={inboxVirtualScrollMargin}
             renderRow={c => (
               <ChatListRowWithPeek
                 chat={c}
@@ -3882,6 +3915,7 @@ export function ChatScreen({
                 onStackChromeHide={hideStackChrome}
                 onStackChromeShow={showStackChrome}
                 onRowOpenCommit={handleRowOpenCommit}
+                onPrefetchChat={prefetchChatMessages}
                 onStackGestureArm={armStackListGesture}
               />
             )}
@@ -3903,6 +3937,7 @@ export function ChatScreen({
             {isRtl ? "لا نتائج لـ «" + search + "»" : `No results for "${search}"`}
           </p>
         )}
+      </div>
 
         <div className="h-3" aria-hidden />
       </div>
@@ -6252,7 +6287,7 @@ function ChatRoom({
       style={
         embedInStack
           ? {
-              ...(!embedInStack ? panelDismissTouchStyle : {}),
+              ...panelDismissTouchStyle,
               ...(useIgDm && dmPalette && !chromeOnWallpaper ? igDmSurfaceStyle : {}),
             }
           : nativeShell

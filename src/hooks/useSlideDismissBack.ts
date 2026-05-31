@@ -14,6 +14,7 @@ import {
   isChatDismissSwipeDelta,
   isDismissSwipeDelta,
   isDocumentRtl,
+  isPointerInChatDismissStartZone,
   isPointerOnDismissEdge,
   type DismissGestureProfile,
 } from "@/lib/edgeSwipeDismiss";
@@ -384,9 +385,17 @@ export function useSlideDismissBack({
 
   const isInteractiveDismissTarget = (target: EventTarget | null) => {
     if (!(target instanceof HTMLElement)) return false;
+    if (target.closest("[data-chat-back-btn], [data-profile-back-btn]")) return true;
     return !!target.closest(
-      "button, a, input, select, textarea, label, [role='switch'], [role='button'], [data-no-dismiss-drag], [data-profile-scroll], [data-chat-dismiss-handle], [data-chat-back-btn], [data-profile-back-btn], [data-profile-menu-btn], [data-chat-privacy-menu-btn], [data-profile-menu], [data-chat-privacy-menu]",
+      "button, a, input, select, textarea, label, [role='switch'], [role='button'], [data-no-dismiss-drag], [data-profile-scroll], [data-profile-menu-btn], [data-chat-privacy-menu-btn], [data-profile-menu], [data-chat-privacy-menu]",
     );
+  };
+
+  const isChatDismissStart = (clientX: number, target: EventTarget | null) => {
+    const root = containerRef.current;
+    if (!root) return false;
+    const rect = root.getBoundingClientRect();
+    return isPointerInChatDismissStartZone(clientX, rect, target);
   };
 
   const beginDrag = useCallback(
@@ -573,13 +582,13 @@ export function useSlideDismissBack({
       }
       if (e.pointerType === "mouse" && e.button !== 0) return;
       if (isInteractiveDismissTarget(e.target)) return;
-      const root = containerRef.current;
-      if (root) {
-        const rect = root.getBoundingClientRect();
-        if (dismissProfile === "chat") {
-          if (!isPointerOnDismissEdge(e.clientX, rect, "chat")) return;
-        } else if (isPointerOnDismissEdge(e.clientX, rect, dismissProfile)) {
-          return;
+      if (dismissProfile === "chat") {
+        if (!isChatDismissStart(e.clientX, e.target)) return;
+      } else {
+        const root = containerRef.current;
+        if (root) {
+          const rect = root.getBoundingClientRect();
+          if (isPointerOnDismissEdge(e.clientX, rect, dismissProfile)) return;
         }
       }
       panelPendingRef.current = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY };
@@ -636,14 +645,20 @@ export function useSlideDismissBack({
       }
     : {
         transform: `translate3d(${chatPanelTx}px, 0, 0)`,
-        transition: slideSpring ? `transform ${SLIDE_DISMISS_MS}ms ${SLIDE_DISMISS_EASE}` : "none",
+        transition: slideSpring
+          ? `transform ${SLIDE_DISMISS_MS}ms ${dismissProfile === "chat" ? "cubic-bezier(0.32, 0.72, 0, 1)" : SLIDE_DISMISS_EASE}`
+          : "none",
         boxShadow:
           Math.abs(chatPanelTx) > 4
             ? dismissProfile === "chat" || slideTx < 0
-              ? "-8px 0 24px rgba(0,0,0,0.12)"
+              ? `-${Math.min(16, Math.abs(chatPanelTx) * 0.04 + 4)}px 0 ${Math.min(40, Math.abs(chatPanelTx) * 0.08 + 12)}px rgba(0,0,0,${Math.min(0.22, Math.abs(chatPanelTx) / wPanel * 0.18 + 0.06)})`
               : rtl
                 ? "8px 0 24px rgba(0,0,0,0.12)"
                 : "-8px 0 20px rgba(0,0,0,0.1)"
+            : undefined,
+        borderRadius:
+          dismissProfile === "chat" && Math.abs(chatPanelTx) > 2
+            ? `${Math.min(18, Math.abs(chatPanelTx) / wPanel * 18)}px 0 0 ${Math.min(18, Math.abs(chatPanelTx) / wPanel * 18)}px`
             : undefined,
         willChange: isDragging ? "transform" : "auto",
       };
@@ -685,7 +700,7 @@ export function useSlideDismissBack({
         onPointerCancelCapture: onPanelPointerCancel,
         onLostPointerCapture: onPanelPointerCancel,
         style: {
-          touchAction: (dismissProfile === "chat" ? "manipulation" : "pan-y") as const,
+          touchAction: (dismissProfile === "chat" ? "pan-y pinch-zoom" : "pan-y") as const,
         },
       }
     : {};
