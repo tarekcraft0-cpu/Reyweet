@@ -7,6 +7,11 @@ function resolveUser(s: AppState, id: ID): User | undefined {
   return s.users.find(u => u.id === id);
 }
 
+/** حالة التطبيق كاملة — للشاشات التي تحتاج userById / isMutual (مثل المحادثات) */
+export function useAppState(): AppState {
+  return useAppSelector(s => s);
+}
+
 /** المستخدم الحالي — لا يتغيّر عند تحديث chats/notifications */
 export function useCurrentUser(): User | null {
   return useAppSelector(s => {

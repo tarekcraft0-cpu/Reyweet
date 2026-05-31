@@ -37,7 +37,7 @@ import {
 } from "@/lib/safeLayoutDimensions";
 import { ChatStackRoomGestureShell } from "../chat/ChatStackRoomGestureShell";
 import { SlideDismissBackButton, SlideDismissContext, SlideDismissShell } from "../SlideDismissShell";
-import { QURAN_CHANNEL_ID, isProfileNoteActive, useAppActions, useAppLanguage, useAppTheme, useAppSelector, useChats, useCurrentUser, useIsGuestSelector, useAccountSessionKey, userById, visibleChatMessages } from "@/lib/store";
+import { QURAN_CHANNEL_ID, isProfileNoteActive, useAppActions, useAppLanguage, useAppTheme, useAppSelector, useAppState, useChats, useCurrentUser, useIsGuestSelector, useAccountSessionKey, userById, visibleChatMessages } from "@/lib/store";
 import { useProfiledRender } from "@/lib/renderProfiler";
 import { useTypingUsers } from "@/lib/typingContext";
 import { notifyGuestActionBlocked } from "@/lib/guestBlocked";
@@ -1088,6 +1088,7 @@ const ChatListRowWithPeek = memo(function ChatListRowWithPeek({
   } = useAppActions();
   const lang = useAppLanguage();
   const users = useAppSelector(s => s.users);
+  const state = useAppState();
   const typingUserByChatId = useTypingUsers();
   const t = useT();
   const [peekPx, setPeekPx] = useState(0);
@@ -2222,6 +2223,7 @@ export function ChatScreen({
 }: Props) {
   useProfiledRender("ChatScreen");
   const chats = useChats();
+  const state = useAppState();
   const currentUser = useCurrentUser();
   const isGuest = useIsGuestSelector();
   const accountSessionKey = useAccountSessionKey();
@@ -4654,6 +4656,7 @@ function ChatRoom({
   const lang = useAppLanguage();
   const appTheme = useAppTheme();
   const users = useAppSelector(s => s.users);
+  const state = useAppState();
   const stickers = useAppSelector(s => s.stickers);
   const typingUserByChatId = useTypingUsers();
   const t = useT();
