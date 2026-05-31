@@ -6,6 +6,8 @@ import {
 import { getUserEntitlements, isStoryStillActive } from "./verificationEntitlements";
 import { AppLanguageCtx } from "./languageContext";
 import { TypingCtx } from "./typingContext";
+import { StoreApiCtx } from "./storeSubscription";
+import { AppUiCtx } from "./appUiContext";
 import {
   createContext,
   startTransition,
@@ -16,6 +18,7 @@ import {
   useRef,
   useState,
   type ReactNode,
+  type MutableRefObject,
 } from "react";
 import type {
   AppState,
@@ -202,6 +205,10 @@ import {
 } from "./apiBackend";
 import { apiMuteGroupMember } from "./groupApi";
 import { subscribeRealtimeEvents, USER_REGISTERED_WINDOW_EVENT } from "./realtimeEvents";
+import { AUTH_FEED_REFRESH_EVENT } from "./feedVisibility";
+import { perfMark } from "./perfMark";
+import { computeHomeFeedPostIds, homeFeedSignature } from "./homeFeedIndex";
+import { HomeFeedCtx } from "./homeFeedContext";
 import {
   disconnectRealtimeSocketHard,
   emitDirectMessage,
@@ -315,6 +322,24 @@ export function isProfileNoteActive(u: Pick<User, "note" | "noteAt">): boolean {
   if (!u.noteAt) return true;
   return Date.now() - u.noteAt < PROFILE_NOTE_TTL_MS;
 }
+
+/** مقارنة سريعة بدل JSON.stringify على كل مستخدم في الدليل */
+function directoryUserRowEqual(prev: User, next: User): boolean {
+  return (
+    prev.username === next.username &&
+    prev.displayName === next.displayName &&
+    prev.avatar === next.avatar &&
+    prev.bio === next.bio &&
+    prev.verified === next.verified &&
+    prev.isPrivate === next.isPrivate &&
+    prev.founderVerified === next.founderVerified &&
+    prev.appOfficialVerified === next.appOfficialVerified &&
+    prev.supportOfficialVerified === next.supportOfficialVerified &&
+    (prev.followers?.length ?? 0) === (next.followers?.length ?? 0) &&
+    (prev.following?.length ?? 0) === (next.following?.length ?? 0)
+  );
+}
+
 const uid = () => Math.random().toString(36).slice(2, 10);
 export const QURAN_CHANNEL_ID = "channel_quran_official";
 /** قناة أدعية بوت طارق رمدي (الاسم يُفرض عند تحميل الحالة) */
@@ -1495,7 +1520,21 @@ interface Ctx {
   refreshSocialRelation: (targetUserId: ID) => void;
 }
 
+export type AppActions = Omit<
+  Ctx,
+  | "state"
+  | "currentUser"
+  | "isGuest"
+  | "accountSwitching"
+  | "accountSessionKey"
+  | "typingUserByChatId"
+  | "unreadMessageCount"
+  | "feedHasMore"
+>;
+
 const AppCtx = createContext<Ctx | null>(null);
+
+export const AppActionsRefCtx = createContext<MutableRefObject<AppActions> | null>(null);
 
 // AppLanguageCtx re-exported from languageContext for backward compat
 export { AppLanguageCtx } from "./languageContext";
@@ -1766,8 +1805,31 @@ export function AppProvider({
   const stateRef = useRef(state);
   stateRef.current = state;
 
+  const storeListenersRef = useRef(new Set<() => void>());
+  const storeRevisionRef = useRef(0);
+  useEffect(() => {
+    storeRevisionRef.current += 1;
+    storeListenersRef.current.forEach(l => l());
+  }, [state]);
+
+  const storeApi = useMemo(
+    () => ({
+      getState: () => stateRef.current,
+      subscribe: (listener: () => void) => {
+        storeListenersRef.current.add(listener);
+        return () => {
+          storeListenersRef.current.delete(listener);
+        };
+      },
+      getRevision: () => storeRevisionRef.current,
+    }),
+    [],
+  );
+
   const [accountSwitching, setAccountSwitching] = useState(false);
   const [feedHasMore, setFeedHasMore] = useState(true);
+  const [homeFeedPosts, setHomeFeedPosts] = useState<Post[]>([]);
+  const [unreadMessageCount, setUnreadMessageCount] = useState(0);
   const feedLoadMoreBusyRef = useRef(false);
   const [accountSessionKey, setAccountSessionKey] = useState(
     () => `sess-${state.currentUserId || "guest"}-0`,
@@ -1797,6 +1859,7 @@ export function AppProvider({
   const MIN_FULL_PULL_MS = 8_000;
   const MIN_URGENT_PULL_MS = 600;
   const feedPullDebounceRef = useRef<number | null>(null);
+  const lastFeedFetchAtRef = useRef(0);
   const urgentPullRef = useRef(false);
 
   const pullSocialState = useCallback(async () => {
@@ -1920,7 +1983,12 @@ export function AppProvider({
   }, [state.currentUserId]);
 
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const persistSnapshotRef = useRef("");
   useEffect(() => {
+    const snap = stateRef.current;
+    const sig = `${snap.currentUserId}:${snap.chats?.length ?? 0}:${snap.posts?.length ?? 0}:${snap.users?.length ?? 0}`;
+    if (sig === persistSnapshotRef.current) return;
+    persistSnapshotRef.current = sig;
     if (persistTimerRef.current) window.clearTimeout(persistTimerRef.current);
     persistTimerRef.current = window.setTimeout(() => {
       if (typeof document !== "undefined" && document.hidden) return;
@@ -1928,9 +1996,9 @@ export function AppProvider({
         if (typeof document !== "undefined" && document.hidden) return;
         try {
           const uid = stateRef.current.currentUserId;
-          const snap = stateRef.current;
+          const snapNow = stateRef.current;
           const toPersist =
-            uid && !isGuestUserId(uid) ? scopeStateForAccountPersist(snap, uid) : snap;
+            uid && !isGuestUserId(uid) ? scopeStateForAccountPersist(snapNow, uid) : snapNow;
           const stripped = stripGuestFromPersistedState(toPersist);
           localStorage.setItem(STORAGE_KEY, JSON.stringify(stripped));
           if (uid) saveAccountStateCache(uid, stripped);
@@ -1948,10 +2016,13 @@ export function AppProvider({
         write();
       }
     }, 4500);
+  }, [state.chats, state.posts?.length, state.users?.length, state.currentUserId]);
+
+  useEffect(() => {
     return () => {
       if (persistTimerRef.current) window.clearTimeout(persistTimerRef.current);
     };
-  }, [state]);
+  }, []);
 
   /** عند وجود توكن خادم: جرّب جلب الحالة المحفوظة على الخادم بعد التحميل المحلي */
   useEffect(() => {
@@ -2144,6 +2215,78 @@ export function AppProvider({
     () => !!(state.currentUserId && isGuestUserId(state.currentUserId)),
     [state.currentUserId],
   );
+
+  const recomputeUnreadCount = useCallback((snap: AppState = stateRef.current) => {
+    const meId = snap.currentUserId;
+    if (!meId || isGuestUserId(meId)) return 0;
+    let count = 0;
+    for (const chat of snap.chats ?? []) {
+      if (!Array.isArray(chat.members) || !chat.members.includes(meId)) continue;
+      for (const m of chat.messages ?? []) {
+        if (m.senderId !== meId && m.status !== "read") count++;
+      }
+    }
+    return Math.min(count, 99);
+  }, []);
+
+  useEffect(() => {
+    setUnreadMessageCount(recomputeUnreadCount(state));
+  }, [state.chats, state.currentUserId, recomputeUnreadCount]);
+
+  const homeFeedSig = useMemo(() => {
+    const meId = state.currentUserId;
+    if (!meId || isGuestUserId(meId)) return "";
+    const me = state.users.find(u => u.id === meId);
+    if (!me) return "";
+    return `${state.posts?.length ?? 0}:${state.users?.length ?? 0}:${me.id}:${(me.following ?? []).length}:${state.posts?.[0]?.id ?? ""}:${state.posts?.[0]?.createdAt ?? 0}`;
+  }, [state.posts, state.users, state.currentUserId]);
+
+  useEffect(() => {
+    const me = currentUser;
+    if (!me || isGuestUserId(me.id)) {
+      setHomeFeedPosts([]);
+      return;
+    }
+    let cancelled = false;
+    const run = () => {
+      if (cancelled) return;
+      perfMark("homeFeedIndex-start");
+      const next = computeHomeFeedPostIds(stateRef.current, me.id, me);
+      perfMark("homeFeedIndex-end");
+      setHomeFeedPosts(prev =>
+        homeFeedSignature(prev) === homeFeedSignature(next) ? prev : next,
+      );
+    };
+    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+      const id = window.requestIdleCallback(run, { timeout: 150 });
+      return () => {
+        cancelled = true;
+        window.cancelIdleCallback(id);
+      };
+    }
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [homeFeedSig, currentUser?.id]);
+
+  /** تحديث منشورات الفيد in-place عند like/comment — بدون إعادة sort كامل */
+  useEffect(() => {
+    setHomeFeedPosts(prev => {
+      if (!prev.length) return prev;
+      const byId = new Map((state.posts ?? []).map(p => [p.id, p]));
+      let changed = false;
+      const next = prev.map(p => {
+        const u = byId.get(p.id);
+        if (u && u !== p) {
+          changed = true;
+          return u;
+        }
+        return p;
+      });
+      return changed ? next : prev;
+    });
+  }, [state.posts]); // eslint-disable-line -- posts ref tracks like/comment patches
 
   const signup: Ctx["signup"] = async (data) => {
     const pwdErrFirst = validateNewPasswordPlain(data.password);
@@ -5013,13 +5156,13 @@ export function AppProvider({
           followerCount: typeof u.displayFollowerCount === "number" ? u.displayFollowerCount : undefined,
           followingCount: undefined,
         });
-        if (!prev || JSON.stringify(prev) !== JSON.stringify(next)) {
+        if (!prev || !directoryUserRowEqual(prev, next)) {
           byId.set(u.id, next);
           changed = true;
         }
       }
       if (!changed && !cacheTouched) return s;
-      if (!changed) return { ...s };
+      if (!changed) return s;
       return { ...s, users: [...byId.values()] };
     });
   }, [setState]);
@@ -5100,6 +5243,8 @@ export function AppProvider({
         lastFullPullAtRef.current = Date.now();
         fullPullPendingRef.current = false;
         if (!remote) return;
+        perfMark("refreshFromServer-merge-start");
+        const { markServerHydrated } = await import("./remotePushGate");
         const nextPreview = buildMultiAccountState(
           activeId,
           remote,
@@ -5107,35 +5252,30 @@ export function AppProvider({
           undefined,
           { serverAuthoritative: true },
         );
-        const { markServerHydrated } = await import("./remotePushGate");
         markServerHydrated(activeId, nextPreview);
         startTransition(() => {
-          setStateRaw(s => {
-            const next = preserveResolvedFollowRequestNotifications(
+          setStateRaw(s =>
+            preserveResolvedFollowRequestNotifications(
               s,
               buildMultiAccountState(activeId, remote, s, undefined, { serverAuthoritative: true }),
-            );
-            const meRow = next.users.find(u => u.id === activeId);
-            const sess = meRow ? getAccountSession(activeId) : null;
-            if (meRow && sess) {
-              upsertAccountSession({
-                ...sess,
-                username: meRow.username,
-                avatar: toStoredMediaRef(meRow.avatar),
+            ),
+          );
+        });
+        perfMark("refreshFromServer-merge-end");
+        void refreshUserDirectory();
+        const skipFeed =
+          Date.now() - lastFeedFetchAtRef.current < 30_000;
+        if (!skipFeed) {
+          void (async () => {
+            const feed = await apiFetchHomeFeed(token);
+            if (feed.ok) {
+              lastFeedFetchAtRef.current = Date.now();
+              startTransition(() => {
+                setStateRaw(s => mergeHomeFeedIntoState(s, feed));
               });
             }
-            return next;
-          });
-        });
-        void refreshUserDirectory();
-        void (async () => {
-          const feed = await apiFetchHomeFeed(token);
-          if (feed.ok) {
-            startTransition(() => {
-              setStateRaw(s => mergeHomeFeedIntoState(s, feed));
-            });
-          }
-        })();
+          })();
+        }
       })();
     };
 
@@ -5163,6 +5303,7 @@ export function AppProvider({
     const token = getApiToken()!;
     const feed = await apiFetchHomeFeed(token, { limit: 30 });
     if (!feed.ok) return;
+    lastFeedFetchAtRef.current = Date.now();
     setFeedHasMore(!!feed.hasMore);
     startTransition(() => {
       setStateRaw(s => mergeHomeFeedIntoState(s, feed));
@@ -5228,13 +5369,9 @@ export function AppProvider({
       void refreshFeedFromServer();
       refreshFromServer({ urgent: true });
     };
-    void import("./feedVisibility").then(({ AUTH_FEED_REFRESH_EVENT }) => {
-      window.addEventListener(AUTH_FEED_REFRESH_EVENT, onAuthFeed);
-    });
+    window.addEventListener(AUTH_FEED_REFRESH_EVENT, onAuthFeed);
     return () => {
-      void import("./feedVisibility").then(({ AUTH_FEED_REFRESH_EVENT }) => {
-        window.removeEventListener(AUTH_FEED_REFRESH_EVENT, onAuthFeed);
-      });
+      window.removeEventListener(AUTH_FEED_REFRESH_EVENT, onAuthFeed);
     };
   }, [refreshFromServer, refreshFeedFromServer]);
 
@@ -5282,7 +5419,7 @@ export function AppProvider({
     if (!apiBackendEnabled()) return;
     if (!getApiToken()) return;
     if (isGuestUserId(state.currentUserId)) return;
-    return subscribeRealtimeEvents((event, data) => {
+    const unsub = subscribeRealtimeEvents((event, data) => {
       if (event === "typing") {
         const payload = data as { chatId?: string; userId?: string; active?: boolean };
         if (!payload?.chatId || !payload?.userId) return;
@@ -5749,6 +5886,12 @@ export function AppProvider({
         }));
       }
     });
+    return () => {
+      for (const t of typingIndicatorTimersRef.values()) clearTimeout(t);
+      typingIndicatorTimersRef.clear();
+      setTypingUserByChatId({});
+      unsub();
+    };
   }, [
     state.currentUserId,
     mergeDiscoveredUsers,
@@ -5763,10 +5906,17 @@ export function AppProvider({
     const id = window.setInterval(() => {
       if (document.visibilityState !== "visible") return;
       scheduleFeedPull();
-      scheduleRemoteSync();
-    }, 60_000);
+    }, 90_000);
     return () => window.clearInterval(id);
-  }, [state.currentUserId, scheduleRemoteSync, scheduleFeedPull]);
+  }, [state.currentUserId, scheduleFeedPull]);
+
+  useEffect(() => {
+    return () => {
+      if (fullPullTimerRef.current) window.clearTimeout(fullPullTimerRef.current);
+      if (remoteSyncTimerRef.current) window.clearTimeout(remoteSyncTimerRef.current);
+      if (feedPullDebounceRef.current != null) window.clearTimeout(feedPullDebounceRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     if (!apiBackendEnabled() || !getApiToken() || isGuestUserId(state.currentUserId)) return;
@@ -5777,17 +5927,7 @@ export function AppProvider({
     return () => window.clearInterval(id);
   }, [state.currentUserId, refreshUserDirectory]);
 
-  const ctxActionsRef = useRef({} as Omit<
-    Ctx,
-    | "state"
-    | "currentUser"
-    | "isGuest"
-    | "accountSwitching"
-    | "accountSessionKey"
-    | "typingUserByChatId"
-    | "unreadMessageCount"
-    | "feedHasMore"
-  >);
+  const ctxActionsRef = useRef({} as AppActions);
   ctxActionsRef.current = {
     setState,
     enterGuestBrowseMode,
@@ -5877,19 +6017,6 @@ export function AppProvider({
     rateStorySlider,
   };
 
-  const unreadMessageCount = useMemo(() => {
-    const meId = state.currentUserId;
-    if (!meId || isGuestUserId(meId)) return 0;
-    let count = 0;
-    for (const chat of state.chats ?? []) {
-      if (!Array.isArray(chat.members) || !chat.members.includes(meId)) continue;
-      for (const m of chat.messages ?? []) {
-        if (m.senderId !== meId && m.status !== "read") count++;
-      }
-    }
-    return Math.min(count, 99);
-  }, [state.chats, state.currentUserId]);
-
   const value = useMemo<Ctx>(
     () => ({
       state,
@@ -5912,12 +6039,30 @@ export function AppProvider({
       ? "en"
       : "ar";
 
+  const homeFeedValue = useMemo(
+    () => ({ homeFeedPosts, feedHasMore }),
+    [homeFeedPosts, feedHasMore],
+  );
+
+  const appUiValue = useMemo(
+    () => ({ accountSwitching, accountSessionKey, unreadMessageCount }),
+    [accountSwitching, accountSessionKey, unreadMessageCount],
+  );
+
   return (
-    <AppLanguageCtx.Provider value={uiLang}>
-      <TypingCtx.Provider value={typingUserByChatId}>
-        <AppCtx.Provider value={value}>{children}</AppCtx.Provider>
-      </TypingCtx.Provider>
-    </AppLanguageCtx.Provider>
+    <StoreApiCtx.Provider value={storeApi}>
+      <AppUiCtx.Provider value={appUiValue}>
+        <AppLanguageCtx.Provider value={uiLang}>
+          <TypingCtx.Provider value={typingUserByChatId}>
+            <AppActionsRefCtx.Provider value={ctxActionsRef}>
+              <HomeFeedCtx.Provider value={homeFeedValue}>
+                <AppCtx.Provider value={value}>{children}</AppCtx.Provider>
+              </HomeFeedCtx.Provider>
+            </AppActionsRefCtx.Provider>
+          </TypingCtx.Provider>
+        </AppLanguageCtx.Provider>
+      </AppUiCtx.Provider>
+    </StoreApiCtx.Provider>
   );
 }
 
@@ -5926,6 +6071,33 @@ export function useApp(): Ctx {
   if (!ctx) throw new Error("يجب استخدام التطبيق داخل مزوّد الحالة (AppProvider)");
   return ctx;
 }
+
+export { useHomeFeed } from "./homeFeedContext";
+
+export function useAppActions(): AppActions {
+  const ref = useContext(AppActionsRefCtx);
+  if (!ref?.current) throw new Error("useAppActions داخل AppProvider فقط");
+  return ref.current;
+}
+
+export { useAppSelector, shallowEqual, equalIdArrays, useIsGuestSelector } from "./useAppSelector";
+export {
+  useAccountSwitching,
+  useAccountSessionKey,
+  useUnreadMessageCount,
+  useAppUi,
+} from "./appUiContext";
+export {
+  useCurrentUser,
+  useCurrentUserId,
+  useAppTheme,
+  useAppLanguage,
+  usePosts,
+  useChats,
+  useChatById,
+  useUnreadNotificationCount,
+  useReelsPosts,
+} from "./appHooks";
 
 /** حالة «يكتب» فقط — لا تُعيد رسم المكوّنات التي لا تعرض مؤشر الكتابة */
 export { useTypingUsers } from "./typingContext";

@@ -3,6 +3,7 @@ import type { ID, Message } from "./types";
 import { ensureApiTokenMatchesUser } from "./accountSessions";
 import { apiBackendEnabled, ensureApiRuntimeConfig, getApiBaseUrl, getApiToken } from "./apiBackend";
 import { bindCallSocket } from "./webrtcCall";
+import { clearAllTypingPulses } from "./chatRealtimeExtras";
 
 let socket: Socket | null = null;
 let connectGen = 0;
@@ -13,6 +14,7 @@ let socketAuthToken: string | null = null;
 export function disconnectRealtimeSocketHard(): void {
   connectGen += 1;
   socketAuthToken = null;
+  clearAllTypingPulses();
   bindCallSocket(null);
   const s = socket;
   socket = null;

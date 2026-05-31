@@ -1,4 +1,4 @@
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, useContext, useRef, type MutableRefObject, type ReactNode } from "react";
 import type { Post, ProfileReturnContext } from "./types";
 
 export type HomeFeedActions = {
@@ -9,8 +9,9 @@ export type HomeFeedActions = {
   openCommentsSheet: (postId: string) => void;
 };
 
-const HomeFeedActionsContext = createContext<HomeFeedActions | null>(null);
+const HomeFeedActionsRefCtx = createContext<MutableRefObject<HomeFeedActions> | null>(null);
 
+/** ref ثابت — لا يُعيد رسم عناصر الفيد عند re-render الـ HomeScreen */
 export function HomeFeedActionsProvider({
   value,
   children,
@@ -18,13 +19,15 @@ export function HomeFeedActionsProvider({
   value: HomeFeedActions;
   children: ReactNode;
 }) {
+  const ref = useRef(value);
+  ref.current = value;
   return (
-    <HomeFeedActionsContext.Provider value={value}>{children}</HomeFeedActionsContext.Provider>
+    <HomeFeedActionsRefCtx.Provider value={ref}>{children}</HomeFeedActionsRefCtx.Provider>
   );
 }
 
 export function useHomeFeedActions() {
-  const ctx = useContext(HomeFeedActionsContext);
-  if (!ctx) throw new Error("HomeFeedActionsProvider missing");
-  return ctx;
+  const ref = useContext(HomeFeedActionsRefCtx);
+  if (!ref) throw new Error("HomeFeedActionsProvider missing");
+  return ref.current;
 }

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { AppState, ID } from "@/lib/types";
-import { userById } from "@/lib/store";
+import type { ID } from "@/lib/types";
+import { useAppSelector } from "@/lib/useAppSelector";
 import { formatStoryViewTime, storyViewerSeenAt } from "@/lib/storyTray";
 import { Avatar } from "../Avatar";
 import { VerifiedMarkForUser } from "../VerifiedBadge";
@@ -10,7 +10,6 @@ import type { StoryItem } from "@/lib/types";
 type Props = {
   open: boolean;
   story: StoryItem;
-  state: AppState;
   onClose: () => void;
   onOpenProfile?: (id: ID) => void;
   onDelete?: () => void;
@@ -19,11 +18,11 @@ type Props = {
 export function StoryViewsSheet({
   open,
   story,
-  state,
   onClose,
   onOpenProfile,
   onDelete,
 }: Props) {
+  const users = useAppSelector(s => s.users);
   const [sheetY, setSheetY] = useState(0);
   const [sheetSpring, setSheetSpring] = useState(false);
   const dragRef = useRef<{
@@ -39,12 +38,12 @@ export function StoryViewsSheet({
   const viewerIds = [...new Set(story.viewedByUserIds || [])];
   const viewers = viewerIds
     .map(id => {
-      const u = userById(state, id);
+      const u = users.find(x => x.id === id);
       if (!u) return null;
       const at = storyViewerSeenAt(story, id) ?? story.createdAt;
       return { user: u, at };
     })
-    .filter(Boolean) as { user: NonNullable<ReturnType<typeof userById>>; at: number }[];
+    .filter(Boolean) as { user: (typeof users)[number]; at: number }[];
 
   viewers.sort((a, b) => b.at - a.at);
 

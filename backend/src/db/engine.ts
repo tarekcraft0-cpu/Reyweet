@@ -416,6 +416,22 @@ export async function listPosts(): Promise<PostRow[]> {
   });
 }
 
+/** منشورات مرتّبة + pagination — يتجنّب تحميل/فرز آلاف المنشورات في الذاكرة للفيد */
+export async function listPostsPaginated(opts?: {
+  limit?: number;
+  before?: number;
+}): Promise<{ rows: PostRow[]; hasMore: boolean }> {
+  const limit = Math.min(60, Math.max(1, opts?.limit ?? 40));
+  const map = await readJson<Record<string, PostRow>>(filePaths.posts, {});
+  let rows = Object.values(map);
+  rows.sort((a, b) => (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0));
+  if (opts?.before && Number.isFinite(opts.before)) {
+    rows = rows.filter(r => (Date.parse(r.createdAt) || 0) < opts.before!);
+  }
+  const hasMore = rows.length > limit;
+  return { rows: rows.slice(0, limit), hasMore };
+}
+
 export async function upsertPost(row: PostRow): Promise<void> {
   return withLock("posts", async () => {
     const map = await readJson<Record<string, PostRow>>(filePaths.posts, {});

@@ -190,3 +190,11 @@ export function toStoredMediaRef(src: string | undefined | null): string {
 export function resolveMediaUrl(src: string | undefined | null): string {
   return normalizeMediaRef(src);
 }
+
+/** مسار مصغّر — يُستخدم ProgressiveImage عند توفر thumbs على الخادم */
+export function thumbnailMediaUrl(url: string): string | null {
+  if (!url?.includes("/media/images/")) return null;
+  const base = url.split("?")[0] ?? url;
+  if (base.endsWith("_thumb.webp")) return base;
+  return base.replace(/\.(jpe?g|png|webp)$/i, "_thumb.webp");
+}

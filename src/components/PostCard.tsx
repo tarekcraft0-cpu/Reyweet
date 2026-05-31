@@ -1,9 +1,17 @@
-import { memo, useState, startTransition, useMemo } from "react";
+import { memo, useState, startTransition, useMemo, useCallback } from "react";
 import { LazyInView } from "./LazyInView";
 import { postFeedSignature } from "@/lib/postFeedSignature";
 import { postShowsFeedMedia } from "@/lib/postMedia";
 import { PostOptionsMenu } from "./PostOptionsMenu";
-import { useApp, userById, visibleMediaNotes, isMutual } from "@/lib/store";
+import {
+  useAppActions,
+  useAppSelector,
+  useIsGuestSelector,
+  userById,
+  visibleMediaNotes,
+  isMutual,
+} from "@/lib/store";
+import { useProfiledRender } from "@/lib/renderProfiler";
 import { notifyGuestActionBlocked } from "@/lib/guestBlocked";
 import { formatRelativeTime } from "@/lib/formatRelativeTime";
 import type { MediaNote, Post, ProfileReturnContext } from "@/lib/types";
@@ -40,10 +48,41 @@ function PostCardInner({
   onOpenChat,
   profileReturnTab,
 }: Props) {
-  const { state, currentUser, toggleLike, toggleRepost, addComment, isGuest } = useApp();
+  useProfiledRender("PostCard");
+  const { toggleLike, toggleRepost, addComment } = useAppActions();
+  const currentUser = useAppSelector(s => {
+    const id = s.currentUserId;
+    if (!id) return null;
+    return userById(s, id) ?? null;
+  });
+  const isGuest = useIsGuestSelector();
+  const lang = useAppSelector(s => s.language);
+  const author = useAppSelector(s => userById(s, post.userId));
+  const users = useAppSelector(s => s.users);
+  const postId = post.id;
+  const feedNotes = useAppSelector(
+    useCallback(
+      s => {
+        const cu = userById(s, s.currentUserId);
+        if (!cu) return [] as MediaNote[];
+        const raw = visibleMediaNotes(s, "post", postId, cu.id).slice(0, 5);
+        return raw.filter(n => {
+          const nu = userById(s, n.authorId);
+          return nu && (n.authorId === cu.id || isMutual(s, cu.id, n.authorId));
+        });
+      },
+      [postId],
+    ),
+    useCallback((a: MediaNote[], b: MediaNote[]) => {
+      if (a === b) return true;
+      if (a.length !== b.length) return false;
+      for (let i = 0; i < a.length; i++) {
+        if (a[i].id !== b[i].id || a[i].text !== b[i].text) return false;
+      }
+      return true;
+    }, []),
+  );
   const [noteToReply, setNoteToReply] = useState<MediaNote | null>(null);
-  const lang = state.language;
-  const author = userById(state, post.userId);
   const postMedia = useMemo(
     () => normalizePostMedia(post),
     [post.image, post.video, post.audio, post.type],
@@ -64,11 +103,6 @@ function PostCardInner({
   };
   const liked = currentUser ? postLikes.includes(currentUser.id) : false;
   const reposted = currentUser ? postReposts.includes(currentUser.id) : false;
-  const feedNotesRaw = currentUser ? visibleMediaNotes(state, "post", post.id, currentUser.id).slice(0, 5) : [];
-  const feedNotes = feedNotesRaw.filter(n => {
-    const nu = userById(state, n.authorId);
-    return nu && (n.authorId === currentUser!.id || isMutual(state, currentUser!.id, n.authorId));
-  });
   if (!author) return null;
 
   const openAuthorProfile = (userId: string) => {
@@ -82,7 +116,7 @@ function PostCardInner({
     if (!post.text) return null;
     return renderMentionHashtagNodes(post.text, {
       renderMention: createMentionRenderer({
-        users: state.users,
+        users,
         onUserClick: userId => startTransition(() => openAuthorProfile(userId)),
       }),
       renderHashtag: (h, key) => (
@@ -91,13 +125,14 @@ function PostCardInner({
         </span>
       ),
     });
-  }, [post.text, state.users]);
+  }, [post.text, users]);
 
   const notesOverlay =
     feedNotes.length > 0 ? (
       <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex gap-2 overflow-x-auto bg-gradient-to-b from-black/55 via-black/25 to-transparent px-2.5 pb-8 pt-2.5">
         {feedNotes.map(n => {
-          const nu = userById(state, n.authorId)!;
+          const nu = users.find(u => u.id === n.authorId);
+          if (!nu) return null;
           const canReplyNote = !!onOpenChat && n.authorId !== currentUser!.id;
           return (
             <div key={n.id} className="pointer-events-auto flex max-w-[7.5rem] shrink-0 flex-col items-start gap-1">

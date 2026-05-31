@@ -9,6 +9,7 @@ import { logAuthRoute } from "@/lib/authRouteDebug";
 import { clearStaleApiConfig, probeHealth } from "@/lib/apiConfig";
 import { isNativeCapacitorShell, isPublicAppHost, isVpsProductionHost } from "@/lib/apiUrlPolicy";
 import { initNativeKeyboardLayout } from "@/lib/chatKeyboardInsets";
+import { initSafeAreaBootstrap } from "@/lib/safeAreaBootstrap";
 import { warmGlobalPointerBackRouter } from "@/lib/globalPointerBackRouter";
 import {
   installNativeTextSelectionGuard,
@@ -37,6 +38,7 @@ export function WebAppRoot() {
     }
     installNativeTextSelectionGuard();
     warmGlobalPointerBackRouter();
+    initSafeAreaBootstrap();
     clearStaleApiConfig();
     if (isNativeCapacitorShell()) {
       void initNativeKeyboardLayout();

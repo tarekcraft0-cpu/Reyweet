@@ -1,12 +1,20 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { HomeFeedPostItem } from "../home/HomeFeedPostItem";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, memo } from "react";
 import { HomeFeedActionsProvider } from "@/lib/homeFeedActionsContext";
+import { VirtualizedHomeFeed } from "../home/VirtualizedHomeFeed";
 import { useTabPanelScrollRef } from "@/lib/tabPanelScrollContext";
 import { useIsTabActive } from "@/lib/tabActiveContext";
-import { useApp, userById, visibleStoryFriendsUserIds } from "@/lib/store";
-import { canViewPostInHomeFeed } from "@/lib/feedVisibility";
+import {
+  useAppActions,
+  useAppSelector,
+  useHomeFeed,
+  useIsGuestSelector,
+  userById,
+  visibleStoryFriendsUserIds,
+} from "@/lib/store";
+import { equalIdArrays } from "@/lib/useAppSelector";
+import { useScreenPerf } from "@/lib/useScreenPerf";
+import { useProfiledRender } from "@/lib/renderProfiler";
 import { storyViewerTrayRing } from "@/lib/storyTray";
-import { isReelFeedPost } from "@/lib/postMedia";
 import { notifyGuestActionBlocked } from "@/lib/guestBlocked";
 import { useT } from "@/lib/i18n";
 import { requestOpenStoryGallery } from "@/lib/camera/cameraEvents";
@@ -26,24 +34,30 @@ interface Props {
   onConsumedRestoreFromProfile?: () => void;
 }
 
-export function HomeScreen({
+export const HomeScreen = memo(function HomeScreen({
   onOpenProfile,
   onOpenChat,
   restoreFromProfileContext = null,
   onConsumedRestoreFromProfile,
 }: Props) {
+  useProfiledRender("HomeScreen");
   const {
-    state,
-    currentUser,
     addComment,
     deleteComment,
-    isGuest,
-    refreshFromServer,
     refreshFeedFromServer,
     loadMoreFeedFromServer,
-    feedHasMore,
-  } = useApp();
+  } = useAppActions();
+  const currentUser = useAppSelector(s => {
+    const id = s.currentUserId;
+    if (!id) return null;
+    return userById(s, id) ?? null;
+  });
+  const isGuest = useIsGuestSelector();
+  const posts = useAppSelector(s => s.posts);
+  const users = useAppSelector(s => s.users);
+  const { homeFeedPosts: feed, feedHasMore } = useHomeFeed();
   const isHomeTabActive = useIsTabActive("home");
+  useScreenPerf("HomeScreen", { active: isHomeTabActive });
   const t = useT();
   const [shareTarget, setShareTarget] = useState<Post | null>(null);
   const [storyOpen, setStoryOpen] = useState<StoryOpenRequest | null>(null);
@@ -52,11 +66,12 @@ export function HomeScreen({
   const [commentsSheetPostId, setCommentsSheetPostId] = useState<string | null>(null);
   const [sheetCommentDraft, setSheetCommentDraft] = useState("");
   const [feedTick, setFeedTick] = useState(0);
-  const [visibleCount, setVisibleCount] = useState(25);
-  const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
+  /** ثابت — قياس ديناميكي يسبب حلقة layout مع virtualizer (#185) */
+  const headerHeight = 280;
+  const loadMoreBusyRef = useRef(false);
   const [pullHint, setPullHint] = useState(false);
   const touchRef = useRef({ y0: 0, active: false });
-  const me = currentUser!;
   const closeStory = useCallback(() => setStoryOpen(null), []);
   const openProfileFromStory = useCallback((id: string) => {
     try { sessionStorage.setItem("retweet_return_story_user_id", storyOpen?.userId || ""); } catch { /* ignore */ }
@@ -77,7 +92,7 @@ export function HomeScreen({
     const d = restoreFromProfileContext;
     onConsumedRestoreFromProfile?.();
     if (!d.postId || !d.homeSurface) return;
-    const p = state.posts.find(x => x.id === d.postId);
+    const p = posts.find(x => x.id === d.postId);
     if (!p) return;
     const surface = d.homeSurface;
     if (surface === "feed_comments_sheet") {
@@ -89,11 +104,11 @@ export function HomeScreen({
       setFocusCommentsOnOpen(!!d.commentsOpen);
       setOpenPostId(d.postId);
     }
-  }, [restoreFromProfileContext, state.posts, onConsumedRestoreFromProfile]);
+  }, [restoreFromProfileContext, posts, onConsumedRestoreFromProfile]);
 
   const openPost = useMemo(
-    () => (openPostId ? state.posts.find(p => p.id === openPostId) ?? null : null),
-    [openPostId, state.posts],
+    () => (openPostId ? posts.find(p => p.id === openPostId) ?? null : null),
+    [openPostId, posts],
   );
 
   useEffect(() => {
@@ -101,8 +116,8 @@ export function HomeScreen({
   }, [commentsSheetPostId]);
 
   const commentsSheetPost = useMemo(
-    () => (commentsSheetPostId ? state.posts.find(po => po.id === commentsSheetPostId) ?? null : null),
-    [state.posts, commentsSheetPostId],
+    () => (commentsSheetPostId ? posts.find(po => po.id === commentsSheetPostId) ?? null : null),
+    [posts, commentsSheetPostId],
   );
 
   const handleStoryCreate = useCallback(() => {
@@ -118,6 +133,13 @@ export function HomeScreen({
   }, []);
 
   const tabScrollRef = useTabPanelScrollRef();
+  const pullHintTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (pullHintTimerRef.current != null) window.clearTimeout(pullHintTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     const scrollTop = () => tabScrollRef?.current?.scrollTop ?? 0;
@@ -133,7 +155,11 @@ export function HomeScreen({
         setFeedTick(t => t + 1);
         setPullHint(true);
         void refreshFeedFromServer();
-        window.setTimeout(() => setPullHint(false), 1400);
+        if (pullHintTimerRef.current != null) window.clearTimeout(pullHintTimerRef.current);
+        pullHintTimerRef.current = window.setTimeout(() => {
+          pullHintTimerRef.current = null;
+          setPullHint(false);
+        }, 1400);
       }
     };
     window.addEventListener("touchstart", onStart, { passive: true });
@@ -144,14 +170,27 @@ export function HomeScreen({
     };
   }, [tabScrollRef, refreshFeedFromServer]);
 
-  const storyFriends = useMemo(
-    () => visibleStoryFriendsUserIds(state, me.id),
-    [state.stories, state.users, me.id, me.following, feedTick],
+  const feedTickRef = useRef(feedTick);
+  feedTickRef.current = feedTick;
+
+  const storyFriends = useAppSelector(
+    s => {
+      void feedTickRef.current;
+      const meId = s.currentUserId;
+      if (!meId) return [] as string[];
+      return visibleStoryFriendsUserIds(s, meId);
+    },
+    equalIdArrays,
   );
 
-  const storyTrayRing = useMemo(
-    () => storyViewerTrayRing(state, me.id),
-    [state.stories, me.id, feedTick],
+  const storyTrayRing = useAppSelector(
+    s => {
+      void feedTickRef.current;
+      const meId = s.currentUserId;
+      if (!meId) return [] as string[];
+      return storyViewerTrayRing(s, meId);
+    },
+    equalIdArrays,
   );
 
   const openPostById = useCallback((postId: string) => {
@@ -178,38 +217,15 @@ export function HomeScreen({
   useEffect(() => {
     if (!isHomeTabActive || isGuest) return;
     void refreshFeedFromServer();
-    refreshFromServer({ urgent: true });
-  }, [isHomeTabActive, isGuest, refreshFromServer, refreshFeedFromServer]);
+  }, [isHomeTabActive, isGuest, refreshFeedFromServer]);
 
-  useEffect(() => {
-    setVisibleCount(25);
-  }, [feedTick, isHomeTabActive]);
-
-  const feed = useMemo(() => {
-    const seen = new Set<string>();
-    return (state.posts ?? [])
-      .filter(p => {
-        if (!p?.id || seen.has(p.id) || isReelFeedPost(p)) return false;
-        seen.add(p.id);
-        return canViewPostInHomeFeed(state, me.id, p, me);
-      })
-      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
-  }, [state.posts, state.users, me, feedTick]);
-
-  useEffect(() => {
-    const el = loadMoreSentinelRef.current;
-    if (!el || !isHomeTabActive) return;
-    const io = new IntersectionObserver(
-      entries => {
-        if (!entries.some(e => e.isIntersecting)) return;
-        setVisibleCount(c => c + 20);
-        if (feedHasMore) void loadMoreFeedFromServer();
-      },
-      { root: null, rootMargin: "400px 0px", threshold: 0 },
-    );
-    io.observe(el);
-    return () => io.disconnect();
-  }, [isHomeTabActive, feedHasMore, loadMoreFeedFromServer, feed.length]);
+  const handleLoadMore = useCallback(() => {
+    if (loadMoreBusyRef.current || !feedHasMore) return;
+    loadMoreBusyRef.current = true;
+    void loadMoreFeedFromServer().finally(() => {
+      loadMoreBusyRef.current = false;
+    });
+  }, [feedHasMore, loadMoreFeedFromServer]);
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col bg-background">
@@ -220,6 +236,7 @@ export function HomeScreen({
       }
       aria-hidden={openPost ? true : undefined}
     >
+      <div ref={headerRef} className="shrink-0">
       {pullHint && (
         <div className="mx-3 mt-1 shrink-0 rounded-full bg-primary/90 text-primary-foreground text-center text-xs py-2 px-3 shadow-md">
           تم التحديث — أحدث المنشورات والستوريات
@@ -252,17 +269,17 @@ export function HomeScreen({
           </button>
         </div>
       </div>
+      </div>
 
       <section aria-label="الخلاصة" className="relative z-0 flex flex-col bg-background">
-        <HomeFeedActionsProvider value={feedActions}>
-          {feed.slice(0, visibleCount).map(p => (
-            <HomeFeedPostItem key={p.id} post={p} />
-          ))}
-        </HomeFeedActionsProvider>
-        {feed.length > visibleCount && (
-          <p className="py-4 text-center text-xs text-muted-foreground">جاري تحميل المزيد…</p>
-        )}
-        <div ref={loadMoreSentinelRef} className="h-1 w-full shrink-0" aria-hidden />
+        <VirtualizedHomeFeed
+          posts={feed}
+          scrollRef={tabScrollRef}
+          headerOffsetPx={headerHeight}
+          feedHasMore={feedHasMore}
+          onLoadMore={handleLoadMore}
+          feedActions={feedActions}
+        />
         {feed.length === 0 && (
           <p className="text-center text-muted-foreground py-12">{t("noPosts")}</p>
         )}
@@ -307,7 +324,7 @@ export function HomeScreen({
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto p-3 space-y-2">
               {sheetComments.map(c => {
-                const cu = userById(state, c.userId);
+                const cu = users.find(u => u.id === c.userId);
                 return (
                   <div key={c.id} className="relative flex gap-2 text-sm">
                     <button
@@ -417,4 +434,4 @@ export function HomeScreen({
 
     </div>
   );
-}
+});

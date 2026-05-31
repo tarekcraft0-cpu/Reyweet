@@ -14,7 +14,8 @@ import { useGlobalOverlayBack } from "@/hooks/useGlobalOverlayBack";
 import { type PagerTab } from "./MainTabPager";
 import { MainTabStack } from "./MainTabStack";
 // import { StoryViewer } from "./StoryViewer";
-import { QURAN_CHANNEL_ID, useApp, userById } from "@/lib/store";
+import { QURAN_CHANNEL_ID, useAppActions, useAppLanguage, useAppTheme, useCurrentUser, useCurrentUserId, useIsGuestSelector, useAccountSessionKey, useAccountSwitching, useUnreadMessageCount, useUnreadNotificationCount } from "@/lib/store";
+import { useProfiledRender, startPerfSession, markPerfUserAction } from "@/lib/renderProfiler";
 import { STORY_FULLSCREEN_EVENT } from "@/lib/storyChrome";
 import {
   notifyStoryPickerClose,
@@ -76,6 +77,7 @@ import { GuestBrowseProfilePrompt } from "./GuestBrowseProfilePrompt";
 import { NotificationsPanel } from "./NotificationsPanel";
 import { ReportStatusScreen } from "./moderation/ReportStatusScreen";
 import { NotificationBanner } from "./NotificationBanner";
+import { PerfHUD } from "./dev/PerfHUD";
 import { Avatar } from "./Avatar";
 import { AccountSwitcherSheet } from "./rsocial/AccountSwitcherSheet";
 import { cn } from "@/lib/utils";
@@ -89,6 +91,7 @@ import {
 } from "@/lib/accountSessions";
 import { useNavDoubleTap } from "@/hooks/useNavDoubleTap";
 import logo from "@/assets/logo.png";
+import { SafeAreaTop } from "./SafeAreaTop";
 import { ModerationGateShell } from "./moderation/ModerationGateShell";
 import { apiDismissModerationNotice, apiGetMyModerationStatus } from "@/lib/moderationApi";
 import type { BanInfo } from "@/lib/moderationBanTypes";
@@ -106,21 +109,27 @@ type Tab = "home" | "search" | "reels" | "chat" | "profile";
 type Modal = null | "settings" | "create" | "edit" | "switcher" | "addAccount" | "notifications" | "visitors";
 
 export function App() {
+  useProfiledRender("App");
+  const currentUser = useCurrentUser();
+  const currentUserId = useCurrentUserId();
+  const accountSwitching = useAccountSwitching();
+  const accountSessionKey = useAccountSessionKey();
+  const isGuest = useIsGuestSelector();
+  const unreadMessageCount = useUnreadMessageCount();
+  const theme = useAppTheme();
+  const language = useAppLanguage();
+  const unreadNotifs = useUnreadNotificationCount(currentUser?.id);
   const {
-    state,
-    currentUser,
-    accountSwitching,
-    accountSessionKey,
     switchAccount,
     createSticker,
     openOrCreateChat,
     updateProfile,
-    isGuest,
     exitGuestBrowseMode,
     joinGroupByInviteCode,
     logout,
-    unreadMessageCount,
-  } = useApp();
+  } = useAppActions();
+
+  useEffect(() => startPerfSession(), []);
   const t = useT();
   const [banInfo, setBanInfo] = useState<BanInfo | null>(null);
   const [banPresentation, setBanPresentation] = useState<"gate" | "overlay" | null>(null);
@@ -156,6 +165,8 @@ export function App() {
   /** سحب خروج المحادثة نشط — التقدّم في NAV_HIDE_PROGRESS_CSS_VAR (بدون setState كل إطار) */
   const [chatExitNavActive, setChatExitNavActive] = useState(false);
   const chatExitNavActiveRef = useRef(false);
+  const guestToastTimerRef = useRef<number | null>(null);
+  const switchFailToastTimerRef = useRef<number | null>(null);
   const [postDetailOpen, setPostDetailOpen] = useState(false);
   const [reportSheetOpen, setReportSheetOpen] = useState(false);
   const [reelsCommentsOpen, setReelsCommentsOpen] = useState(false);
@@ -522,7 +533,7 @@ export function App() {
       }
     };
     void tick();
-    const id = window.setInterval(() => void tick(), 12_000);
+    const id = window.setInterval(() => void tick(), 60_000);
     const onVis = () => {
       if (document.visibilityState === "visible") void tick();
     };
@@ -538,10 +549,17 @@ export function App() {
     const onSwitchFail = (e: Event) => {
       const msg = (e as CustomEvent<{ message?: string }>).detail?.message?.trim();
       setSwitchFailToast(msg || "تعذّر تبديل الحساب");
-      window.setTimeout(() => setSwitchFailToast(null), 4200);
+      if (switchFailToastTimerRef.current != null) window.clearTimeout(switchFailToastTimerRef.current);
+      switchFailToastTimerRef.current = window.setTimeout(() => {
+        switchFailToastTimerRef.current = null;
+        setSwitchFailToast(null);
+      }, 4200);
     };
     window.addEventListener(ACCOUNT_SWITCH_FAILED_EVENT, onSwitchFail);
-    return () => window.removeEventListener(ACCOUNT_SWITCH_FAILED_EVENT, onSwitchFail);
+    return () => {
+      window.removeEventListener(ACCOUNT_SWITCH_FAILED_EVENT, onSwitchFail);
+      if (switchFailToastTimerRef.current != null) window.clearTimeout(switchFailToastTimerRef.current);
+    };
   }, []);
 
   useEffect(() => {
@@ -631,10 +649,17 @@ export function App() {
   useEffect(() => {
     const onGuestBlock = () => {
       setGuestToast(true);
-      window.setTimeout(() => setGuestToast(false), 2400);
+      if (guestToastTimerRef.current != null) window.clearTimeout(guestToastTimerRef.current);
+      guestToastTimerRef.current = window.setTimeout(() => {
+        guestToastTimerRef.current = null;
+        setGuestToast(false);
+      }, 2400);
     };
     window.addEventListener("retweet-guest-blocked", onGuestBlock);
-    return () => window.removeEventListener("retweet-guest-blocked", onGuestBlock);
+    return () => {
+      window.removeEventListener("retweet-guest-blocked", onGuestBlock);
+      if (guestToastTimerRef.current != null) window.clearTimeout(guestToastTimerRef.current);
+    };
   }, []);
 
   useEffect(() => {
@@ -822,12 +847,12 @@ export function App() {
   useEffect(() => {
     logAuthRoute("app-render", {
       screen: currentUser ? "main" : getApiToken() ? "session-repair" : "auth",
-      currentUserId: state.currentUserId,
+      currentUserId,
       username: currentUser?.username,
       tab,
       hasToken: !!getApiToken(),
     });
-  }, [currentUser, state.currentUserId, tab]);
+  }, [currentUser, currentUserId, tab]);
 
   useEffect(() => {
     if (tab === "chat") return;
@@ -1095,9 +1120,6 @@ export function App() {
     );
   }
 
-  const unreadNotifs = (state.notifications ?? []).filter(
-    n => n.userId === currentUser.id && !n.read && n.type !== "message",
-  ).length;
   const showChatThreadChrome = tab === "chat" && chatThreadOpen;
   /** محادثة مفتوحة — إخفاء الشريط السفلي وملء الشاشة (يُحدَّث من ChatScreen عبر onThreadOpen) */
   /** أثناء السحب التفاعلي يبقى الشريط السفلي ظاهراً ويتحرك عبر NAV_HIDE_PROGRESS */
@@ -1153,8 +1175,7 @@ export function App() {
         (nativeShell ? "" : "supports-[height:100dvh] ") +
         (banOverlayActive ? "pointer-events-none " : "") +
         appShellHeight +
-        " overflow-hidden " +
-        (immersiveOverlay || settingsImmersive ? "pt-0" : "pt-[var(--sat,0px)]")
+        " overflow-hidden"
       }
       style={
         {
@@ -1164,6 +1185,7 @@ export function App() {
       }
       {...nativeNoSelectCaptureHandlers}
     >
+      {!immersiveOverlay && !settingsImmersive && !storyFullscreen && <SafeAreaTop />}
       {guestToast && (
         <div className="fixed left-3 right-3 top-[max(0.75rem,var(--sat,0px))] z-[500] mx-auto max-w-md rounded-2xl border border-border bg-card px-4 py-3 text-start text-sm shadow-lg">
           سجّل الدخول أو أنشئ حساباً لاستخدام هذه الميزة (إعجاب، رسائل، متابعة…).
@@ -1175,6 +1197,7 @@ export function App() {
         </div>
       )}
       {!storyFullscreen && !immersiveOverlay && !settingsImmersive && <NotificationBanner />}
+      <PerfHUD />
       {!hideAppHeader && (
       <header
         className={
@@ -1389,7 +1412,7 @@ export function App() {
           }}
           overlayZIndex={120}
           dismissPullCssVar={SETTINGS_DISMISS_PULL_CSS_VAR}
-          darkPanelChrome={state.theme === "dark"}
+          darkPanelChrome={theme === "dark"}
           contentClassName="min-h-dvh bg-background text-foreground"
         >
           <AppErrorBoundary label="settings-screen">
@@ -1540,7 +1563,7 @@ export function App() {
 
       <StoryGalleryPicker
         open={storyGalleryOpen}
-        language={state.language}
+        language={language}
         onClose={closeStoryGallery}
         onOpenCamera={() => {
           closeStoryGallery();
@@ -1553,7 +1576,7 @@ export function App() {
       />
       <InstagramCamera
         open={storyInstagramCameraOpen}
-        language={state.language}
+        language={language}
         onClose={() => setStoryInstagramCameraOpen(false)}
         onCapture={cap => {
           setStoryInstagramCameraOpen(false);
@@ -1563,7 +1586,7 @@ export function App() {
       {storyCameraDraft && (
         <CameraCaptureShareScreen
           draft={storyCameraDraft}
-          language={state.language}
+          language={language}
           onClose={() => setStoryCameraDraft(null)}
         />
       )}

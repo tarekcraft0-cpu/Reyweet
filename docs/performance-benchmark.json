@@ -1,30 +1,30 @@
 {
-  "generatedAt": "2026-05-30T23:58:35.392Z",
+  "generatedAt": "2026-05-31T00:38:38.169Z",
   "note": "قبل التحسين: baseline محلي. بعد التحسين: قارن p50/p95 — pagination وcache يجب أن يخفّض feed_filter وjson_stringify.",
   "results": [
     {
       "name": "feed_filter_sort_5k_posts",
       "iterations": 50,
-      "p50Ms": 0.401,
-      "p95Ms": 1.006
+      "p50Ms": 0.389,
+      "p95Ms": 0.937
     },
     {
       "name": "unread_scan_200_chats_x80_msgs",
       "iterations": 50,
       "p50Ms": 0.044,
-      "p95Ms": 0.512
+      "p95Ms": 0.498
     },
     {
       "name": "json_stringify_app_state_5k_posts",
       "iterations": 50,
-      "p50Ms": 3.233,
-      "p95Ms": 5.592
+      "p50Ms": 2.943,
+      "p95Ms": 3.705
     },
     {
       "name": "paginate_slice_30_from_5k",
       "iterations": 50,
       "p50Ms": 0,
-      "p95Ms": 0.002
+      "p95Ms": 0.006
     }
   ],
   "recommendations": [

@@ -59,6 +59,7 @@
     "icons:generate": "node scripts/generate-pwa-icons.mjs",
     "stickers:manifest": "node scripts/generate-custom-sticker-manifest.mjs",
     "build:spa": "node scripts/generate-pwa-icons.mjs && node scripts/generate-custom-sticker-manifest.mjs && vite build --config vite.spa.config.ts",
+    "bench:prod": "node scripts/benchmark-production-browser.mjs",
     "landing:build": "node -e \"const fs=require('fs');for (const d of ['dist','.vercel','.output']) try{fs.rmSync(d,{recursive:true,force:true})}catch(e){}\" && npm run build:spa && npm run build --prefix landing && node scripts/prepare-vercel-static.mjs",
     "landing:preview": "npm run landing:build && npx --yes serve _vercel_site -l tcp://0.0.0.0:4173",
     "landing:copy-builds": "node scripts/copy-app-builds.mjs",

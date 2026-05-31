@@ -16,6 +16,14 @@ class RetweetBridgeViewController: CAPBridgeViewController, WKUIDelegate, WKNavi
       try {
         document.documentElement.classList.add('retweet-native-shell');
         window.__RETWEET_NO_SELECT_BOOT__=true;
+        (function(){
+          var ua=navigator.userAgent||'';
+          if(/iPhone|iPad|iPod/.test(ua)){
+            var longSide=Math.max(screen.width,screen.height);
+            var fb=longSide>=812?47:20;
+            document.documentElement.style.setProperty('--sat',fb+'px');
+          }
+        })();
         document.documentElement.style.webkitUserSelect='none';
         document.documentElement.style.webkitTouchCallout='none';
         if(document.body){

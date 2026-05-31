@@ -128,6 +128,7 @@ import {
 import { ensureGroupRecord } from "./groups/groupService.js";
 import type { GroupVisibility } from "../../src/lib/groupTypes.js";
 import { DEFAULT_AVATAR_DATA_URI } from "./lib/defaultAvatar.js";
+import { jsonGzipMiddleware } from "./lib/jsonGzip.js";
 
 const DUMMY_PASSWORD_HASH =
   "$2a$10$dXJ3SW6G7P50lGmMkkmwe.20cQQubK3.HZWzG3YB1tlRy.fqvM/BG";
@@ -168,6 +169,7 @@ app.use(
 );
 
 app.use(express.json({ limit: "6mb" }));
+app.use(jsonGzipMiddleware);
 
 app.use("/media", (_req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");

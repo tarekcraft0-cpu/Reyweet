@@ -11,13 +11,7 @@ import {
   userIsFollowing,
 } from "@/lib/store";
 import { profilePostAuthorIds } from "@/lib/founderAccount";
-import {
-  apiBackendEnabled,
-  apiFetchUserById,
-  ensureApiRuntimeConfig,
-  getApiToken,
-  userFromSearchResult,
-} from "@/lib/apiBackend";
+import { apiBackendEnabled, getApiToken } from "@/lib/apiBackend";
 import { resolveDisplayFollowerCount } from "@/lib/publicProfileCache";
 import { notifyGuestActionBlocked } from "@/lib/guestBlocked";
 import { storyViewerTrayRing } from "@/lib/storyTray";
@@ -336,24 +330,8 @@ export function ProfileScreen({
   useEffect(() => {
     if (!currentUser || currentUser.id === userId) return;
     refreshSocialRelation(userId);
+    setSocialHydratedAt(Date.now());
   }, [userId, currentUser?.id, refreshSocialRelation]);
-
-  /** جلب عدد المتابعين والقوائم الكاملة من الخادم — يصلح @t من @512 على نفس الجهاز */
-  useEffect(() => {
-    if (!currentUser || currentUser.id === userId || isGuest) return;
-    if (!apiBackendEnabled() || !getApiToken()) return;
-    let cancelled = false;
-    void (async () => {
-      await ensureApiRuntimeConfig();
-      const row = await apiFetchUserById(userId);
-      if (cancelled || !row || row.id !== userId) return;
-      mergeDiscoveredUsers([userFromSearchResult(row)]);
-      setSocialHydratedAt(Date.now());
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [userId, currentUser?.id, mergeDiscoveredUsers, isGuest]);
 
   if (!u) {
     return (

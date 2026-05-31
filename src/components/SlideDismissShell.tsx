@@ -121,7 +121,11 @@ export function SlideDismissShell({
           "pointer-events-auto fixed inset-x-0 flex justify-center overflow-hidden overscroll-none bg-transparent " +
           className
         }
-        style={{ zIndex: overlayZIndex, top: 0, bottom: 0 }}
+        style={{
+          zIndex: overlayZIndex,
+          top: "var(--sat, env(safe-area-inset-top, 0px))",
+          bottom: 0,
+        }}
       >
         <div
           ref={containerRef}
@@ -285,7 +289,11 @@ export function AppDismissSheet({
       />
       <div
         className="pointer-events-none fixed inset-0 flex justify-center bg-transparent"
-        style={{ zIndex: overlayZIndex, top: 0, bottom: 0 }}
+        style={{
+          zIndex: overlayZIndex,
+          top: "var(--sat, env(safe-area-inset-top, 0px))",
+          bottom: 0,
+        }}
       >
         <div ref={containerRef} data-edge-swipe-root className="pointer-events-auto relative h-full w-full max-w-md overflow-hidden">
           <div {...edgeStripProps} />

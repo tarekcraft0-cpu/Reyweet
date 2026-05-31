@@ -10,7 +10,20 @@ import {
   type ReactNode,
 } from "react";
 import { useIsTabActive } from "@/lib/tabActiveContext";
-import { useApp, userById, visibleMediaNotes, isMutual } from "@/lib/store";
+import { useScreenPerf } from "@/lib/useScreenPerf";
+import {
+  useAppActions,
+  useAppLanguage,
+  useCurrentUser,
+  useIsGuestSelector,
+  usePosts,
+  useReelsPosts,
+  useAppSelector,
+  userById,
+  visibleMediaNotes,
+  isMutual,
+} from "@/lib/store";
+import { useProfiledRender } from "@/lib/renderProfiler";
 import { notifyGuestActionBlocked } from "@/lib/guestBlocked";
 import type { MediaNote, Post, ProfileReturnContext } from "@/lib/types";
 import { NoteReplySheet } from "../NoteReplySheet";
@@ -134,7 +147,7 @@ const ReelMediaPlayer = memo(function ReelMediaPlayer({
             src={media.videoUrl}
             loop
             playsInline
-            preload="auto"
+            preload={active ? "auto" : "metadata"}
             poster={media.posterUrl || undefined}
             className={
               "h-full w-full " + (fillFrame ? "object-cover object-center" : "object-contain")
@@ -270,7 +283,7 @@ function SideActionButton({
 /* ═══════════════════════════════════════
    ReelsScreen — الشاشة الرئيسية
 ═══════════════════════════════════════ */
-export function ReelsScreen({
+export const ReelsScreen = memo(function ReelsScreen({
   onOpenProfile,
   onOpenChat,
   restoreFromProfileContext = null,
@@ -281,11 +294,34 @@ export function ReelsScreen({
   restoreFromProfileContext?: ProfileReturnContext | null;
   onConsumedRestoreFromProfile?: () => void;
 }) {
-  const { state, toggleLike, toggleRepost, currentUser, addComment, isGuest, refreshFromServer } =
-    useApp();
+  useProfiledRender("ReelsScreen");
+  const { toggleLike, toggleRepost, addComment, refreshFromServer } = useAppActions();
+  const currentUser = useCurrentUser();
+  const isGuest = useIsGuestSelector();
+  const posts = usePosts();
+  const lang = useAppLanguage();
+  const users = useAppSelector(s => s.users);
+  const mediaNotes = useAppSelector(s => s.mediaNotes);
   const isTabActive = useIsTabActive("reels");
+  useScreenPerf("ReelsScreen", { active: isTabActive });
   const t = useT();
   const me = currentUser!;
+  const notesState = useMemo(
+    () =>
+      ({
+        users,
+        mediaNotes,
+        currentUserId: me.id,
+        posts: [],
+        stories: [],
+        chats: [],
+        notifications: [],
+        language: lang,
+        theme: "light",
+      }) as import("@/lib/types").AppState,
+    [users, mediaNotes, me.id, lang],
+  );
+  const allReels = useReelsPosts(me.id, me.blocked ?? []);
 
   const guestBlock = () => {
     if (!isGuest) return false;
@@ -370,21 +406,6 @@ export function ReelsScreen({
       el.removeEventListener("touchend", onEnd);
     };
   }, [refreshFromServer]);
-
-  /* قائمة الريلز */
-  const allReels = useMemo(() => {
-    const seen = new Set<string>();
-    return state.posts
-      .filter(p => {
-        if (!p?.id || !isReelFeedPost(p) || seen.has(p.id)) return false;
-        seen.add(p.id);
-        const author = userById(state, p.userId);
-        if (!author) return true;
-        if (author.blocked.includes(me.id) || me.blocked.includes(author.id)) return false;
-        return true;
-      })
-      .sort((a, b) => b.createdAt - a.createdAt);
-  }, [state.posts, state.users, me.id, me.blocked]);
 
   const reels = tab === "friends"
     ? allReels.filter(p => me.following.includes(p.userId))
@@ -513,7 +534,7 @@ export function ReelsScreen({
     const d = restoreFromProfileContext;
     onConsumedRestoreFromProfile?.();
     if (!d.postId) return;
-    const p = state.posts.find(x => x.id === d.postId);
+    const p = posts.find(x => x.id === d.postId);
     if (!p || !isReelFeedPost(p)) return;
     if (d.commentsOpen) setCommentsFor(p);
     else setCommentsFor(null);
@@ -527,7 +548,7 @@ export function ReelsScreen({
       if (idx < 0) return;
       root.scrollTo({ top: idx * h, behavior: "auto" });
     });
-  }, [restoreFromProfileContext, state.posts, onConsumedRestoreFromProfile, reels, slideHeightPx]);
+  }, [restoreFromProfileContext, posts, onConsumedRestoreFromProfile, reels, slideHeightPx]);
 
   const effectiveSoundOn = soundOn && soundUnlocked;
 
@@ -553,7 +574,7 @@ export function ReelsScreen({
 
       {/* ── Top Bar (Instagram-like) ── */}
       <div
-        className="pointer-events-auto absolute inset-x-0 top-0 z-40 flex items-end justify-between pb-2 pt-[var(--sat)]"
+        className="pointer-events-auto absolute inset-x-0 top-0 z-40 flex items-end justify-between px-4 pb-2 pt-2"
         style={{
           background: "linear-gradient(to bottom, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0) 100%)",
           backdropFilter: "none",
@@ -645,15 +666,15 @@ export function ReelsScreen({
               />
             );
           }
-          const u = userById(state, r.userId);
+          const u = users.find(x => x.id === r.userId);
           const friendReposterId = (r.reposts || []).find(
             uid => uid !== me.id && me.following.includes(uid),
           );
-          const friendReposter = friendReposterId ? userById(state, friendReposterId) : null;
+          const friendReposter = friendReposterId ? users.find(x => x.id === friendReposterId) : null;
           const media = normalizePostMedia(r);
           const liked = r.likes.includes(me.id);
           const reposted = r.reposts.includes(me.id);
-          const notes = visibleMediaNotes(state, "post", r.id, me.id).slice(0, 8);
+          const notes = visibleMediaNotes(notesState, "post", r.id, me.id).slice(0, 8);
           const isActive = isTabActive && activeReelId === r.id;
 
           return (
@@ -1022,4 +1043,4 @@ export function ReelsScreen({
       )}
     </div>
   );
-}
+});

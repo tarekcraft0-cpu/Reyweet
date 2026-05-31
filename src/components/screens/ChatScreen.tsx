@@ -1,4 +1,5 @@
 import {
+  memo,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -36,7 +37,8 @@ import {
 } from "@/lib/safeLayoutDimensions";
 import { ChatStackRoomGestureShell } from "../chat/ChatStackRoomGestureShell";
 import { SlideDismissBackButton, SlideDismissContext, SlideDismissShell } from "../SlideDismissShell";
-import { QURAN_CHANNEL_ID, isProfileNoteActive, useApp, userById, visibleChatMessages } from "@/lib/store";
+import { QURAN_CHANNEL_ID, isProfileNoteActive, useAppActions, useAppLanguage, useAppTheme, useAppSelector, useChats, useCurrentUser, useIsGuestSelector, useAccountSessionKey, userById, visibleChatMessages } from "@/lib/store";
+import { useProfiledRender } from "@/lib/renderProfiler";
 import { useTypingUsers } from "@/lib/typingContext";
 import { notifyGuestActionBlocked } from "@/lib/guestBlocked";
 import { chatNoSelectCaptureHandlers } from "@/lib/chatNoTextSelection";
@@ -283,10 +285,10 @@ function aggregateReactions(reactions: { emoji: string; userId: string }[]) {
   return Array.from(map.entries());
 }
 
-function chatForwardLabel(state: AppState, c: Chat, meId: string): string {
+function chatForwardLabel(users: import("@/lib/types").User[], c: Chat, meId: string): string {
   if (c.isGroup || c.isChannel) return c.name || (c.isChannel ? "قناة" : "مجموعة");
   const oid = c.members.find(x => x !== meId);
-  const u = oid ? userById(state, oid) : null;
+  const u = oid ? users.find(x => x.id === oid) : null;
   return u ? "@" + u.username : "?";
 }
 
@@ -314,18 +316,21 @@ function ForwardChatSheet({
   me: { id: string };
   onClose: () => void;
 }) {
-  const { state, forwardMessage, currentUser } = useApp();
+  const { forwardMessage } = useAppActions();
+  const chats = useChats();
+  const users = useAppSelector(s => s.users);
+  const currentUser = useCurrentUser();
   const t = useT();
   const [q, setQ] = useState("");
   const rows = useMemo(() => {
     const qq = q.trim().toLowerCase();
-    const filtered = state.chats
+    const filtered = chats
       .filter(c => c.id !== currentChat.id)
       .filter(c => c.members.includes(me.id))
       .filter(c => !c.request)
       .filter(c => {
         if (!qq) return true;
-        return chatForwardLabel(state, c, me.id).toLowerCase().includes(qq);
+        return chatForwardLabel(users, c, me.id).toLowerCase().includes(qq);
       });
     const meFull = currentUser;
     if (!meFull || meFull.id !== me.id) return filtered;
@@ -350,7 +355,7 @@ function ForwardChatSheet({
       if (aPin && bPin) return ia - ib;
       return lastActivityAt(b) - lastActivityAt(a);
     });
-  }, [state.chats, state.users, currentChat.id, me.id, q, currentUser]);
+  }, [chats, users, currentChat.id, me.id, q, currentUser]);
 
   return (
     <div className="fixed inset-0 z-[400] flex justify-center bg-black/50" role="presentation" onClick={onClose}>
@@ -372,9 +377,10 @@ function ForwardChatSheet({
             <p className="py-6 text-center text-sm text-muted-foreground">{t("forwardEmpty")}</p>
           ) : (
             rows.map(c => {
-              const label = chatForwardLabel(state, c, me.id);
+              const label = chatForwardLabel(users, c, me.id);
+              const peerId = c.members.find(x => x !== me.id) || "";
               const av =
-                c.isGroup || c.isChannel ? c.avatar : userById(state, c.members.find(x => x !== me.id) || "")?.avatar;
+                c.isGroup || c.isChannel ? c.avatar : users.find(u => u.id === peerId)?.avatar;
               return (
                 <button
                   key={c.id}
@@ -1043,7 +1049,7 @@ function StreakBadge({ streak, compact = false }: { streak: import("@/lib/types"
   );
 }
 
-function ChatListRowWithPeek({
+const ChatListRowWithPeek = memo(function ChatListRowWithPeek({
   chat: c,
   me,
   onOpenChat,
@@ -1071,7 +1077,6 @@ function ChatListRowWithPeek({
   onStackGestureArm?: () => void;
 }) {
   const {
-    state,
     openOrCreateChat,
     sendMessage,
     toggleChatListPin,
@@ -1079,9 +1084,10 @@ function ChatListRowWithPeek({
     deleteChat,
     markChatRead,
     markChatUnread,
-    isGuest,
     joinChannel,
-  } = useApp();
+  } = useAppActions();
+  const lang = useAppLanguage();
+  const users = useAppSelector(s => s.users);
   const typingUserByChatId = useTypingUsers();
   const t = useT();
   const [peekPx, setPeekPx] = useState(0);
@@ -1093,8 +1099,8 @@ function ChatListRowWithPeek({
   const capWidth = () => (typeof window !== "undefined" ? Math.min(window.innerWidth, APP_COLUMN_MAX_PX) : APP_COLUMN_MAX_PX);
 
   const otherId = c.isGroup || c.isChannel ? null : c.members.find(id => id !== me.id);
-  const other = otherId ? userById(state, otherId) : null;
-  const meUser = userById(state, me.id);
+  const other = otherId ? users.find(u => u.id === otherId) : null;
+  const meUser = users.find(u => u.id === me.id);
   const isListPinned = !!(meUser?.pinnedChatIds || []).includes(c.id);
   const isMuted = !!(meUser?.mutedChatIds || []).includes(c.id);
   const peekMessages = useMemo(() => visibleChatMessages(c, me.id), [c.messages, c.hiddenMessageIdsByUser, me.id]);
@@ -1825,7 +1831,7 @@ function ChatListRowWithPeek({
                               <ChatPeekMessageBody
                                 m={m}
                                 isQuran={isQuranPeek}
-                                viewerId={state.currentUserId ?? me.id}
+                                viewerId={currentUserId ?? me.id}
                                 bubbleMine={mine}
                               />
                             </div>
@@ -1957,7 +1963,7 @@ function ChatListRowWithPeek({
               <span
                 className="absolute rounded-full bg-emerald-500 ring-2 ring-background"
                 style={{ width: 14, height: 14, bottom: 8, insetInlineEnd: 8 }}
-                aria-label={state.language === "ar" ? "متصل" : "Online"}
+                aria-label={lang === "ar" ? "متصل" : "Online"}
               />
             )}
             {hasUnread && unreadCount > 1 && (
@@ -2020,10 +2026,10 @@ function ChatListRowWithPeek({
                 onPointerDown={e => e.stopPropagation()}
               >
                 {peerTypingInList
-                  ? listTypingPreview(state.language)
+                  ? listTypingPreview(lang)
                   : last
                     ? lastMessagePreview(last)
-                    : state.language === "ar"
+                    : lang === "ar"
                       ? "لا رسائل بعد"
                       : "No messages yet"}
               </span>
@@ -2043,7 +2049,7 @@ function ChatListRowWithPeek({
             <button
               type="button"
               ref={cameraBtnRef}
-              aria-label={state.language === "ar" ? "كاميرا" : "Camera"}
+              aria-label={lang === "ar" ? "كاميرا" : "Camera"}
               className="flex h-10 w-10 shrink-0 touch-manipulation items-center justify-center rounded-full text-muted-foreground transition active:scale-90 hover:bg-secondary"
               style={{ touchAction: "none" }}
               onPointerDown={e => { e.stopPropagation(); onCameraPointerDown(e); }}
@@ -2078,7 +2084,7 @@ function ChatListRowWithPeek({
           <div
             data-chat-row-menu
             role="menu"
-            dir={state.language === "ar" ? "rtl" : "ltr"}
+            dir={lang === "ar" ? "rtl" : "ltr"}
             className="fixed z-[85] w-[min(calc(100vw-32px),252px)] overflow-hidden rounded-2xl bg-card shadow-2xl ring-1 ring-black/8 dark:ring-white/8"
             style={{ left: rowMenu.x, top: rowMenu.y, transform: "translate(-50%, 8px)" }}
           >
@@ -2092,7 +2098,7 @@ function ChatListRowWithPeek({
             {[
               {
                 icon: <Check size={15} className="text-blue-500" />,
-                label: state.language === "ar" ? (hasUnread ? "تعيين كمقروء" : "تعيين كغير مقروء") : (hasUnread ? "Mark as read" : "Mark as unread"),
+                label: lang === "ar" ? (hasUnread ? "تعيين كمقروء" : "تعيين كغير مقروء") : (hasUnread ? "Mark as read" : "Mark as unread"),
                 onClick: () => {
                   if (hasUnread) markChatRead(c.id);
                   else markChatUnread(c.id);
@@ -2117,7 +2123,7 @@ function ChatListRowWithPeek({
               ...(!c.isGroup && !c.isChannel
                 ? [{
                     icon: <PenLine size={15} className="text-orange-500" />,
-                    label: state.language === "ar" ? "فتح بالوضع المخفي" : "Open in vanish mode",
+                    label: lang === "ar" ? "فتح بالوضع المخفي" : "Open in vanish mode",
                     onClick: () => {
                       setRowMenu(null);
                       openChatFromRowTap();
@@ -2156,7 +2162,7 @@ function ChatListRowWithPeek({
               }}
             >
               <Trash2 size={15} className="shrink-0" />
-              <span className="font-medium">{state.language === "ar" ? "مسح المحادثة" : "Delete conversation"}</span>
+              <span className="font-medium">{lang === "ar" ? "مسح المحادثة" : "Delete conversation"}</span>
             </button>
           </div>
         </>
@@ -2164,7 +2170,7 @@ function ChatListRowWithPeek({
 
       <InstagramCamera
         open={instagramCameraOpen}
-        language={state.language}
+        language={lang}
         onClose={() => setInstagramCameraOpen(false)}
         onCapture={cap => setCameraDraft({ kind: cap.kind, dataUrl: cap.dataUrl })}
         onFallback={() => cameraInputRef.current?.click()}
@@ -2172,7 +2178,7 @@ function ChatListRowWithPeek({
       {cameraDraft && (
         <CameraCaptureShareScreen
           draft={cameraDraft}
-          language={state.language}
+          language={lang}
           mode="chat"
           onSendToChat={payload => {
             sendMessage(c.id, {
@@ -2186,7 +2192,7 @@ function ChatListRowWithPeek({
       )}
     </>
   );
-}
+}, (prev, next) => prev.chat === next.chat && prev.me.id === next.me.id);
 
 interface Props {
   onOpenProfile: (id: string) => void;
@@ -2214,7 +2220,17 @@ export function ChatScreen({
   resumeThreadToProfileUserId,
   onExitThreadToProfile,
 }: Props) {
-  const { state, currentUser, accountSessionKey, openOrCreateChat, setNote, sendMessage, isGuest, replyToProfileNoteAsDm } = useApp();
+  useProfiledRender("ChatScreen");
+  const chats = useChats();
+  const currentUser = useCurrentUser();
+  const isGuest = useIsGuestSelector();
+  const accountSessionKey = useAccountSessionKey();
+  const { openOrCreateChat, setNote, sendMessage, replyToProfileNoteAsDm } = useAppActions();
+  const lang = useAppLanguage();
+  const theme = useAppTheme();
+  const users = useAppSelector(s => s.users);
+  const currentUserId = currentUser?.id ?? null;
+  const stickers = useAppSelector(s => s.stickers);
   const [profileNoteReply, setProfileNoteReply] = useState<{ userId: string; note: string } | null>(null);
   const [profileNoteReplyDraft, setProfileNoteReplyDraft] = useState("");
   const t = useT();
@@ -2504,10 +2520,10 @@ export function ChatScreen({
 
   const resolveOpenChatId = useCallback(
     (id: string) => {
-      const found = findChatByOpenId(state.chats, id, me.id);
+      const found = findChatByOpenId(chats, id, me.id);
       return found ? openChatIdFor(found, me.id) : id;
     },
-    [state.chats, me.id],
+    [chats, me.id],
   );
 
   const flushPendingStackDrag = useCallback(() => {
@@ -2999,7 +3015,7 @@ export function ChatScreen({
   const [gameType, setGameType] = useState<"billiards" | "football">("billiards");
   useEffect(() => {
     if (!initialChatId) return;
-    const found = findChatByOpenId(state.chats, initialChatId, me.id);
+    const found = findChatByOpenId(chats, initialChatId, me.id);
     const id = found ? openChatIdFor(found, me.id) : initialChatId;
     if (openChat === id) {
       if (!stackTapTransitionRef.current) syncStackProgress(1);
@@ -3007,18 +3023,18 @@ export function ChatScreen({
       return;
     }
     openChatDirect(id);
-  }, [initialChatId, onConsumedInitialChat, state.chats, me.id, openChatDirect, openChat, syncStackProgress]);
+  }, [initialChatId, onConsumedInitialChat, chats, me.id, openChatDirect, openChat, syncStackProgress]);
 
   /** بعد دمج DM قديم: openChat يبقى id عشوائي — نحدّثه لـ dm:… */
   useEffect(() => {
     if (!openChat || stackTapTransitionRef.current || stackGestureLocked || stackTransitionLockRef.current) {
       return;
     }
-    const found = findChatByOpenId(state.chats, openChat, me.id);
+    const found = findChatByOpenId(chats, openChat, me.id);
     if (!found) return;
     const canonical = openChatIdFor(found, me.id);
     if (canonical !== openChat) setOpenChat(canonical);
-  }, [state.chats, openChat, me.id, stackGestureLocked]);
+  }, [chats, openChat, me.id, stackGestureLocked]);
 
   const prevAccountIdRef = useRef(me.id);
   /** عند تبديل الحساب: إغلاق الغرفة ومسح حالة المكدس (لا يُنفَّذ عند أول mount) */
@@ -3044,13 +3060,13 @@ export function ChatScreen({
     const onOpen = (e: Event) => {
       const id = (e as CustomEvent<{ chatId?: string }>).detail?.chatId;
       if (id) {
-        const found = findChatByOpenId(state.chats, id, me.id);
+        const found = findChatByOpenId(chats, id, me.id);
         openChatDirect(found ? openChatIdFor(found, me.id) : id);
       }
     };
     window.addEventListener("retweet-open-chat", onOpen);
     return () => window.removeEventListener("retweet-open-chat", onOpen);
-  }, [state.chats, me.id, openChatDirect]);
+  }, [chats, me.id, openChatDirect]);
 
   useEffect(() => {
     const exitingChatBySwipe = stackRoomDismissDragging || !!stackClosingId;
@@ -3313,7 +3329,7 @@ export function ChatScreen({
   ]);
 
   const activeStackChatId = openChat ?? stackDragChatId ?? stackClosingId ?? null;
-  const stackChatRaw = activeStackChatId ? findChatByOpenId(state.chats, activeStackChatId, me.id) : null;
+  const stackChatRaw = activeStackChatId ? findChatByOpenId(chats, activeStackChatId, me.id) : null;
   const stackChat = useMemo(
     () => (stackChatRaw ? normalizeChatRecord(stackChatRaw) : null),
     [stackChatRaw],
@@ -3401,7 +3417,7 @@ export function ChatScreen({
     const orphanId = activeStackChatId;
     const t = window.setTimeout(() => {
       if (stackTapTransitionRef.current) return;
-      const found = findChatByOpenId(state.chats, orphanId, me.id);
+      const found = findChatByOpenId(chats, orphanId, me.id);
       if (found) return;
       setOpenChat(prev => (prev === orphanId ? null : prev));
       setStackDragChatId(null);
@@ -3409,7 +3425,7 @@ export function ChatScreen({
       syncStackProgress(0);
     }, 0);
     return () => window.clearTimeout(t);
-  }, [activeStackChatId, stackChat, state.chats, me.id, syncStackProgress]);
+  }, [activeStackChatId, stackChat, chats, me.id, syncStackProgress]);
   useEffect(() => {
     onActiveChatChange?.(openChat);
   }, [openChat, onActiveChatChange]);
@@ -3439,12 +3455,12 @@ export function ChatScreen({
   }, [profileNoteReply?.userId, profileNoteReply?.note]);
 
   const myChats = useMemo(
-    () => state.chats.filter(c => c.members.includes(me.id) && !c.request),
-    [state.chats, me.id],
+    () => chats.filter(c => c.members.includes(me.id) && !c.request),
+    [chats, me.id],
   );
   const requests = useMemo(
-    () => state.chats.filter(c => c.members.includes(me.id) && c.request),
-    [state.chats, me.id],
+    () => chats.filter(c => c.members.includes(me.id) && c.request),
+    [chats, me.id],
   );
   const messageRequests = useMemo(
     () =>
@@ -3457,7 +3473,7 @@ export function ChatScreen({
   // نوتك + نوتات من تتابعهم (وليس شرط تبادل متابعة)
   const noteUsers = [
     me,
-    ...state.users.filter(
+    ...users.filter(
       u =>
         u.id !== me.id &&
         isProfileNoteActive(u) &&
@@ -3479,7 +3495,7 @@ export function ChatScreen({
       const preview = lastMessagePreview((c.messages || [])[(c.messages || []).length - 1]).toLowerCase();
       return uname.includes(q) || dname.includes(q) || preview.includes(q);
     });
-  }, [myChats, debouncedSearch, state.users]);
+  }, [myChats, debouncedSearch, users]);
 
   /** المثبتة أولاً (حسب ترتيب التثبيت)، ثم الباقي بآخر نشاط رسالة (الأحدث فوق) */
   const sortedFilteredChats = useMemo(() => {
@@ -3608,7 +3624,7 @@ export function ChatScreen({
         ? "none"
         : undefined;
 
-  const isRtl = state.language === "ar";
+  const isRtl = lang === "ar";
 
   /* ─────────────────────────────────────────────────────────
    * CHAT INBOX — rebuilt from scratch (Snapchat-inspired)
@@ -4202,7 +4218,9 @@ function RequestsList({
   onOpen: (id: string) => void;
   onOpenProfile: (id: string) => void;
 }) {
-  const { state, currentUser, acceptRequest, deleteChat } = useApp();
+  const { acceptRequest, deleteChat } = useAppActions();
+  const allChats = useChats();
+  const currentUser = useCurrentUser();
   const t = useT();
   const me = currentUser!;
   const [detail, setDetail] = useState<{ chatId: string; messageId: string } | null>(null);
@@ -4210,13 +4228,13 @@ function RequestsList({
 
   const resolvedDetail = useMemo(() => {
     if (!detail) return null;
-    const c = state.chats.find(x => x.id === detail.chatId);
+    const c = allChats.find(x => x.id === detail.chatId);
     if (!c) return null;
     const vis = visibleChatMessages(c, me.id);
     const msg = vis.find(m => m.id === detail.messageId);
     if (!msg) return null;
     return { chat: c, msg };
-  }, [detail, state.chats, me.id]);
+  }, [detail, allChats, me.id]);
 
   useEffect(() => {
     if (detail && !resolvedDetail) setDetail(null);
@@ -4353,7 +4371,9 @@ function RequestsList({
 }
 
 function CreateGroup({ mode, onBack, onCreated }: { mode: "group" | "channel"; onBack: () => void; onCreated: (id: string) => void }) {
-  const { state, currentUser, createGroup, createChannel } = useApp();
+  const { createGroup, createChannel } = useAppActions();
+  const currentUser = useCurrentUser();
+  const users = useAppSelector(s => s.users);
   const t = useT();
   const me = currentUser!;
   const [step, setStep] = useState<1 | 2>(1);
@@ -4362,7 +4382,7 @@ function CreateGroup({ mode, onBack, onCreated }: { mode: "group" | "channel"; o
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const [memberSearch, setMemberSearch] = useState("");
-  const others = state.users.filter(u => u.id !== me.id && !me.blocked.includes(u.id));
+  const others = users.filter(u => u.id !== me.id && !me.blocked.includes(u.id));
 
   const onAvatarFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -4613,9 +4633,8 @@ function ChatRoom({
   onStackProgress?: (tx: number, phase?: "move" | "end" | "start") => void;
   onAnimatedBack?: () => boolean;
 }) {
+  useProfiledRender("ChatRoom");
   const {
-    state,
-    currentUser,
     sendMessage,
     loadChatMessages,
     markViewOnceOpened,
@@ -4629,12 +4648,17 @@ function ChatRoom({
     addFavoriteStickerContent,
     addCreatedStickerContent,
     mergeDiscoveredUsers,
-    isGuest,
-  } = useApp();
+  } = useAppActions();
+  const currentUser = useCurrentUser();
+  const isGuest = useIsGuestSelector();
+  const lang = useAppLanguage();
+  const appTheme = useAppTheme();
+  const users = useAppSelector(s => s.users);
+  const stickers = useAppSelector(s => s.stickers);
   const typingUserByChatId = useTypingUsers();
   const t = useT();
   const chat = useMemo(() => normalizeChatRecord(chatInput), [chatInput]);
-  const viewerId = resolveActiveViewerId(state) ?? currentUser?.id ?? "";
+  const viewerId = useAppSelector(s => resolveActiveViewerId(s) ?? "") || currentUser?.id || "";
   const meId = currentUser?.id ?? "";
   const [text, setText] = useState("");
   const [mentionPick, setMentionPick] = useState<{ query: string; start: number } | null>(null);
@@ -4759,7 +4783,7 @@ function ChatRoom({
       ? members.filter(u => (u.username ?? "").toLowerCase().includes(q))
       : members;
     return filtered.slice(0, 10);
-  }, [chat.isChannel, mentionPick, chat.members, state.users, meId]);
+  }, [chat.isChannel, mentionPick, chat.members, users, meId]);
   const syncComposerHeight = useCallback(() => {
     const el = composerInputRef.current;
     if (!el) return;
@@ -5307,11 +5331,11 @@ function ChatRoom({
   const isQuranChannel = chat.id === QURAN_CHANNEL_ID;
   const useIgDm = isIgDmChat(isDmRoom, isQuranChannel);
   const dmPalette = useMemo(
-    () => (useIgDm ? getChatDmPalette(state.theme) : null),
-    [useIgDm, state.theme],
+    () => (useIgDm ? getChatDmPalette(appTheme) : null),
+    [useIgDm, appTheme],
   );
-  const dmDir = chatDmLayoutDir(state.language);
-  const dmRtl = chatDmIsRtl(state.language);
+  const dmDir = chatDmLayoutDir(lang);
+  const dmRtl = chatDmIsRtl(lang);
   const activeWallpaper = useMemo(() => getChatWallpaperTheme(wallpaperId), [wallpaperId]);
   const chatWallpaperUrl = activeWallpaper.imagePath
     ? chatWallpaperAssetUrl(activeWallpaper.imagePath)
@@ -5328,8 +5352,8 @@ function ChatRoom({
     return Date.now() - last < 5 * 60_000;
   }, [useIgDm, otherId, chat.lastOpenAtByUser]);
   const chatTimelineRows = useMemo(
-    () => (useIgDm ? buildChatTimelineRows(windowedMessages, meId, state.language) : null),
-    [useIgDm, windowedMessages, meId, state.language],
+    () => (useIgDm ? buildChatTimelineRows(windowedMessages, meId, lang) : null),
+    [useIgDm, windowedMessages, meId, lang],
   );
   const rowsToRender = useMemo(() => {
     if (chatTimelineRows) return chatTimelineRows;
@@ -5632,7 +5656,7 @@ function ChatRoom({
 
   const openMentionProfile = useCallback(
     (uname: string) => {
-      const local = state.users.find(x => x.username.toLowerCase() === uname.toLowerCase());
+      const local = users.find(x => x.username.toLowerCase() === uname.toLowerCase());
       if (local) {
         startTransition(() => onOpenProfile(local.id));
         return;
@@ -5646,7 +5670,7 @@ function ChatRoom({
         startTransition(() => onOpenProfile(user.id));
       })();
     },
-    [state.users, onOpenProfile, mergeDiscoveredUsers],
+    [users, onOpenProfile, mergeDiscoveredUsers],
   );
 
   const renderText = (txt: string, mineBubble: boolean) => {
@@ -5655,7 +5679,7 @@ function ChatRoom({
     return renderMentionHashtagNodes(capped, {
       renderMention: createMentionRenderer({
         variant: glassLinks ? "mine" : "default",
-        users: state.users,
+        users: users,
         onUsernameClick: openMentionProfile,
       }),
       renderHashtag: (h, key) => (
@@ -6007,7 +6031,7 @@ function ChatRoom({
     const lastMine = myOutgoing[myOutgoing.length - 1];
     if (!lastMine || otherLastOpen < lastMine.createdAt) return null;
     const otherRepliedAfter = visibleMessages.some(m => m.senderId === otherId && m.createdAt >= lastMine.createdAt);
-    const lang = state.language;
+    const lang = lang;
     if (!otherRepliedAfter) {
       const mins = Math.max(0, Math.floor((Date.now() - otherLastOpen) / 60000));
       return mins === 0
@@ -6015,7 +6039,7 @@ function ChatRoom({
         : (lang === "en" ? `Seen · ${mins}m` : `تمت القراءة · منذ ${mins} د`);
     }
     return lang === "en" ? "Seen" : "تمت القراءة";
-  }, [chat.isGroup, chat.isChannel, otherId, chat.lastOpenAtByUser, myOutgoing, visibleMessages, state.language]);
+  }, [chat.isGroup, chat.isChannel, otherId, chat.lastOpenAtByUser, myOutgoing, visibleMessages, lang]);
 
   const inlineMediaLightboxUser: User | null =
     inlineMediaViewer &&
@@ -6394,13 +6418,13 @@ function ChatRoom({
                     className="font-medium animate-pulse"
                     style={{ color: CHAT_DM_ACCENT }}
                   >
-                    {state.language === "en" ? "Typing…" : "جاري الكتابة…"}
+                    {lang === "en" ? "Typing…" : "جاري الكتابة…"}
                   </span>
                 ) : peerOnline ? (
                   <>
                     <span className="h-2 w-2 shrink-0 rounded-full bg-[#3dd961]" aria-hidden />
                     <span className="text-[#3dd961]">
-                      {state.language === "en" ? "Active now" : "متصل الآن"}
+                      {lang === "en" ? "Active now" : "متصل الآن"}
                     </span>
                   </>
                 ) : null}
@@ -6408,7 +6432,7 @@ function ChatRoom({
             )}
             {!useIgDm && peerIsTyping && !hideTypingStatus && !chat.isGroup && !chat.isChannel && (
               <div className="text-xs font-medium text-blue-500 animate-pulse">
-                {state.language === "en" ? "Typing…" : "جاري الكتابة…"}
+                {lang === "en" ? "Typing…" : "جاري الكتابة…"}
               </div>
             )}
             {(chat.isGroup || chat.isChannel) && (
@@ -6447,7 +6471,7 @@ function ChatRoom({
                 type="button"
                 data-no-dismiss-drag
                 data-chat-privacy-menu-btn
-                aria-label={state.language === "ar" ? "خيارات المحادثة" : "Chat options"}
+                aria-label={lang === "ar" ? "خيارات المحادثة" : "Chat options"}
                 aria-expanded={showPrivacyMenu}
                 className={
                   "touch-manipulation rounded-full p-2 " +
@@ -6508,7 +6532,7 @@ function ChatRoom({
           {!isQuranChannel && (
             <button
               type="button"
-              aria-label={state.language === "en" ? "Chat theme" : "سمة المحادثة"}
+              aria-label={lang === "en" ? "Chat theme" : "سمة المحادثة"}
               className={
                 "flex h-10 w-10 shrink-0 touch-manipulation items-center justify-center rounded-full " +
                 (chromeOnWallpaper
@@ -6635,7 +6659,7 @@ function ChatRoom({
               </div>
             ) : (
               <span className="text-[11px] text-muted-foreground opacity-60">
-                {state.language === "ar" ? "↑ رسائل أقدم" : "↑ Older messages"}
+                {lang === "ar" ? "↑ رسائل أقدم" : "↑ Older messages"}
               </span>
             )}
           </div>
@@ -6780,7 +6804,7 @@ function ChatRoom({
                       }
                     >
                       <span className="text-[11px] tabular-nums leading-none">
-                        {formatChatBubbleTime(m.createdAt, state.language)}
+                        {formatChatBubbleTime(m.createdAt, lang)}
                       </span>
                       {mine && !vanishMode && (
                         <ChatMessageStatus status={m.status} mine compact />
@@ -7001,7 +7025,7 @@ function ChatRoom({
 
                   <div className="overflow-hidden rounded-2xl border border-white/10 bg-zinc-900/95 text-zinc-50 shadow-2xl backdrop-blur-md">
                     <div className="border-b border-white/10 px-4 pb-2 pt-3 text-xs text-zinc-400">
-                      {formatMsgContextTime(m.createdAt, state.language)}
+                      {formatMsgContextTime(m.createdAt, lang)}
                     </div>
                     <button
                       type="button"
@@ -7157,7 +7181,7 @@ function ChatRoom({
           <div className="relative z-[36] shrink-0 max-h-[72vh]">
             <ChatStickerPicker
               isQuranChannel={isQuranChannel}
-              userStickers={state.stickers.filter(s => s.userId === me.id)}
+              userStickers={stickers.filter(s => s.userId === me.id)}
               favoriteStickerContents={me.favoriteStickerContents || []}
               createdStickerContents={me.createdStickerContents || []}
               onPick={pickSticker}
@@ -7437,7 +7461,7 @@ function ChatRoom({
                       <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/15">
                         <Camera size={15} strokeWidth={2} />
                       </span>
-                      <span>{state.language === "ar" ? "كاميرا" : "Camera"}</span>
+                      <span>{lang === "ar" ? "كاميرا" : "Camera"}</span>
                     </button>
                     <button
                       type="button"
@@ -7453,7 +7477,7 @@ function ChatRoom({
                       <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/15">
                         <ImageIcon size={15} strokeWidth={2} />
                       </span>
-                      <span>{state.language === "ar" ? "الصور" : "Photos"}</span>
+                      <span>{lang === "ar" ? "الصور" : "Photos"}</span>
                     </button>
                     <button
                       type="button"
@@ -7469,7 +7493,7 @@ function ChatRoom({
                         <Video size={15} strokeWidth={2} />
                       </span>
                       <span>
-                        {state.language === "ar" ? "استديو — مقطع كصوت" : "Studio — voice clip"}
+                        {lang === "ar" ? "استديو — مقطع كصوت" : "Studio — voice clip"}
                       </span>
                     </button>
                     <button
@@ -7489,7 +7513,7 @@ function ChatRoom({
                       <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/15">
                         <Sticker size={15} strokeWidth={2} />
                       </span>
-                      <span>{state.language === "ar" ? "ملصقات" : "Stickers"}</span>
+                      <span>{lang === "ar" ? "ملصقات" : "Stickers"}</span>
                     </button>
                     <button
                       type="button"
@@ -7508,7 +7532,7 @@ function ChatRoom({
                       <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/15">
                         <PenLine size={15} strokeWidth={2} />
                       </span>
-                      <span>{state.language === "ar" ? "رسم وكتابة" : "Draw"}</span>
+                      <span>{lang === "ar" ? "رسم وكتابة" : "Draw"}</span>
                     </button>
                     {isDmRoom && (
                       <button
@@ -7526,7 +7550,7 @@ function ChatRoom({
                         }}
                       >
                         <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/15 text-[13px]">🎱</span>
-                        <span>{state.language === "ar" ? "إنشاء لعبة" : "Game"}</span>
+                        <span>{lang === "ar" ? "إنشاء لعبة" : "Game"}</span>
                       </button>
                     )}
                   </div>
@@ -7701,7 +7725,7 @@ function ChatRoom({
                       setInstagramCameraOpen(true);
                     }}
                   >
-                    <Camera size={18} /> <span>{state.language === "ar" ? "كاميرا" : "Camera"}</span>
+                    <Camera size={18} /> <span>{lang === "ar" ? "كاميرا" : "Camera"}</span>
                   </button>
                   <button
                     type="button"
@@ -7792,7 +7816,7 @@ function ChatRoom({
       </div>
       <InstagramCamera
         open={instagramCameraOpen}
-        language={state.language}
+        language={lang}
         onClose={() => setInstagramCameraOpen(false)}
         onCapture={cap => setCameraCompose({ kind: cap.kind, dataUrl: cap.dataUrl })}
         onFallback={() => cameraCaptureRef.current?.click()}
@@ -7800,7 +7824,7 @@ function ChatRoom({
       {cameraCompose && (
         <CameraCaptureShareScreen
           draft={cameraCompose}
-          language={state.language}
+          language={lang}
           mode="chat"
           onSendToChat={payload => {
             dispatchSend({
@@ -7846,7 +7870,7 @@ function ChatRoom({
       <ChatThemePickerSheet
         open={showChatThemePicker}
         selectedId={wallpaperId}
-        language={state.language}
+        language={lang}
         onClose={() => setShowChatThemePicker(false)}
         onSelect={id => {
           setWallpaperId(id);

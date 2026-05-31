@@ -2,6 +2,33 @@ import { ACCOUNT_SWITCHED_EVENT } from "./accountSessions";
 import { apiBackendEnabled, ensureApiRuntimeConfig, getApiBaseUrl, getApiToken } from "./apiBackend";
 import { connectRealtimeSocket, disconnectRealtimeSocketHard } from "./realtimeSocket";
 
+const RECENT_EVENT_TTL_MS = 4_000;
+const recentEvents = new Map<string, number>();
+
+function dedupeEvent(eventName: string, data: unknown): boolean {
+  if (eventName !== "message_new" && eventName !== "post_update" && eventName !== "sync_hint") {
+    return false;
+  }
+  let key = eventName;
+  if (data && typeof data === "object") {
+    const d = data as Record<string, unknown>;
+    if (typeof d.id === "string") key += `:${d.id}`;
+    else if (typeof d.chatId === "string" && d.message && typeof d.message === "object") {
+      const m = d.message as { id?: string };
+      key += `:${d.chatId}:${m.id ?? ""}`;
+    } else if (typeof d.postId === "string") key += `:${d.postId}`;
+    else key += `:${JSON.stringify(d).slice(0, 120)}`;
+  }
+  const now = Date.now();
+  for (const [k, t] of recentEvents) {
+    if (now - t > RECENT_EVENT_TTL_MS) recentEvents.delete(k);
+  }
+  const prev = recentEvents.get(key);
+  if (prev != null && now - prev < RECENT_EVENT_TTL_MS) return true;
+  recentEvents.set(key, now);
+  return false;
+}
+
 export type UserRegisteredEvent = {
   user: {
     id: string;
@@ -110,6 +137,11 @@ function connectRealtimeTransport(
   if (typeof window === "undefined" || !apiBackendEnabled()) return () => {};
   if (!getApiToken()) return () => {};
 
+  const dispatch = (eventName: string, data: unknown) => {
+    if (dedupeEvent(eventName, data)) return;
+    onEvent(eventName, data);
+  };
+
   let socketCleanup: (() => void) | null = null;
   let sseCleanup: (() => void) | null = null;
   let socketConnected = false;
@@ -122,12 +154,12 @@ function connectRealtimeTransport(
 
   const startSse = () => {
     if (stopped || sseCleanup || socketConnected) return;
-    sseCleanup = subscribeSseFallback(onEvent);
+    sseCleanup = subscribeSseFallback(dispatch);
   };
 
   const fallbackTimer = window.setTimeout(startSse, SSE_FALLBACK_MS);
 
-  void connectRealtimeSocket(onEvent, {
+  void connectRealtimeSocket(dispatch, {
     onConnect: () => {
       socketConnected = true;
       window.clearTimeout(fallbackTimer);

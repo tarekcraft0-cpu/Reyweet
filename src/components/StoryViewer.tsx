@@ -1,11 +1,18 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, memo } from "react";
 import {
-  useApp,
+  useAppActions,
+  useAppSelector,
+  useAppLanguage,
+  useChats,
+  useCurrentUser,
+  useIsGuestSelector,
+  useAccountSessionKey,
   userById,
   visibleMediaNotes,
   isMutual,
   storiesForUser,
 } from "@/lib/store";
+import { useProfiledRender } from "@/lib/renderProfiler";
 import {
   firstUnseenStoryIndex,
   nextAuthorInTray,
@@ -34,7 +41,7 @@ function storyTapHaptic() {
   }
 }
 
-export function StoryViewer({
+export const StoryViewer = memo(function StoryViewer({
   userId,
   trayRing,
   initialStoryId,
@@ -56,14 +63,22 @@ export function StoryViewer({
   /** الانتقال لحساب ستوري آخر، أو `null` للإغلاق */
   onRequestAuthor?: (id: string | null) => void;
 }) {
-  const { state, currentUser, openOrCreateChat, sendMessage, toggleStoryLike, recordStoryView, deleteStory, isGuest } =
-    useApp();
+  useProfiledRender("StoryViewer");
+  const {
+    openOrCreateChat,
+    sendMessage,
+    toggleStoryLike,
+    recordStoryView,
+    deleteStory,
+  } = useAppActions();
+  const currentUser = useCurrentUser();
+  const isGuest = useIsGuestSelector();
   const me = currentUser!;
+  const author = useAppSelector(s => userById(s, userId));
+  const stories = useAppSelector(s => storiesForUser(s, userId, me.id));
+
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
-
-  const author = userById(state, userId);
-  const stories = storiesForUser(state, userId, me.id);
 
   const ring = trayRing.length > 0 ? trayRing : [userId];
 
@@ -227,7 +242,7 @@ export function StoryViewer({
     setUserSlideSpring(false);
     setEntering(true);
     const t = window.setTimeout(() => setEntering(false), 400);
-    const list = storiesForUser(state, userId, me.id);
+    const list = stories;
     const fromId = pendingStoryIdRef.current;
     let start = 0;
     if (fromId) {
@@ -332,6 +347,16 @@ export function StoryViewer({
     preloadStoryUrls(urls);
   }, [userId, i, stories, author]);
 
+  const users = useAppSelector(s => s.users);
+  const cappedIdx = stories.length > 0 ? Math.min(Math.max(0, i), stories.length - 1) : 0;
+  const curId = stories[cappedIdx]?.id ?? "";
+  const storyNotes = useAppSelector(
+    useCallback(
+      s => (curId ? visibleMediaNotes(s, "story", curId, me.id).slice(0, 8) : []),
+      [curId, me.id],
+    ),
+  );
+
   if (!author) {
     return null;
   }
@@ -351,11 +376,10 @@ export function StoryViewer({
     );
   }
 
-  const displayIdx = Math.min(Math.max(0, i), stories.length - 1);
+  const displayIdx = cappedIdx;
   const cur = stories[displayIdx];
   const storyMedia = normalizeStoryMedia(cur);
   const storyLiked = (cur.likes || []).includes(me.id);
-  const storyNotes = visibleMediaNotes(state, "story", cur.id, me.id).slice(0, 8);
 
   const submitReply = (e: React.FormEvent) => {
     e.preventDefault();
@@ -677,9 +701,10 @@ export function StoryViewer({
       {storyNotes.length > 0 && (
         <div className="flex justify-center gap-3 flex-wrap px-2 py-2 shrink-0">
           {storyNotes.map(n => {
-            const nu = userById(state, n.authorId);
+            const nu = users.find(u => u.id === n.authorId);
             if (!nu) return null;
-            if (n.authorId !== me.id && !isMutual(state, me.id, n.authorId)) return null;
+            if (n.authorId !== me.id && !isMutual({ users } as import("@/lib/types").AppState, me.id, n.authorId))
+              return null;
             const canReplyNote = onOpenChat && n.authorId !== me.id;
             return (
               <div key={n.id} className="flex flex-col items-center max-w-[4.5rem]">
@@ -888,7 +913,6 @@ export function StoryViewer({
       <StoryViewsSheet
         open={userId === me.id && ownViewsOpen}
         story={cur}
-        state={state}
         onClose={() => setOwnViewsOpen(false)}
         onOpenProfile={onOpenProfile}
         onDelete={handleDeleteCurrentStory}
@@ -896,4 +920,4 @@ export function StoryViewer({
       </div>
     </div>
   );
-}
+});

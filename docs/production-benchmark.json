@@ -1,0 +1,91 @@
+{
+  "generatedAt": "2026-05-31T01:57:14.158Z",
+  "environment": {
+    "build": "spa-dist production (vite build:spa)",
+    "url": "http://127.0.0.1:5199/app/",
+    "viewport": "390x844 @2x",
+    "durationMs": 600000,
+    "scrollPhaseMs": 45000,
+    "feedPostsVisible": 0,
+    "feedLoaded": false,
+    "uiCrashed": true
+  },
+  "measurements": {
+    "homeFeedAvgFps": 59.5,
+    "homeFeedFpsStats": {
+      "avg": 59.5,
+      "min": 55,
+      "max": 60,
+      "p95": 59
+    },
+    "fastScrollWorstFps": 59,
+    "fastScrollFpsStats": {
+      "avg": 59.6,
+      "min": 59,
+      "max": 60,
+      "p95": 59
+    },
+    "memoryStartMb": 6.4,
+    "memoryAfter10MinMb": 5.6,
+    "memoryGrowthMb": -0.7,
+    "jsBlockingEventsOver16ms": 1,
+    "jsBlockingWorstMs": 76,
+    "jsBlockingAvgMs": 76,
+    "topRenderCounts": [
+      {
+        "component": "HomeScreen",
+        "renders": 53
+      },
+      {
+        "component": "StoriesRow",
+        "renders": 53
+      },
+      {
+        "component": "VirtualizedHomeFeed",
+        "renders": 2
+      },
+      {
+        "component": "App",
+        "renders": 1
+      }
+    ],
+    "networkRequestsTotal": 52,
+    "networkApiRequests": 43,
+    "networkRequestsPerMinute": 4.3,
+    "slowRenderEvents": [
+      {
+        "component": "StoriesRow",
+        "ms": 32,
+        "ts": 244.5
+      },
+      {
+        "component": "VirtualizedHomeFeed",
+        "ms": 30.90000000037253,
+        "ts": 245.09999999962747
+      },
+      {
+        "component": "HomeScreen",
+        "ms": 33.09999999962747,
+        "ts": 245.19999999925494
+      },
+      {
+        "component": "App",
+        "ms": 40.09999999962747,
+        "ts": 246.69999999925494
+      }
+    ]
+  },
+  "raw": {
+    "fpsIdleSamples": 551,
+    "fpsScrollSamples": 45,
+    "memorySamples": 641,
+    "longTaskSample": [
+      {
+        "ms": 76,
+        "name": "self",
+        "ts": 295.7999999988824,
+        "phase": "idle"
+      }
+    ]
+  }
+}

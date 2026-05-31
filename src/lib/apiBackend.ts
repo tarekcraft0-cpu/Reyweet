@@ -25,7 +25,8 @@ import { isGroupMembershipSystemContent } from "./groupSystemMessages";
 import { DEFAULT_AVATAR_DATA_URI } from "./defaultAvatar";
 import { getDeviceLabel, getOrCreateDeviceFingerprint } from "./deviceFingerprint";
 import { normalizeRemoteAppState } from "./stateNormalizeBridge";
-import { apiCacheGet, apiCacheInvalidate, apiCacheSet } from "./apiCache";
+import { apiCacheGet, apiCacheGetOrFetch, apiCacheInvalidate, apiCacheSet } from "./apiCache";
+import { perfAsync } from "./perfMark";
 
 const TOKEN_KEY = "retweet_api_token";
 
@@ -561,13 +562,20 @@ export async function apiFetchUserById(userId: ID): Promise<ApiSearchUser | null
   if (!id) return null;
   const token = getApiToken();
   if (!token) return null;
-  const res = await apiFetch(`/v1/users/${encodeURIComponent(id)}`, {
-    method: "GET",
-    token,
-  });
-  if (!res.ok) return null;
-  const data = (await res.json().catch(() => null)) as { user?: ApiSearchUser } | null;
-  return data?.user ?? null;
+  const cacheKey = `user:${id}`;
+  return apiCacheGetOrFetch(
+    cacheKey,
+    async () => {
+      const res = await apiFetch(`/v1/users/${encodeURIComponent(id)}`, {
+        method: "GET",
+        token,
+      });
+      if (!res.ok) return null;
+      const data = (await res.json().catch(() => null)) as { user?: ApiSearchUser } | null;
+      return data?.user ?? null;
+    },
+    { ttlMs: 90_000, staleMs: 45_000 },
+  );
 }
 
 export async function apiSearchUsers(query: string): Promise<ApiSearchUser[]> {
@@ -677,6 +685,13 @@ export async function apiFetchHomeFeed(
   if (cacheKey && !opts?.force) {
     const cached = apiCacheGet<FeedPageResult>(cacheKey);
     if (cached && cached.hit.ok && !cached.stale) return cached.hit;
+    if (cached?.stale && cached.hit.ok) {
+      void (async () => {
+        const fresh = await apiFetchHomeFeed(token, { ...opts, force: true });
+        if (fresh.ok) apiCacheSet(cacheKey, fresh, 25_000, 15_000);
+      })();
+      return cached.hit;
+    }
   }
   const res = await apiFetch(path, {
     method: "GET",
@@ -732,20 +747,28 @@ export async function apiFetchUserPosts(
 }
 
 export async function pullRemoteAppState(token: string): Promise<AppState | null> {
-  const res = await apiFetch("/v1/app-state", {
-    method: "GET",
-    token,
-    timeoutMs: 20_000,
-  });
-  if (!res.ok) return null;
-  const data = (await res.json().catch(() => null)) as { state?: AppState } | null;
-  if (!data?.state) return null;
-  try {
-    return normalizeRemoteAppState(data.state);
-  } catch (e) {
-    console.warn("[Retweet] normalize remote state failed", e);
-    return data.state;
-  }
+  return perfAsync("pullRemoteAppState", () =>
+    apiCacheGetOrFetch(
+      "state:pull",
+      async () => {
+        const res = await apiFetch("/v1/app-state", {
+          method: "GET",
+          token,
+          timeoutMs: 20_000,
+        });
+        if (!res.ok) return null;
+        const data = (await res.json().catch(() => null)) as { state?: AppState } | null;
+        if (!data?.state) return null;
+        try {
+          return normalizeRemoteAppState(data.state);
+        } catch (e) {
+          console.warn("[Retweet] normalize remote state failed", e);
+          return data.state;
+        }
+      },
+      { ttlMs: 8_000, staleMs: 4_000 },
+    ),
+  );
 }
 
 export async function pushRemoteAppState(
@@ -757,6 +780,7 @@ export async function pushRemoteAppState(
   if (!shouldAllowRemotePush(state, opts)) return false;
   const body = JSON.stringify({ state: sanitizeAppStateForSync(state) });
   const res = await apiFetch("/v1/app-state", { method: "PUT", body, token });
+  if (res.ok) apiCacheInvalidate("state:pull");
   return res.ok;
 }
 

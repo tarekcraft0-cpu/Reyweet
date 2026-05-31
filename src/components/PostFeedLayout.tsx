@@ -1,12 +1,14 @@
 import type { ReactNode } from "react";
 import { MoreHorizontal } from "lucide-react";
 import { Avatar } from "./Avatar";
+import { ProgressiveImage } from "./ProgressiveImage";
 import { VerifiedMarkForUser } from "./VerifiedBadge";
 import type { Post } from "@/lib/types";
 import type { User } from "@/lib/types";
 import { userDisplayName } from "@/lib/userDisplay";
 import { postShowsFeedMedia, type NormalizedPostMedia } from "@/lib/postMedia";
 import { TweetVoicePlayer } from "./TweetVoicePlayer";
+import { VideoPauseWhenHidden } from "./VideoPauseWhenHidden";
 
 /** محاذاة عربية ثابتة — لا نستخدم dir=auto حتى لا يقلب الإطار حسب لغة النص */
 export const FEED_POST_DIR = "rtl" as const;
@@ -218,12 +220,10 @@ export function PostFeedMediaBlock({
     return (
       <PostFeedMedia aspect={post.type === "reel" ? "video" : "square"} onClick={onOpen} profileInset={profileInset}>
         {notesOverlay}
-        <img
-          src={postMedia.imageUrl}
-          className="h-full w-full object-cover"
+        <ProgressiveImage
+          src={postMedia.imageUrl!}
           alt=""
-          loading="lazy"
-          decoding="async"
+          className="h-full w-full"
         />
       </PostFeedMedia>
     );
@@ -240,21 +240,23 @@ export function PostFeedMediaBlock({
   if (postMedia.hasVideo) {
     const reelGrid = post.type === "reel";
     return (
-      <PostFeedMedia aspect={reelGrid ? "square" : "video"} onClick={onOpen} profileInset={profileInset}>
-        {notesOverlay}
-        <video
-          src={postMedia.videoUrl}
-          poster={postMedia.posterUrl || undefined}
-          controls
-          playsInline
-          preload="none"
-          className={
-            "h-full w-full " +
-            (reelGrid ? "object-cover object-center" : "object-cover")
-          }
-          onClick={e => e.stopPropagation()}
-        />
-      </PostFeedMedia>
+      <VideoPauseWhenHidden>
+        <PostFeedMedia aspect={reelGrid ? "square" : "video"} onClick={onOpen} profileInset={profileInset}>
+          {notesOverlay}
+          <video
+            src={postMedia.videoUrl}
+            poster={postMedia.posterUrl || undefined}
+            controls
+            playsInline
+            preload="none"
+            className={
+              "h-full w-full " +
+              (reelGrid ? "object-cover object-center" : "object-cover")
+            }
+            onClick={e => e.stopPropagation()}
+          />
+        </PostFeedMedia>
+      </VideoPauseWhenHidden>
     );
   }
 

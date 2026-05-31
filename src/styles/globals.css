@@ -451,6 +451,15 @@ html.retweet-native-shell {
   overscroll-behavior: none;
 }
 
+/** ارتفاع منطقة النوتش/شريط الحالة — يُحدَّث أيضاً من safeAreaBootstrap.ts */
+.safe-area-top {
+  height: var(--sat, env(safe-area-inset-top, 0px));
+  min-height: var(--sat, env(safe-area-inset-top, 0px));
+  max-height: var(--sat, env(safe-area-inset-top, 0px));
+  flex-shrink: 0;
+  pointer-events: none;
+}
+
 html.retweet-native-shell.retweet-kb-body-resize {
   min-height: 0;
   max-height: 100%;

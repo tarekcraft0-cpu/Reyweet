@@ -1,13 +1,13 @@
 # تقرير أداء Retweet
 
-_آخر قياس: 2026-05-30T23:58:35.392Z_
+_آخر قياس: 2026-05-31T00:38:38.169Z_
 
 | اختبار | p50 (ms) | p95 (ms) |
 |--------|----------|----------|
-| feed_filter_sort_5k_posts | 0.401 | 1.006 |
-| unread_scan_200_chats_x80_msgs | 0.044 | 0.512 |
-| json_stringify_app_state_5k_posts | 3.233 | 5.592 |
-| paginate_slice_30_from_5k | 0 | 0.002 |
+| feed_filter_sort_5k_posts | 0.389 | 0.937 |
+| unread_scan_200_chats_x80_msgs | 0.044 | 0.498 |
+| json_stringify_app_state_5k_posts | 2.943 | 3.705 |
+| paginate_slice_30_from_5k | 0 | 0.006 |
 
 ## التحسينات المطبّقة
 

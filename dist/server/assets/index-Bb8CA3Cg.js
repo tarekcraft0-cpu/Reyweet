@@ -1,10 +1,10 @@
-import { r as reactExports, a2 as getAugmentedNamespace, S as getDefaultExportFromCjs, W as jsxRuntimeExports, V as React__default, a3 as React } from "./server-Bhfd37SK.js";
+import { r as reactExports, a2 as getAugmentedNamespace, S as getDefaultExportFromCjs, W as jsxRuntimeExports, V as React__default, a3 as React } from "./server-CMILEwx5.js";
 import require$$0 from "fs";
 import require$$1 from "url";
-import { n as notImplementedClass, a as notImplemented } from "./worker-entry-Cq0OxDtg.js";
+import { n as notImplementedClass, a as notImplemented } from "./worker-entry-CIuDpLNP.js";
 import require$$3 from "http";
 import require$$4 from "https";
-import { r as reactDomExports, R as ReactDOM } from "./router-B0dd4zyw.js";
+import { r as reactDomExports, R as ReactDOM } from "./router-BDqAJRNG.js";
 import require$$0$1 from "util";
 import require$$1$1 from "stream";
 import require$$1$2 from "zlib";
@@ -1167,6 +1167,12 @@ function toStoredMediaRef(src) {
 function resolveMediaUrl(src) {
   return normalizeMediaRef(src);
 }
+function thumbnailMediaUrl(url2) {
+  if (!url2?.includes("/media/images/")) return null;
+  const base = url2.split("?")[0] ?? url2;
+  if (base.endsWith("_thumb.webp")) return base;
+  return base.replace(/\.(jpe?g|png|webp)$/i, "_thumb.webp");
+}
 function withUserListDefaults(u) {
   return {
     ...u,
@@ -1410,20 +1416,20 @@ function stripGuestFromPersistedState(s) {
     users: s.users.filter((u) => !isGuestUserId(u.id))
   };
 }
-function userInState(state, id) {
-  return state.users?.find((u) => u.id === id);
+function userInState(state2, id) {
+  return state2.users?.find((u) => u.id === id);
 }
-function resolveUser(state, id, getUser) {
-  return (getUser ?? userInState)(state, id);
+function resolveUser$1(state2, id, getUser) {
+  return (getUser ?? userInState)(state2, id);
 }
 function isStoryActiveForVisibility(story, now = Date.now()) {
   const hours = typeof story.expiryHours === "number" && [24, 48, 72].includes(story.expiryHours) ? story.expiryHours : 24;
   return story.createdAt + hours * 60 * 60 * 1e3 > now;
 }
-function viewerCanSeePrivateAuthorContent(state, viewerId, authorId, getUser) {
+function viewerCanSeePrivateAuthorContent(state2, viewerId, authorId, getUser) {
   if (!viewerId) return false;
-  const viewer = resolveUser(state, viewerId, getUser);
-  const author = resolveUser(state, authorId, getUser);
+  const viewer = resolveUser$1(state2, viewerId, getUser);
+  const author = resolveUser$1(state2, authorId, getUser);
   if (!viewer || !author) {
     if (!viewer) return false;
     return viewer.following.includes(authorId);
@@ -1432,13 +1438,13 @@ function viewerCanSeePrivateAuthorContent(state, viewerId, authorId, getUser) {
   if (viewerId === authorId) return true;
   return author.followers.includes(viewerId) || viewer.following.includes(authorId);
 }
-function storiesVisibleToViewer(state, viewerId, getUser) {
-  const me = resolveUser(state, viewerId, getUser);
+function storiesVisibleToViewer(state2, viewerId, getUser) {
+  const me = resolveUser$1(state2, viewerId, getUser);
   if (!me) {
-    return (state.stories || []).filter((s) => s.userId === viewerId && isStoryActiveForVisibility(s));
+    return (state2.stories || []).filter((s) => s.userId === viewerId && isStoryActiveForVisibility(s));
   }
-  return (state.stories || []).filter((s) => isStoryActiveForVisibility(s)).filter((s) => {
-    const author = resolveUser(state, s.userId, getUser);
+  return (state2.stories || []).filter((s) => isStoryActiveForVisibility(s)).filter((s) => {
+    const author = resolveUser$1(state2, s.userId, getUser);
     if (!author) {
       if (s.userId === viewerId) return true;
       return me.following.includes(s.userId);
@@ -1447,7 +1453,7 @@ function storiesVisibleToViewer(state, viewerId, getUser) {
     if (!audienceOk) return false;
     if (s.userId === viewerId) return true;
     if (author.blocked.includes(viewerId) || me.blocked.includes(s.userId)) return false;
-    if (author.isPrivate && !viewerCanSeePrivateAuthorContent(state, viewerId, s.userId, getUser)) {
+    if (author.isPrivate && !viewerCanSeePrivateAuthorContent(state2, viewerId, s.userId, getUser)) {
       return false;
     }
     return true;
@@ -1540,34 +1546,34 @@ function scopeChatForAccount(chat, ownerId) {
   };
   return canonicalizeDmChatId(normalized, ownerId);
 }
-function collectDisplayUserIds(state, ownerId) {
+function collectDisplayUserIds(state2, ownerId) {
   const ids = /* @__PURE__ */ new Set([ownerId]);
-  for (const p of state.posts ?? []) {
+  for (const p of state2.posts ?? []) {
     if (p?.userId) ids.add(p.userId);
     for (const uid2 of p.likes ?? []) ids.add(uid2);
     for (const uid2 of p.reposts ?? []) ids.add(uid2);
     for (const c of p.comments ?? []) ids.add(c.userId);
   }
-  for (const c of state.chats ?? []) {
+  for (const c of state2.chats ?? []) {
     for (const mid of c.members ?? []) ids.add(mid);
     for (const m of c.messages ?? []) ids.add(m.senderId);
   }
-  for (const st of state.stories ?? []) ids.add(st.userId);
-  for (const n of state.notifications ?? []) {
+  for (const st of state2.stories ?? []) ids.add(st.userId);
+  for (const n of state2.notifications ?? []) {
     if (n.fromId) ids.add(n.fromId);
   }
   return ids;
 }
-function scopeAppStateToAccount(ownerId, state, options) {
-  if (!ownerId || isGuestUserId(ownerId)) return state;
-  const chats = (state.chats || []).map((c) => scopeChatForAccount(c, ownerId)).filter((c) => c != null);
-  const notifications = (state.notifications || []).filter((n) => n.userId === ownerId);
-  const stories = storiesVisibleToViewer(state, ownerId);
+function scopeAppStateToAccount(ownerId, state2, options) {
+  if (!ownerId || isGuestUserId(ownerId)) return state2;
+  const chats = (state2.chats || []).map((c) => scopeChatForAccount(c, ownerId)).filter((c) => c != null);
+  const notifications = (state2.notifications || []).filter((n) => n.userId === ownerId);
+  const stories = storiesVisibleToViewer(state2, ownerId);
   const accountIds = options?.accountIds?.length ? options.accountIds : [ownerId];
-  const directory = state.users || [];
-  const baseUsers = options?.isolateOwnedUsers ? options.isolateOwnedUsers(ownerId, { ...state, users: directory }) : directory;
+  const directory = state2.users || [];
+  const baseUsers = options?.isolateOwnedUsers ? options.isolateOwnedUsers(ownerId, { ...state2, users: directory }) : directory;
   const usersById = new Map(baseUsers.map((u) => [u.id, u]));
-  for (const id of collectDisplayUserIds(state, ownerId)) {
+  for (const id of collectDisplayUserIds(state2, ownerId)) {
     if (usersById.has(id)) continue;
     const u = directory.find((x) => x.id === id);
     if (u) usersById.set(id, u);
@@ -1575,15 +1581,15 @@ function scopeAppStateToAccount(ownerId, state, options) {
   const users = [...usersById.values()];
   const me = users.find((u) => u.id === ownerId);
   return {
-    ...state,
+    ...state2,
     currentUserId: ownerId,
     accountIds: [...accountIds],
     users,
     chats,
     notifications,
     stories,
-    theme: me ? state.theme : state.theme,
-    language: me ? state.language : state.language
+    theme: me ? state2.theme : state2.theme,
+    language: me ? state2.language : state2.language
   };
 }
 const SESSIONS_KEY = "retweet_account_sessions";
@@ -1835,15 +1841,15 @@ function stripOtherOwnedAccountsFromUsers(ownerId, users) {
   const owned = new Set(listAccountSessions().map((s) => s.userId));
   return users.filter((u) => u.id === ownerId || !owned.has(u.id));
 }
-function isolateUsersForAccountCache(ownerId, state) {
-  return stripOtherOwnedAccountsFromUsers(ownerId, state.users || []);
+function isolateUsersForAccountCache(ownerId, state2) {
+  return stripOtherOwnedAccountsFromUsers(ownerId, state2.users || []);
 }
-function reconcileOwnedAccountProfiles(state) {
-  const cur = state.currentUserId;
-  if (!cur) return state;
-  const live = (state.users || []).find((u) => u.id === cur);
+function reconcileOwnedAccountProfiles(state2) {
+  const cur = state2.currentUserId;
+  if (!cur) return state2;
+  const live = (state2.users || []).find((u) => u.id === cur);
   const canon = canonicalOwnedProfileFields(cur);
-  if (!live && !canon) return state;
+  if (!live && !canon) return state2;
   let merged = live ?? { id: cur, username: "?", email: "", password: "", avatar: "?" };
   if (canon) {
     merged = mergeUserProfilePatch(merged, {
@@ -1853,20 +1859,20 @@ function reconcileOwnedAccountProfiles(state) {
     });
   }
   return {
-    ...state,
-    users: (state.users || []).map((u) => u.id === cur ? merged : u)
+    ...state2,
+    users: (state2.users || []).map((u) => u.id === cur ? merged : u)
   };
 }
-function scopeCacheState(userId, state) {
-  return scopeAppStateToAccount(userId, state, {
+function scopeCacheState(userId, state2) {
+  return scopeAppStateToAccount(userId, state2, {
     accountIds: snapshotAccountIdsForOwner(userId),
     isolateOwnedUsers: (ownerId, s) => isolateUsersForAccountCache(ownerId, s)
   });
 }
-function saveAccountStateCache(userId, state) {
+function saveAccountStateCache(userId, state2) {
   if (typeof window === "undefined") return;
   try {
-    localStorage.setItem(`${CACHE_PREFIX}${userId}`, JSON.stringify(scopeCacheState(userId, state)));
+    localStorage.setItem(`${CACHE_PREFIX}${userId}`, JSON.stringify(scopeCacheState(userId, state2)));
   } catch {
   }
 }
@@ -2010,10 +2016,11 @@ let normalizer = null;
 function setPersistedAppStateNormalizer(fn) {
   normalizer = fn;
 }
-function normalizeRemoteAppState(state) {
-  return normalizer ? normalizer(state) : state;
+function normalizeRemoteAppState(state2) {
+  return normalizer ? normalizer(state2) : state2;
 }
 const store = /* @__PURE__ */ new Map();
+const inFlight = /* @__PURE__ */ new Map();
 function apiCacheGet(key2) {
   const e = store.get(key2);
   if (!e) return null;
@@ -2033,9 +2040,98 @@ function apiCacheSet(key2, data, ttlMs, staleMs) {
   });
 }
 function apiCacheInvalidate(prefix) {
+  if (!prefix) {
+    store.clear();
+    inFlight.clear();
+    return;
+  }
   for (const k of store.keys()) {
     if (k.startsWith(prefix)) store.delete(k);
   }
+  for (const k of inFlight.keys()) {
+    if (k.startsWith(prefix)) inFlight.delete(k);
+  }
+}
+async function apiCacheGetOrFetch(key2, fetcher, opts) {
+  const ttlMs = opts?.ttlMs ?? 6e4;
+  const staleMs = opts?.staleMs ?? Math.floor(ttlMs * 0.65);
+  if (!opts?.force) {
+    const cached2 = apiCacheGet(key2);
+    if (cached2 && !cached2.stale) return cached2.hit;
+    if (cached2?.stale) {
+      void (async () => {
+        try {
+          const fresh = await apiCacheGetOrFetch(key2, fetcher, { ...opts, force: true });
+          apiCacheSet(key2, fresh, ttlMs, staleMs);
+        } catch {
+        }
+      })();
+      return cached2.hit;
+    }
+  }
+  const pending = inFlight.get(key2);
+  if (pending) return pending;
+  const p = fetcher().then((result) => {
+    if (result !== null && result !== void 0) {
+      apiCacheSet(key2, result, ttlMs, staleMs);
+    }
+    return result;
+  }).finally(() => {
+    inFlight.delete(key2);
+  });
+  inFlight.set(key2, p);
+  return p;
+}
+const ENABLED = typeof import.meta !== "undefined" && (typeof localStorage !== "undefined" && localStorage.getItem("retweet_perf") === "1");
+const screenMounts = /* @__PURE__ */ new Map();
+function perfEnabled() {
+  return !!ENABLED;
+}
+function perfMark(name) {
+  if (!ENABLED || typeof performance === "undefined") return;
+  try {
+    performance.mark(name);
+  } catch {
+  }
+}
+function perfMeasure(name, startMark, endMark) {
+  if (!ENABLED || typeof performance === "undefined") return null;
+  try {
+    performance.measure(name, startMark, endMark);
+    const entries = performance.getEntriesByName(name, "measure");
+    const last = entries[entries.length - 1];
+    return last?.duration ?? null;
+  } catch {
+    return null;
+  }
+}
+async function perfAsync(label, fn) {
+  if (!ENABLED) return fn();
+  const start = `${label}-start`;
+  const end = `${label}-end`;
+  perfMark(start);
+  try {
+    return await fn();
+  } finally {
+    perfMark(end);
+    const ms = perfMeasure(label, start, end);
+    if (ms != null && ms > 50) {
+      console.info(`[perf] ${label}: ${ms.toFixed(1)}ms`);
+    }
+  }
+}
+function perfScreenMount(screenName) {
+  if (!ENABLED) return;
+  screenMounts.set(screenName, performance.now());
+  console.info(`[perf] screen:${screenName} mount`);
+}
+function perfLogMemory(label) {
+  if (!ENABLED) return;
+  const perf = performance;
+  const mem = perf.memory;
+  if (!mem) return;
+  const usedMb = (mem.usedJSHeapSize / 1048576).toFixed(1);
+  console.info(`[perf] memory:${label} ${usedMb}MB heap`);
 }
 const TOKEN_KEY = "retweet_api_token";
 const API_RETRY_STATUSES = /* @__PURE__ */ new Set([502, 503, 504]);
@@ -2088,12 +2184,12 @@ function setApiToken(token) {
   } catch {
   }
 }
-function sanitizeAppStateForSync(state) {
-  const ownerId = state.currentUserId;
-  const base = ownerId && !isGuestUserId(ownerId) ? scopeAppStateToAccount(ownerId, state, {
+function sanitizeAppStateForSync(state2) {
+  const ownerId = state2.currentUserId;
+  const base = ownerId && !isGuestUserId(ownerId) ? scopeAppStateToAccount(ownerId, state2, {
     accountIds: snapshotAccountIdsForOwner(ownerId),
     isolateOwnedUsers: (id, s) => isolateUsersForAccountCache(id, s)
-  }) : state;
+  }) : state2;
   return {
     ...base,
     users: (base.users || []).map((u) => ({
@@ -2401,13 +2497,20 @@ async function apiFetchUserById(userId) {
   if (!id) return null;
   const token = getApiToken();
   if (!token) return null;
-  const res = await apiFetch$1(`/v1/users/${encodeURIComponent(id)}`, {
-    method: "GET",
-    token
-  });
-  if (!res.ok) return null;
-  const data = await res.json().catch(() => null);
-  return data?.user ?? null;
+  const cacheKey2 = `user:${id}`;
+  return apiCacheGetOrFetch(
+    cacheKey2,
+    async () => {
+      const res = await apiFetch$1(`/v1/users/${encodeURIComponent(id)}`, {
+        method: "GET",
+        token
+      });
+      if (!res.ok) return null;
+      const data = await res.json().catch(() => null);
+      return data?.user ?? null;
+    },
+    { ttlMs: 9e4, staleMs: 45e3 }
+  );
 }
 async function apiSearchUsers(query) {
   const q = query.trim();
@@ -2497,6 +2600,13 @@ async function apiFetchHomeFeed(token, opts) {
   if (cacheKey2 && !opts?.force) {
     const cached2 = apiCacheGet(cacheKey2);
     if (cached2 && cached2.hit.ok && !cached2.stale) return cached2.hit;
+    if (cached2?.stale && cached2.hit.ok) {
+      void (async () => {
+        const fresh = await apiFetchHomeFeed(token, { ...opts, force: true });
+        if (fresh.ok) apiCacheSet(cacheKey2, fresh, 25e3, 15e3);
+      })();
+      return cached2.hit;
+    }
   }
   const res = await apiFetch$1(path, {
     method: "GET",
@@ -2534,26 +2644,36 @@ async function apiFetchUserPosts(token, userId, opts) {
   };
 }
 async function pullRemoteAppState(token) {
-  const res = await apiFetch$1("/v1/app-state", {
-    method: "GET",
-    token,
-    timeoutMs: 2e4
-  });
-  if (!res.ok) return null;
-  const data = await res.json().catch(() => null);
-  if (!data?.state) return null;
-  try {
-    return normalizeRemoteAppState(data.state);
-  } catch (e) {
-    console.warn("[Retweet] normalize remote state failed", e);
-    return data.state;
-  }
+  return perfAsync(
+    "pullRemoteAppState",
+    () => apiCacheGetOrFetch(
+      "state:pull",
+      async () => {
+        const res = await apiFetch$1("/v1/app-state", {
+          method: "GET",
+          token,
+          timeoutMs: 2e4
+        });
+        if (!res.ok) return null;
+        const data = await res.json().catch(() => null);
+        if (!data?.state) return null;
+        try {
+          return normalizeRemoteAppState(data.state);
+        } catch (e) {
+          console.warn("[Retweet] normalize remote state failed", e);
+          return data.state;
+        }
+      },
+      { ttlMs: 8e3, staleMs: 4e3 }
+    )
+  );
 }
-async function pushRemoteAppState(token, state, opts) {
+async function pushRemoteAppState(token, state2, opts) {
   const { shouldAllowRemotePush } = await import("./remotePushGate-DaTPuI7n.js");
-  if (!shouldAllowRemotePush(state, opts)) return false;
-  const body = JSON.stringify({ state: sanitizeAppStateForSync(state) });
+  if (!shouldAllowRemotePush(state2, opts)) return false;
+  const body = JSON.stringify({ state: sanitizeAppStateForSync(state2) });
   const res = await apiFetch$1("/v1/app-state", { method: "PUT", body, token });
+  if (res.ok) apiCacheInvalidate("state:pull");
   return res.ok;
 }
 async function apiCreateStory(token, story) {
@@ -3069,6 +3189,17 @@ const TypingCtx = reactExports.createContext({});
 function useTypingUsers() {
   return reactExports.useContext(TypingCtx);
 }
+const StoreApiCtx = reactExports.createContext(null);
+const AppUiCtx = reactExports.createContext(null);
+function useAccountSwitching() {
+  return reactExports.useContext(AppUiCtx)?.accountSwitching ?? false;
+}
+function useAccountSessionKey() {
+  return reactExports.useContext(AppUiCtx)?.accountSessionKey ?? "sess-guest-0";
+}
+function useUnreadMessageCount() {
+  return reactExports.useContext(AppUiCtx)?.unreadMessageCount ?? 0;
+}
 async function groupFetch(path, init) {
   const token = init?.token ?? getApiToken();
   const res = await apiFetch$1(path, { ...init, token });
@@ -3223,8 +3354,8 @@ function requireXMLHttpRequest() {
       };
       setState(this.OPENED);
     };
-    this.setDisableHeaderCheck = function(state) {
-      disableHeaderCheck = state;
+    this.setDisableHeaderCheck = function(state2) {
+      disableHeaderCheck = state2;
     };
     this.setRequestHeader = function(header, value2) {
       if (this.readyState != this.OPENED) {
@@ -3514,10 +3645,10 @@ function requireXMLHttpRequest() {
         }
       }
     };
-    var setState = function(state) {
-      if (self2.readyState === state || self2.readyState === self2.UNSENT && abortedFlag)
+    var setState = function(state2) {
+      if (self2.readyState === state2 || self2.readyState === self2.UNSENT && abortedFlag)
         return;
-      self2.readyState = state;
+      self2.readyState = state2;
       if (settings.async || self2.readyState < self2.OPENED || self2.readyState === self2.DONE) {
         self2.dispatchEvent("readystatechange");
       }
@@ -3708,14 +3839,14 @@ function createPacketDecoderStream(maxPayload, binaryType) {
     TEXT_DECODER = new TextDecoder();
   }
   const chunks = [];
-  let state = 0;
+  let state2 = 0;
   let expectedLength = -1;
   let isBinary2 = false;
   return new TransformStream({
     transform(chunk, controller) {
       chunks.push(chunk);
       while (true) {
-        if (state === 0) {
+        if (state2 === 0) {
           if (totalLength(chunks) < 1) {
             break;
           }
@@ -3723,20 +3854,20 @@ function createPacketDecoderStream(maxPayload, binaryType) {
           isBinary2 = (header[0] & 128) === 128;
           expectedLength = header[0] & 127;
           if (expectedLength < 126) {
-            state = 3;
+            state2 = 3;
           } else if (expectedLength === 126) {
-            state = 1;
+            state2 = 1;
           } else {
-            state = 2;
+            state2 = 2;
           }
-        } else if (state === 1) {
+        } else if (state2 === 1) {
           if (totalLength(chunks) < 2) {
             break;
           }
           const headerArray = concatChunks(chunks, 2);
           expectedLength = new DataView(headerArray.buffer, headerArray.byteOffset, headerArray.length).getUint16(0);
-          state = 3;
-        } else if (state === 2) {
+          state2 = 3;
+        } else if (state2 === 2) {
           if (totalLength(chunks) < 8) {
             break;
           }
@@ -3748,14 +3879,14 @@ function createPacketDecoderStream(maxPayload, binaryType) {
             break;
           }
           expectedLength = n * Math.pow(2, 32) + view.getUint32(4);
-          state = 3;
+          state2 = 3;
         } else {
           if (totalLength(chunks) < expectedLength) {
             break;
           }
           const data = concatChunks(chunks, expectedLength);
           controller.enqueue(decodePacket(isBinary2 ? data : TEXT_DECODER.decode(data), binaryType));
-          state = 0;
+          state2 = 0;
         }
         if (expectedLength === 0 || expectedLength > maxPayload) {
           controller.enqueue(ERROR_PACKET);
@@ -7031,12 +7162,79 @@ async function endCall() {
   pc.close();
   active = null;
 }
+const TYPING_STOP_MS = 2e3;
+const REST_TYPING_MIN_MS = 1200;
+const typingStopTimers = /* @__PURE__ */ new Map();
+const lastRestTypingPulseAt = /* @__PURE__ */ new Map();
+function typingSessionKey(chatId, peerId) {
+  return `${chatId}\0${peerId ?? ""}`;
+}
+function emitChatTypingRest(chatId, peerId, active2) {
+  if (!apiBackendEnabled()) return;
+  const token = getApiToken();
+  if (!token) return;
+  const key2 = typingSessionKey(chatId, peerId);
+  if (active2) {
+    const now = Date.now();
+    const prev = lastRestTypingPulseAt.get(key2) ?? 0;
+    if (now - prev < REST_TYPING_MIN_MS) return;
+    lastRestTypingPulseAt.set(key2, now);
+  } else {
+    lastRestTypingPulseAt.delete(key2);
+  }
+  void apiPostChatTyping(token, chatId, peerId, active2);
+}
+function emitChatTyping(chatId, peerId, active2) {
+  const socket2 = getRealtimeSocket();
+  if (socket2?.connected) {
+    socket2.emit("typing", { chatId, peerId: peerId ?? void 0, active: active2 });
+    return;
+  }
+  emitChatTypingRest(chatId, peerId, active2);
+}
+function flushTypingStop(chatId, peerId) {
+  const key2 = typingSessionKey(chatId, peerId);
+  const t = typingStopTimers.get(key2);
+  if (t) {
+    clearTimeout(t);
+    typingStopTimers.delete(key2);
+  }
+  emitChatTyping(chatId, peerId, false);
+}
+function scheduleTypingPulse(chatId, peerId) {
+  const key2 = typingSessionKey(chatId, peerId);
+  emitChatTyping(chatId, peerId, true);
+  const prev = typingStopTimers.get(key2);
+  if (prev) clearTimeout(prev);
+  typingStopTimers.set(
+    key2,
+    setTimeout(() => {
+      typingStopTimers.delete(key2);
+      emitChatTyping(chatId, peerId, false);
+    }, TYPING_STOP_MS)
+  );
+}
+function clearAllTypingPulses() {
+  for (const t of typingStopTimers.values()) clearTimeout(t);
+  typingStopTimers.clear();
+}
+function emitMessagesDelivered(chatId, messageIds) {
+  const socket2 = getRealtimeSocket();
+  if (!socket2?.connected || messageIds.length === 0) return;
+  socket2.emit("message:ack_delivered", { chatId, messageIds });
+}
+function emitMessagesRead(chatId, messageIds) {
+  const socket2 = getRealtimeSocket();
+  if (!socket2?.connected || messageIds.length === 0) return;
+  socket2.emit("message:ack_read", { chatId, messageIds });
+}
 let socket = null;
 let connectGen = 0;
 let socketAuthToken = null;
 function disconnectRealtimeSocketHard() {
   connectGen += 1;
   socketAuthToken = null;
+  clearAllTypingPulses();
   bindCallSocket(null);
   const s = socket;
   socket = null;
@@ -7154,6 +7352,31 @@ async function emitDirectMessage(body, senderId) {
     });
   });
 }
+const RECENT_EVENT_TTL_MS = 4e3;
+const recentEvents = /* @__PURE__ */ new Map();
+function dedupeEvent(eventName, data) {
+  if (eventName !== "message_new" && eventName !== "post_update" && eventName !== "sync_hint") {
+    return false;
+  }
+  let key2 = eventName;
+  if (data && typeof data === "object") {
+    const d = data;
+    if (typeof d.id === "string") key2 += `:${d.id}`;
+    else if (typeof d.chatId === "string" && d.message && typeof d.message === "object") {
+      const m = d.message;
+      key2 += `:${d.chatId}:${m.id ?? ""}`;
+    } else if (typeof d.postId === "string") key2 += `:${d.postId}`;
+    else key2 += `:${JSON.stringify(d).slice(0, 120)}`;
+  }
+  const now = Date.now();
+  for (const [k, t] of recentEvents) {
+    if (now - t > RECENT_EVENT_TTL_MS) recentEvents.delete(k);
+  }
+  const prev = recentEvents.get(key2);
+  if (prev != null && now - prev < RECENT_EVENT_TTL_MS) return true;
+  recentEvents.set(key2, now);
+  return false;
+}
 const RECONNECT_MS = 5e3;
 const SSE_FALLBACK_MS = 800;
 function sleep(ms) {
@@ -7225,6 +7448,10 @@ function connectRealtimeTransport(onEvent) {
   };
   if (!getApiToken()) return () => {
   };
+  const dispatch = (eventName, data) => {
+    if (dedupeEvent(eventName, data)) return;
+    onEvent(eventName, data);
+  };
   let socketCleanup = null;
   let sseCleanup = null;
   let socketConnected = false;
@@ -7235,10 +7462,10 @@ function connectRealtimeTransport(onEvent) {
   };
   const startSse = () => {
     if (stopped || sseCleanup || socketConnected) return;
-    sseCleanup = subscribeSseFallback(onEvent);
+    sseCleanup = subscribeSseFallback(dispatch);
   };
   const fallbackTimer = window.setTimeout(startSse, SSE_FALLBACK_MS);
-  void connectRealtimeSocket(onEvent, {
+  void connectRealtimeSocket(dispatch, {
     onConnect: () => {
       socketConnected = true;
       window.clearTimeout(fallbackTimer);
@@ -7277,67 +7504,213 @@ function subscribeRealtimeEvents(onEvent) {
   };
 }
 const USER_REGISTERED_WINDOW_EVENT = "retweet-user-registered";
-const TYPING_STOP_MS = 2e3;
-const REST_TYPING_MIN_MS = 1200;
-const typingStopTimers = /* @__PURE__ */ new Map();
-const lastRestTypingPulseAt = /* @__PURE__ */ new Map();
-function typingSessionKey(chatId, peerId) {
-  return `${chatId}\0${peerId ?? ""}`;
-}
-function emitChatTypingRest(chatId, peerId, active2) {
-  if (!apiBackendEnabled()) return;
-  const token = getApiToken();
-  if (!token) return;
-  const key2 = typingSessionKey(chatId, peerId);
-  if (active2) {
-    const now = Date.now();
-    const prev = lastRestTypingPulseAt.get(key2) ?? 0;
-    if (now - prev < REST_TYPING_MIN_MS) return;
-    lastRestTypingPulseAt.set(key2, now);
-  } else {
-    lastRestTypingPulseAt.delete(key2);
+const AUTH_FEED_REFRESH_EVENT = "retweet-auth-feed-refresh";
+function requestAuthFeedRefresh() {
+  if (typeof window === "undefined") return;
+  try {
+    window.dispatchEvent(new Event(AUTH_FEED_REFRESH_EVENT));
+  } catch {
   }
-  void apiPostChatTyping(token, chatId, peerId, active2);
 }
-function emitChatTyping(chatId, peerId, active2) {
-  const socket2 = getRealtimeSocket();
-  if (socket2?.connected) {
-    socket2.emit("typing", { chatId, peerId: peerId ?? void 0, active: active2 });
-    return;
+function canViewPostInHomeFeed(state2, meId, post, me) {
+  if (!post?.id) return false;
+  const viewer = me ?? state2.users.find((u) => u.id === meId);
+  if (!viewer) return false;
+  const author = state2.users.find((u) => u.id === post.userId);
+  if (!author) return true;
+  const authorBlocked = author.blocked ?? [];
+  const myBlocked = viewer.blocked ?? [];
+  if (authorBlocked.includes(meId)) return false;
+  if (myBlocked.includes(author.id)) return false;
+  if (author.isPrivate !== true || post.userId === meId) return true;
+  if ((author.followers ?? []).includes(meId)) return true;
+  if ((viewer.following ?? []).includes(author.id)) return true;
+  if (!author.followers?.length && !viewer.following?.length) return true;
+  return false;
+}
+const feedVisibility = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+  __proto__: null,
+  AUTH_FEED_REFRESH_EVENT,
+  canViewPostInHomeFeed,
+  requestAuthFeedRefresh
+}, Symbol.toStringTag, { value: "Module" }));
+const VOICE_WAVE_BARS$1 = 40;
+const VOICE_MEDIA_OFFSCREEN$1 = "pointer-events-none fixed start-0 top-0 z-[-1] m-0 h-[2px] w-[2px] max-h-[2px] max-w-[2px] overflow-hidden border-0 p-0 opacity-[0.02]";
+function voiceWaveHeightsFromSrc$1(src) {
+  let h = 0;
+  for (let i = 0; i < src.length; i++) h = (h + src.charCodeAt(i) * (i + 1)) % 100017;
+  return Array.from({ length: VOICE_WAVE_BARS$1 }, (_, i) => {
+    const t = Math.sin((i + 1) * 1.55 + h * 12e-5) * 0.45 + 0.55;
+    const t2 = Math.cos((i + 2) * 0.9 + h * 8e-5) * 0.2;
+    return Math.round(Math.min(100, Math.max(28, (t + t2) * 100)));
+  });
+}
+function voiceUsesVideoElement$1(src) {
+  if (src.startsWith("data:video")) return true;
+  const low = src.slice(0, 120).toLowerCase();
+  return low.includes("audio/webm") || low.includes("video/webm");
+}
+function waitVoiceMediaCanPlay(el) {
+  if (el.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const done = () => {
+      cleanup();
+      resolve();
+    };
+    const fail = () => {
+      cleanup();
+      reject(new Error("media load failed"));
+    };
+    const cleanup = () => {
+      el.removeEventListener("canplay", done);
+      el.removeEventListener("loadeddata", done);
+      el.removeEventListener("error", fail);
+    };
+    el.addEventListener("canplay", done, { once: true });
+    el.addEventListener("loadeddata", done, { once: true });
+    el.addEventListener("error", fail, { once: true });
+    try {
+      el.load();
+    } catch {
+    }
+  });
+}
+function fmtVoiceTime$1(sec) {
+  const s = Math.max(0, Math.floor(sec || 0));
+  const m = Math.floor(s / 60);
+  const r2 = s % 60;
+  return `${m}:${String(r2).padStart(2, "0")}`;
+}
+function isVoicePlaybackVideoSrc(src) {
+  if (!src?.trim()) return false;
+  const t = src.trim();
+  if (t.startsWith("data:video")) return true;
+  if (t.startsWith("data:video/")) return true;
+  if (/\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(t)) return true;
+  if (t.includes("/media/videos/")) return true;
+  const low = t.slice(0, 120).toLowerCase();
+  return low.includes("audio/webm") || low.includes("video/webm");
+}
+function isVoiceAttachFile(file) {
+  return file.type.startsWith("audio/") || file.type.startsWith("video/");
+}
+const POST_PLACEHOLDER_MEDIA = /* @__PURE__ */ new Set(["🖼️", "📝", "🎬"]);
+function resolvePostDisplayType(post) {
+  if (post.type === "tweet" || post.type === "reel") return post.type;
+  const text = post.text?.trim() ?? "";
+  const img = post.image?.trim() ?? "";
+  const vid = post.video?.trim() ?? "";
+  const aud = post.audio?.trim() ?? "";
+  if (post.type === "post" && text && !vid && !aud) {
+    if (!img) return "tweet";
+    if (POST_PLACEHOLDER_MEDIA.has(img)) return "post";
+    const media = normalizePostMedia(post);
+    if (!media.hasImage && !media.hasVideo) return "tweet";
   }
-  emitChatTypingRest(chatId, peerId, active2);
+  return post.type ?? "post";
 }
-function flushTypingStop(chatId, peerId) {
-  const key2 = typingSessionKey(chatId, peerId);
-  const t = typingStopTimers.get(key2);
-  if (t) {
-    clearTimeout(t);
-    typingStopTimers.delete(key2);
+function isDisplayTweet(post) {
+  return resolvePostDisplayType(post) === "tweet";
+}
+const CREATE_PLACEHOLDER_MEDIA = /* @__PURE__ */ new Set(["🎬", "🖼️", "📝"]);
+function hasCreateAttachmentMedia(media, hasFile) {
+  if (hasFile) return true;
+  const m = media.trim();
+  if (!m || CREATE_PLACEHOLDER_MEDIA.has(m)) return false;
+  if (m.startsWith("data:video/") || m.startsWith("data:image/") || m.startsWith("data:audio/")) {
+    return true;
   }
-  emitChatTyping(chatId, peerId, false);
+  if (m.startsWith("blob:")) return true;
+  if (isVideoMediaRef(m)) return true;
+  return isRenderableMediaUrl(m);
 }
-function scheduleTypingPulse(chatId, peerId) {
-  const key2 = typingSessionKey(chatId, peerId);
-  emitChatTyping(chatId, peerId, true);
-  const prev = typingStopTimers.get(key2);
-  if (prev) clearTimeout(prev);
-  typingStopTimers.set(
-    key2,
-    setTimeout(() => {
-      typingStopTimers.delete(key2);
-      emitChatTyping(chatId, peerId, false);
-    }, TYPING_STOP_MS)
-  );
+function isReelFeedPost(post) {
+  if (post.type === "tweet") return false;
+  return normalizePostMedia(post).hasVideo;
 }
-function emitMessagesDelivered(chatId, messageIds) {
-  const socket2 = getRealtimeSocket();
-  if (!socket2?.connected || messageIds.length === 0) return;
-  socket2.emit("message:ack_delivered", { chatId, messageIds });
+function postShowsFeedMedia(post) {
+  if (!isDisplayTweet(post)) return true;
+  const media = normalizePostMedia(post);
+  return media.hasImage || media.hasVideo || media.hasAudio;
 }
-function emitMessagesRead(chatId, messageIds) {
-  const socket2 = getRealtimeSocket();
-  if (!socket2?.connected || messageIds.length === 0) return;
-  socket2.emit("message:ack_read", { chatId, messageIds });
+function isVideoMediaRef(s) {
+  if (!s?.trim()) return false;
+  const t = s.trim();
+  if (t.startsWith("data:video/")) return true;
+  if (/\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(t)) return true;
+  return t.includes("/media/videos/");
+}
+function normalizePostMedia(post) {
+  let imageRaw = post.image?.trim() || "";
+  let videoRaw = post.video?.trim() || "";
+  let audioRaw = post.audio?.trim() || "";
+  if (imageRaw && isVideoMediaRef(imageRaw) && !videoRaw) {
+    videoRaw = imageRaw;
+    imageRaw = "";
+  }
+  const imageUrl = imageRaw && !isVideoMediaRef(imageRaw) ? resolveMediaUrl(imageRaw) : "";
+  const videoUrl = videoRaw ? resolveMediaUrl(videoRaw) : "";
+  const posterUrl = imageUrl && isRenderableMediaUrl(imageUrl) ? imageUrl : "";
+  const voiceTweet = !!audioRaw || post.type === "tweet" && isVoicePlaybackVideoSrc(videoRaw) && !imageRaw;
+  const voiceSrc = audioRaw || (voiceTweet && isVoicePlaybackVideoSrc(videoRaw) ? videoRaw : "");
+  const normalized = {
+    imageUrl,
+    videoUrl,
+    posterUrl,
+    hasImage: !!imageUrl && isRenderableMediaUrl(imageUrl) && !isVideoMediaRef(imageRaw),
+    hasVideo: !voiceTweet && !!videoRaw && isVideoMediaRef(videoRaw) && !!videoUrl,
+    hasAudio: !!voiceSrc && (isRenderableMediaUrl(resolveMediaUrl(voiceSrc)) || isVoicePlaybackVideoSrc(voiceSrc)),
+    audioUrl: voiceSrc,
+    emojiFallback: (!imageUrl && !videoUrl && imageRaw && !isRenderableMediaUrl(imageRaw) ? imageRaw : "") || (!imageUrl && !videoUrl && videoRaw && !isRenderableMediaUrl(videoRaw) ? videoRaw : "") || (post.type === "reel" && !videoUrl ? "🎬" : "") || (post.type === "tweet" ? "" : "📝")
+  };
+  return normalized;
+}
+function buildViewerSets(me) {
+  return {
+    blocked: new Set(me.blocked ?? []),
+    following: new Set(me.following ?? [])
+  };
+}
+function authorVisibleToViewer(author, meId, meSets) {
+  if (!author) return true;
+  if ((author.blocked ?? []).includes(meId)) return false;
+  if (meSets.blocked.has(author.id)) return false;
+  if (author.isPrivate !== true || author.id === meId) return true;
+  if ((author.followers ?? []).includes(meId)) return true;
+  if (meSets.following.has(author.id)) return true;
+  if (!author.followers?.length && !meSets.following.size) return true;
+  return false;
+}
+function computeHomeFeedPostIds(state2, meId, me) {
+  const viewer = me ?? state2.users.find((u) => u.id === meId);
+  if (!viewer) return [];
+  const meSets = buildViewerSets(viewer);
+  const usersById = new Map(state2.users.map((u) => [u.id, u]));
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const p of state2.posts ?? []) {
+    if (!p?.id || seen.has(p.id) || isReelFeedPost(p)) continue;
+    const author = usersById.get(p.userId);
+    if (!authorVisibleToViewer(author, meId, meSets)) continue;
+    if (!canViewPostInHomeFeed(state2, meId, p, viewer)) continue;
+    seen.add(p.id);
+    out.push(p);
+  }
+  out.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+  return out;
+}
+function homeFeedSignature(posts) {
+  if (!posts.length) return "0";
+  const head = posts[0]?.id ?? "";
+  const tail = posts[posts.length - 1]?.id ?? "";
+  return `${posts.length}:${head}:${tail}:${posts[0]?.createdAt ?? 0}`;
+}
+const HomeFeedCtx = reactExports.createContext({
+  homeFeedPosts: [],
+  feedHasMore: false
+});
+function useHomeFeed() {
+  return reactExports.useContext(HomeFeedCtx);
 }
 const DB_NAME$1 = "retweet_chat_cache_v1";
 const STORE = "messages";
@@ -7856,19 +8229,19 @@ function normalizeChatRecord(chat) {
     hiddenMessageIdsByUser: chat.hiddenMessageIdsByUser && typeof chat.hiddenMessageIdsByUser === "object" ? chat.hiddenMessageIdsByUser : void 0
   };
 }
-function resolveActiveViewerId(state) {
-  const id = state.currentUserId;
+function resolveActiveViewerId(state2) {
+  const id = state2.currentUserId;
   if (!id || isGuestUserId(id)) return null;
   return id;
 }
-function resolveUserProfile(state, userId) {
-  const baseInState = state.users.find((u) => u.id === userId);
+function resolveUserProfile(state2, userId) {
+  const baseInState = state2.users.find((u) => u.id === userId);
   const baseFromCache = loadAccountStateCache(userId)?.users.find((u) => u.id === userId);
   const publicOverlay = getPublicProfileOverlay(userId);
   const base = baseInState ?? baseFromCache ?? publicOverlay;
   const canon = canonicalOwnedProfileFields(userId);
   const sess = getAccountSession(userId);
-  const isActiveOwned = !!sess && state.currentUserId === userId;
+  const isActiveOwned = !!sess && state2.currentUserId === userId;
   if (!base && !canon && !sess && !publicOverlay) return void 0;
   const stub = base ?? {
     id: userId,
@@ -7925,32 +8298,124 @@ function resolveUserProfile(state, userId) {
   }
   return withUserListDefaults(resolved);
 }
-function refreshOwnedUsersInState(state) {
-  const cur = state.currentUserId;
-  if (!cur || isGuestUserId(cur)) return state;
-  const fresh = resolveUserProfile(state, cur);
-  if (!fresh) return state;
+function refreshOwnedUsersInState(state2) {
+  const cur = state2.currentUserId;
+  if (!cur || isGuestUserId(cur)) return state2;
+  const fresh = resolveUserProfile(state2, cur);
+  if (!fresh) return state2;
   return {
-    ...state,
+    ...state2,
     users: stripOtherOwnedAccountsFromUsers(
       cur,
-      (state.users || []).map((u) => u.id === cur ? fresh : u)
+      (state2.users || []).map((u) => u.id === cur ? fresh : u)
     )
   };
 }
-function purgeStateForAccountSwitch(state, nextUserId) {
+function purgeStateForAccountSwitch(state2, nextUserId) {
   const refreshed = refreshOwnedUsersInState({
-    ...state,
+    ...state2,
     currentUserId: nextUserId,
     accountIds: [nextUserId],
     chats: [],
     stories: [],
-    users: stripOtherOwnedAccountsFromUsers(nextUserId, state.users || [])
+    users: stripOtherOwnedAccountsFromUsers(nextUserId, state2.users || [])
   });
   return {
     ...refreshed,
     notifications: (refreshed.notifications || []).filter((n) => n.userId === nextUserId)
   };
+}
+function useAppSelector(selector, isEqual3 = Object.is) {
+  const api = reactExports.useContext(StoreApiCtx);
+  if (!api) throw new Error("useAppSelector داخل AppProvider فقط");
+  const selRef = reactExports.useRef(selector);
+  selRef.current = selector;
+  const cacheRef = reactExports.useRef(null);
+  const getSnapshot = reactExports.useCallback(() => {
+    const next = selRef.current(api.getState());
+    const cached2 = cacheRef.current;
+    if (cached2 && isEqual3(cached2.value, next)) return cached2.value;
+    cacheRef.current = { value: next };
+    return next;
+  }, [api, isEqual3]);
+  return reactExports.useSyncExternalStore(api.subscribe, getSnapshot, getSnapshot);
+}
+function useIsGuestSelector() {
+  return useAppSelector((s) => isGuestUserId(s.currentUserId));
+}
+function equalIdArrays(a, b) {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+function resolveUser(s, id) {
+  return s.users.find((u) => u.id === id);
+}
+function useCurrentUser() {
+  return useAppSelector((s) => {
+    const id = s.currentUserId;
+    if (!id || isGuestUserId(id)) return null;
+    return resolveUser(s, id) ?? null;
+  });
+}
+function useCurrentUserId() {
+  return useAppSelector((s) => s.currentUserId || null);
+}
+function useAppTheme() {
+  return useAppSelector((s) => s.theme);
+}
+function useAppLanguage() {
+  return useAppSelector((s) => s.language);
+}
+function usePosts() {
+  return useAppSelector((s) => s.posts);
+}
+function useChats() {
+  return useAppSelector((s) => s.chats);
+}
+function useUnreadNotificationCount(userId) {
+  return useAppSelector(
+    reactExports.useCallback(
+      (s) => userId ? (s.notifications ?? []).filter(
+        (n) => n.userId === userId && !n.read && n.type !== "message"
+      ).length : 0,
+      [userId]
+    )
+  );
+}
+function useReelsPosts(meId, blocked) {
+  return useAppSelector(
+    reactExports.useCallback(
+      (s) => {
+        if (!meId) return [];
+        const blockedSet = new Set(blocked);
+        const seen = /* @__PURE__ */ new Set();
+        const out = [];
+        for (const p of s.posts ?? []) {
+          if (!p?.id || seen.has(p.id)) continue;
+          if (p.type !== "reel" && !p.video) continue;
+          const author = s.users.find((u) => u.id === p.userId);
+          if (author && blockedSet.has(author.id)) continue;
+          seen.add(p.id);
+          out.push(p);
+        }
+        out.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+        return out;
+      },
+      [meId, blocked.join(",")]
+    ),
+    (a, b) => {
+      if (a === b) return true;
+      if (a.length !== b.length) return false;
+      for (let i = 0; i < a.length; i++) {
+        if (a[i].id !== b[i].id || a[i] !== b[i]) return false;
+      }
+      return true;
+    }
+  );
 }
 const locallyRemovedPostIds = /* @__PURE__ */ new Map();
 const locallyRemovedCommentKeys = /* @__PURE__ */ new Map();
@@ -7995,26 +8460,26 @@ function mergePostsServerAuthoritative(localPosts, remotePosts) {
   }
   return merged.sort((a, b) => b.createdAt - a.createdAt);
 }
-function mergeHomeFeedIntoState(state, feed) {
-  const posts = mergePostsServerAuthoritative(state.posts || [], feed.posts || []);
-  const usersById = new Map(state.users.map((u) => [u.id, u]));
+function mergeHomeFeedIntoState(state2, feed) {
+  const posts = mergePostsServerAuthoritative(state2.posts || [], feed.posts || []);
+  const usersById = new Map(state2.users.map((u) => [u.id, u]));
   for (const u of feed.users || []) {
     const prev = usersById.get(u.id);
     usersById.set(u.id, prev ? mergeUserFromServer(prev, u) : { ...u, password: "" });
   }
-  return { ...state, posts, users: [...usersById.values()] };
+  return { ...state2, posts, users: [...usersById.values()] };
 }
-function mergeHomeFeedAppendIntoState(state, feed) {
-  const ids = new Set((state.posts || []).map((p) => p.id));
+function mergeHomeFeedAppendIntoState(state2, feed) {
+  const ids = new Set((state2.posts || []).map((p) => p.id));
   const newPosts = (feed.posts || []).filter((p) => p?.id && !ids.has(p.id) && !locallyRemovedPostIds.has(p.id));
-  if (!newPosts.length && !(feed.users || []).length) return state;
-  const posts = [...state.posts || [], ...newPosts].sort((a, b) => b.createdAt - a.createdAt);
-  const usersById = new Map(state.users.map((u) => [u.id, u]));
+  if (!newPosts.length && !(feed.users || []).length) return state2;
+  const posts = [...state2.posts || [], ...newPosts].sort((a, b) => b.createdAt - a.createdAt);
+  const usersById = new Map(state2.users.map((u) => [u.id, u]));
   for (const u of feed.users || []) {
     const prev = usersById.get(u.id);
     usersById.set(u.id, prev ? mergeUserFromServer(prev, u) : { ...u, password: "" });
   }
-  return { ...state, posts, users: [...usersById.values()] };
+  return { ...state2, posts, users: [...usersById.values()] };
 }
 function mergePostsPreservingLocalDeletes(localPosts, remotePosts) {
   const now = Date.now();
@@ -8062,6 +8527,9 @@ function isProfileNoteActive(u) {
   if (!text) return false;
   if (!u.noteAt) return true;
   return Date.now() - u.noteAt < PROFILE_NOTE_TTL_MS;
+}
+function directoryUserRowEqual(prev, next) {
+  return prev.username === next.username && prev.displayName === next.displayName && prev.avatar === next.avatar && prev.bio === next.bio && prev.verified === next.verified && prev.isPrivate === next.isPrivate && prev.founderVerified === next.founderVerified && prev.appOfficialVerified === next.appOfficialVerified && prev.supportOfficialVerified === next.supportOfficialVerified && (prev.followers?.length ?? 0) === (next.followers?.length ?? 0) && (prev.following?.length ?? 0) === (next.following?.length ?? 0);
 }
 const uid = () => Math.random().toString(36).slice(2, 10);
 const QURAN_CHANNEL_ID = "channel_quran_official";
@@ -8525,15 +8993,15 @@ function userFromApiAuth(user) {
     avatar: user.avatar || DEFAULT_AVATAR_DATA_URI
   });
 }
-function ensureAuthUserInState(state, userId, apiUser) {
-  let users = Array.isArray(state.users) ? [...state.users] : [];
+function ensureAuthUserInState(state2, userId, apiUser) {
+  let users = Array.isArray(state2.users) ? [...state2.users] : [];
   if (apiUser && !users.some((u) => u.id === userId)) {
     users.push(userFromApiAuth(apiUser));
   }
   return normalizePersistedAppState({
-    ...state,
+    ...state2,
     users,
-    currentUserId: state.currentUserId || userId,
+    currentUserId: state2.currentUserId || userId,
     accountIds: snapshotAccountIdsForOwner(userId)
   });
 }
@@ -8646,8 +9114,8 @@ function trimChatForLocalPersist(chat) {
   if (msgs.length <= MAX_CHAT_MESSAGES_PERSIST) return chat;
   return { ...chat, messages: msgs.slice(-MAX_CHAT_MESSAGES_PERSIST) };
 }
-function scopeStateForAccountPersist(state, ownerId) {
-  const scoped = scopeAppStateToAccount(ownerId, state, {
+function scopeStateForAccountPersist(state2, ownerId) {
+  const scoped = scopeAppStateToAccount(ownerId, state2, {
     accountIds: snapshotAccountIdsForOwner(ownerId),
     isolateOwnedUsers: (oid, s) => isolateUsersForAccountCache(oid, s)
   });
@@ -8656,8 +9124,8 @@ function scopeStateForAccountPersist(state, ownerId) {
     chats: (scoped.chats || []).map(trimChatForLocalPersist)
   };
 }
-function resolveChatForSend(state, chatId, userId) {
-  for (const c of state.chats) {
+function resolveChatForSend(state2, chatId, userId) {
+  for (const c of state2.chats) {
     if (!c.members.includes(userId)) continue;
     if (c.id === chatId) return c;
     if (chatMergeKey(c, userId) === chatId) return c;
@@ -8666,25 +9134,25 @@ function resolveChatForSend(state, chatId, userId) {
   if (parsed) {
     const peer = parsed[0] === userId ? parsed[1] : parsed[1] === userId ? parsed[0] : null;
     if (peer) {
-      const dm = findDmChatForPeer(state.chats, userId, peer);
+      const dm = findDmChatForPeer(state2.chats, userId, peer);
       if (dm) return dm;
     }
   }
   return null;
 }
-async function flushAccountSnapshotToServer(ownerId, state, token) {
+async function flushAccountSnapshotToServer(ownerId, state2, token) {
   if (!ownerId || isGuestUserId(ownerId) || !token) return;
-  const scoped = scopeStateForAccountPersist(state, ownerId);
+  const scoped = scopeStateForAccountPersist(state2, ownerId);
   saveAccountStateCache(ownerId, stripGuestFromPersistedState(scoped));
   await pushRemoteAppState(token, scoped);
 }
-async function flushCurrentAccountToServer(state) {
-  const cur = state.currentUserId;
+async function flushCurrentAccountToServer(state2) {
+  const cur = state2.currentUserId;
   if (!cur || isGuestUserId(cur)) return;
   const token = getApiToken();
   if (!token) return;
   syncActiveApiToken(cur, token);
-  await flushAccountSnapshotToServer(cur, state, token);
+  await flushAccountSnapshotToServer(cur, state2, token);
 }
 function mergeStoryLists(...lists) {
   const byId = /* @__PURE__ */ new Map();
@@ -8925,12 +9393,13 @@ async function applyApiAuthSuccess(token, user, previous, addAccount, opts) {
   return { ok: true, state: next };
 }
 const AppCtx = reactExports.createContext(null);
-function applySocialRelationToState(state, meId, peerId, rel) {
-  const meRow = state.users.find((u) => u.id === meId);
-  if (meRow?.blocked.includes(peerId)) return state;
+const AppActionsRefCtx = reactExports.createContext(null);
+function applySocialRelationToState(state2, meId, peerId, rel) {
+  const meRow = state2.users.find((u) => u.id === meId);
+  if (meRow?.blocked.includes(peerId)) return state2;
   const next = {
-    ...state,
-    users: state.users.map((u) => {
+    ...state2,
+    users: state2.users.map((u) => {
       if (u.id === meId) {
         const following = rel.isFollowing ? [.../* @__PURE__ */ new Set([...u.following.filter((x) => x !== peerId), peerId])] : u.following.filter((x) => x !== peerId);
         const followRequestOut = rel.pendingOut ? [.../* @__PURE__ */ new Set([...(u.followRequestOut || []).filter((x) => x !== peerId), peerId])] : (u.followRequestOut || []).filter((x) => x !== peerId);
@@ -8987,18 +9456,18 @@ function applySocialRelationToState(state, meId, peerId, rel) {
   }
   return next;
 }
-function hasPendingFollowRequestFrom(state, meId, fromId) {
-  const inbox = state.users.find((u) => u.id === meId)?.followRequestIn || [];
+function hasPendingFollowRequestFrom(state2, meId, fromId) {
+  const inbox = state2.users.find((u) => u.id === meId)?.followRequestIn || [];
   if (inbox.includes(fromId)) return true;
-  return state.notifications.some(
+  return state2.notifications.some(
     (n) => n.userId === meId && n.fromId === fromId && n.type === "friend_request" && n.followRequestStatus !== "accepted" && n.followRequestStatus !== "declined"
   );
 }
-function patchFollowRequestNotifications(state, meId, fromId, status) {
+function patchFollowRequestNotifications(state2, meId, fromId, status) {
   const text = status === "accepted" ? "لقد قبلت طلب المتابعة من هذا الحساب ✓" : "لقد رفضت طلب المتابعة من هذا الحساب";
   return {
-    ...state,
-    notifications: state.notifications.map(
+    ...state2,
+    notifications: state2.notifications.map(
       (n) => n.userId === meId && n.fromId === fromId && n.type === "friend_request" ? { ...n, read: true, followRequestStatus: status, text } : n
     )
   };
@@ -9025,11 +9494,11 @@ function preserveResolvedFollowRequestNotifications(prev, next) {
     })
   };
 }
-function applyFollowToggleMode(state, meId, targetId, mode2) {
+function applyFollowToggleMode(state2, meId, targetId, mode2) {
   if (mode2 === "following") {
     return {
-      ...state,
-      users: state.users.map((u) => {
+      ...state2,
+      users: state2.users.map((u) => {
         if (u.id === meId) {
           return {
             ...u,
@@ -9050,8 +9519,8 @@ function applyFollowToggleMode(state, meId, targetId, mode2) {
   }
   if (mode2 === "unfollowed") {
     return {
-      ...state,
-      users: state.users.map((u) => {
+      ...state2,
+      users: state2.users.map((u) => {
         if (u.id === meId) {
           return {
             ...u,
@@ -9072,8 +9541,8 @@ function applyFollowToggleMode(state, meId, targetId, mode2) {
   }
   if (mode2 === "requested") {
     return {
-      ...state,
-      users: state.users.map((u) => {
+      ...state2,
+      users: state2.users.map((u) => {
         if (u.id === meId) {
           const out = u.followRequestOut || [];
           return {
@@ -9093,8 +9562,8 @@ function applyFollowToggleMode(state, meId, targetId, mode2) {
     };
   }
   return {
-    ...state,
-    users: state.users.map((u) => {
+    ...state2,
+    users: state2.users.map((u) => {
       if (u.id === meId) {
         return { ...u, followRequestOut: (u.followRequestOut || []).filter((x) => x !== targetId) };
       }
@@ -9110,7 +9579,7 @@ function AppProvider({
   children,
   initialState
 }) {
-  const [state, setStateRaw] = reactExports.useState(() => {
+  const [state2, setStateRaw] = reactExports.useState(() => {
     try {
       const loaded = initialState ?? loadState();
       const uid2 = loaded.currentUserId;
@@ -9124,13 +9593,34 @@ function AppProvider({
       return safeNormalizeState(initial);
     }
   });
-  const stateRef = reactExports.useRef(state);
-  stateRef.current = state;
+  const stateRef = reactExports.useRef(state2);
+  stateRef.current = state2;
+  const storeListenersRef = reactExports.useRef(/* @__PURE__ */ new Set());
+  const storeRevisionRef = reactExports.useRef(0);
+  reactExports.useEffect(() => {
+    storeRevisionRef.current += 1;
+    storeListenersRef.current.forEach((l) => l());
+  }, [state2]);
+  const storeApi = reactExports.useMemo(
+    () => ({
+      getState: () => stateRef.current,
+      subscribe: (listener) => {
+        storeListenersRef.current.add(listener);
+        return () => {
+          storeListenersRef.current.delete(listener);
+        };
+      },
+      getRevision: () => storeRevisionRef.current
+    }),
+    []
+  );
   const [accountSwitching, setAccountSwitching] = reactExports.useState(false);
   const [feedHasMore, setFeedHasMore] = reactExports.useState(true);
+  const [homeFeedPosts, setHomeFeedPosts] = reactExports.useState([]);
+  const [unreadMessageCount, setUnreadMessageCount] = reactExports.useState(0);
   const feedLoadMoreBusyRef = reactExports.useRef(false);
   const [accountSessionKey, setAccountSessionKey] = reactExports.useState(
-    () => `sess-${state.currentUserId || "guest"}-0`
+    () => `sess-${state2.currentUserId || "guest"}-0`
   );
   const [typingUserByChatId, setTypingUserByChatId] = reactExports.useState({});
   const pushSnapshotNow = reactExports.useCallback((next) => {
@@ -9155,6 +9645,7 @@ function AppProvider({
   const MIN_FULL_PULL_MS = 8e3;
   const MIN_URGENT_PULL_MS = 600;
   const feedPullDebounceRef = reactExports.useRef(null);
+  const lastFeedFetchAtRef = reactExports.useRef(0);
   const urgentPullRef = reactExports.useRef(false);
   const pullSocialState = reactExports.useCallback(async () => {
     if (!apiBackendEnabled()) return;
@@ -9265,14 +9756,19 @@ function AppProvider({
     [pullSocialState, setStateRaw]
   );
   reactExports.useEffect(() => {
-    const uid2 = state.currentUserId;
+    const uid2 = state2.currentUserId;
     if (uid2 && !isGuestUserId(uid2)) {
       setLastActiveUserId(uid2);
       ensureApiTokenMatchesUser(uid2);
     }
-  }, [state.currentUserId]);
+  }, [state2.currentUserId]);
   const persistTimerRef = reactExports.useRef(null);
+  const persistSnapshotRef = reactExports.useRef("");
   reactExports.useEffect(() => {
+    const snap = stateRef.current;
+    const sig = `${snap.currentUserId}:${snap.chats?.length ?? 0}:${snap.posts?.length ?? 0}:${snap.users?.length ?? 0}`;
+    if (sig === persistSnapshotRef.current) return;
+    persistSnapshotRef.current = sig;
     if (persistTimerRef.current) window.clearTimeout(persistTimerRef.current);
     persistTimerRef.current = window.setTimeout(() => {
       if (typeof document !== "undefined" && document.hidden) return;
@@ -9280,8 +9776,8 @@ function AppProvider({
         if (typeof document !== "undefined" && document.hidden) return;
         try {
           const uid2 = stateRef.current.currentUserId;
-          const snap = stateRef.current;
-          const toPersist = uid2 && !isGuestUserId(uid2) ? scopeStateForAccountPersist(snap, uid2) : snap;
+          const snapNow = stateRef.current;
+          const toPersist = uid2 && !isGuestUserId(uid2) ? scopeStateForAccountPersist(snapNow, uid2) : snapNow;
           const stripped = stripGuestFromPersistedState(toPersist);
           localStorage.setItem(STORAGE_KEY$2, JSON.stringify(stripped));
           if (uid2) saveAccountStateCache(uid2, stripped);
@@ -9299,10 +9795,12 @@ function AppProvider({
         write();
       }
     }, 4500);
+  }, [state2.chats, state2.posts?.length, state2.users?.length, state2.currentUserId]);
+  reactExports.useEffect(() => {
     return () => {
       if (persistTimerRef.current) window.clearTimeout(persistTimerRef.current);
     };
-  }, [state]);
+  }, []);
   reactExports.useEffect(() => {
     if (!apiBackendEnabled()) return;
     const restored = restoreActiveSessionOnLaunch();
@@ -9372,24 +9870,24 @@ function AppProvider({
   }, []);
   reactExports.useEffect(() => {
     return;
-  }, [state.posts?.length, state.currentUserId, accountSwitching, setStateRaw]);
+  }, [state2.posts?.length, state2.currentUserId, accountSwitching, setStateRaw]);
   reactExports.useEffect(() => {
-    applyDeviceThemeToDom(state.theme === "dark" ? "dark" : "light");
+    applyDeviceThemeToDom(state2.theme === "dark" ? "dark" : "light");
     const root = document.documentElement;
-    root.setAttribute("dir", state.language === "en" ? "ltr" : "rtl");
-    root.setAttribute("lang", state.language);
-  }, [state.theme, state.language]);
+    root.setAttribute("dir", state2.language === "en" ? "ltr" : "rtl");
+    root.setAttribute("lang", state2.language);
+  }, [state2.theme, state2.language]);
   const sessionRepairBusy = reactExports.useRef(false);
   reactExports.useEffect(() => {
     if (!apiBackendEnabled()) return;
     const token = getApiToken();
     if (!token) return;
-    const uid2 = state.currentUserId;
-    if (uid2 && state.users.some((u) => u.id === uid2)) return;
+    const uid2 = state2.currentUserId;
+    if (uid2 && state2.users.some((u) => u.id === uid2)) return;
     if (sessionRepairBusy.current) return;
     let cancelled = false;
     sessionRepairBusy.current = true;
-    logAuthRoute("session-repair-effect", { uid: uid2, usersCount: state.users.length });
+    logAuthRoute("session-repair-effect", { uid: uid2, usersCount: state2.users.length });
     void (async () => {
       try {
         const remote = await pullRemoteAppState(token);
@@ -9415,7 +9913,7 @@ function AppProvider({
       cancelled = true;
       sessionRepairBusy.current = false;
     };
-  }, [state.currentUserId, state.users.length]);
+  }, [state2.currentUserId, state2.users.length]);
   reactExports.useEffect(() => {
     const storyExpiredForTick = (st) => {
       const hours = typeof st.expiryHours === "number" && [24, 48, 72].includes(st.expiryHours) ? st.expiryHours : 24;
@@ -9450,15 +9948,79 @@ function AppProvider({
   }, []);
   const setState = reactExports.useCallback((updater) => setStateRaw(updater), []);
   const currentUser = reactExports.useMemo(() => {
-    const id = state.currentUserId;
+    const id = state2.currentUserId;
     if (!id || isGuestUserId(id)) return null;
-    const u = resolveUserProfile(state, id);
+    const u = resolveUserProfile(state2, id);
     return u ? withOfficialAppProfileFields(withFounderProfileFields(u)) : null;
-  }, [state.users, state.currentUserId]);
+  }, [state2.users, state2.currentUserId]);
   const isGuest = reactExports.useMemo(
-    () => !!(state.currentUserId && isGuestUserId(state.currentUserId)),
-    [state.currentUserId]
+    () => !!(state2.currentUserId && isGuestUserId(state2.currentUserId)),
+    [state2.currentUserId]
   );
+  const recomputeUnreadCount = reactExports.useCallback((snap = stateRef.current) => {
+    const meId = snap.currentUserId;
+    if (!meId || isGuestUserId(meId)) return 0;
+    let count2 = 0;
+    for (const chat of snap.chats ?? []) {
+      if (!Array.isArray(chat.members) || !chat.members.includes(meId)) continue;
+      for (const m of chat.messages ?? []) {
+        if (m.senderId !== meId && m.status !== "read") count2++;
+      }
+    }
+    return Math.min(count2, 99);
+  }, []);
+  reactExports.useEffect(() => {
+    setUnreadMessageCount(recomputeUnreadCount(state2));
+  }, [state2.chats, state2.currentUserId, recomputeUnreadCount]);
+  const homeFeedSig = reactExports.useMemo(() => {
+    const me = currentUser;
+    if (!me) return "";
+    return `${state2.posts?.length ?? 0}:${state2.users?.length ?? 0}:${me.id}:${(me.following ?? []).length}:${state2.posts?.[0]?.id ?? ""}:${state2.posts?.[0]?.createdAt ?? 0}`;
+  }, [state2.posts, state2.users, currentUser]);
+  reactExports.useEffect(() => {
+    const me = currentUser;
+    if (!me || isGuestUserId(me.id)) {
+      setHomeFeedPosts([]);
+      return;
+    }
+    let cancelled = false;
+    const run = () => {
+      if (cancelled) return;
+      perfMark("homeFeedIndex-start");
+      const next = computeHomeFeedPostIds(stateRef.current, me.id, me);
+      perfMark("homeFeedIndex-end");
+      setHomeFeedPosts(
+        (prev) => homeFeedSignature(prev) === homeFeedSignature(next) ? prev : next
+      );
+    };
+    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+      const id = window.requestIdleCallback(run, { timeout: 150 });
+      return () => {
+        cancelled = true;
+        window.cancelIdleCallback(id);
+      };
+    }
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [homeFeedSig, currentUser]);
+  reactExports.useEffect(() => {
+    setHomeFeedPosts((prev) => {
+      if (!prev.length) return prev;
+      const byId = new Map((state2.posts ?? []).map((p) => [p.id, p]));
+      let changed = false;
+      const next = prev.map((p) => {
+        const u = byId.get(p.id);
+        if (u && u !== p) {
+          changed = true;
+          return u;
+        }
+        return p;
+      });
+      return changed ? next : prev;
+    });
+  }, [state2.posts]);
   const signup = async (data) => {
     const pwdErrFirst = validateNewPasswordPlain(data.password);
     if (pwdErrFirst) return { ok: false, error: pwdErrFirst };
@@ -9497,8 +10059,8 @@ function AppProvider({
     if (!u) return { ok: false, error: "بيانات ناقصة" };
     const nameErr = validateUsernameFormat(u);
     if (nameErr) return { ok: false, error: nameErr };
-    if (isUsernameTaken(u, state.users)) return { ok: false, error: "اليوزر موجود" };
-    if (state.users.some((x) => x.email.toLowerCase() === emailNorm))
+    if (isUsernameTaken(u, state2.users)) return { ok: false, error: "اليوزر موجود" };
+    if (state2.users.some((x) => x.email.toLowerCase() === emailNorm))
       return { ok: false, error: "إيميل مسجل" };
     let hashed;
     try {
@@ -9561,7 +10123,7 @@ function AppProvider({
       void Promise.resolve().then(() => feedVisibility).then(({ requestAuthFeedRefresh: requestAuthFeedRefresh2 }) => requestAuthFeedRefresh2());
       return { ok: true };
     }
-    const u = state.users.find(
+    const u = state2.users.find(
       (x) => x.username.toLowerCase() === q.toLowerCase() || x.email.toLowerCase() === q.toLowerCase()
     );
     if (!u) return { ok: false, error: "بيانات خاطئة" };
@@ -9615,7 +10177,7 @@ function AppProvider({
   const resetPasswordForUser = async (userId, newPassword) => {
     const pwdErr = validateNewPasswordPlain(newPassword);
     if (pwdErr) return { ok: false, error: pwdErr };
-    const exists = state.users.some((x) => x.id === userId);
+    const exists = state2.users.some((x) => x.id === userId);
     if (!exists) return { ok: false, error: "تعذر إكمال الطلب" };
     let hashed;
     try {
@@ -9657,7 +10219,7 @@ function AppProvider({
     if (apiBackendEnabled()) {
       const token = getApiToken();
       if (!token) return { ok: false, error: "غير متصل بالخادم" };
-      if (!state.currentUserId || isGuestUserId(state.currentUserId))
+      if (!state2.currentUserId || isGuestUserId(state2.currentUserId))
         return { ok: false, error: "غير مسجّل" };
       const pwdErr2 = validateNewPasswordPlain(newPassword);
       if (pwdErr2) return { ok: false, error: pwdErr2 };
@@ -9665,13 +10227,13 @@ function AppProvider({
       if (!r2.ok) return { ok: false, error: r2.error };
       setState((s) => ({
         ...s,
-        users: s.users.map((u) => u.id === state.currentUserId ? { ...u, password: "" } : u)
+        users: s.users.map((u) => u.id === state2.currentUserId ? { ...u, password: "" } : u)
       }));
       return { ok: true };
     }
-    if (!state.currentUserId || isGuestUserId(state.currentUserId))
+    if (!state2.currentUserId || isGuestUserId(state2.currentUserId))
       return { ok: false, error: "غير مسجّل" };
-    const me = state.users.find((u) => u.id === state.currentUserId);
+    const me = state2.users.find((u) => u.id === state2.currentUserId);
     if (!me) return { ok: false, error: "غير مسجّل" };
     const pwdErr = validateNewPasswordPlain(newPassword);
     if (pwdErr) return { ok: false, error: pwdErr };
@@ -10651,9 +11213,9 @@ function AppProvider({
     }
   };
   const addGroupMembers = (chatId, memberIds) => {
-    if (!memberIds.length || !state.currentUserId || isGuestUserId(state.currentUserId)) return;
+    if (!memberIds.length || !state2.currentUserId || isGuestUserId(state2.currentUserId)) return;
     const prevMembers = stateRef.current.chats.find((c) => c.id === chatId)?.members;
-    const meId = state.currentUserId;
+    const meId = state2.currentUserId;
     const chatRow = stateRef.current.chats.find((c) => c.id === chatId);
     const adder = stateRef.current.users.find((u) => u.id === meId);
     setState((s) => {
@@ -10855,9 +11417,9 @@ function AppProvider({
     [setState]
   );
   const createGroup = (name, avatar, memberIds) => {
-    if (memberIds.length < 2 || !state.currentUserId || isGuestUserId(state.currentUserId))
+    if (memberIds.length < 2 || !state2.currentUserId || isGuestUserId(state2.currentUserId))
       return null;
-    const creatorId = state.currentUserId;
+    const creatorId = state2.currentUserId;
     const newChat = {
       id: uid(),
       isGroup: true,
@@ -12042,13 +12604,13 @@ function AppProvider({
           following: u.following,
           followerCount: typeof u.displayFollowerCount === "number" ? u.displayFollowerCount : void 0
         });
-        if (!prev || JSON.stringify(prev) !== JSON.stringify(next)) {
+        if (!prev || !directoryUserRowEqual(prev, next)) {
           byId.set(u.id, next);
           changed = true;
         }
       }
       if (!changed && !cacheTouched) return s;
-      if (!changed) return { ...s };
+      if (!changed) return s;
       return { ...s, users: [...byId.values()] };
     });
   }, [setState]);
@@ -12117,6 +12679,8 @@ function AppProvider({
         lastFullPullAtRef.current = Date.now();
         fullPullPendingRef.current = false;
         if (!remote) return;
+        perfMark("refreshFromServer-merge-start");
+        const { markServerHydrated } = await import("./remotePushGate-DaTPuI7n.js");
         const nextPreview = buildMultiAccountState(
           activeId,
           remote,
@@ -12124,35 +12688,29 @@ function AppProvider({
           void 0,
           { serverAuthoritative: true }
         );
-        const { markServerHydrated } = await import("./remotePushGate-DaTPuI7n.js");
         markServerHydrated(activeId, nextPreview);
         reactExports.startTransition(() => {
-          setStateRaw((s) => {
-            const next = preserveResolvedFollowRequestNotifications(
+          setStateRaw(
+            (s) => preserveResolvedFollowRequestNotifications(
               s,
               buildMultiAccountState(activeId, remote, s, void 0, { serverAuthoritative: true })
-            );
-            const meRow = next.users.find((u) => u.id === activeId);
-            const sess = meRow ? getAccountSession(activeId) : null;
-            if (meRow && sess) {
-              upsertAccountSession({
-                ...sess,
-                username: meRow.username,
-                avatar: toStoredMediaRef(meRow.avatar)
+            )
+          );
+        });
+        perfMark("refreshFromServer-merge-end");
+        void refreshUserDirectory();
+        const skipFeed = Date.now() - lastFeedFetchAtRef.current < 3e4;
+        if (!skipFeed) {
+          void (async () => {
+            const feed = await apiFetchHomeFeed(token);
+            if (feed.ok) {
+              lastFeedFetchAtRef.current = Date.now();
+              reactExports.startTransition(() => {
+                setStateRaw((s) => mergeHomeFeedIntoState(s, feed));
               });
             }
-            return next;
-          });
-        });
-        void refreshUserDirectory();
-        void (async () => {
-          const feed = await apiFetchHomeFeed(token);
-          if (feed.ok) {
-            reactExports.startTransition(() => {
-              setStateRaw((s) => mergeHomeFeedIntoState(s, feed));
-            });
-          }
-        })();
+          })();
+        }
       })();
     };
     const now = Date.now();
@@ -12178,6 +12736,7 @@ function AppProvider({
     const token = getApiToken();
     const feed = await apiFetchHomeFeed(token, { limit: 30 });
     if (!feed.ok) return;
+    lastFeedFetchAtRef.current = Date.now();
     setFeedHasMore(!!feed.hasMore);
     reactExports.startTransition(() => {
       setStateRaw((s) => mergeHomeFeedIntoState(s, feed));
@@ -12239,13 +12798,9 @@ function AppProvider({
       void refreshFeedFromServer();
       refreshFromServer({ urgent: true });
     };
-    void Promise.resolve().then(() => feedVisibility).then(({ AUTH_FEED_REFRESH_EVENT: AUTH_FEED_REFRESH_EVENT2 }) => {
-      window.addEventListener(AUTH_FEED_REFRESH_EVENT2, onAuthFeed);
-    });
+    window.addEventListener(AUTH_FEED_REFRESH_EVENT, onAuthFeed);
     return () => {
-      void Promise.resolve().then(() => feedVisibility).then(({ AUTH_FEED_REFRESH_EVENT: AUTH_FEED_REFRESH_EVENT2 }) => {
-        window.removeEventListener(AUTH_FEED_REFRESH_EVENT2, onAuthFeed);
-      });
+      window.removeEventListener(AUTH_FEED_REFRESH_EVENT, onAuthFeed);
     };
   }, [refreshFromServer, refreshFeedFromServer]);
   const refreshSocialRelation = reactExports.useCallback(
@@ -12281,8 +12836,8 @@ function AppProvider({
   reactExports.useEffect(() => {
     if (!apiBackendEnabled()) return;
     if (!getApiToken()) return;
-    if (isGuestUserId(state.currentUserId)) return;
-    return subscribeRealtimeEvents((event, data) => {
+    if (isGuestUserId(state2.currentUserId)) return;
+    const unsub = subscribeRealtimeEvents((event, data) => {
       if (event === "typing") {
         const payload = data;
         if (!payload?.chatId || !payload?.userId) return;
@@ -12702,8 +13257,14 @@ function AppProvider({
         }));
       }
     });
+    return () => {
+      for (const t of typingIndicatorTimersRef.values()) clearTimeout(t);
+      typingIndicatorTimersRef.clear();
+      setTypingUserByChatId({});
+      unsub();
+    };
   }, [
-    state.currentUserId,
+    state2.currentUserId,
     mergeDiscoveredUsers,
     scheduleRemoteSync,
     refreshFromServer,
@@ -12711,22 +13272,28 @@ function AppProvider({
     setState
   ]);
   reactExports.useEffect(() => {
-    if (!apiBackendEnabled() || !getApiToken() || isGuestUserId(state.currentUserId)) return;
+    if (!apiBackendEnabled() || !getApiToken() || isGuestUserId(state2.currentUserId)) return;
     const id = window.setInterval(() => {
       if (document.visibilityState !== "visible") return;
       scheduleFeedPull();
-      scheduleRemoteSync();
-    }, 6e4);
+    }, 9e4);
     return () => window.clearInterval(id);
-  }, [state.currentUserId, scheduleRemoteSync, scheduleFeedPull]);
+  }, [state2.currentUserId, scheduleFeedPull]);
   reactExports.useEffect(() => {
-    if (!apiBackendEnabled() || !getApiToken() || isGuestUserId(state.currentUserId)) return;
+    return () => {
+      if (fullPullTimerRef.current) window.clearTimeout(fullPullTimerRef.current);
+      if (remoteSyncTimerRef.current) window.clearTimeout(remoteSyncTimerRef.current);
+      if (feedPullDebounceRef.current != null) window.clearTimeout(feedPullDebounceRef.current);
+    };
+  }, []);
+  reactExports.useEffect(() => {
+    if (!apiBackendEnabled() || !getApiToken() || isGuestUserId(state2.currentUserId)) return;
     void refreshUserDirectory();
     const id = window.setInterval(() => {
       if (document.visibilityState === "visible") void refreshUserDirectory();
     }, 12e4);
     return () => window.clearInterval(id);
-  }, [state.currentUserId, refreshUserDirectory]);
+  }, [state2.currentUserId, refreshUserDirectory]);
   const ctxActionsRef = reactExports.useRef({});
   ctxActionsRef.current = {
     setState,
@@ -12816,21 +13383,9 @@ function AppProvider({
     answerStoryQuiz,
     rateStorySlider
   };
-  const unreadMessageCount = reactExports.useMemo(() => {
-    const meId = state.currentUserId;
-    if (!meId || isGuestUserId(meId)) return 0;
-    let count2 = 0;
-    for (const chat of state.chats ?? []) {
-      if (!Array.isArray(chat.members) || !chat.members.includes(meId)) continue;
-      for (const m of chat.messages ?? []) {
-        if (m.senderId !== meId && m.status !== "read") count2++;
-      }
-    }
-    return Math.min(count2, 99);
-  }, [state.chats, state.currentUserId]);
   const value2 = reactExports.useMemo(
     () => ({
-      state,
+      state: state2,
       currentUser,
       isGuest,
       accountSwitching,
@@ -12840,18 +13395,31 @@ function AppProvider({
       feedHasMore,
       ...ctxActionsRef.current
     }),
-    [state, currentUser, isGuest, accountSwitching, accountSessionKey, unreadMessageCount, feedHasMore]
+    [state2, currentUser, isGuest, accountSwitching, accountSessionKey, unreadMessageCount, feedHasMore]
   );
-  const uiLang = state.language === "en" && typeof localStorage !== "undefined" && localStorage.getItem("retweet_lang_en") === "1" ? "en" : "ar";
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(AppLanguageCtx.Provider, { value: uiLang, children: /* @__PURE__ */ jsxRuntimeExports.jsx(TypingCtx.Provider, { value: typingUserByChatId, children: /* @__PURE__ */ jsxRuntimeExports.jsx(AppCtx.Provider, { value: value2, children }) }) });
+  const uiLang = state2.language === "en" && typeof localStorage !== "undefined" && localStorage.getItem("retweet_lang_en") === "1" ? "en" : "ar";
+  const homeFeedValue = reactExports.useMemo(
+    () => ({ homeFeedPosts, feedHasMore }),
+    [homeFeedPosts, feedHasMore]
+  );
+  const appUiValue = reactExports.useMemo(
+    () => ({ accountSwitching, accountSessionKey, unreadMessageCount }),
+    [accountSwitching, accountSessionKey, unreadMessageCount]
+  );
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(StoreApiCtx.Provider, { value: storeApi, children: /* @__PURE__ */ jsxRuntimeExports.jsx(AppUiCtx.Provider, { value: appUiValue, children: /* @__PURE__ */ jsxRuntimeExports.jsx(AppLanguageCtx.Provider, { value: uiLang, children: /* @__PURE__ */ jsxRuntimeExports.jsx(TypingCtx.Provider, { value: typingUserByChatId, children: /* @__PURE__ */ jsxRuntimeExports.jsx(AppActionsRefCtx.Provider, { value: ctxActionsRef, children: /* @__PURE__ */ jsxRuntimeExports.jsx(HomeFeedCtx.Provider, { value: homeFeedValue, children: /* @__PURE__ */ jsxRuntimeExports.jsx(AppCtx.Provider, { value: value2, children }) }) }) }) }) }) });
 }
 function useApp() {
   const ctx = reactExports.useContext(AppCtx);
   if (!ctx) throw new Error("يجب استخدام التطبيق داخل مزوّد الحالة (AppProvider)");
   return ctx;
 }
-function userById(state, id) {
-  const u = resolveUserProfile(state, id);
+function useAppActions() {
+  const ref = reactExports.useContext(AppActionsRefCtx);
+  if (!ref?.current) throw new Error("useAppActions داخل AppProvider فقط");
+  return ref.current;
+}
+function userById$1(state2, id) {
+  const u = resolveUserProfile(state2, id);
   return u ? withOfficialAppProfileFields(withFounderProfileFields(u)) : void 0;
 }
 function visibleChatMessages(chat, viewerId) {
@@ -12861,70 +13429,70 @@ function visibleChatMessages(chat, viewerId) {
   const hidden = new Set(hid);
   return base.filter((m) => !hidden.has(m.id));
 }
-function isMutual(state, a, b) {
-  const ua = userById(state, a);
-  const ub = userById(state, b);
+function isMutual(state2, a, b) {
+  const ua = userById$1(state2, a);
+  const ub = userById$1(state2, b);
   return !!(ua && ub && ua.following.includes(b) && ub.following.includes(a));
 }
-function userIsFollowing(state, followerId, followeeId) {
-  const u = userById(state, followerId);
+function userIsFollowing(state2, followerId, followeeId) {
+  const u = userById$1(state2, followerId);
   return !!(u && u.following.includes(followeeId));
 }
-function theyFollowViewer(state, viewerId, otherId) {
-  return userIsFollowing(state, otherId, viewerId);
+function theyFollowViewer(state2, viewerId, otherId) {
+  return userIsFollowing(state2, otherId, viewerId);
 }
-function canViewProfile(state, viewerId, targetId) {
-  const target = userById(state, targetId);
+function canViewProfile(state2, viewerId, targetId) {
+  const target = userById$1(state2, targetId);
   if (!target) return false;
   if (!viewerId) return !target.isPrivate;
   if (viewerId === targetId) return true;
-  const viewer = userById(state, viewerId);
+  const viewer = userById$1(state2, viewerId);
   if (viewer?.blocked.includes(targetId)) return false;
   if (target.blocked.includes(viewerId)) return false;
   return true;
 }
-function canViewPrivatePosts(state, viewerId, targetId) {
-  const target = userById(state, targetId);
+function canViewPrivatePosts(state2, viewerId, targetId) {
+  const target = userById$1(state2, targetId);
   if (!target) return false;
   if (!viewerId) return !target.isPrivate;
   if (viewerId === targetId) return true;
   if (!target.isPrivate) return true;
-  return viewerCanSeePrivateAuthorContent(state, viewerId, targetId, (st, id) => userById(st, id));
+  return viewerCanSeePrivateAuthorContent(state2, viewerId, targetId, (st, id) => userById$1(st, id));
 }
-function archivedStoriesForUser(state, userId) {
-  return (state.storyArchive || []).filter((s) => s.userId === userId).slice().sort((a, b) => b.createdAt - a.createdAt);
+function archivedStoriesForUser(state2, userId) {
+  return (state2.storyArchive || []).filter((s) => s.userId === userId).slice().sort((a, b) => b.createdAt - a.createdAt);
 }
-function storiesForUser(state, authorId, viewerId) {
-  return storiesVisibleToViewer(state, viewerId, (st, id) => userById(st, id)).filter((s) => s.userId === authorId).sort((a, b) => a.createdAt - b.createdAt);
+function storiesForUser(state2, authorId, viewerId) {
+  return storiesVisibleToViewer(state2, viewerId, (st, id) => userById$1(st, id)).filter((s) => s.userId === authorId).sort((a, b) => a.createdAt - b.createdAt);
 }
-function userHasVisibleStories(state, viewerId, authorId) {
-  return storiesForUser(state, authorId, viewerId).length > 0;
+function userHasVisibleStories(state2, viewerId, authorId) {
+  return storiesForUser(state2, authorId, viewerId).length > 0;
 }
-function visibleStoryUserIds(state, viewerId) {
+function visibleStoryUserIds(state2, viewerId) {
   const latest = /* @__PURE__ */ new Map();
-  for (const s of storiesVisibleToViewer(state, viewerId, (st, id) => userById(st, id))) {
+  for (const s of storiesVisibleToViewer(state2, viewerId, (st, id) => userById$1(st, id))) {
     latest.set(s.userId, Math.max(latest.get(s.userId) ?? 0, s.createdAt));
   }
   return [...latest.entries()].sort((a, b) => b[1] - a[1]).map(([id]) => id);
 }
-function visibleStoryFriendsUserIds(state, viewerId) {
-  const me = userById(state, viewerId);
+function visibleStoryFriendsUserIds(state2, viewerId) {
+  const me = userById$1(state2, viewerId);
   if (!me) return [];
-  return visibleStoryUserIds(state, viewerId).filter((id) => {
+  return visibleStoryUserIds(state2, viewerId).filter((id) => {
     if (id === viewerId) return false;
     return me.following.includes(id);
   });
 }
-function visibleMediaNotes(state, kind, targetId, viewerId) {
-  return state.mediaNotes.filter((n) => {
+function visibleMediaNotes(state2, kind, targetId, viewerId) {
+  return state2.mediaNotes.filter((n) => {
     if (n.kind !== kind || n.targetId !== targetId) return false;
     if (n.authorId === viewerId) return true;
-    return isMutual(state, viewerId, n.authorId);
+    return isMutual(state2, viewerId, n.authorId);
   });
 }
-function trendingHashtags(state, limit = 10) {
+function trendingHashtags(state2, limit = 10) {
   const counts = /* @__PURE__ */ new Map();
-  state.posts.forEach((p) => {
+  state2.posts.forEach((p) => {
     const tags = p.text.match(/#[\p{L}\w]+/gu) || [];
     tags.forEach(
       (t) => counts.set(t, (counts.get(t) || 0) + 1 + p.likes.length + p.reposts.length)
@@ -12944,10 +13512,10 @@ function loadPersisted() {
     return null;
   }
 }
-function savePersisted(state) {
+function savePersisted(state2) {
   if (typeof window === "undefined") return;
   try {
-    localStorage.setItem(STORAGE_KEY$1, JSON.stringify(state));
+    localStorage.setItem(STORAGE_KEY$1, JSON.stringify(state2));
   } catch {
   }
 }
@@ -18082,7 +18650,11 @@ function SlideDismissShell({
     "div",
     {
       className: "pointer-events-auto fixed inset-x-0 flex justify-center overflow-hidden overscroll-none bg-transparent " + className,
-      style: { zIndex: overlayZIndex, top: 0, bottom: 0 },
+      style: {
+        zIndex: overlayZIndex,
+        top: "var(--sat, env(safe-area-inset-top, 0px))",
+        bottom: 0
+      },
       children: /* @__PURE__ */ jsxRuntimeExports.jsx(
         "div",
         {
@@ -18208,7 +18780,11 @@ function AppDismissSheet({
       "div",
       {
         className: "pointer-events-none fixed inset-0 flex justify-center bg-transparent",
-        style: { zIndex: overlayZIndex, top: 0, bottom: 0 },
+        style: {
+          zIndex: overlayZIndex,
+          top: "var(--sat, env(safe-area-inset-top, 0px))",
+          bottom: 0
+        },
         children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { ref: containerRef, "data-edge-swipe-root": true, className: "pointer-events-auto relative h-full w-full max-w-md overflow-hidden", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("div", { ...edgeStripProps }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(SlideDismissContext.Provider, { value: ctx, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -18488,6 +19064,216 @@ function MainTabStack({
     }
   ) });
 }
+const renderCounts = /* @__PURE__ */ new Map();
+const renderTimestamps = /* @__PURE__ */ new Map();
+const renderDurations = /* @__PURE__ */ new Map();
+let actionLabel = "";
+const actionRenders = /* @__PURE__ */ new Map();
+const actionViolations = [];
+const slowRenders = [];
+const longTasks = [];
+const memorySamples = [];
+let memoryIntervalId = null;
+let reportIntervalId = null;
+const leakRegistry = /* @__PURE__ */ new Map();
+function registerLeakResource(id, kind, owner, label) {
+  if (!perfEnabled()) return;
+  leakRegistry.set(id, { kind, owner, label, createdAt: performance.now() });
+}
+function unregisterLeakResource(id) {
+  leakRegistry.delete(id);
+}
+function getLeakRegistry() {
+  return [...leakRegistry.values()];
+}
+function markPerfUserAction(label) {
+  if (!perfEnabled()) return;
+  flushActionViolations();
+  actionLabel = label;
+  actionRenders.clear();
+}
+function flushActionViolations() {
+  if (!actionLabel) return;
+  for (const [component, count2] of actionRenders) {
+    if (count2 > 3) {
+      const v = { action: actionLabel, component, count: count2, ts: performance.now() };
+      actionViolations.push(v);
+      console.warn(
+        `[perf][action] "${actionLabel}" → ${component} rendered ${count2}x (>3)`
+      );
+    }
+  }
+}
+function useRenderCount(componentName) {
+  const countRef = reactExports.useRef(0);
+  countRef.current += 1;
+  const n = countRef.current;
+  if (perfEnabled()) {
+    renderCounts.set(componentName, (renderCounts.get(componentName) ?? 0) + 1);
+    const ts = renderTimestamps.get(componentName) ?? [];
+    ts.push(performance.now());
+    if (ts.length > 300) ts.shift();
+    renderTimestamps.set(componentName, ts);
+    if (actionLabel) {
+      actionRenders.set(componentName, (actionRenders.get(componentName) ?? 0) + 1);
+    }
+  }
+  return n;
+}
+function useProfiledRender(componentName) {
+  useRenderCount(componentName);
+  const startRef = reactExports.useRef(0);
+  startRef.current = performance.now();
+  reactExports.useLayoutEffect(() => {
+    if (!perfEnabled()) return;
+    const ms = performance.now() - startRef.current;
+    const prev = renderDurations.get(componentName) ?? { totalMs: 0, count: 0, maxMs: 0 };
+    renderDurations.set(componentName, {
+      totalMs: prev.totalMs + ms,
+      count: prev.count + 1,
+      maxMs: Math.max(prev.maxMs, ms)
+    });
+    if (ms > 16) {
+      slowRenders.push({ component: componentName, ms, ts: performance.now() });
+      if (slowRenders.length > 200) slowRenders.shift();
+      console.warn(`[perf][slow-render] ${componentName} ${ms.toFixed(1)}ms (>16ms)`);
+    }
+  });
+}
+function getRenderCounts() {
+  return new Map(renderCounts);
+}
+function startFrameMonitor(onSample) {
+  if (!perfEnabled() || typeof requestAnimationFrame === "undefined") return () => {
+  };
+  let last = performance.now();
+  let frames = 0;
+  let dropped = 0;
+  let rafId = 0;
+  const tick = (now) => {
+    const delta = now - last;
+    if (delta > 0) {
+      frames += 1;
+      if (delta > 20) dropped += Math.floor(delta / 16.67) - 1;
+    }
+    if (now - last >= 1e3) {
+      onSample({ fps: frames, droppedFrames: dropped, ts: now });
+      frames = 0;
+      dropped = 0;
+      last = now;
+    }
+    rafId = requestAnimationFrame(tick);
+  };
+  rafId = requestAnimationFrame(tick);
+  return () => cancelAnimationFrame(rafId);
+}
+const frameHistory = [];
+function getFrameHistory() {
+  return [...frameHistory];
+}
+function pushFrameSample(s) {
+  frameHistory.push(s);
+  if (frameHistory.length > 60) frameHistory.shift();
+}
+function getMemoryMb() {
+  const perf = performance;
+  if (!perf.memory) return null;
+  return Math.round(perf.memory.usedJSHeapSize / 1048576 * 10) / 10;
+}
+function startLongTaskObserver() {
+  if (!perfEnabled() || typeof PerformanceObserver === "undefined") return () => {
+  };
+  try {
+    const obs = new PerformanceObserver((list) => {
+      for (const e of list.getEntries()) {
+        const ms = e.duration;
+        if (ms > 16) {
+          longTasks.push({ ms, ts: performance.now(), name: e.name });
+          if (longTasks.length > 100) longTasks.shift();
+          if (ms > 50) {
+            console.warn(`[perf][longtask] ${ms.toFixed(0)}ms ${e.name || ""}`);
+          }
+        }
+      }
+    });
+    obs.observe({ entryTypes: ["longtask"] });
+    return () => obs.disconnect();
+  } catch {
+    return () => {
+    };
+  }
+}
+function getLongTasks() {
+  return [...longTasks];
+}
+function startPerfSession() {
+  if (!perfEnabled()) return () => {
+  };
+  const stopFrame = startFrameMonitor(pushFrameSample);
+  const stopLong = startLongTaskObserver();
+  const memId = window.setInterval(() => {
+    const mb = getMemoryMb();
+    if (mb != null) memorySamples.push({ mb, ts: performance.now() });
+    if (memorySamples.length > 600) memorySamples.shift();
+  }, 1e4);
+  memoryIntervalId = memId;
+  const reportId = window.setInterval(() => {
+    emitPerfReport("10min");
+  }, 6e5);
+  reportIntervalId = reportId;
+  registerLeakResource("perf-session-mem", "interval", "renderProfiler", "memory-sample");
+  registerLeakResource("perf-session-report", "interval", "renderProfiler", "10min-report");
+  return () => {
+    stopFrame();
+    stopLong();
+    if (memoryIntervalId != null) window.clearInterval(memoryIntervalId);
+    if (reportIntervalId != null) window.clearInterval(reportIntervalId);
+    unregisterLeakResource("perf-session-mem");
+    unregisterLeakResource("perf-session-report");
+    emitPerfReport("session-end");
+  };
+}
+function buildPerfReport(reason) {
+  const topRenderCounts = [...renderCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 15).map(([name, count2]) => ({ name, count: count2 }));
+  const topSlowRenders = [...renderDurations.entries()].map(([name, d]) => ({
+    name,
+    avgMs: d.count ? d.totalMs / d.count : 0,
+    maxMs: d.maxMs
+  })).sort((a, b) => b.maxMs - a.maxMs).slice(0, 15);
+  const memStart = memorySamples[0]?.mb ?? null;
+  const memEnd = memorySamples[memorySamples.length - 1]?.mb ?? getMemoryMb();
+  const memoryGrowthMb = memStart != null && memEnd != null ? Math.round((memEnd - memStart) * 10) / 10 : null;
+  return {
+    generatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    reason,
+    topRenderCounts,
+    topSlowRenders,
+    memoryStartMb: memStart,
+    memoryEndMb: memEnd,
+    memoryGrowthMb,
+    actionViolations: [...actionViolations],
+    leakCount: leakRegistry.size,
+    longTaskCount: longTasks.length,
+    remainingBottlenecks: [
+      "App.tsx shell still re-renders on currentUser profile field changes",
+      "ChatRoom inline message map — only ChatSwipeMessageRow is memoized",
+      "Keep-alive tabs mount all panels simultaneously",
+      "state.posts patch still updates HomeFeedCtx on likes (single post only)"
+    ]
+  };
+}
+function emitPerfReport(reason) {
+  const report = buildPerfReport(reason);
+  console.info("[perf][report]", JSON.stringify(report, null, 2));
+  try {
+    window.__retweetPerfReport = report;
+  } catch {
+  }
+  return report;
+}
+if (typeof window !== "undefined" && perfEnabled()) {
+  window.retweetMarkAction = markPerfUserAction;
+}
 const STORY_FULLSCREEN_EVENT = "retweet-story-fullscreen";
 const OPEN_STORY_EVENT = "retweet-open-story";
 let fullscreenLocks = 0;
@@ -18546,137 +19332,6 @@ function notifyGuestActionBlocked() {
     window.dispatchEvent(new CustomEvent("retweet-guest-blocked", { bubbles: true }));
   } catch {
   }
-}
-const VOICE_WAVE_BARS$1 = 40;
-const VOICE_MEDIA_OFFSCREEN$1 = "pointer-events-none fixed start-0 top-0 z-[-1] m-0 h-[2px] w-[2px] max-h-[2px] max-w-[2px] overflow-hidden border-0 p-0 opacity-[0.02]";
-function voiceWaveHeightsFromSrc$1(src) {
-  let h = 0;
-  for (let i = 0; i < src.length; i++) h = (h + src.charCodeAt(i) * (i + 1)) % 100017;
-  return Array.from({ length: VOICE_WAVE_BARS$1 }, (_, i) => {
-    const t = Math.sin((i + 1) * 1.55 + h * 12e-5) * 0.45 + 0.55;
-    const t2 = Math.cos((i + 2) * 0.9 + h * 8e-5) * 0.2;
-    return Math.round(Math.min(100, Math.max(28, (t + t2) * 100)));
-  });
-}
-function voiceUsesVideoElement$1(src) {
-  if (src.startsWith("data:video")) return true;
-  const low = src.slice(0, 120).toLowerCase();
-  return low.includes("audio/webm") || low.includes("video/webm");
-}
-function waitVoiceMediaCanPlay(el) {
-  if (el.readyState >= HTMLMediaElement.HAVE_FUTURE_DATA) return Promise.resolve();
-  return new Promise((resolve, reject) => {
-    const done = () => {
-      cleanup();
-      resolve();
-    };
-    const fail = () => {
-      cleanup();
-      reject(new Error("media load failed"));
-    };
-    const cleanup = () => {
-      el.removeEventListener("canplay", done);
-      el.removeEventListener("loadeddata", done);
-      el.removeEventListener("error", fail);
-    };
-    el.addEventListener("canplay", done, { once: true });
-    el.addEventListener("loadeddata", done, { once: true });
-    el.addEventListener("error", fail, { once: true });
-    try {
-      el.load();
-    } catch {
-    }
-  });
-}
-function fmtVoiceTime$1(sec) {
-  const s = Math.max(0, Math.floor(sec || 0));
-  const m = Math.floor(s / 60);
-  const r2 = s % 60;
-  return `${m}:${String(r2).padStart(2, "0")}`;
-}
-function isVoicePlaybackVideoSrc(src) {
-  if (!src?.trim()) return false;
-  const t = src.trim();
-  if (t.startsWith("data:video")) return true;
-  if (t.startsWith("data:video/")) return true;
-  if (/\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(t)) return true;
-  if (t.includes("/media/videos/")) return true;
-  const low = t.slice(0, 120).toLowerCase();
-  return low.includes("audio/webm") || low.includes("video/webm");
-}
-function isVoiceAttachFile(file) {
-  return file.type.startsWith("audio/") || file.type.startsWith("video/");
-}
-const POST_PLACEHOLDER_MEDIA = /* @__PURE__ */ new Set(["🖼️", "📝", "🎬"]);
-function resolvePostDisplayType(post) {
-  if (post.type === "tweet" || post.type === "reel") return post.type;
-  const text = post.text?.trim() ?? "";
-  const img = post.image?.trim() ?? "";
-  const vid = post.video?.trim() ?? "";
-  const aud = post.audio?.trim() ?? "";
-  if (post.type === "post" && text && !vid && !aud) {
-    if (!img) return "tweet";
-    if (POST_PLACEHOLDER_MEDIA.has(img)) return "post";
-    const media = normalizePostMedia(post);
-    if (!media.hasImage && !media.hasVideo) return "tweet";
-  }
-  return post.type ?? "post";
-}
-function isDisplayTweet(post) {
-  return resolvePostDisplayType(post) === "tweet";
-}
-const CREATE_PLACEHOLDER_MEDIA = /* @__PURE__ */ new Set(["🎬", "🖼️", "📝"]);
-function hasCreateAttachmentMedia(media, hasFile) {
-  if (hasFile) return true;
-  const m = media.trim();
-  if (!m || CREATE_PLACEHOLDER_MEDIA.has(m)) return false;
-  if (m.startsWith("data:video/") || m.startsWith("data:image/") || m.startsWith("data:audio/")) {
-    return true;
-  }
-  if (m.startsWith("blob:")) return true;
-  if (isVideoMediaRef(m)) return true;
-  return isRenderableMediaUrl(m);
-}
-function isReelFeedPost(post) {
-  if (post.type === "tweet") return false;
-  return normalizePostMedia(post).hasVideo;
-}
-function postShowsFeedMedia(post) {
-  if (!isDisplayTweet(post)) return true;
-  const media = normalizePostMedia(post);
-  return media.hasImage || media.hasVideo || media.hasAudio;
-}
-function isVideoMediaRef(s) {
-  if (!s?.trim()) return false;
-  const t = s.trim();
-  if (t.startsWith("data:video/")) return true;
-  if (/\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(t)) return true;
-  return t.includes("/media/videos/");
-}
-function normalizePostMedia(post) {
-  let imageRaw = post.image?.trim() || "";
-  let videoRaw = post.video?.trim() || "";
-  let audioRaw = post.audio?.trim() || "";
-  if (imageRaw && isVideoMediaRef(imageRaw) && !videoRaw) {
-    videoRaw = imageRaw;
-    imageRaw = "";
-  }
-  const imageUrl = imageRaw && !isVideoMediaRef(imageRaw) ? resolveMediaUrl(imageRaw) : "";
-  const videoUrl = videoRaw ? resolveMediaUrl(videoRaw) : "";
-  const posterUrl = imageUrl && isRenderableMediaUrl(imageUrl) ? imageUrl : "";
-  const voiceTweet = !!audioRaw || post.type === "tweet" && isVoicePlaybackVideoSrc(videoRaw) && !imageRaw;
-  const voiceSrc = audioRaw || (voiceTweet && isVoicePlaybackVideoSrc(videoRaw) ? videoRaw : "");
-  const normalized = {
-    imageUrl,
-    videoUrl,
-    posterUrl,
-    hasImage: !!imageUrl && isRenderableMediaUrl(imageUrl) && !isVideoMediaRef(imageRaw),
-    hasVideo: !voiceTweet && !!videoRaw && isVideoMediaRef(videoRaw) && !!videoUrl,
-    hasAudio: !!voiceSrc && (isRenderableMediaUrl(resolveMediaUrl(voiceSrc)) || isVoicePlaybackVideoSrc(voiceSrc)),
-    audioUrl: voiceSrc,
-    emojiFallback: (!imageUrl && !videoUrl && imageRaw && !isRenderableMediaUrl(imageRaw) ? imageRaw : "") || (!imageUrl && !videoUrl && videoRaw && !isRenderableMediaUrl(videoRaw) ? videoRaw : "") || (post.type === "reel" && !videoUrl ? "🎬" : "") || (post.type === "tweet" ? "" : "📝")
-  };
-  return normalized;
 }
 const DB_NAME = "retweet-story-gallery-v1";
 const DB_VER = 1;
@@ -19953,9 +20608,11 @@ function isRenderableAvatarImageUrl(src) {
   if (low.startsWith("/stickers/") || low.startsWith("/app/")) return true;
   return /^https?:\/\//i.test(s);
 }
-function Avatar({ name = "?", src, size = 40, className, ring, ringSeen }) {
+function Avatar({ name = "?", src, size = 40, className, ring, ringSeen, priority = false }) {
   const [imgFailed, setImgFailed] = reactExports.useState(false);
   const [videoFailed, setVideoFailed] = reactExports.useState(false);
+  const [visible, setVisible] = reactExports.useState(priority);
+  const rootRef = reactExports.useRef(null);
   const resolvedSrc = reactExports.useMemo(() => {
     const resolved = resolveMediaUrl(src);
     if (resolved) return resolved;
@@ -19970,12 +20627,36 @@ function Avatar({ name = "?", src, size = 40, className, ring, ringSeen }) {
     setImgFailed(false);
     setVideoFailed(false);
   }, [resolvedSrc]);
-  const showVideo = !!(resolvedSrc && isVideoAvatar && !videoFailed);
-  const showImg = !!(resolvedSrc && !isVideoAvatar && isRenderableAvatarImageUrl(resolvedSrc) && !imgFailed);
+  reactExports.useEffect(() => {
+    if (priority) {
+      setVisible(true);
+      return;
+    }
+    const el = rootRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") {
+      setVisible(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setVisible(true);
+          io.disconnect();
+        }
+      },
+      { rootMargin: "80px" }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [priority, resolvedSrc]);
+  const showVideo = !!(visible && resolvedSrc && isVideoAvatar && !videoFailed);
+  const showImg = !!(visible && resolvedSrc && !isVideoAvatar && isRenderableAvatarImageUrl(resolvedSrc) && !imgFailed);
   const showEmoji = !!(resolvedSrc && !showImg && !showVideo && resolvedSrc.length <= 4 && /[^\p{L}\p{N}]/u.test(resolvedSrc));
+  const imgLoading = priority ? "eager" : "lazy";
   const inner = /* @__PURE__ */ jsxRuntimeExports.jsx(
     "div",
     {
+      ref: rootRef,
       className: cn(
         "rounded-full bg-secondary text-secondary-foreground flex items-center justify-center overflow-hidden font-semibold select-none",
         className
@@ -19992,7 +20673,7 @@ function Avatar({ name = "?", src, size = 40, className, ring, ringSeen }) {
             loop: true,
             autoPlay: true,
             draggable: false,
-            preload: "auto",
+            preload: priority ? "auto" : "metadata",
             "aria-hidden": true,
             onError: () => setVideoFailed(true),
             onLoadedData: (e) => {
@@ -20011,7 +20692,7 @@ function Avatar({ name = "?", src, size = 40, className, ring, ringSeen }) {
           className: "absolute inset-0 h-full w-full object-cover",
           draggable: false,
           decoding: "async",
-          loading: "eager",
+          loading: imgLoading,
           onError: () => setImgFailed(true)
         },
         resolvedSrc
@@ -20023,7 +20704,7 @@ function Avatar({ name = "?", src, size = 40, className, ring, ringSeen }) {
           className: "absolute inset-0 h-full w-full object-cover",
           draggable: false,
           decoding: "async",
-          loading: "eager"
+          loading: imgLoading
         }
       ) })
     }
@@ -20046,8 +20727,8 @@ function VerifiedBadge({
   color = "blue"
 }) {
   const fill = verificationBadgeHex(color);
-  const { state } = useApp();
-  const isDark = state.theme === "dark";
+  const { state: state2 } = useApp();
+  const isDark = state2.theme === "dark";
   const checkStroke = isDark ? "#0d0d0d" : "#ffffff";
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "svg",
@@ -20267,7 +20948,7 @@ function CameraCaptureShareScreen({
   onSendToChat
 }) {
   const ar = language === "ar";
-  const { state, currentUser, addStory, openOrCreateChat, sendMessage, isGuest } = useApp();
+  const { state: state2, currentUser, addStory, openOrCreateChat, sendMessage, isGuest } = useApp();
   const me = currentUser;
   const [screen2, setScreen] = reactExports.useState("preview");
   const [caption, setCaption] = reactExports.useState("");
@@ -20289,9 +20970,9 @@ function CameraCaptureShareScreen({
   }, [onClose]);
   const friends = reactExports.useMemo(() => {
     if (!me) return [];
-    const ids = /* @__PURE__ */ new Set([...me.following, ...state.chats.map((c) => c.members.find((m) => m !== me.id)).filter(Boolean)]);
-    return [...ids].map((id) => userById(state, id)).filter((u) => !!u && u.id !== me.id).filter((u) => !me.blocked.includes(u.id) && !u.blocked.includes(me.id));
-  }, [me, state.chats, state.users]);
+    const ids = /* @__PURE__ */ new Set([...me.following, ...state2.chats.map((c) => c.members.find((m) => m !== me.id)).filter(Boolean)]);
+    return [...ids].map((id) => userById$1(state2, id)).filter((u) => !!u && u.id !== me.id).filter((u) => !me.blocked.includes(u.id) && !u.blocked.includes(me.id));
+  }, [me, state2.chats, state2.users]);
   const filteredFriends = reactExports.useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return friends;
@@ -20790,7140 +21471,6 @@ function TabPanelShell({
       children
     }
   ) });
-}
-function LazyInView({
-  children,
-  fallback,
-  rootMargin = "280px 0px",
-  minHeight = "min-h-[12rem]"
-}) {
-  const ref = reactExports.useRef(null);
-  const [visible, setVisible] = reactExports.useState(false);
-  reactExports.useEffect(() => {
-    const el = ref.current;
-    if (!el || visible) return;
-    const io = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((e) => e.isIntersecting)) {
-          setVisible(true);
-          io.disconnect();
-        }
-      },
-      { root: null, rootMargin, threshold: 0.01 }
-    );
-    io.observe(el);
-    return () => io.disconnect();
-  }, [rootMargin, visible]);
-  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { ref, className: visible ? void 0 : minHeight, children: visible ? children : fallback ?? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-full " + minHeight + " bg-muted/30" }) });
-}
-function postFeedSignature(post) {
-  return [
-    post.id,
-    post.createdAt,
-    post.text ?? "",
-    post.image ?? "",
-    post.video ?? "",
-    post.type ?? "",
-    post.likes?.length ?? 0,
-    post.comments?.length ?? 0,
-    post.reposts?.length ?? 0
-  ].join("|");
-}
-const dict = {
-  ar: {
-    home: "الرئيسية",
-    search: "البحث",
-    reels: "ريلز",
-    chat: "الرسائل",
-    profile: "البروفايل",
-    settings: "الإعدادات",
-    notifications: "الإشعارات",
-    create: "إنشاء",
-    post: "منشور",
-    tweet: "تغريدة",
-    story: "ستوري",
-    follow: "متابعة",
-    following: "متابَع",
-    followingDone: "تمت المتابعة",
-    mutualFriends: "أصدقاء",
-    followBack: "رد المتابعة",
-    followers: "متابعون",
-    followsCount: "يتابع",
-    message: "رسالة",
-    edit: "تعديل البروفايل",
-    share: "مشاركة البروفايل",
-    block: "حظر",
-    unblock: "إلغاء الحظر",
-    private: "حساب خاص",
-    darkMode: "الوضع الليلي",
-    language: "اللغة",
-    logout: "تسجيل الخروج",
-    accountInfo: "معلومات الحساب",
-    changePwd: "تغيير كلمة المرور",
-    help: "مركز المساعدة",
-    about: "عن التطبيق",
-    requests: "طلبات الرسائل",
-    group: "مجموعة",
-    channel: "قناة",
-    note: "نوت",
-    addNote: "أضف نوت",
-    members: "أعضاء",
-    leave: "خروج من القناة",
-    searchPlaceholder: "ابحث...",
-    trending: "الرائج",
-    quranChannel: "بوت طارق رمدي",
-    quranDesc: "أدعية وتذكير",
-    yourStory: "قصتك",
-    noPosts: "لا يوجد منشورات",
-    noChats: "لا توجد محادثات",
-    noReels: "لا يوجد ريلز",
-    comments: "تعليقات",
-    likes: "إعجابات",
-    reposts: "إعادات نشر",
-    send: "إرسال",
-    typeMessage: "اكتب رسالة...",
-    closeFriends: "الأصدقاء المقربون",
-    audienceAll: "الجميع",
-    audienceClose: "أصدقاء مقربون",
-    accountPrivate: "حسابك الآن خاص",
-    locked: "محتوى مقفل — تابع لرؤيته",
-    save: "حفظ",
-    cancel: "إلغاء",
-    close: "إغلاق",
-    delete: "حذف",
-    accept: "قبول",
-    create_: "إنشاء",
-    next: "التالي",
-    accounts: "الحسابات",
-    addAccount: "إضافة حساب",
-    newGroup: "مجموعة جديدة",
-    newChannel: "قناة جديدة",
-    onlyOwner: "فقط مالك القناة يمكنه الكتابة",
-    inviteHost: "دعوة كمساهم",
-    removeHost: "إزالة مساهم",
-    blocked: "تم الحظر",
-    privacy: "الخصوصية والأمان",
-    preferences: "التفضيلات",
-    support: "الدعم",
-    addMembers: "اختر الأعضاء (٢ على الأقل)",
-    groupPickTwoHint: "اختر عضوين على الأقل لإنشاء المجموعة",
-    groupName: "اسم المجموعة",
-    channelName: "اسم القناة",
-    typing: "يكتب...",
-    recording: "جاري التسجيل...",
-    stop: "إيقاف",
-    publish: "نشر",
-    attach: "إرفاق",
-    msgReply: "رد",
-    msgForward: "إعادة توجيه",
-    msgCopy: "نسخ",
-    msgDeleteForYou: "حذف عندك فقط",
-    msgReport: "إبلاغ",
-    msgMore: "المزيد",
-    msgCopied: "تم النسخ",
-    msgReportThanks: "تم استلام البلاغ",
-    msgMoreSoon: "المزيد قريباً",
-    msgCloseMenu: "إغلاق القائمة",
-    msgForwardedFrom: "معاد توجيه من",
-    msgPin: "تثبيت",
-    msgUnpin: "إلغاء التثبيت",
-    stickerAddFavorite: "إضافة إلى المفضلة",
-    stickerFavoriteAdded: "تمت الإضافة للمفضلة",
-    forwardPickChat: "إعادة توجيه إلى…",
-    forwardEmpty: "لا محادثات مطابقة",
-    pinnedBar: "مثبت",
-    chatListPin: "تثبيت المحادثة في الأعلى",
-    chatListUnpin: "إلغاء تثبيت المحادثة",
-    chatMenuDelete: "حذف",
-    chatMenuDeleteConfirm: "حذف هذه المحادثة من جهازك؟",
-    msgRequestOpenMessage: "عرض الرسالة",
-    msgRequestAcceptOpen: "قبول والدردشة",
-    msgRequestDecline: "رفض",
-    chatMenuMute: "كتم الإشعارات",
-    chatMenuUnmute: "إلغاء كتم الإشعارات",
-    chatRepliedToYou: "ردّ عليك",
-    chatRepliedTo: "رد على",
-    chatReply: "رد",
-    chatReplyingTo: "الرد على",
-    groupChangeNameImage: "تغيير الاسم والصورة",
-    groupAdd: "إضافة",
-    groupSearch: "بحث",
-    groupMute: "كتم",
-    groupOptions: "خيارات",
-    groupTheme: "السمات والملصقات",
-    groupInviteLink: "رابط الدعوة",
-    groupPeople: "الأعضاء",
-    groupYou: "أنت",
-    groupInvited: "منضمون",
-    groupRequireJoinApproval: "يتطلب الموافقة للانضمام",
-    groupFollow: "متابعة",
-    groupFollowing: "متابَع",
-    groupAdmin: "مشرف",
-    groupPendingJoin: "طلبات انضمام",
-    groupNicknames: "الألقاب",
-    groupPrivacySafety: "الخصوصية والأمان",
-    groupThemeDefault: "الوضع الافتراضي",
-    groupSomethingNotWorking: "حدث خطأ ما",
-    groupCreateNew: "إنشاء محادثة جماعية جديدة",
-    groupSharedMedia: "الوسائط المشتركة",
-    chatRowLongPressHint: "اضغط مطولاً على المحادثة للخيارات (تثبيت، كتم، حذف)",
-    settingsActivity: "الإعدادات والنشاط",
-    accountsCenter: "مركز الحسابات",
-    accountsCenterDesc: "إدارة تجربتك عبر Retweet بحساباتك المرتبطة.",
-    activeAccountsAdd: "الحسابات النشطة / إضافة حساب",
-    verifyAccount: "توثيق الحساب",
-    verifiedAccount: "حسابك موثّق",
-    howYouUseApp: "طريقة استخدام التطبيق",
-    saved: "العناصر المحفوظة",
-    archive: "أرشيف القصص",
-    timeManagement: "إدارة الوقت",
-    whoCanSee: "من يمكنه رؤية محتواك",
-    allowStoryReplies: "السماح بالرد على ستورياتي",
-    showLikesOnProfile: "إظهار الإعجابات والمحفوظات في ملفي",
-    hideFollowLists: "إخفاء المتابعين والمتابَعين",
-    blockedAccounts: "الحسابات المحظورة",
-    noBlockedAccounts: "لا توجد حسابات محظورة",
-    unblockUser: "فك الحظر",
-    verifyHint: "راجع أن معلومات حسابك صحيحة، ثم اضغط تأكيد لإكمال التوثيق.",
-    confirmVerify: "تأكيد",
-    pwdCurrent: "كلمة المرور الحالية",
-    pwdNew: "كلمة المرور الجديدة",
-    pwdChanged: "تم تغيير كلمة المرور",
-    pwdChangeFailed: "تعذر التغيير",
-    comingSoonPanel: "هذه الشاشة قيد الإعداد — ستتوفر قريباً.",
-    closeFriendsHint: "شارك القصص والمنشورات مع أصدقائك المقربين فقط.",
-    closeFriendsEmpty: "تابِ حسابات لإضافتها كأصدقاء مقربين.",
-    notificationsSettings: "إعدادات الإشعارات",
-    timeMgmtHint: "تذكيرات الاستخدام وحدود وقت التصفّح.",
-    savedHint: "المنشورات والريلز التي حفظتها.",
-    archiveHint: "قصصك التي انتهت صلاحيتها (٢٤ ساعة). يمكنك إعادة نشرها أو حفظها في الهايلايت.",
-    archiveEmpty: "لا توجد قصص في الأرشيف بعد.",
-    archiveEmptyDetail: "عند انتهاء صلاحية قصة (بعد ٢٤ ساعة) تُنقل تلقائياً إلى هنا.",
-    storiesArchive: "أرشيف القصص",
-    addToCloseFriends: "إضافة",
-    privacyPolicy: "سياسة الخصوصية",
-    deleteAccount: "حذف الحساب",
-    deleteAccountHint: "سيُحذف حسابك وجميع منشوراتك ورسائلك نهائياً. لا يمكن التراجع.",
-    deleteAccountConfirmLabel: "اكتب DELETE للتأكيد",
-    deleteAccountPassword: "كلمة المرور",
-    deleteAccountDone: "تم حذف الحساب",
-    deleteAccountFailed: "تعذر حذف الحساب"
-  },
-  en: {
-    home: "Home",
-    search: "Search",
-    reels: "Reels",
-    chat: "Messages",
-    profile: "Profile",
-    settings: "Settings",
-    notifications: "Notifications",
-    create: "Create",
-    post: "Post",
-    tweet: "Tweet",
-    story: "Story",
-    follow: "Follow",
-    following: "Following",
-    followingDone: "Following",
-    mutualFriends: "Friends",
-    followBack: "Follow back",
-    followers: "Followers",
-    followsCount: "Following",
-    message: "Message",
-    edit: "Edit Profile",
-    share: "Share Profile",
-    block: "Block",
-    unblock: "Unblock",
-    private: "Private Account",
-    darkMode: "Dark Mode",
-    language: "Language",
-    logout: "Log out",
-    accountInfo: "Account Info",
-    changePwd: "Change Password",
-    help: "Help Center",
-    about: "About",
-    requests: "Message Requests",
-    group: "Group",
-    channel: "Channel",
-    note: "Note",
-    addNote: "Add a note",
-    members: "members",
-    leave: "Leave channel",
-    searchPlaceholder: "Search...",
-    trending: "Trending",
-    quranChannel: "Quran Channel",
-    quranDesc: "Du'as & Hadith",
-    yourStory: "Your story",
-    noPosts: "No posts yet",
-    noChats: "No conversations",
-    noReels: "No reels yet",
-    comments: "Comments",
-    likes: "Likes",
-    reposts: "Reposts",
-    send: "Send",
-    typeMessage: "Message...",
-    closeFriends: "Close Friends",
-    audienceAll: "Everyone",
-    audienceClose: "Close friends",
-    accountPrivate: "Your account is now private",
-    locked: "Locked — follow to view",
-    save: "Save",
-    cancel: "Cancel",
-    close: "Close",
-    delete: "Delete",
-    accept: "Accept",
-    create_: "Create",
-    next: "Next",
-    accounts: "Accounts",
-    addAccount: "Add account",
-    newGroup: "New group",
-    newChannel: "New channel",
-    onlyOwner: "Only the channel owner can post",
-    inviteHost: "Invite as host",
-    removeHost: "Remove host",
-    blocked: "Blocked",
-    privacy: "Privacy & Security",
-    preferences: "Preferences",
-    support: "Support",
-    addMembers: "Pick members (min 2)",
-    groupPickTwoHint: "Select at least 2 people to create a group",
-    groupName: "Group name",
-    channelName: "Channel name",
-    typing: "typing...",
-    recording: "Recording...",
-    stop: "Stop",
-    publish: "Publish",
-    attach: "Attach",
-    msgReply: "Reply",
-    msgForward: "Forward",
-    msgCopy: "Copy",
-    msgDeleteForYou: "Delete for you",
-    msgReport: "Report",
-    msgMore: "More",
-    msgCopied: "Copied",
-    msgReportThanks: "Report received",
-    msgMoreSoon: "More options coming soon",
-    msgCloseMenu: "Close menu",
-    msgForwardedFrom: "Forwarded from",
-    msgPin: "Pin",
-    msgUnpin: "Unpin",
-    stickerAddFavorite: "Add to favorites",
-    stickerFavoriteAdded: "Saved to sticker favorites",
-    forwardPickChat: "Forward to…",
-    forwardEmpty: "No matching chats",
-    pinnedBar: "Pinned",
-    chatListPin: "Pin chat to top",
-    chatListUnpin: "Unpin chat",
-    chatMenuDelete: "Delete",
-    chatMenuDeleteConfirm: "Delete this conversation from your device?",
-    msgRequestOpenMessage: "View message",
-    msgRequestAcceptOpen: "Accept and chat",
-    msgRequestDecline: "Decline",
-    chatMenuMute: "Mute notifications",
-    chatMenuUnmute: "Unmute notifications",
-    chatRepliedToYou: "Replied to you",
-    chatRepliedTo: "Replied to",
-    chatReply: "Reply",
-    chatReplyingTo: "Replying to",
-    groupChangeNameImage: "Change name and image",
-    groupAdd: "Add",
-    groupSearch: "Search",
-    groupMute: "Mute",
-    groupOptions: "Options",
-    groupTheme: "Theme & stickers",
-    groupInviteLink: "Invite link",
-    groupPeople: "People",
-    groupYou: "You",
-    groupInvited: "Invited",
-    groupRequireJoinApproval: "Require approval to join",
-    groupFollow: "Follow",
-    groupFollowing: "Following",
-    groupAdmin: "Admin",
-    groupPendingJoin: "Join requests",
-    groupNicknames: "Nicknames",
-    groupPrivacySafety: "Privacy & safety",
-    groupThemeDefault: "Default",
-    groupSomethingNotWorking: "Something isn't working",
-    groupCreateNew: "Create a new group chat",
-    groupSharedMedia: "Shared media",
-    chatRowLongPressHint: "Long-press the chat row for options (pin, mute, delete)",
-    settingsActivity: "Settings and activity",
-    accountsCenter: "Accounts Center",
-    accountsCenterDesc: "Manage your experience across linked Retweet accounts.",
-    activeAccountsAdd: "Active accounts / Add account",
-    verifyAccount: "Account verification",
-    verifiedAccount: "Your account is verified",
-    howYouUseApp: "How you use Retweet",
-    saved: "Saved",
-    archive: "Stories archive",
-    timeManagement: "Time management",
-    whoCanSee: "Who can see your content",
-    allowStoryReplies: "Allow replies to my stories",
-    showLikesOnProfile: "Show likes and saved on my profile",
-    hideFollowLists: "Hide followers and following lists",
-    blockedAccounts: "Blocked accounts",
-    noBlockedAccounts: "No blocked accounts",
-    unblockUser: "Unblock",
-    verifyHint: "Make sure your account details are correct, then confirm to verify.",
-    confirmVerify: "Confirm",
-    pwdCurrent: "Current password",
-    pwdNew: "New password",
-    pwdChanged: "Password changed",
-    pwdChangeFailed: "Could not change password",
-    comingSoonPanel: "This screen is being built — coming soon.",
-    closeFriendsHint: "Share stories and posts with close friends only.",
-    closeFriendsEmpty: "Follow accounts to add them as close friends.",
-    notificationsSettings: "Notification settings",
-    timeMgmtHint: "Usage reminders and time limits.",
-    savedHint: "Posts and reels you saved.",
-    archiveHint: "Stories that expired after 24 hours. Repost or save to highlights.",
-    archiveEmpty: "No stories in your archive yet.",
-    archiveEmptyDetail: "When a story expires after 24 hours, it moves here automatically.",
-    storiesArchive: "Stories archive",
-    addToCloseFriends: "Add",
-    privacyPolicy: "Privacy Policy",
-    deleteAccount: "Delete account",
-    deleteAccountHint: "Your account, posts, and messages will be permanently deleted. This cannot be undone.",
-    deleteAccountConfirmLabel: "Type DELETE to confirm",
-    deleteAccountPassword: "Password",
-    deleteAccountDone: "Account deleted",
-    deleteAccountFailed: "Could not delete account"
-  }
-};
-function useT() {
-  const lang = reactExports.useContext(AppLanguageCtx);
-  return (k) => dict[lang][k] ?? k;
-}
-function PostOptionsMenu({
-  post,
-  onClose,
-  onDeleted
-}) {
-  const { currentUser, deletePost } = useApp();
-  const t = useT();
-  const panelRef = reactExports.useRef(null);
-  const isOwner = currentUser?.id === post.userId;
-  reactExports.useEffect(() => {
-    const onDoc = (e) => {
-      if (panelRef.current && !panelRef.current.contains(e.target)) onClose();
-    };
-    const onKey = (e) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [onClose]);
-  if (!isOwner) return null;
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(
-    "div",
-    {
-      ref: panelRef,
-      dir: "rtl",
-      className: "absolute end-2 top-full z-50 mt-1 min-w-[11rem] overflow-hidden rounded-xl border border-border bg-popover py-1 text-sm shadow-lg",
-      role: "menu",
-      children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-        "button",
-        {
-          type: "button",
-          role: "menuitem",
-          className: "flex w-full flex-row items-center gap-2 px-4 py-2.5 text-start text-destructive hover:bg-destructive/10",
-          onClick: () => {
-            const label = post.type === "tweet" ? "حذف هذه التغريدة؟" : post.type === "reel" ? "حذف هذا الريل؟" : "حذف هذا المنشور؟";
-            if (!window.confirm(label)) return;
-            deletePost(post.id);
-            onDeleted?.();
-            onClose();
-          },
-          children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 18, className: "shrink-0" }),
-            t("delete")
-          ]
-        }
-      )
-    }
-  );
-}
-function CommentOptionsMenu({
-  postId,
-  commentId,
-  authorId,
-  onClose
-}) {
-  const { currentUser, deleteComment } = useApp();
-  const t = useT();
-  const panelRef = reactExports.useRef(null);
-  const isOwner = currentUser?.id === authorId;
-  reactExports.useEffect(() => {
-    const onDoc = (e) => {
-      if (panelRef.current && !panelRef.current.contains(e.target)) onClose();
-    };
-    const onKey = (e) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("mousedown", onDoc);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDoc);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [onClose]);
-  if (!isOwner) return null;
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(
-    "div",
-    {
-      ref: panelRef,
-      dir: "rtl",
-      className: "absolute end-0 top-full z-50 mt-1 min-w-[10rem] overflow-hidden rounded-xl border border-border bg-popover py-1 text-sm shadow-lg",
-      role: "menu",
-      children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-        "button",
-        {
-          type: "button",
-          role: "menuitem",
-          className: "flex w-full flex-row items-center gap-2 px-3 py-2 text-start text-destructive hover:bg-destructive/10",
-          onClick: () => {
-            if (!window.confirm("حذف هذا التعليق؟")) return;
-            deleteComment(postId, commentId);
-            onClose();
-          },
-          children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 16, className: "shrink-0" }),
-            t("delete")
-          ]
-        }
-      )
-    }
-  );
-}
-function formatRelativeTime(createdAt, lang = "ar") {
-  const sec = Math.max(0, Math.floor((Date.now() - createdAt) / 1e3));
-  if (lang === "en") {
-    if (sec < 60) return "just now";
-    const m2 = Math.floor(sec / 60);
-    if (m2 < 60) return m2 === 1 ? "1 min ago" : `${m2} min ago`;
-    const h2 = Math.floor(m2 / 60);
-    if (h2 < 24) return h2 === 1 ? "1 hour ago" : `${h2} hours ago`;
-    const d2 = Math.floor(h2 / 24);
-    if (d2 < 7) return d2 === 1 ? "1 day ago" : `${d2} days ago`;
-    const w2 = Math.floor(d2 / 7);
-    if (w2 < 5) return w2 === 1 ? "1 week ago" : `${w2} weeks ago`;
-    const mo2 = Math.floor(d2 / 30);
-    if (mo2 < 12) return mo2 <= 1 ? "1 month ago" : `${mo2} months ago`;
-    const y2 = Math.floor(d2 / 365);
-    return y2 <= 1 ? "1 year ago" : `${y2} years ago`;
-  }
-  if (sec < 45) return "الآن";
-  if (sec < 90) return "منذ دقيقة";
-  const m = Math.floor(sec / 60);
-  if (m < 60) return m === 1 ? "منذ دقيقة" : `منذ ${m} دقائق`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return h === 1 ? "منذ ساعة" : `منذ ${h} ساعات`;
-  const d = Math.floor(h / 24);
-  if (d === 1) return "منذ يوم";
-  if (d < 7) return `منذ ${d} أيام`;
-  const w = Math.floor(d / 7);
-  if (w === 1) return "منذ أسبوع";
-  if (w < 5) return `منذ ${w} أسابيع`;
-  const mo = Math.floor(d / 30);
-  if (mo <= 1) return "منذ شهر";
-  if (mo < 12) return `منذ ${mo} أشهر`;
-  const y = Math.floor(d / 365);
-  return y <= 1 ? "منذ سنة" : `منذ ${y} سنوات`;
-}
-function NoteReplySheet({ note, contentLabelAr, onClose, onSent }) {
-  const { state, replyToMediaNoteAsDm, isGuest } = useApp();
-  const [text, setText] = reactExports.useState("");
-  if (!note) return null;
-  const author = userById(state, note.authorId);
-  const send = () => {
-    if (isGuest) {
-      notifyGuestActionBlocked();
-      return;
-    }
-    const trimmed = text.trim();
-    if (!trimmed) return;
-    const res = replyToMediaNoteAsDm({
-      noteAuthorId: note.authorId,
-      noteText: note.text,
-      replyText: trimmed,
-      contentLabelAr
-    });
-    if (res) {
-      setText("");
-      onSent(res.chatId);
-      onClose();
-    }
-  };
-  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-[120] bg-black/50 flex items-end justify-center", onClick: onClose, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-    "div",
-    {
-      className: "w-full max-w-md bg-background rounded-t-3xl p-4 pb-6 shadow-xl border border-border",
-      onClick: (e) => e.stopPropagation(),
-      children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between mb-3", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "font-semibold text-sm", children: "رد على النوت في الخاص" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onClose, className: "p-2 rounded-full hover:bg-secondary", "aria-label": "إغلاق", children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 20 }) })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-xs text-muted-foreground mb-2", children: [
-          "@",
-          author?.username,
-          " — ",
-          contentLabelAr
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-sm bg-secondary/80 rounded-xl p-3 mb-3 border border-border line-clamp-4", children: note.text }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "textarea",
-          {
-            value: text,
-            onChange: (e) => setText(e.target.value),
-            placeholder: "اكتب ردك…",
-            rows: 3,
-            className: "w-full bg-input rounded-xl px-3 py-2 text-sm outline-none resize-none mb-3"
-          }
-        ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "button",
-          {
-            type: "button",
-            onClick: send,
-            disabled: !text.trim(),
-            className: "w-full bg-primary text-primary-foreground rounded-xl py-3 font-semibold text-sm disabled:opacity-50",
-            children: "إرسال في الخاص"
-          }
-        )
-      ]
-    }
-  ) });
-}
-const MENTION_OR_HASHTAG = /(@[a-z0-9_]{1,30})|(#[\w\u0600-\u06FF]+)/gi;
-function mentionPillClassName(variant = "default") {
-  switch (variant) {
-    case "mine":
-      return "inline-flex max-w-full items-center rounded-full bg-white/28 px-1.5 py-px text-[0.9em] font-semibold leading-snug text-white align-baseline";
-    case "glass":
-      return "inline-flex max-w-full items-center rounded-full bg-white/22 px-1.5 py-px text-[0.9em] font-semibold leading-snug text-white align-baseline";
-    case "composerQuran":
-      return "inline-flex max-w-full items-center rounded-full bg-emerald-400/22 px-1.5 py-px text-[0.9em] font-semibold leading-snug text-emerald-100 align-baseline";
-    case "composer":
-      return "inline-flex max-w-full items-center rounded-full bg-[#0084ff]/18 px-1.5 py-px text-[0.9em] font-semibold leading-snug text-[#0084ff] align-baseline dark:bg-[#0084ff]/28 dark:text-[#6eb6ff]";
-    default:
-      return "inline-flex max-w-full items-center rounded-full bg-[#0084ff]/14 px-1.5 py-px text-[0.9em] font-semibold leading-snug text-[#0084ff] align-baseline dark:bg-[#0084ff]/22 dark:text-[#6eb6ff]";
-  }
-}
-function MentionPill({
-  username,
-  variant = "default",
-  className,
-  onClick
-}) {
-  const cls = cn(mentionPillClassName(variant), className);
-  const content = /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "inline-flex items-center gap-px", dir: "rtl", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { dir: "ltr", children: username }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "@" })
-  ] });
-  if (onClick) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick, className: cls, children: content });
-  }
-  return /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: cls, children: content });
-}
-function createMentionRenderer(opts) {
-  const variant = opts.variant ?? "default";
-  return (username, key2) => {
-    const u = opts.users?.find((x) => x.username.toLowerCase() === username.toLowerCase());
-    const onClick = opts.onUserClick || opts.onUsernameClick ? (e) => {
-      e.stopPropagation();
-      if (u && opts.onUserClick) opts.onUserClick(u.id);
-      else opts.onUsernameClick?.(username);
-    } : void 0;
-    return /* @__PURE__ */ jsxRuntimeExports.jsx(MentionPill, { username, variant, onClick }, key2);
-  };
-}
-function renderMentionHashtagNodes(raw, opts) {
-  const text = raw.length > 12e3 ? raw.slice(0, 12e3) + "…" : raw;
-  const out = [];
-  let last = 0;
-  let k = 0;
-  for (const m of text.matchAll(MENTION_OR_HASHTAG)) {
-    const idx = m.index ?? 0;
-    if (idx > last) out.push(/* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: text.slice(last, idx) }, `t${k++}`));
-    const piece = m[0];
-    if (piece.startsWith("@")) out.push(opts.renderMention(piece.slice(1), `m${k++}`));
-    else out.push(opts.renderHashtag(piece, `h${k++}`));
-    last = idx + piece.length;
-  }
-  if (last < text.length) out.push(/* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: text.slice(last) }, `t${k++}`));
-  return out;
-}
-function renderComposerMentionOverlay(text, variant = "composer") {
-  if (!text) return [];
-  return renderMentionHashtagNodes(text, {
-    renderMention: (uname, key2) => /* @__PURE__ */ jsxRuntimeExports.jsx(MentionPill, { username: uname, variant }, key2),
-    renderHashtag: (h, key2) => /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-inherit", children: h }, key2)
-  });
-}
-const RS_ACCENT = "#5AC8D8";
-function displayNameFromUsername(username) {
-  const base = username.replace(/^@/, "").trim();
-  if (!base) return "?";
-  return base.split(/[._-]+/).filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
-}
-function formatChatListTime(createdAt) {
-  const diff = Math.max(0, Date.now() - createdAt);
-  const m = Math.floor(diff / 6e4);
-  if (m < 1) return "now";
-  if (m < 60) return `${m}m`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h`;
-  const d = Math.floor(h / 24);
-  if (d < 7) return `${d}d`;
-  try {
-    return new Date(createdAt).toLocaleDateString(void 0, { month: "short", day: "numeric" });
-  } catch {
-    return "";
-  }
-}
-function formatTrendPostCount(n) {
-  if (n >= 1e6) return `${(n / 1e6).toFixed(1).replace(/\.0$/, "")}M posts`;
-  if (n >= 1e3) return `${(n / 1e3).toFixed(1).replace(/\.0$/, "")}K posts`;
-  return `${n} posts`;
-}
-function userDisplayName(u) {
-  const dn = u.displayName?.trim();
-  if (dn) return dn;
-  return displayNameFromUsername(u.username);
-}
-function waveBarsFromAnalyser$1(analyser, barCount) {
-  const n = analyser.frequencyBinCount;
-  const data = new Uint8Array(n);
-  analyser.getByteFrequencyData(data);
-  const heights = [];
-  for (let b = 0; b < barCount; b++) {
-    const t0 = (b / barCount) ** 1.05;
-    const t1 = ((b + 1) / barCount) ** 1.05;
-    const start = Math.floor(n * t0);
-    const end = Math.ceil(n * t1);
-    let sum = 0;
-    for (let i = start; i < end; i++) sum += data[Math.min(i, n - 1)];
-    const avg = sum / Math.max(1, end - start) / 255;
-    const boosted = Math.min(1.15, avg * 1.75 + 0.03);
-    const eased = Math.pow(boosted, 0.82);
-    const pct = Math.round(20 + eased * 80);
-    heights.push(Math.min(100, Math.max(17, pct)));
-  }
-  return heights;
-}
-function useVoicePlaybackSrc$1(src) {
-  const [playbackSrc, setPlaybackSrc] = reactExports.useState(src);
-  reactExports.useEffect(() => {
-    if (!src.startsWith("data:")) {
-      setPlaybackSrc(src);
-      return;
-    }
-    let revoked = null;
-    let cancelled = false;
-    void (async () => {
-      try {
-        const blob = await (await fetch(src)).blob();
-        if (cancelled) return;
-        revoked = URL.createObjectURL(blob);
-        setPlaybackSrc(revoked);
-      } catch {
-        if (!cancelled) setPlaybackSrc(src);
-      }
-    })();
-    return () => {
-      cancelled = true;
-      if (revoked) URL.revokeObjectURL(revoked);
-    };
-  }, [src]);
-  return playbackSrc;
-}
-function VoiceWavePlayer({
-  src,
-  className = "",
-  durationSec
-}) {
-  const playbackSrc = useVoicePlaybackSrc$1(src);
-  const useVideoEl = voiceUsesVideoElement$1(playbackSrc);
-  const audioRef = reactExports.useRef(null);
-  const videoRef = reactExports.useRef(null);
-  const analyserGraphRef = reactExports.useRef(null);
-  const ensureAnalyserRef = reactExports.useRef(null);
-  const waveRafRef = reactExports.useRef(0);
-  const waveSmoothRef = reactExports.useRef(Array.from({ length: VOICE_WAVE_BARS$1 }, () => 40));
-  const waveFrameRef = reactExports.useRef(0);
-  const [playing, setPlaying] = reactExports.useState(false);
-  const [loading, setLoading] = reactExports.useState(false);
-  const [cur, setCur] = reactExports.useState(0);
-  const [dur, setDur] = reactExports.useState(durationSec || 0);
-  const [levelsLive, setLevelsLive] = reactExports.useState(null);
-  const idleHeights = reactExports.useMemo(() => voiceWaveHeightsFromSrc$1(src), [src]);
-  const idleRef = reactExports.useRef(idleHeights);
-  idleRef.current = idleHeights;
-  reactExports.useEffect(() => {
-    waveSmoothRef.current = idleRef.current.slice();
-    setLevelsLive(null);
-    setPlaying(false);
-    setCur(0);
-    setDur(durationSec || 0);
-    if (waveRafRef.current) cancelAnimationFrame(waveRafRef.current);
-    waveRafRef.current = 0;
-    void analyserGraphRef.current?.ctx.close().catch(() => {
-    });
-    analyserGraphRef.current = null;
-    ensureAnalyserRef.current = null;
-    const el = useVideoEl ? videoRef.current : audioRef.current;
-    if (!el) return void 0;
-    try {
-      el.load();
-    } catch {
-    }
-    const onT = () => setCur(el.currentTime);
-    const onMeta = () => {
-      const d = el.duration;
-      setDur(d && isFinite(d) && d > 0 ? d : durationSec || 0);
-    };
-    const onPlay = () => setPlaying(true);
-    const stopWaveRaf = () => {
-      if (waveRafRef.current) cancelAnimationFrame(waveRafRef.current);
-      waveRafRef.current = 0;
-    };
-    const onWaveStop = () => {
-      stopWaveRaf();
-      setLevelsLive(null);
-    };
-    const onPause = () => {
-      setPlaying(false);
-      onWaveStop();
-    };
-    const onEnded = () => {
-      setPlaying(false);
-      setCur(0);
-      onWaveStop();
-    };
-    const attachAnalyser = async () => {
-      if (analyserGraphRef.current) return;
-      const AW = typeof window !== "undefined" && (window.AudioContext || window.webkitAudioContext);
-      if (!AW) return;
-      try {
-        const ctx = new AW();
-        const analyser = ctx.createAnalyser();
-        analyser.fftSize = 512;
-        analyser.smoothingTimeConstant = 0.72;
-        const source = ctx.createMediaElementSource(el);
-        source.connect(analyser);
-        analyser.connect(ctx.destination);
-        analyserGraphRef.current = { ctx, analyser };
-        await ctx.resume();
-      } catch {
-        analyserGraphRef.current = null;
-      }
-    };
-    ensureAnalyserRef.current = attachAnalyser;
-    const waveLoop = () => {
-      if (el.paused) return;
-      const graph = analyserGraphRef.current;
-      if (!graph) return;
-      const raw = waveBarsFromAnalyser$1(graph.analyser, VOICE_WAVE_BARS$1);
-      const sm = waveSmoothRef.current;
-      for (let i = 0; i < VOICE_WAVE_BARS$1; i++) {
-        sm[i] = sm[i] * 0.56 + raw[i] * 0.44;
-      }
-      waveFrameRef.current += 1;
-      if ((waveFrameRef.current & 3) === 0) setLevelsLive([...sm]);
-      waveRafRef.current = requestAnimationFrame(waveLoop);
-    };
-    const onPlaying = () => {
-      setLoading(false);
-      void ensureAnalyserRef.current?.();
-      void analyserGraphRef.current?.ctx.resume().catch(() => {
-      });
-      waveSmoothRef.current = idleRef.current.slice();
-      waveFrameRef.current = 0;
-      stopWaveRaf();
-      if (analyserGraphRef.current) waveRafRef.current = requestAnimationFrame(waveLoop);
-    };
-    el.addEventListener("timeupdate", onT);
-    el.addEventListener("loadedmetadata", onMeta);
-    el.addEventListener("play", onPlay);
-    el.addEventListener("playing", onPlaying);
-    el.addEventListener("pause", onPause);
-    el.addEventListener("ended", onEnded);
-    return () => {
-      el.removeEventListener("timeupdate", onT);
-      el.removeEventListener("loadedmetadata", onMeta);
-      el.removeEventListener("play", onPlay);
-      el.removeEventListener("playing", onPlaying);
-      el.removeEventListener("pause", onPause);
-      el.removeEventListener("ended", onEnded);
-      stopWaveRaf();
-      setLevelsLive(null);
-      void analyserGraphRef.current?.ctx.close().catch(() => {
-      });
-      analyserGraphRef.current = null;
-      ensureAnalyserRef.current = null;
-    };
-  }, [playbackSrc, useVideoEl, durationSec]);
-  const toggle = async () => {
-    const el = useVideoEl ? videoRef.current : audioRef.current;
-    if (!el) return;
-    try {
-      if (!el.paused) {
-        el.pause();
-        setLoading(false);
-        return;
-      }
-      setLoading(true);
-      await waitVoiceMediaCanPlay(el);
-      await el.play();
-    } catch {
-      try {
-        await waitVoiceMediaCanPlay(el);
-        await el.play();
-      } catch {
-        setLoading(false);
-      }
-    }
-  };
-  const total = dur || durationSec || 0;
-  const filledBars = total > 0 ? Math.min(VOICE_WAVE_BARS$1, Math.ceil(cur / total * VOICE_WAVE_BARS$1)) : 0;
-  const remaining = Math.max(0, total - cur);
-  const displayHeights = levelsLive ?? idleHeights;
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex w-full flex-col " + className, children: [
-    useVideoEl ? /* @__PURE__ */ jsxRuntimeExports.jsx(
-      "video",
-      {
-        ref: videoRef,
-        src: playbackSrc,
-        preload: "auto",
-        className: VOICE_MEDIA_OFFSCREEN$1,
-        playsInline: true,
-        controls: false
-      }
-    ) : /* @__PURE__ */ jsxRuntimeExports.jsx("audio", { ref: audioRef, src: playbackSrc, preload: "auto", className: VOICE_MEDIA_OFFSCREEN$1 }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs(
-      "div",
-      {
-        className: "flex w-full min-w-0 items-center gap-3 rounded-2xl bg-muted/60 px-2.5 py-2 dark:bg-muted/40",
-        dir: "ltr",
-        children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "button",
-            {
-              type: "button",
-              onClick: toggle,
-              className: "flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-white transition active:scale-[0.97] dark:bg-white dark:text-zinc-950",
-              "aria-label": playing ? "إيقاف" : loading ? "تحميل" : "تشغيل",
-              disabled: loading && !playing,
-              children: loading && !playing ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" }) : playing ? /* @__PURE__ */ jsxRuntimeExports.jsx(Pause, { size: 18, className: "fill-current" }) : /* @__PURE__ */ jsxRuntimeExports.jsx(Play, { size: 18, className: "ms-0.5 fill-current" })
-            }
-          ),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-w-0 flex-1 flex-col gap-1", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-9 min-w-0 flex-1 items-end justify-stretch gap-[2px] px-0.5", children: displayHeights.map((hPct, i) => {
-              const active2 = i < filledBars;
-              return /* @__PURE__ */ jsxRuntimeExports.jsx(
-                "span",
-                {
-                  className: "min-h-[4px] min-w-[2px] max-w-[4px] flex-1 origin-bottom rounded-full transition-colors duration-100 " + (active2 ? "bg-zinc-800 dark:bg-white" : "bg-zinc-400/42 dark:bg-white/24") + (playing && active2 ? " motion-safe:opacity-95" : ""),
-                  style: { height: `${hPct}%` }
-                },
-                i
-              );
-            }) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex items-center justify-end px-0.5", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[12px] font-semibold tabular-nums tracking-tight text-zinc-600 dark:text-zinc-300", children: total > 0 ? fmtVoiceTime$1(remaining) : "—" }) })
-          ] })
-        ]
-      }
-    )
-  ] });
-}
-function TweetVoicePlayer({ src, className = "" }) {
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(VoiceWavePlayer, { src: resolveMediaUrl(src), className });
-}
-const FEED_POST_DIR = "rtl";
-function ProfilePostMetaRow({
-  author,
-  timeLabel,
-  onOpenAuthor,
-  onOpenPost,
-  onMenu
-}) {
-  const name = userDisplayName(author);
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { dir: "ltr", className: "flex min-w-0 items-center gap-1", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs(
-      "button",
-      {
-        type: "button",
-        onClick: onOpenPost ?? onOpenAuthor,
-        className: "flex min-w-0 flex-1 items-center gap-1 overflow-hidden text-left",
-        children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "shrink-0 font-bold text-[15px] leading-tight text-foreground", children: name }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(VerifiedMarkForUser, { user: author, size: 15 }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "min-w-0 truncate text-[15px] text-muted-foreground", children: [
-            "@",
-            author.username,
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { "aria-hidden": true, className: "mx-0.5", children: "·" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "tabular-nums", children: timeLabel })
-          ] })
-        ]
-      }
-    ),
-    onMenu ? /* @__PURE__ */ jsxRuntimeExports.jsx(
-      "button",
-      {
-        type: "button",
-        onClick: (e) => {
-          e.stopPropagation();
-          onMenu();
-        },
-        className: "shrink-0 rounded-full p-1.5 text-muted-foreground hover:bg-secondary/80 active:scale-95",
-        "aria-label": "خيارات المنشور",
-        children: /* @__PURE__ */ jsxRuntimeExports.jsx(Ellipsis, { size: 18, strokeWidth: 1.75 })
-      }
-    ) : null
-  ] });
-}
-function PostFeedCaption({
-  children,
-  onClick,
-  variant = "post",
-  profileInset = false
-}) {
-  if (!children) return null;
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(
-    "div",
-    {
-      role: onClick ? "button" : void 0,
-      tabIndex: onClick ? 0 : void 0,
-      onClick,
-      onKeyDown: onClick ? (e) => e.key === "Enter" && onClick() : void 0,
-      dir: FEED_POST_DIR,
-      className: "whitespace-pre-wrap text-right break-words " + (profileInset ? "px-0 pb-2 pt-0.5" : "px-4 ") + (variant === "tweet" ? "pb-2 pt-0.5 text-[16px] leading-relaxed text-foreground" : "pb-3 text-[15px] leading-relaxed text-foreground") + (onClick ? " cursor-pointer" : ""),
-      children
-    }
-  );
-}
-function PostFeedMedia({
-  children,
-  aspect = "square",
-  onClick,
-  profileInset = false
-}) {
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(
-    "div",
-    {
-      role: onClick ? "button" : void 0,
-      tabIndex: onClick ? 0 : void 0,
-      onClick,
-      onKeyDown: onClick ? (e) => e.key === "Enter" && onClick() : void 0,
-      className: "relative cursor-pointer overflow-hidden rounded-2xl bg-muted " + (profileInset ? "mx-0" : "mx-4 ") + (aspect === "video" ? "aspect-video" : "aspect-square"),
-      children
-    }
-  );
-}
-function PostFeedMediaBlock({
-  post,
-  postMedia,
-  notesOverlay,
-  onOpen,
-  profileInset = false
-}) {
-  if (!postShowsFeedMedia(post)) return null;
-  if (postMedia.hasImage) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsxs(PostFeedMedia, { aspect: post.type === "reel" ? "video" : "square", onClick: onOpen, profileInset, children: [
-      notesOverlay,
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "img",
-        {
-          src: postMedia.imageUrl,
-          className: "h-full w-full object-cover",
-          alt: "",
-          loading: "lazy",
-          decoding: "async"
-        }
-      )
-    ] });
-  }
-  if (postMedia.hasAudio && postMedia.audioUrl) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: (profileInset ? "mx-0 w-full shrink-0" : "mx-4 w-[calc(100%-2rem)] shrink-0") + " mb-1", children: /* @__PURE__ */ jsxRuntimeExports.jsx(TweetVoicePlayer, { src: postMedia.audioUrl }) });
-  }
-  if (postMedia.hasVideo) {
-    const reelGrid = post.type === "reel";
-    return /* @__PURE__ */ jsxRuntimeExports.jsxs(PostFeedMedia, { aspect: reelGrid ? "square" : "video", onClick: onOpen, profileInset, children: [
-      notesOverlay,
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "video",
-        {
-          src: postMedia.videoUrl,
-          poster: postMedia.posterUrl || void 0,
-          controls: true,
-          playsInline: true,
-          preload: "none",
-          className: "h-full w-full " + (reelGrid ? "object-cover object-center" : "object-cover"),
-          onClick: (e) => e.stopPropagation()
-        }
-      )
-    ] });
-  }
-  if (post.image && !post.video) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx(PostFeedMedia, { onClick: onOpen, profileInset, children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-full min-h-[8rem] items-center justify-center text-5xl", children: postMedia.emojiFallback || post.image }) });
-  }
-  if (!post.text && post.type === "post") {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx(
-      "button",
-      {
-        type: "button",
-        onClick: onOpen,
-        className: (profileInset ? "mx-0 w-full" : "mx-4 w-[calc(100%-2rem)]") + " mb-1 flex min-h-[100px] cursor-pointer items-center justify-center rounded-2xl border border-border/60 bg-muted/50 text-xs text-muted-foreground hover:bg-muted/70 active:scale-[0.99]",
-        children: "اضغط للمنشور كامل"
-      }
-    );
-  }
-  return null;
-}
-function PostFeedActions({
-  liked,
-  reposted,
-  likeCount,
-  commentCount,
-  repostCount,
-  onLike,
-  onComment,
-  onRepost,
-  onShare,
-  profileInset = false
-}) {
-  const btn = "inline-flex items-center gap-1 rounded-md py-1 text-foreground/85 transition active:scale-95";
-  const countBase = "text-[13px] tabular-nums";
-  const likeCountCls = countBase + (liked ? " text-[var(--color-like,#ef4444)]" : " text-muted-foreground");
-  const commentCountCls = countBase + " text-muted-foreground";
-  const repostCountCls = countBase + (reposted ? " text-primary" : " text-muted-foreground");
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
-    "div",
-    {
-      dir: "ltr",
-      className: "flex flex-row items-center justify-between gap-2" + (profileInset ? " px-0 py-2.5" : " px-3 py-2.5"),
-      children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-row items-center gap-4 sm:gap-5", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", onClick: onLike, className: btn, "aria-pressed": liked, children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(HeartIcon, { liked, size: 20 }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: likeCountCls, children: likeCount })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", onClick: onComment, className: btn, children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(CommentIcon, { size: 20 }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: commentCountCls, children: commentCount })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs(
-            "button",
-            {
-              type: "button",
-              onClick: onRepost,
-              className: btn + (reposted ? " text-primary" : ""),
-              "aria-pressed": reposted,
-              children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(RepostIcon, { reposted, size: 20 }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: repostCountCls, children: repostCount })
-              ]
-            }
-          )
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onShare, className: btn, "aria-label": "مشاركة", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ShareIcon, { size: 19 }) })
-      ]
-    }
-  );
-}
-function FeedPostColumnShell({
-  author,
-  onOpenAuthor,
-  children,
-  className = ""
-}) {
-  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "relative px-3 py-3 " + className, dir: "ltr", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-3", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onOpenAuthor, className: "h-10 w-10 shrink-0 self-start", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: author.username, src: author.avatar, size: 40 }) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "min-w-0 flex-1", children })
-  ] }) });
-}
-function HeartIcon({ liked, size = 24 }) {
-  return /* @__PURE__ */ jsxRuntimeExports.jsx("svg", { width: size, height: size, viewBox: "0 0 24 24", fill: "none", "aria-hidden": true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-    "path",
-    {
-      d: "M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z",
-      stroke: "currentColor",
-      strokeWidth: "1.75",
-      fill: liked ? "var(--color-like, #ef4444)" : "none",
-      className: liked ? "stroke-[var(--color-like,#ef4444)]" : ""
-    }
-  ) });
-}
-function CommentIcon({ size = 24 }) {
-  return /* @__PURE__ */ jsxRuntimeExports.jsx("svg", { width: size, height: size, viewBox: "0 0 24 24", fill: "none", "aria-hidden": true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-    "path",
-    {
-      d: "M21 11.5a8.4 8.4 0 0 1-8.4 8.4c-1.2 0-2.35-.25-3.4-.7L3 21l1.8-6.2A8.38 8.38 0 0 1 3 11.5 8.4 8.4 0 0 1 11.4 3 8.4 8.4 0 0 1 21 11.5z",
-      stroke: "currentColor",
-      strokeWidth: "1.75",
-      strokeLinejoin: "round"
-    }
-  ) });
-}
-function RepostIcon({ reposted, size = 24 }) {
-  return /* @__PURE__ */ jsxRuntimeExports.jsx("svg", { width: size, height: size, viewBox: "0 0 24 24", fill: "none", "aria-hidden": true, className: reposted ? "text-primary" : "", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-    "path",
-    {
-      d: "M17 1l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3",
-      stroke: "currentColor",
-      strokeWidth: "1.75",
-      strokeLinecap: "round",
-      strokeLinejoin: "round"
-    }
-  ) });
-}
-function ShareIcon({ size = 22 }) {
-  return /* @__PURE__ */ jsxRuntimeExports.jsx("svg", { width: size, height: size, viewBox: "0 0 24 24", fill: "none", "aria-hidden": true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-    "path",
-    {
-      d: "M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z",
-      stroke: "currentColor",
-      strokeWidth: "1.75",
-      strokeLinecap: "round",
-      strokeLinejoin: "round"
-    }
-  ) });
-}
-function PostCardInner({
-  post,
-  onShare,
-  onOpenProfile,
-  onOpen,
-  onOpenCommentsSheet,
-  hideQuickComment,
-  onOpenChat,
-  profileReturnTab
-}) {
-  const { state, currentUser, toggleLike, toggleRepost, addComment, isGuest } = useApp();
-  const [noteToReply, setNoteToReply] = reactExports.useState(null);
-  const lang = state.language;
-  const author = userById(state, post.userId);
-  const postMedia = reactExports.useMemo(
-    () => normalizePostMedia(post),
-    [post.image, post.video, post.audio, post.type]
-  );
-  const displayType = reactExports.useMemo(
-    () => resolvePostDisplayType(post),
-    [post.type, post.image, post.video, post.text]
-  );
-  const [comment, setComment] = reactExports.useState("");
-  const [menuOpen, setMenuOpen] = reactExports.useState(false);
-  const postLikes = Array.isArray(post.likes) ? post.likes : [];
-  const postComments = Array.isArray(post.comments) ? post.comments : [];
-  const postReposts = Array.isArray(post.reposts) ? post.reposts : [];
-  const guestBlock = () => {
-    if (!isGuest) return false;
-    notifyGuestActionBlocked();
-    return true;
-  };
-  const liked = currentUser ? postLikes.includes(currentUser.id) : false;
-  const reposted = currentUser ? postReposts.includes(currentUser.id) : false;
-  const feedNotesRaw = currentUser ? visibleMediaNotes(state, "post", post.id, currentUser.id).slice(0, 5) : [];
-  const feedNotes = feedNotesRaw.filter((n) => {
-    const nu = userById(state, n.authorId);
-    return nu && (n.authorId === currentUser.id || isMutual(state, currentUser.id, n.authorId));
-  });
-  if (!author) return null;
-  const openAuthorProfile = (userId) => {
-    const ctx = profileReturnTab ? { tab: profileReturnTab } : void 0;
-    reactExports.startTransition(() => onOpenProfile(userId, ctx));
-  };
-  const postKindAr = post.type === "tweet" ? "التغريدة" : post.type === "reel" ? "الريلز" : "المنشور";
-  const renderedPostText = reactExports.useMemo(() => {
-    if (!post.text) return null;
-    return renderMentionHashtagNodes(post.text, {
-      renderMention: createMentionRenderer({
-        users: state.users,
-        onUserClick: (userId) => reactExports.startTransition(() => openAuthorProfile(userId))
-      }),
-      renderHashtag: (h, key2) => /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-primary", children: h }, key2)
-    });
-  }, [post.text, state.users]);
-  const notesOverlay = feedNotes.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "pointer-events-none absolute inset-x-0 top-0 z-10 flex gap-2 overflow-x-auto bg-gradient-to-b from-black/55 via-black/25 to-transparent px-2.5 pb-8 pt-2.5", children: feedNotes.map((n) => {
-    const nu = userById(state, n.authorId);
-    const canReplyNote = !!onOpenChat && n.authorId !== currentUser.id;
-    return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "pointer-events-auto flex max-w-[7.5rem] shrink-0 flex-col items-start gap-1", children: [
-      canReplyNote ? /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "button",
-        {
-          type: "button",
-          title: "رد في الخاص",
-          onClick: (e) => {
-            e.stopPropagation();
-            if (guestBlock()) return;
-            setNoteToReply(n);
-          },
-          className: "line-clamp-2 w-full rounded-xl border border-white/25 bg-black/45 px-2 py-1 text-start text-[11px] font-medium leading-snug text-white backdrop-blur-sm hover:bg-black/55 active:scale-[0.98]",
-          children: n.text
-        }
-      ) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "line-clamp-2 w-full rounded-xl border border-white/25 bg-black/45 px-2 py-1 text-start text-[11px] font-medium leading-snug text-white backdrop-blur-sm", children: n.text }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "button",
-        {
-          type: "button",
-          className: "pointer-events-auto",
-          onClick: (e) => {
-            e.stopPropagation();
-            openAuthorProfile(nu.id);
-          },
-          children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: nu.username, src: nu.avatar, size: 26 })
-        }
-      )
-    ] }, n.id);
-  }) }) : null;
-  const showFeedMedia = postShowsFeedMedia({ ...post, type: displayType });
-  const isAudioOnlyMedia = postMedia.hasAudio && !postMedia.hasImage && !postMedia.hasVideo;
-  const mediaLazyMinH = postMedia.hasVideo || displayType === "reel" ? "min-h-[12rem]" : "min-h-[12rem]";
-  const mediaBlock = /* @__PURE__ */ jsxRuntimeExports.jsx(
-    PostFeedMediaBlock,
-    {
-      post: { ...post, type: displayType },
-      postMedia,
-      notesOverlay,
-      onOpen,
-      profileInset: true
-    }
-  );
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("article", { className: "feed-post-card border-b border-border", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs(FeedPostColumnShell, { author, onOpenAuthor: () => openAuthorProfile(author.id), children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        ProfilePostMetaRow,
-        {
-          author,
-          timeLabel: formatRelativeTime(post.createdAt, lang),
-          onOpenAuthor: () => openAuthorProfile(author.id),
-          onOpenPost: onOpen,
-          onMenu: currentUser?.id === post.userId ? () => setMenuOpen((v) => !v) : void 0
-        }
-      ),
-      menuOpen && /* @__PURE__ */ jsxRuntimeExports.jsx(PostOptionsMenu, { post, onClose: () => setMenuOpen(false) }),
-      renderedPostText && /* @__PURE__ */ jsxRuntimeExports.jsx(
-        PostFeedCaption,
-        {
-          variant: displayType === "tweet" ? "tweet" : "post",
-          onClick: onOpen,
-          profileInset: true,
-          children: renderedPostText
-        }
-      ),
-      showFeedMedia && !isAudioOnlyMedia ? /* @__PURE__ */ jsxRuntimeExports.jsx(LazyInView, { minHeight: mediaLazyMinH, rootMargin: "320px 0px", children: mediaBlock }) : showFeedMedia ? mediaBlock : null,
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        PostFeedActions,
-        {
-          liked,
-          reposted,
-          likeCount: postLikes.length,
-          commentCount: postComments.length,
-          repostCount: postReposts.length,
-          onLike: () => {
-            if (guestBlock()) return;
-            reactExports.startTransition(() => toggleLike(post.id));
-          },
-          onComment: () => reactExports.startTransition(() => (onOpenCommentsSheet ?? onOpen)()),
-          onRepost: () => {
-            if (guestBlock()) return;
-            reactExports.startTransition(() => toggleRepost(post.id));
-          },
-          onShare: () => {
-            if (guestBlock()) return;
-            onShare(post);
-          },
-          profileInset: true
-        }
-      ),
-      !hideQuickComment && /* @__PURE__ */ jsxRuntimeExports.jsxs(
-        "form",
-        {
-          onSubmit: (e) => {
-            e.preventDefault();
-            if (guestBlock()) return;
-            if (comment.trim()) {
-              addComment(post.id, comment);
-              setComment("");
-            }
-          },
-          dir: "rtl",
-          className: "flex flex-row gap-2 px-0 pt-2",
-          children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "input",
-              {
-                value: comment,
-                onChange: (e) => setComment(e.target.value),
-                placeholder: "تعليق سريع...",
-                className: "flex-1 rounded-full bg-input px-4 py-2 text-sm outline-none"
-              }
-            ),
-            comment && /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "submit", className: "text-sm font-semibold text-primary", children: "نشر" })
-          ]
-        }
-      )
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(
-      NoteReplySheet,
-      {
-        note: noteToReply,
-        contentLabelAr: postKindAr,
-        onClose: () => setNoteToReply(null),
-        onSent: (chatId) => onOpenChat?.(chatId)
-      }
-    )
-  ] });
-}
-const PostCard = reactExports.memo(
-  PostCardInner,
-  (prev, next) => postFeedSignature(prev.post) === postFeedSignature(next.post) && prev.hideQuickComment === next.hideQuickComment && prev.profileReturnTab === next.profileReturnTab
-);
-const HomeFeedActionsContext = reactExports.createContext(null);
-function HomeFeedActionsProvider({
-  value: value2,
-  children
-}) {
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(HomeFeedActionsContext.Provider, { value: value2, children });
-}
-function useHomeFeedActions() {
-  const ctx = reactExports.useContext(HomeFeedActionsContext);
-  if (!ctx) throw new Error("HomeFeedActionsProvider missing");
-  return ctx;
-}
-const HomeFeedPostItem = reactExports.memo(
-  function HomeFeedPostItem2({ post }) {
-    const { onShare, onOpenProfile, onOpenChat, openPost, openCommentsSheet } = useHomeFeedActions();
-    const onOpen = reactExports.useCallback(() => openPost(post.id), [openPost, post.id]);
-    const onOpenCommentsSheet = reactExports.useCallback(
-      () => openCommentsSheet(post.id),
-      [openCommentsSheet, post.id]
-    );
-    return /* @__PURE__ */ jsxRuntimeExports.jsx(
-      PostCard,
-      {
-        post,
-        onShare,
-        onOpenProfile,
-        profileReturnTab: "home",
-        onOpenChat,
-        onOpen,
-        onOpenCommentsSheet,
-        hideQuickComment: true
-      }
-    );
-  },
-  (prev, next) => postFeedSignature(prev.post) === postFeedSignature(next.post)
-);
-const AUTH_FEED_REFRESH_EVENT = "retweet-auth-feed-refresh";
-function requestAuthFeedRefresh() {
-  if (typeof window === "undefined") return;
-  try {
-    window.dispatchEvent(new Event(AUTH_FEED_REFRESH_EVENT));
-  } catch {
-  }
-}
-function canViewPostInHomeFeed(state, meId, post, me) {
-  if (!post?.id) return false;
-  const viewer = me ?? state.users.find((u) => u.id === meId);
-  if (!viewer) return false;
-  const author = state.users.find((u) => u.id === post.userId);
-  if (!author) return true;
-  const authorBlocked = author.blocked ?? [];
-  const myBlocked = viewer.blocked ?? [];
-  if (authorBlocked.includes(meId)) return false;
-  if (myBlocked.includes(author.id)) return false;
-  if (author.isPrivate !== true || post.userId === meId) return true;
-  if ((author.followers ?? []).includes(meId)) return true;
-  if ((viewer.following ?? []).includes(author.id)) return true;
-  if (!author.followers?.length && !viewer.following?.length) return true;
-  return false;
-}
-const feedVisibility = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
-  __proto__: null,
-  AUTH_FEED_REFRESH_EVENT,
-  canViewPostInHomeFeed,
-  requestAuthFeedRefresh
-}, Symbol.toStringTag, { value: "Module" }));
-function authorHasUnseenStories(state, viewerId, authorId) {
-  const stories = storiesForUser(state, authorId, viewerId);
-  if (stories.length === 0) return false;
-  return stories.some((s) => !storyViewedBy(s, viewerId));
-}
-function storyViewedBy(story, viewerId) {
-  return (story.viewedByUserIds || []).includes(viewerId);
-}
-function firstUnseenStoryIndex(stories, viewerId) {
-  const i = stories.findIndex((s) => !storyViewedBy(s, viewerId));
-  return i >= 0 ? i : 0;
-}
-function orderStoryTrayUserIds(state, viewerId, userIds) {
-  const latest = /* @__PURE__ */ new Map();
-  for (const s of state.stories) {
-    if (!userIds.includes(s.userId)) continue;
-    latest.set(s.userId, Math.max(latest.get(s.userId) ?? 0, s.createdAt));
-  }
-  const unseen = [];
-  const seen = [];
-  for (const id of userIds) {
-    if (authorHasUnseenStories(state, viewerId, id)) unseen.push(id);
-    else seen.push(id);
-  }
-  const byLatest = (a, b) => (latest.get(b) ?? 0) - (latest.get(a) ?? 0);
-  unseen.sort(byLatest);
-  seen.sort(byLatest);
-  return [...unseen, ...seen];
-}
-function storyViewerTrayRing(state, viewerId) {
-  const friends = visibleStoryUserIds(state, viewerId).filter((id) => id !== viewerId);
-  const me = userById(state, viewerId);
-  const hasMe = storiesForUser(state, viewerId, viewerId).length > 0;
-  const orderedFriends = orderStoryTrayUserIds(state, viewerId, friends);
-  if (hasMe && me) return [viewerId, ...orderedFriends];
-  return orderedFriends;
-}
-function nextAuthorInTray(ring, current) {
-  const i = ring.indexOf(current);
-  if (i < 0 || i >= ring.length - 1) return null;
-  return ring[i + 1] ?? null;
-}
-function prevAuthorInTray(ring, current) {
-  const i = ring.indexOf(current);
-  if (i <= 0) return null;
-  return ring[i - 1] ?? null;
-}
-function storyViewerSeenAt(story, viewerId) {
-  return story.viewedAtByUserIds?.[viewerId];
-}
-function formatStoryViewTime(ts) {
-  const diff = Date.now() - ts;
-  if (diff < 6e4) return "الآن";
-  if (diff < 36e5) return `${Math.floor(diff / 6e4)} د`;
-  if (diff < 864e5) return `${Math.floor(diff / 36e5)} س`;
-  return new Date(ts).toLocaleDateString("ar", { day: "numeric", month: "short" });
-}
-function buildShareUrl(target) {
-  const base = typeof window !== "undefined" ? `${window.location.origin}${window.location.pathname}` : "";
-  if (target.kind === "post") return `${base}?post=${encodeURIComponent(target.post.id)}`;
-  return `${base}?story=${encodeURIComponent(target.storyId)}`;
-}
-function ShareSheet({ target, onClose }) {
-  const { state, currentUser, openOrCreateChat, sendMessage, addMediaNote, isGuest } = useApp();
-  const me = currentUser;
-  const friends = me.following.map((id) => userById(state, id)).filter(Boolean);
-  const [noteMode, setNoteMode] = reactExports.useState(false);
-  const [noteText, setNoteText] = reactExports.useState("");
-  const [shareComment, setShareComment] = reactExports.useState("");
-  const previewLabel = target.kind === "post" ? target.post.type === "reel" ? "ريلز" : "منشور" : "ستوري";
-  const sendToFriend = (otherId) => {
-    if (isGuest) {
-      notifyGuestActionBlocked();
-      return;
-    }
-    const chat = openOrCreateChat(otherId);
-    if (!chat) {
-      if (isGuest) notifyGuestActionBlocked();
-      else window.alert("تعذّر فتح المحادثة.");
-      return;
-    }
-    if (target.kind === "post") {
-      const note = shareComment.trim();
-      sendMessage(chat.id, {
-        type: "shared_post",
-        content: target.post.id,
-        ...note ? { shareText: note } : {}
-      });
-    } else {
-      const note = shareComment.trim();
-      sendMessage(chat.id, {
-        type: "shared_story",
-        content: target.storyId,
-        ...note ? { shareText: note } : {}
-      });
-    }
-    setShareComment("");
-    onClose();
-  };
-  const copyLink = async () => {
-    const url2 = buildShareUrl(target);
-    try {
-      await navigator.clipboard.writeText(url2);
-      alert("تم نسخ الرابط");
-    } catch {
-      alert(url2);
-    }
-  };
-  const submitNote = () => {
-    if (isGuest) {
-      notifyGuestActionBlocked();
-      return;
-    }
-    if (!noteText.trim()) return;
-    if (target.kind === "post") {
-      addMediaNote("post", target.post.id, noteText);
-    } else {
-      addMediaNote("story", target.storyId, noteText);
-    }
-    setNoteText("");
-    setNoteMode(false);
-    alert("تم إرسال النوت");
-    onClose();
-  };
-  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 bg-black/50 z-50 flex items-end", onClick: onClose, children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "bg-background w-full rounded-t-3xl p-4 max-h-[70vh] overflow-y-auto", onClick: (e) => e.stopPropagation(), children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-12 h-1 bg-muted rounded-full mx-auto mb-4" }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("h3", { className: "font-semibold mb-3 text-center", children: [
-      "مشاركة ",
-      previewLabel
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-2 mb-4", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", onClick: copyLink, className: "flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl bg-secondary font-medium text-sm", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Link2, { size: 18 }),
-        "نسخ الرابط"
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs(
-        "button",
-        {
-          type: "button",
-          onClick: () => setNoteMode((n) => !n),
-          className: "flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl font-medium text-sm " + (noteMode ? "bg-primary text-primary-foreground" : "bg-secondary"),
-          children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(StickyNote, { size: 18 }),
-            "نوت"
-          ]
-        }
-      )
-    ] }),
-    noteMode && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-4 space-y-2", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "textarea",
-        {
-          value: noteText,
-          onChange: (e) => setNoteText(e.target.value),
-          placeholder: "اكتب نوتك (يظهر لأصدقائك عند مشاهدة المحتوى)",
-          maxLength: 80,
-          rows: 2,
-          className: "w-full bg-input rounded-2xl px-3 py-2 text-sm outline-none resize-none"
-        }
-      ),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: submitNote, className: "w-full bg-primary text-primary-foreground py-2 rounded-2xl font-semibold text-sm", children: "إرسال النوت" })
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-4 space-y-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-      "textarea",
-      {
-        value: shareComment,
-        onChange: (e) => setShareComment(e.target.value),
-        placeholder: "اكتب تعليق للمشاركة (اختياري)",
-        maxLength: 100,
-        rows: 2,
-        className: "w-full bg-input rounded-2xl px-3 py-2 text-sm outline-none resize-none"
-      }
-    ) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("h4", { className: "text-xs text-muted-foreground mb-2 px-1", children: "إرسال إلى" }),
-    friends.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-center text-muted-foreground py-4 text-sm", children: "تابع أصدقاء أولاً" }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "grid grid-cols-4 gap-3", children: friends.map((u) => u && /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", onClick: () => sendToFriend(u.id), className: "flex flex-col items-center gap-1", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u.username, src: u.avatar, size: 56 }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs truncate w-full text-center", children: u.username })
-    ] }, u.id)) })
-  ] }) });
-}
-function PostDetail({ post: postProp, onBack, onOpenProfile, onOpenChat, profileReturnTab, initialFocusComments }) {
-  const { state, currentUser, toggleLike, toggleRepost, addComment, deleteComment, isGuest } = useApp();
-  const post = reactExports.useMemo(
-    () => state.posts.find((p) => p.id === postProp.id) ?? postProp,
-    [state.posts, postProp]
-  );
-  const [noteToReply, setNoteToReply] = reactExports.useState(null);
-  const [menuOpen, setMenuOpen] = reactExports.useState(false);
-  const lang = state.language;
-  const t = useT();
-  const author = userById(state, post.userId);
-  const [comment, setComment] = reactExports.useState("");
-  const [shareOpen, setShareOpen] = reactExports.useState(false);
-  const me = currentUser;
-  const postLikes = Array.isArray(post.likes) ? post.likes : [];
-  const postReposts = Array.isArray(post.reposts) ? post.reposts : [];
-  const postComments = Array.isArray(post.comments) ? post.comments : [];
-  const guestBlock = () => {
-    if (!isGuest) return false;
-    notifyGuestActionBlocked();
-    return true;
-  };
-  const liked = postLikes.includes(me.id);
-  const reposted = postReposts.includes(me.id);
-  const postKindAr = post.type === "tweet" ? "التغريدة" : post.type === "reel" ? "الريلز" : "المنشور";
-  const detailNotes = visibleMediaNotes(state, "post", post.id, me.id).slice(0, 8).filter((n) => {
-    const nu = userById(state, n.authorId);
-    return nu && (n.authorId === me.id || isMutual(state, me.id, n.authorId));
-  });
-  const returnCtx = reactExports.useCallback(
-    (commentsOpen) => {
-      const homeSurface = profileReturnTab === "home" || profileReturnTab === "search" ? "post_detail_full" : void 0;
-      return {
-        postId: post.id,
-        tab: profileReturnTab,
-        commentsOpen: !!commentsOpen,
-        ...homeSurface ? { homeSurface } : {}
-      };
-    },
-    [post.id, profileReturnTab]
-  );
-  reactExports.useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    try {
-      window.dispatchEvent(new CustomEvent("retweet-post-detail-open"));
-    } catch {
-    }
-    return () => {
-      document.body.style.overflow = prev;
-      try {
-        window.dispatchEvent(new CustomEvent("retweet-post-detail-close"));
-      } catch {
-      }
-    };
-  }, []);
-  reactExports.useEffect(() => {
-    if (!initialFocusComments) return;
-    const t2 = window.setTimeout(() => {
-      document.getElementById("post-comments-anchor")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 100);
-    return () => window.clearTimeout(t2);
-  }, [initialFocusComments]);
-  const renderedPostText = reactExports.useMemo(() => {
-    if (!post.text) return null;
-    return renderMentionHashtagNodes(post.text, {
-      renderMention: createMentionRenderer({
-        users: state.users,
-        onUserClick: (userId) => reactExports.startTransition(() => onOpenProfile(userId, returnCtx(false)))
-      }),
-      renderHashtag: (h, key2) => /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-primary", children: h }, key2)
-    });
-  }, [post.text, state.users, onOpenProfile, returnCtx]);
-  if (!author) return null;
-  const submitComment = () => {
-    if (guestBlock()) return;
-    const text = comment.trim();
-    if (!text) return;
-    addComment(post.id, text);
-    setComment("");
-  };
-  const ownerMenu = me.id === post.userId ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative shrink-0", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx(
-      "button",
-      {
-        type: "button",
-        onClick: () => setMenuOpen((v) => !v),
-        className: "rounded-full p-2 hover:bg-secondary",
-        "aria-label": "خيارات",
-        children: /* @__PURE__ */ jsxRuntimeExports.jsx(Ellipsis, { size: 22 })
-      }
-    ),
-    menuOpen && /* @__PURE__ */ jsxRuntimeExports.jsx(PostOptionsMenu, { post, onClose: () => setMenuOpen(false), onDeleted: onBack })
-  ] }) : null;
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(SlideDismissShell, { onDismiss: onBack, variant: "overlay", overlayZIndex: 220, panelSwipeDismiss: true, children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex h-[100dvh] w-full max-w-md flex-col overflow-hidden bg-background shadow-2xl", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs(
-      "header",
-      {
-        dir: "rtl",
-        className: "shrink-0 z-20 border-b border-border bg-background/95 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/80 pt-[max(0.75rem,var(--sat))]",
-        children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between gap-2 px-3 pb-1 sm:hidden", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              SlideDismissBackButton,
-              {
-                onDismiss: onBack,
-                className: "shrink-0 rounded-full p-2 hover:bg-secondary active:bg-secondary/80",
-                "aria-label": "رجوع",
-                children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowRight, { size: 22, strokeWidth: 1.75 })
-              }
-            ),
-            ownerMenu ?? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "w-10 shrink-0", "aria-hidden": true })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-w-0 items-center gap-2.5 px-3 pb-2.5 pt-0.5 sm:gap-3 sm:py-2", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              SlideDismissBackButton,
-              {
-                onDismiss: onBack,
-                className: "hidden shrink-0 rounded-full p-2 hover:bg-secondary active:bg-secondary/80 sm:inline-flex",
-                "aria-label": "رجوع",
-                children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowRight, { size: 22, strokeWidth: 1.75 })
-              }
-            ),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "button",
-              {
-                type: "button",
-                onClick: () => reactExports.startTransition(() => onOpenProfile(author.id, returnCtx(false))),
-                className: "shrink-0",
-                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: author.username, src: author.avatar, size: 36 })
-              }
-            ),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1 text-start", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                "button",
-                {
-                  type: "button",
-                  onClick: () => reactExports.startTransition(() => onOpenProfile(author.id, returnCtx(false))),
-                  className: "inline-flex max-w-full items-center gap-1 truncate font-semibold text-sm leading-tight",
-                  children: [
-                    "@",
-                    author.username,
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(VerifiedMarkForUser, { user: author, size: 16 })
-                  ]
-                }
-              ),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "mt-0.5 block text-xs leading-snug text-muted-foreground", children: formatRelativeTime(post.createdAt, lang) })
-            ] }),
-            ownerMenu && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "hidden sm:block", children: ownerMenu })
-          ] })
-        ]
-      }
-    ),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-h-0 flex-1 overflow-y-auto overscroll-y-contain pb-4", children: [
-      post.text && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { dir: "rtl", className: "whitespace-pre-wrap px-4 py-3 text-right text-base leading-relaxed break-words", children: renderedPostText }),
-      post.image && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative flex items-center justify-center bg-muted", children: [
-        detailNotes.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "pointer-events-none absolute inset-x-0 top-0 z-10 flex gap-2 overflow-x-auto bg-gradient-to-b from-black/55 via-black/25 to-transparent px-2.5 pb-8 pt-2.5", children: detailNotes.map((n) => {
-          const nu = userById(state, n.authorId);
-          const canReplyNote = n.authorId !== me.id;
-          return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "pointer-events-auto flex max-w-[7.5rem] shrink-0 flex-col items-start gap-1", children: [
-            canReplyNote ? /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "button",
-              {
-                type: "button",
-                title: "رد على النوت",
-                onClick: () => {
-                  if (guestBlock()) return;
-                  setNoteToReply(n);
-                },
-                className: "line-clamp-2 w-full rounded-xl border border-white/25 bg-black/45 px-2 py-1 text-start text-[11px] font-medium leading-snug text-white backdrop-blur-sm hover:bg-black/55",
-                children: n.text
-              }
-            ) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "line-clamp-2 w-full rounded-xl border border-white/25 bg-black/45 px-2 py-1 text-start text-[11px] font-medium leading-snug text-white backdrop-blur-sm", children: n.text }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => reactExports.startTransition(() => onOpenProfile(nu.id, returnCtx(false))), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: nu.username, src: nu.avatar, size: 26 }) })
-          ] }, n.id);
-        }) }),
-        isRenderableMediaUrl(post.image) ? /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: resolveMediaUrl(post.image), className: "max-h-[70vh] w-full object-contain", alt: "" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex min-h-[10rem] items-center justify-center py-12 text-5xl", children: post.image })
-      ] }),
-      post.video && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative flex items-center justify-center bg-black", children: [
-        detailNotes.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "pointer-events-none absolute inset-x-0 top-0 z-10 flex gap-2 overflow-x-auto bg-gradient-to-b from-black/55 via-black/25 to-transparent px-2.5 pb-8 pt-2.5", children: detailNotes.map((n) => {
-          const nu = userById(state, n.authorId);
-          const canReplyNote = n.authorId !== me.id;
-          return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "pointer-events-auto flex max-w-[7.5rem] shrink-0 flex-col items-start gap-1", children: [
-            canReplyNote ? /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "button",
-              {
-                type: "button",
-                title: "رد على النوت",
-                onClick: () => {
-                  if (guestBlock()) return;
-                  setNoteToReply(n);
-                },
-                className: "line-clamp-2 w-full rounded-xl border border-white/25 bg-black/45 px-2 py-1 text-start text-[11px] font-medium leading-snug text-white backdrop-blur-sm hover:bg-black/55",
-                children: n.text
-              }
-            ) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "line-clamp-2 w-full rounded-xl border border-white/25 bg-black/45 px-2 py-1 text-start text-[11px] font-medium leading-snug text-white backdrop-blur-sm", children: n.text }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => reactExports.startTransition(() => onOpenProfile(nu.id, returnCtx(false))), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: nu.username, src: nu.avatar, size: 26 }) })
-          ] }, n.id);
-        }) }),
-        isRenderableMediaUrl(post.video) ? /* @__PURE__ */ jsxRuntimeExports.jsx("video", { src: resolveMediaUrl(post.video), controls: true, playsInline: true, className: "max-h-[70vh] w-full object-contain" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex min-h-[10rem] items-center justify-center py-12 text-5xl text-white", children: post.video })
-      ] }),
-      post.audio && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "px-4 pt-3", children: isRenderableMediaUrl(post.audio) ? /* @__PURE__ */ jsxRuntimeExports.jsx(TweetVoicePlayer, { src: post.audio }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-xl border border-border bg-card px-3 py-2 text-sm text-muted-foreground", children: "مقطع صوتي" }) }),
-      !post.image && !post.video && !post.audio && detailNotes.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "px-4 pb-2 flex gap-2 overflow-x-auto no-scrollbar", children: detailNotes.map((n) => {
-        const nu = userById(state, n.authorId);
-        const canReplyNote = n.authorId !== me.id;
-        return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col items-center shrink-0 max-w-[4rem]", children: [
-          canReplyNote ? /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "button",
-            {
-              type: "button",
-              onClick: () => {
-                if (guestBlock()) return;
-                setNoteToReply(n);
-              },
-              className: "text-[9px] leading-tight text-start bg-secondary rounded-lg px-1.5 py-0.5 mb-0.5 line-clamp-3 border border-border",
-              children: n.text
-            }
-          ) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[9px] leading-tight text-start bg-secondary rounded-lg px-1.5 py-0.5 mb-0.5 line-clamp-3 border border-border", children: n.text }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => reactExports.startTransition(() => onOpenProfile(nu.id, returnCtx(false))), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: nu.username, src: nu.avatar, size: 28 }) })
-        ] }, n.id);
-      }) }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-5 px-4 pt-3", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => {
-          if (guestBlock()) return;
-          reactExports.startTransition(() => toggleLike(post.id));
-        }, className: "flex items-center gap-1", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Heart, { size: 24, className: liked ? "fill-[var(--color-like)] stroke-[var(--color-like)]" : "" }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "flex items-center gap-1", children: /* @__PURE__ */ jsxRuntimeExports.jsx(MessageCircle, { size: 24 }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => {
-          if (guestBlock()) return;
-          reactExports.startTransition(() => toggleRepost(post.id));
-        }, className: reposted ? "text-primary" : "", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Repeat2, { size: 24 }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "ms-auto", onClick: () => {
-          if (guestBlock()) return;
-          setShareOpen(true);
-        }, "aria-label": "مشاركة", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Send, { size: 22 }) })
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "px-4 pt-2 text-sm space-y-1", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("b", { children: postLikes.length }),
-        " ",
-        t("likes"),
-        " · ",
-        /* @__PURE__ */ jsxRuntimeExports.jsx("b", { children: postReposts.length }),
-        " ",
-        t("reposts"),
-        " · ",
-        /* @__PURE__ */ jsxRuntimeExports.jsx("b", { children: postComments.length }),
-        " ",
-        t("comments")
-      ] }) }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "px-4 pt-3 space-y-2 border-t border-border mt-3 pb-2", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { id: "post-comments-anchor", className: "font-semibold text-sm pt-2 scroll-mt-24 sm:scroll-mt-20", children: t("comments") }),
-        postComments.map((c) => {
-          const u = userById(state, c.userId);
-          return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative flex gap-2 text-sm", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "shrink-0 rounded-full", onClick: () => reactExports.startTransition(() => u && onOpenProfile(u.id, returnCtx(true))), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u?.username || "?", src: u?.avatar, size: 28 }) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", className: "font-semibold", onClick: () => reactExports.startTransition(() => u && onOpenProfile(u.id, returnCtx(true))), children: [
-                "@",
-                u?.username
-              ] }),
-              " ",
-              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { dir: "auto", className: "break-words", children: c.text })
-            ] }),
-            c.userId === me.id && /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "button",
-              {
-                type: "button",
-                onClick: () => {
-                  if (!window.confirm("حذف هذا التعليق؟")) return;
-                  deleteComment(post.id, c.id);
-                },
-                className: "shrink-0 rounded-full p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive",
-                "aria-label": "حذف التعليق",
-                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 16 })
-              }
-            )
-          ] }, c.id);
-        }),
-        postComments.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground", children: "—" })
-      ] }),
-      shareOpen && /* @__PURE__ */ jsxRuntimeExports.jsx(ShareSheet, { target: { kind: "post", post }, onClose: () => setShareOpen(false) }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        NoteReplySheet,
-        {
-          note: noteToReply,
-          contentLabelAr: postKindAr,
-          onClose: () => setNoteToReply(null),
-          onSent: onOpenChat
-        }
-      )
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs(
-      "form",
-      {
-        onSubmit: (e) => {
-          e.preventDefault();
-          submitComment();
-        },
-        className: "flex shrink-0 gap-2 border-t border-border bg-background px-4 py-3 pb-[max(0.75rem,var(--sab))]",
-        children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "input",
-            {
-              value: comment,
-              onChange: (e) => setComment(e.target.value),
-              placeholder: "أضف تعليقاً...",
-              className: "flex-1 rounded-full bg-input px-4 py-2.5 text-sm outline-none"
-            }
-          ),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "button",
-            {
-              type: "submit",
-              disabled: !comment.trim(),
-              className: "shrink-0 text-sm font-semibold text-primary disabled:opacity-40",
-              children: t("send")
-            }
-          )
-        ]
-      }
-    )
-  ] }) });
-}
-function preloadStoryUrls(urls) {
-  if (typeof window === "undefined") return;
-  for (const raw of urls) {
-    const u = raw?.trim();
-    if (!u || u.startsWith("data:")) continue;
-    const isVideo = /\.(mp4|webm|mov)(\?|$)/i.test(u) || u.includes("/videos/");
-    if (isVideo) {
-      const v = document.createElement("video");
-      v.preload = "auto";
-      v.muted = true;
-      v.playsInline = true;
-      v.src = u;
-    } else {
-      const img = new Image();
-      img.decoding = "async";
-      img.src = u;
-    }
-  }
-}
-function StoryViewsSheet({
-  open,
-  story,
-  state,
-  onClose,
-  onOpenProfile,
-  onDelete
-}) {
-  const [sheetY, setSheetY] = reactExports.useState(0);
-  const [sheetSpring, setSheetSpring] = reactExports.useState(false);
-  const dragRef = reactExports.useRef(null);
-  const sheetMaxRef = reactExports.useRef(0);
-  const viewerIds = [...new Set(story.viewedByUserIds || [])];
-  const viewers = viewerIds.map((id) => {
-    const u = userById(state, id);
-    if (!u) return null;
-    const at = storyViewerSeenAt(story, id) ?? story.createdAt;
-    return { user: u, at };
-  }).filter(Boolean);
-  viewers.sort((a, b) => b.at - a.at);
-  reactExports.useEffect(() => {
-    if (!open) {
-      setSheetY(0);
-      setSheetSpring(false);
-    }
-  }, [open]);
-  reactExports.useEffect(() => {
-    sheetMaxRef.current = Math.min(window.innerHeight * 0.78, 640);
-  }, [open]);
-  const snapClose = reactExports.useCallback(() => {
-    setSheetSpring(true);
-    setSheetY(sheetMaxRef.current);
-    window.setTimeout(() => onClose(), 280);
-  }, [onClose]);
-  const snapOpen = reactExports.useCallback(() => {
-    setSheetSpring(true);
-    setSheetY(0);
-    window.setTimeout(() => setSheetSpring(false), 320);
-  }, []);
-  const onSheetPointerDown = (e) => {
-    if (e.button !== 0) return;
-    dragRef.current = {
-      pointerId: e.pointerId,
-      startY: e.clientY,
-      startSheetY: sheetY,
-      lastY: e.clientY,
-      lastT: performance.now(),
-      velocity: 0
-    };
-    setSheetSpring(false);
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {
-    }
-  };
-  const onSheetPointerMove = (e) => {
-    const p = dragRef.current;
-    if (!p || e.pointerId !== p.pointerId) return;
-    const dy = Math.max(0, e.clientY - p.startY);
-    const now = performance.now();
-    const dt = Math.max(1, now - p.lastT);
-    p.velocity = (e.clientY - p.lastY) / dt;
-    p.lastY = e.clientY;
-    p.lastT = now;
-    setSheetY(p.startSheetY + dy);
-  };
-  const endSheetDrag = (e) => {
-    const p = dragRef.current;
-    dragRef.current = null;
-    try {
-      if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
-        e.currentTarget.releasePointerCapture(e.pointerId);
-      }
-    } catch {
-    }
-    if (!p || e.pointerId !== p.pointerId) return;
-    const dy = sheetY;
-    if (dy > sheetMaxRef.current * 0.28 || p.velocity > 0.45) snapClose();
-    else snapOpen();
-  };
-  if (!open) return null;
-  const sheetProgress = sheetY / Math.max(1, sheetMaxRef.current);
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "fixed inset-0 z-[80] flex flex-col justify-end", role: "dialog", "aria-modal": "true", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx(
-      "button",
-      {
-        type: "button",
-        className: "absolute inset-0 bg-black/50 backdrop-blur-md transition-opacity duration-200",
-        style: { opacity: Math.max(0, 1 - sheetProgress * 0.5) },
-        "aria-label": "إغلاق",
-        onClick: snapClose
-      }
-    ),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs(
-      "div",
-      {
-        className: "relative mx-auto w-full max-w-md flex flex-col rounded-t-[1.35rem] border border-white/10 border-b-0 bg-[#1c1c1e] shadow-[0_-12px_48px_rgba(0,0,0,0.55)] touch-none",
-        style: {
-          maxHeight: "min(78dvh, 640px)",
-          transform: `translate3d(0, ${sheetY}px, 0)`,
-          transition: sheetSpring ? "transform 0.32s cubic-bezier(0.32, 0.72, 0, 1)" : "none"
-        },
-        onPointerDown: onSheetPointerDown,
-        onPointerMove: onSheetPointerMove,
-        onPointerUp: endSheetDrag,
-        onPointerCancel: endSheetDrag,
-        children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex justify-center pt-2.5 pb-1", "aria-hidden": true, children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-1 w-11 rounded-full bg-white/25" }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("h2", { className: "px-4 pb-2 text-center text-[15px] font-semibold text-white", children: [
-            "المشاهدات · ",
-            viewers.length
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-2 [-webkit-overflow-scrolling:touch]", children: viewers.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "py-12 text-center text-sm text-white/45", children: "لا مشاهدات بعد" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("ul", { className: "space-y-0.5 pb-2", children: viewers.map(({ user: vu, at }) => /* @__PURE__ */ jsxRuntimeExports.jsx("li", { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-            "button",
-            {
-              type: "button",
-              className: "flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-start active:bg-white/10",
-              onClick: () => {
-                onClose();
-                onOpenProfile?.(vu.id);
-              },
-              children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: vu.username, src: vu.avatar, size: 44 }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "min-w-0 flex-1", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "flex items-center gap-1 font-medium text-white", children: [
-                  "@",
-                  vu.username,
-                  /* @__PURE__ */ jsxRuntimeExports.jsx(VerifiedMarkForUser, { user: vu, size: 14 })
-                ] }) }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "shrink-0 text-xs text-white/45", children: formatStoryViewTime(at) })
-              ]
-            }
-          ) }, vu.id)) }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "shrink-0 space-y-2 border-t border-white/10 p-3 pb-[max(0.75rem,var(--sab))]", children: [
-            onDelete && /* @__PURE__ */ jsxRuntimeExports.jsxs(
-              "button",
-              {
-                type: "button",
-                className: "flex w-full items-center justify-center gap-2 rounded-2xl bg-red-500/20 py-3 text-sm font-semibold text-red-300",
-                onClick: onDelete,
-                children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 18, "aria-hidden": true }),
-                  "حذف الستوري"
-                ]
-              }
-            ),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "button",
-              {
-                type: "button",
-                className: "w-full rounded-2xl bg-white/12 py-3 text-sm font-semibold text-white",
-                onClick: snapClose,
-                children: "تم"
-              }
-            )
-          ] })
-        ]
-      }
-    )
-  ] });
-}
-function CountdownBlock({ targetAt, title }) {
-  const [now, setNow] = reactExports.useState(() => Date.now());
-  reactExports.useEffect(() => {
-    const t = window.setInterval(() => setNow(Date.now()), 1e3);
-    return () => clearInterval(t);
-  }, []);
-  const left = Math.max(0, targetAt - now);
-  const d = Math.floor(left / 864e5);
-  const h = Math.floor(left % 864e5 / 36e5);
-  const m = Math.floor(left % 36e5 / 6e4);
-  const s = Math.floor(left % 6e4 / 1e3);
-  const line = d > 0 ? `${d}ي ${h}س` : h > 0 ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`;
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-2xl bg-white text-black px-3 py-2.5 shadow-lg min-w-[9rem] text-center border border-black/5", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[10px] font-semibold tracking-wide text-black/50", children: title }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-lg font-bold tabular-nums mt-0.5", children: left <= 0 ? "0:00" : line })
-  ] });
-}
-function wrapStyle(sk) {
-  const rot = sk.rotation ?? 0;
-  return {
-    left: `${sk.x}%`,
-    top: `${sk.y}%`,
-    transform: `translate(-50%, -50%) rotate(${rot}deg)`
-  };
-}
-function StoryStickerLayer({
-  story,
-  storyAuthorId,
-  onOpenProfile
-}) {
-  const { currentUser, voteStoryPoll, answerStoryQuiz, rateStorySlider, openOrCreateChat, sendMessage, isGuest } = useApp();
-  const me = currentUser;
-  const isOwn = me.id === storyAuthorId;
-  const list = story.stickers || [];
-  const [sliderDraft, setSliderDraft] = reactExports.useState({});
-  const sendQuestion = (sk) => {
-    if (isGuest) {
-      notifyGuestActionBlocked();
-      return;
-    }
-    const text = window.prompt(`رد على: «${sk.prompt}»`, "");
-    if (!text?.trim()) return;
-    const ch = openOrCreateChat(storyAuthorId);
-    if (!ch) {
-      if (isGuest) notifyGuestActionBlocked();
-      else window.alert("تعذّر فتح المحادثة.");
-      return;
-    }
-    sendMessage(ch.id, { type: "text", content: `↩️ رد على ملصق السؤال في الستوري:
-«${sk.prompt}»
-—
-${text.trim()}` });
-  };
-  if (list.length === 0) return null;
-  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 pointer-events-none z-[25]", children: list.map((sk) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "absolute pointer-events-auto", style: wrapStyle(sk), onClick: (e) => e.stopPropagation(), children: [
-    sk.kind === "poll" && /* @__PURE__ */ jsxRuntimeExports.jsx(PollSticker, { sk, storyId: story.id, isOwn, meId: me.id, voteStoryPoll }),
-    sk.kind === "question" && /* @__PURE__ */ jsxRuntimeExports.jsxs(
-      "button",
-      {
-        type: "button",
-        disabled: isOwn,
-        onClick: () => sendQuestion(sk),
-        className: "rounded-2xl px-3 py-2.5 shadow-lg text-start min-w-[10rem] max-w-[14rem] border border-white/20 bg-gradient-to-br from-[#a855f7] via-[#ec4899] to-[#f97316] text-white " + (isOwn ? "opacity-75 cursor-default" : "active:scale-[0.98]"),
-        children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[10px] opacity-90", children: "اسألني" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-sm font-semibold leading-snug", children: sk.prompt }),
-          !isOwn && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[10px] mt-1 opacity-90 underline", children: "اضغط للرد في الخاص" })
-        ]
-      }
-    ),
-    sk.kind === "countdown" && /* @__PURE__ */ jsxRuntimeExports.jsx(CountdownBlock, { targetAt: sk.targetAt, title: sk.title }),
-    sk.kind === "location" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-2xl bg-white text-black px-3 py-2 shadow-lg flex items-center gap-2 border border-black/5", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-lg", children: "📍" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm font-semibold", children: sk.place })
-    ] }),
-    sk.kind === "mention" && /* @__PURE__ */ jsxRuntimeExports.jsxs(
-      "button",
-      {
-        type: "button",
-        onClick: () => onOpenProfile?.(sk.userId),
-        className: "rounded-full bg-white/95 text-black px-3 py-1.5 text-sm font-bold shadow-lg border border-black/10",
-        children: [
-          "@",
-          sk.username
-        ]
-      }
-    ),
-    sk.kind === "hashtag" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-full bg-white/95 text-[#0095F6] px-3 py-1.5 text-sm font-bold shadow-lg border border-black/10", children: [
-      "#",
-      sk.tag.replace(/^#/, "")
-    ] }),
-    sk.kind === "quiz" && /* @__PURE__ */ jsxRuntimeExports.jsx(QuizSticker, { sk, storyId: story.id, meId: me.id, isOwn, answerStoryQuiz }),
-    sk.kind === "slider" && /* @__PURE__ */ jsxRuntimeExports.jsx(
-      SliderSticker,
-      {
-        sk,
-        storyId: story.id,
-        meId: me.id,
-        isOwn,
-        draft: sliderDraft[sk.id] ?? (sk.ratings?.[me.id] ?? 50),
-        setDraft: (v) => setSliderDraft((d) => ({ ...d, [sk.id]: v })),
-        rateStorySlider
-      }
-    )
-  ] }, sk.id)) });
-}
-function PollSticker({
-  sk,
-  storyId,
-  isOwn,
-  meId,
-  voteStoryPoll
-}) {
-  const total = sk.votesLeft.length + sk.votesRight.length;
-  const lp = total ? Math.round(sk.votesLeft.length / total * 100) : 50;
-  const rp = 100 - lp;
-  const mine = sk.votesLeft.includes(meId) ? "left" : sk.votesRight.includes(meId) ? "right" : null;
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-2xl bg-white text-black shadow-xl overflow-hidden min-w-[11rem] max-w-[15rem] border border-black/8", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "px-3 pt-2.5 pb-2 text-sm font-semibold leading-snug", children: sk.question }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col gap-1 px-2 pb-2", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs(
-        "button",
-        {
-          type: "button",
-          disabled: isOwn,
-          onClick: () => voteStoryPoll(storyId, sk.id, "left"),
-          className: "relative rounded-xl py-2.5 px-2 text-sm font-medium overflow-hidden text-start " + (mine === "left" ? "ring-2 ring-[#0095F6]" : "") + (isOwn ? " opacity-90" : " active:scale-[0.98]"),
-          children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "relative z-10", children: sk.left }),
-            total > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "span",
-              {
-                className: "absolute inset-0 bg-black/[0.06] origin-left transition-all",
-                style: { transform: `scaleX(${lp / 100})` }
-              }
-            ),
-            total > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "absolute end-2 top-1/2 -translate-y-1/2 text-xs font-bold text-black/50", children: [
-              lp,
-              "%"
-            ] })
-          ]
-        }
-      ),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs(
-        "button",
-        {
-          type: "button",
-          disabled: isOwn,
-          onClick: () => voteStoryPoll(storyId, sk.id, "right"),
-          className: "relative rounded-xl py-2.5 px-2 text-sm font-medium overflow-hidden text-start " + (mine === "right" ? "ring-2 ring-[#0095F6]" : "") + (isOwn ? " opacity-90" : " active:scale-[0.98]"),
-          children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "relative z-10", children: sk.right }),
-            total > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "span",
-              {
-                className: "absolute inset-0 bg-black/[0.06] origin-left transition-all",
-                style: { transform: `scaleX(${rp / 100})` }
-              }
-            ),
-            total > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "absolute end-2 top-1/2 -translate-y-1/2 text-xs font-bold text-black/50", children: [
-              rp,
-              "%"
-            ] })
-          ]
-        }
-      )
-    ] })
-  ] });
-}
-function QuizSticker({
-  sk,
-  storyId,
-  meId,
-  isOwn,
-  answerStoryQuiz
-}) {
-  const picked = sk.answers?.[meId];
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-2xl bg-white text-black shadow-xl min-w-[11rem] max-w-[15rem] border border-black/8 overflow-hidden", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "px-3 pt-2.5 pb-2 text-sm font-semibold", children: sk.question }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex flex-col gap-1 px-2 pb-2", children: sk.options.map((opt, i) => {
-      const correct = i === sk.correctIndex;
-      const wrongPick = picked !== void 0 && picked === i && !correct;
-      const rightPick = picked !== void 0 && picked === i && correct;
-      const showCorrect = picked !== void 0 && correct;
-      return /* @__PURE__ */ jsxRuntimeExports.jsxs(
-        "button",
-        {
-          type: "button",
-          disabled: isOwn || picked !== void 0,
-          onClick: () => answerStoryQuiz(storyId, sk.id, i),
-          className: "rounded-xl py-2 px-2 text-sm text-start font-medium border w-full " + (rightPick || showCorrect ? "bg-emerald-500/15 border-emerald-500" : "") + (wrongPick ? "bg-red-500/15 border-red-400" : !showCorrect && !wrongPick ? "border-transparent bg-black/[0.04]" : ""),
-          children: [
-            opt,
-            picked !== void 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "float-end text-xs font-bold", children: correct ? "✓" : picked === i ? "✗" : "" })
-          ]
-        },
-        i
-      );
-    }) })
-  ] });
-}
-function SliderSticker({
-  sk,
-  storyId,
-  meId,
-  isOwn,
-  draft,
-  setDraft,
-  rateStorySlider
-}) {
-  const vals = Object.values(sk.ratings || {});
-  const avg = vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null;
-  const done = sk.ratings?.[meId] != null;
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-2xl bg-white/95 text-black px-3 py-2.5 shadow-xl min-w-[10rem] max-w-[14rem] border border-black/8", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-center text-2xl mb-0.5", children: sk.emoji }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-xs font-semibold text-center mb-2 text-black/70", children: sk.label }),
-    avg != null && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-center text-[11px] text-black/50 mb-1", children: [
-      "المتوسط ≈ ",
-      avg
-    ] }),
-    !isOwn && !done && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "input",
-        {
-          type: "range",
-          min: 0,
-          max: 100,
-          value: draft,
-          onChange: (e) => setDraft(Number(e.target.value)),
-          className: "w-full accent-[#0095F6]"
-        }
-      ),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "button",
-        {
-          type: "button",
-          className: "mt-1 w-full rounded-full bg-[#0095F6] text-white text-xs py-1.5 font-semibold",
-          onClick: () => rateStorySlider(storyId, sk.id, draft),
-          children: "إرسال"
-        }
-      )
-    ] }),
-    !isOwn && done && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-center text-xs text-emerald-600 font-semibold", children: [
-      "تم إرسال تقييمك (",
-      sk.ratings?.[meId],
-      ")"
-    ] })
-  ] });
-}
-const MAX_STORY_UPLOAD_BYTES = 78 * 1024 * 1024;
-let pendingStoryPickFile = null;
-function takePendingStoryFile() {
-  const f = pendingStoryPickFile;
-  pendingStoryPickFile = null;
-  return f;
-}
-async function fileFromDataUrl(dataUrl) {
-  const res = await fetch(dataUrl);
-  const blob = await res.blob();
-  const mime = blob.type || "image/jpeg";
-  const ext = mime === "image/gif" ? "gif" : mime === "image/png" ? "png" : mime.startsWith("video/") ? "mp4" : "jpg";
-  return new File([blob], `story.${ext}`, { type: mime });
-}
-async function normalizeStoryImageFile(file) {
-  const isHeic = /heic|heif/i.test(file.type) || /\.hei[cf]$/i.test(file.name);
-  if (isHeic || !file.type.startsWith("image/") && !file.type) {
-    try {
-      const bitmap = await createImageBitmap(file);
-      const maxSide = 1080;
-      const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
-      const w = Math.max(1, Math.round(bitmap.width * scale));
-      const h = Math.max(1, Math.round(bitmap.height * scale));
-      const canvas2 = document.createElement("canvas");
-      canvas2.width = w;
-      canvas2.height = h;
-      const ctx = canvas2.getContext("2d");
-      if (!ctx) {
-        bitmap.close();
-        return file;
-      }
-      ctx.drawImage(bitmap, 0, 0, w, h);
-      bitmap.close();
-      const blob = await new Promise(
-        (resolve) => canvas2.toBlob((b) => resolve(b), "image/jpeg", 0.88)
-      );
-      if (blob) return new File([blob], "story.jpg", { type: "image/jpeg" });
-    } catch {
-    }
-  }
-  if (!file.type.startsWith("image/") || file.type === "image/gif") return file;
-  try {
-    const bitmap = await createImageBitmap(file);
-    const maxSide = 1080;
-    const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
-    const w = Math.max(1, Math.round(bitmap.width * scale));
-    const h = Math.max(1, Math.round(bitmap.height * scale));
-    const canvas2 = document.createElement("canvas");
-    canvas2.width = w;
-    canvas2.height = h;
-    const ctx = canvas2.getContext("2d");
-    if (!ctx) {
-      bitmap.close();
-      return file;
-    }
-    ctx.drawImage(bitmap, 0, 0, w, h);
-    bitmap.close();
-    const quality = file.size > 3e6 ? 0.82 : 0.88;
-    const blob = await new Promise(
-      (resolve) => canvas2.toBlob((b) => resolve(b), "image/jpeg", quality)
-    );
-    if (!blob) return file;
-    return new File([blob], "story.jpg", { type: "image/jpeg" });
-  } catch {
-    return file;
-  }
-}
-async function prepareStoryFile(file) {
-  if (file.type.startsWith("image/")) {
-    return normalizeStoryImageFile(file);
-  }
-  return file;
-}
-const MAX_STORY_VIDEO_DURATION_SEC = 60;
-function uploadTimeoutMs$1(file) {
-  if (file.type.startsWith("video/")) {
-    if (file.size > 40 * 1024 * 1024) return 3e5;
-    if (file.size > 15 * 1024 * 1024) return 24e4;
-    return 18e4;
-  }
-  if (file.size > 40 * 1024 * 1024) return 18e4;
-  if (file.size > 15 * 1024 * 1024) return 12e4;
-  return 6e4;
-}
-async function validateStoryVideoFile(file, maxDurationSec = MAX_STORY_VIDEO_DURATION_SEC) {
-  if (!file.type.startsWith("video/")) return { ok: true };
-  const cap = Math.max(1, Math.min(60, maxDurationSec));
-  return new Promise((resolve) => {
-    const url2 = URL.createObjectURL(file);
-    const v = document.createElement("video");
-    v.preload = "metadata";
-    const done = (result) => {
-      URL.revokeObjectURL(url2);
-      resolve(result);
-    };
-    v.onloadedmetadata = () => {
-      const d = v.duration;
-      if (Number.isFinite(d) && d > cap + 1) {
-        done({
-          ok: false,
-          error: `مدة الفيديو ${Math.ceil(d)} ثانية — الحد الأقصى ${cap} ثانية.`
-        });
-        return;
-      }
-      done({ ok: true });
-    };
-    v.onerror = () => done({ ok: true });
-    v.src = url2;
-  });
-}
-async function uploadStoryFile(file, opts) {
-  const token = getApiToken();
-  if (!apiBackendEnabled() || !token) {
-    return { ok: false, error: "الخادم غير متصل — شغّل API ثم أعد المحاولة" };
-  }
-  await ensureApiRuntimeConfig();
-  try {
-    const durationCheck = await validateStoryVideoFile(
-      file,
-      opts?.maxVideoDurationSec ?? MAX_STORY_VIDEO_DURATION_SEC
-    );
-    if (!durationCheck.ok) return durationCheck;
-    let prepared = await prepareStoryFile(file);
-    if (prepared.size > MAX_STORY_UPLOAD_BYTES) {
-      const mb = (prepared.size / (1024 * 1024)).toFixed(0);
-      return {
-        ok: false,
-        error: `الملف ${mb} ميجا — الحد الأقصى 78 ميجا. جرّب قصّ الفيديو أو صورة أخف.`
-      };
-    }
-    const up = await apiUploadMedia(token, prepared, {
-      timeoutMs: uploadTimeoutMs$1(prepared),
-      storyVideo: prepared.type.startsWith("video/")
-    });
-    if (!up.ok) return { ok: false, error: up.error };
-    return { ok: true, url: up.url };
-  } catch {
-    return {
-      ok: false,
-      error: "تعذر رفع الستوري — الخادم غير متصل. شغّل npm run api:tunnel على جهازك"
-    };
-  }
-}
-async function resolveStoryMediaForSave(media) {
-  const t = media?.trim() || "";
-  if (!t || t === "📷") return { ok: false, error: "اختر صورة أو فيديو للستوري" };
-  if (t.startsWith("blob:")) {
-    try {
-      const res = await fetch(t);
-      const blob = await res.blob();
-      const ext = blob.type.startsWith("video/") ? "mp4" : "jpg";
-      const file = new File([blob], `story.${ext}`, { type: blob.type || "application/octet-stream" });
-      return uploadStoryFile(file);
-    } catch {
-      return { ok: false, error: "أعد اختيار الملف من زر الإرفاق" };
-    }
-  }
-  if (!t.startsWith("data:")) {
-    return { ok: true, url: t };
-  }
-  const token = getApiToken();
-  if (!apiBackendEnabled() || !token) return { ok: true, url: t };
-  await ensureApiRuntimeConfig();
-  try {
-    const file = await fileFromDataUrl(t);
-    return uploadStoryFile(file);
-  } catch {
-    return {
-      ok: false,
-      error: "تعذر رفع الستوري — الخادم غير متصل. شغّل npm run api:tunnel على جهازك"
-    };
-  }
-}
-function storyPayloadFromUrl(url2) {
-  if (isVideoMediaRef(url2)) return { image: "🎬", video: url2 };
-  return { image: url2 };
-}
-function storyArchiveThumbnailUrl(story) {
-  const media = normalizeStoryMedia(story);
-  if (media.hasImage) return media.imageUrl;
-  if (media.hasVideo && media.imageUrl) return media.imageUrl;
-  return null;
-}
-function normalizeStoryMedia(story) {
-  const imageRaw = story.image?.trim() || "";
-  const videoRaw = story.video?.trim() || "";
-  const videoUrl = videoRaw ? resolveMediaUrl(videoRaw) : "";
-  const imageUrl = imageRaw && !isVideoMediaRef(imageRaw) ? resolveMediaUrl(imageRaw) : "";
-  const hasVideo = !!videoUrl && isRenderableMediaUrl(videoUrl);
-  const hasImage = !!imageUrl && isRenderableMediaUrl(imageUrl);
-  const emojiFallback = !hasVideo && !hasImage ? imageRaw || (videoRaw && !isVideoMediaRef(videoRaw) ? videoRaw : "") : "";
-  return { imageUrl, videoUrl, hasVideo, hasImage, emojiFallback };
-}
-const resolvePostMediaForSave = resolveStoryMediaForSave;
-const STORY_IMAGE_DURATION_MS = 5e3;
-const STORY_VIDEO_MAX_MS = 6e4;
-const STORY_VIDEO_MIN_MS = 1e3;
-function storyDurationMs(opts) {
-  if (opts.hasVideo && opts.videoDurationSec && Number.isFinite(opts.videoDurationSec)) {
-    const ms = Math.ceil(opts.videoDurationSec * 1e3);
-    return Math.max(STORY_VIDEO_MIN_MS, Math.min(STORY_VIDEO_MAX_MS, ms));
-  }
-  return STORY_IMAGE_DURATION_MS;
-}
-function useStoryPlayback({
-  storyId,
-  hasVideo,
-  videoRef,
-  paused,
-  enabled,
-  videoDurationSec,
-  onSegmentComplete
-}) {
-  const [progress, setProgress] = reactExports.useState(0);
-  const [playbackState, setPlaybackState] = reactExports.useState("idle");
-  const durationMsRef = reactExports.useRef(STORY_IMAGE_DURATION_MS);
-  const elapsedMsRef = reactExports.useRef(0);
-  const progressRef = reactExports.useRef(0);
-  const rafRef = reactExports.useRef(null);
-  const completedRef = reactExports.useRef(false);
-  const onCompleteRef = reactExports.useRef(onSegmentComplete);
-  onCompleteRef.current = onSegmentComplete;
-  const cancelRaf = reactExports.useCallback(() => {
-    if (rafRef.current != null) {
-      cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
-    }
-  }, []);
-  const refreshDuration = reactExports.useCallback(() => {
-    durationMsRef.current = storyDurationMs({
-      hasVideo,
-      videoDurationSec: videoDurationSec ?? void 0
-    });
-  }, [hasVideo, videoDurationSec]);
-  const fireComplete = reactExports.useCallback(() => {
-    if (completedRef.current) return;
-    completedRef.current = true;
-    progressRef.current = 1;
-    setProgress(1);
-    setPlaybackState("idle");
-    onCompleteRef.current();
-  }, []);
-  const resetSegment = reactExports.useCallback(() => {
-    completedRef.current = false;
-    elapsedMsRef.current = 0;
-    progressRef.current = 0;
-    setProgress(0);
-    refreshDuration();
-    setPlaybackState(hasVideo ? "loading" : "playing");
-  }, [hasVideo, refreshDuration]);
-  reactExports.useEffect(() => {
-    resetSegment();
-  }, [storyId, resetSegment]);
-  reactExports.useEffect(() => {
-    refreshDuration();
-  }, [refreshDuration]);
-  const setVideoDurationFromMetadata = reactExports.useCallback((sec) => {
-    if (!Number.isFinite(sec) || sec <= 0) return;
-    durationMsRef.current = storyDurationMs({ hasVideo: true, videoDurationSec: sec });
-    elapsedMsRef.current = 0;
-    progressRef.current = 0;
-    completedRef.current = false;
-    setProgress(0);
-    setPlaybackState(paused ? "paused" : "playing");
-  }, [paused]);
-  reactExports.useEffect(() => {
-    if (!enabled || !hasVideo) return;
-    const v = videoRef.current;
-    if (!v) return;
-    const onWaiting = () => setPlaybackState("buffering");
-    const onPlaying = () => setPlaybackState(paused ? "paused" : "playing");
-    const onLoadedMeta = () => {
-      refreshDuration();
-      setPlaybackState(paused ? "paused" : "playing");
-    };
-    const onTimeUpdate = () => {
-      if (paused) return;
-      const d = v.duration;
-      if (!Number.isFinite(d) || d <= 0) return;
-      const p = Math.min(1, Math.max(0, v.currentTime / d));
-      progressRef.current = p;
-      setProgress(p);
-      setPlaybackState("playing");
-      if (p >= 0.995) fireComplete();
-    };
-    const onEnded = () => fireComplete();
-    v.addEventListener("waiting", onWaiting);
-    v.addEventListener("playing", onPlaying);
-    v.addEventListener("loadedmetadata", onLoadedMeta);
-    v.addEventListener("timeupdate", onTimeUpdate);
-    v.addEventListener("ended", onEnded);
-    return () => {
-      v.removeEventListener("waiting", onWaiting);
-      v.removeEventListener("playing", onPlaying);
-      v.removeEventListener("loadedmetadata", onLoadedMeta);
-      v.removeEventListener("timeupdate", onTimeUpdate);
-      v.removeEventListener("ended", onEnded);
-    };
-  }, [storyId, enabled, hasVideo, paused, videoRef, fireComplete, refreshDuration]);
-  reactExports.useEffect(() => {
-    const v = videoRef.current;
-    if (!v || !hasVideo || !enabled) return;
-    if (paused) {
-      try {
-        v.pause();
-      } catch {
-      }
-      setPlaybackState((s) => s === "buffering" ? "buffering" : "paused");
-    } else {
-      const p = v.play();
-      if (p) p.catch(() => void 0);
-      if (v.readyState >= 2) setPlaybackState("playing");
-    }
-  }, [paused, hasVideo, enabled, videoRef, storyId]);
-  reactExports.useEffect(() => {
-    if (!enabled || hasVideo) {
-      cancelRaf();
-      return;
-    }
-    if (paused) {
-      elapsedMsRef.current = progressRef.current * durationMsRef.current;
-      cancelRaf();
-      setPlaybackState("paused");
-      return;
-    }
-    setPlaybackState("playing");
-    const startAt = performance.now() - elapsedMsRef.current;
-    const tick = (now) => {
-      const dur = durationMsRef.current;
-      const elapsed = now - startAt;
-      const p = dur > 0 ? Math.min(1, elapsed / dur) : 0;
-      progressRef.current = p;
-      setProgress(p);
-      if (p >= 1) {
-        cancelRaf();
-        fireComplete();
-        return;
-      }
-      rafRef.current = requestAnimationFrame(tick);
-    };
-    rafRef.current = requestAnimationFrame(tick);
-    return cancelRaf;
-  }, [storyId, enabled, hasVideo, paused, cancelRaf, fireComplete]);
-  return {
-    progress,
-    playbackState,
-    resetSegment,
-    setVideoDurationFromMetadata
-  };
-}
-const StoryProgressBars = reactExports.memo(function StoryProgressBars2({
-  segments: segments2,
-  activeIndex,
-  progress
-}) {
-  const pct = Math.min(100, Math.max(0, progress * 100));
-  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex gap-1 p-2 shrink-0", role: "progressbar", "aria-valuenow": Math.round(pct), "aria-valuemin": 0, "aria-valuemax": 100, children: segments2.map((seg, idx) => /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex-1 h-[2px] bg-white/35 rounded-full overflow-hidden", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-    "div",
-    {
-      className: "h-full bg-white rounded-full will-change-[width]",
-      style: {
-        width: idx < activeIndex ? "100%" : idx === activeIndex ? `${pct}%` : "0%"
-      }
-    }
-  ) }, seg.id)) });
-});
-function storyTapHaptic() {
-  try {
-    navigator.vibrate?.(8);
-  } catch {
-  }
-}
-function StoryViewer({
-  userId,
-  trayRing,
-  initialStoryId,
-  openOrigin,
-  onClose,
-  onOpenProfile,
-  onOpenChat,
-  onRequestAuthor
-}) {
-  const { state, currentUser, openOrCreateChat, sendMessage, toggleStoryLike, recordStoryView, deleteStory, isGuest } = useApp();
-  const me = currentUser;
-  const onCloseRef = reactExports.useRef(onClose);
-  onCloseRef.current = onClose;
-  const author = userById(state, userId);
-  const stories = storiesForUser(state, userId, me.id);
-  const ring = trayRing.length > 0 ? trayRing : [userId];
-  const [i, setI] = reactExports.useState(0);
-  const pendingStoryIdRef = reactExports.useRef(initialStoryId);
-  const [entering, setEntering] = reactExports.useState(true);
-  const [userSlideX, setUserSlideX] = reactExports.useState(0);
-  const [userSlideSpring, setUserSlideSpring] = reactExports.useState(false);
-  const horizDragRef = reactExports.useRef(null);
-  const viewportWRef = reactExports.useRef(typeof window !== "undefined" ? window.innerWidth : 390);
-  const cappedStoryIndex = stories.length > 0 ? Math.min(Math.max(0, i), stories.length - 1) : 0;
-  const curStoryForHooks = stories.length > 0 ? stories[cappedStoryIndex] : void 0;
-  const [reply, setReply] = reactExports.useState("");
-  const [shareStoryId, setShareStoryId] = reactExports.useState(null);
-  const [noteToReply, setNoteToReply] = reactExports.useState(null);
-  const [showHighlightModal, setShowHighlightModal] = reactExports.useState(false);
-  const [highlightTitle, setHighlightTitle] = reactExports.useState("");
-  const snapRef = reactExports.useRef({ storiesLen: stories.length, userId, ring });
-  snapRef.current = { storiesLen: stories.length, userId, ring };
-  const canReplyToStories = userId === me.id || author?.allowStoryReplies !== false;
-  const [videoDurationSec, setVideoDurationSec] = reactExports.useState(null);
-  const [middleHold, setMiddleHold] = reactExports.useState(false);
-  const [topChromeVisible, setTopChromeVisible] = reactExports.useState(true);
-  const videoRef = reactExports.useRef(null);
-  const chromeHideTimerRef = reactExports.useRef(null);
-  const [ownViewsOpen, setOwnViewsOpen] = reactExports.useState(false);
-  const ownPullRef = reactExports.useRef(null);
-  const [dismissY, setDismissY] = reactExports.useState(0);
-  const [dismissSpring, setDismissSpring] = reactExports.useState(false);
-  const dismissDragRef = reactExports.useRef(null);
-  const viewportHRef = reactExports.useRef(typeof window !== "undefined" ? window.innerHeight : 800);
-  const dismissDoneRef = reactExports.useRef(false);
-  const closeTimerRef = reactExports.useRef(null);
-  const gestureRafRef = reactExports.useRef(null);
-  const pendingGestureRef = reactExports.useRef({});
-  reactExports.useEffect(() => {
-    const releaseFullscreen = lockStoryFullscreen();
-    document.documentElement.classList.add("retweet-story-open");
-    return () => {
-      releaseFullscreen();
-      document.documentElement.classList.remove("retweet-story-open");
-      if (closeTimerRef.current != null) {
-        window.clearTimeout(closeTimerRef.current);
-        closeTimerRef.current = null;
-      }
-      dismissDoneRef.current = false;
-    };
-  }, []);
-  const closeViewer = reactExports.useCallback(() => {
-    if (dismissDoneRef.current) return;
-    dismissDoneRef.current = true;
-    onCloseRef.current();
-  }, []);
-  const showTopChrome = reactExports.useCallback(() => {
-    setTopChromeVisible(true);
-    if (chromeHideTimerRef.current != null) window.clearTimeout(chromeHideTimerRef.current);
-    chromeHideTimerRef.current = window.setTimeout(() => {
-      chromeHideTimerRef.current = null;
-      setTopChromeVisible(false);
-    }, 3e3);
-  }, []);
-  reactExports.useEffect(() => {
-    showTopChrome();
-    return () => {
-      if (chromeHideTimerRef.current != null) window.clearTimeout(chromeHideTimerRef.current);
-    };
-  }, [userId, curStoryForHooks?.id, showTopChrome]);
-  reactExports.useEffect(() => {
-    const v = videoRef.current;
-    if (!v || !curStoryForHooks) return;
-    const media = normalizeStoryMedia(curStoryForHooks);
-    if (!media.hasVideo) return;
-    const playWithSound = () => {
-      v.muted = false;
-      v.volume = 1;
-      const p = v.play();
-      if (p) {
-        p.catch(() => {
-          v.muted = true;
-          void v.play();
-        });
-      }
-    };
-    playWithSound();
-    v.addEventListener("loadeddata", playWithSound, { once: true });
-    return () => v.removeEventListener("loadeddata", playWithSound);
-  }, [curStoryForHooks?.id, curStoryForHooks?.video, curStoryForHooks?.image]);
-  const goToNextAuthor = reactExports.useCallback(() => {
-    const nextU = nextAuthorInTray(ring, userId);
-    if (nextU) {
-      pendingStoryIdRef.current = void 0;
-      onRequestAuthor?.(nextU);
-      return true;
-    }
-    if (onRequestAuthor) onRequestAuthor(null);
-    else closeViewer();
-    return false;
-  }, [onRequestAuthor, ring, userId, closeViewer]);
-  const goToPrevAuthor = reactExports.useCallback(() => {
-    const prevU = prevAuthorInTray(ring, userId);
-    if (prevU) {
-      pendingStoryIdRef.current = void 0;
-      onRequestAuthor?.(prevU);
-      return true;
-    }
-    return false;
-  }, [onRequestAuthor, ring, userId]);
-  const goForward = reactExports.useCallback(() => {
-    setI((prev) => {
-      const { storiesLen } = snapRef.current;
-      if (prev < storiesLen - 1) return prev + 1;
-      goToNextAuthor();
-      return prev;
-    });
-  }, [goToNextAuthor]);
-  const goBack = reactExports.useCallback(() => {
-    setI((prev) => {
-      if (prev > 0) return prev - 1;
-      goToPrevAuthor();
-      return prev;
-    });
-  }, [goToPrevAuthor]);
-  const goForwardRef = reactExports.useRef(goForward);
-  goForwardRef.current = goForward;
-  reactExports.useEffect(() => {
-    setDismissY(0);
-    setDismissSpring(false);
-    setUserSlideX(0);
-    setUserSlideSpring(false);
-    setEntering(true);
-    const t = window.setTimeout(() => setEntering(false), 400);
-    const list = storiesForUser(state, userId, me.id);
-    const fromId = pendingStoryIdRef.current;
-    let start = 0;
-    if (fromId) {
-      const fi = list.findIndex((s) => s.id === fromId);
-      start = fi >= 0 ? fi : 0;
-      pendingStoryIdRef.current = void 0;
-    } else {
-      start = firstUnseenStoryIndex(list, me.id);
-    }
-    setI(start);
-    return () => clearTimeout(t);
-  }, [userId]);
-  reactExports.useEffect(() => {
-    const onResize = () => {
-      viewportHRef.current = window.innerHeight;
-      viewportWRef.current = window.innerWidth;
-    };
-    window.addEventListener("resize", onResize);
-    return () => {
-      window.removeEventListener("resize", onResize);
-      if (gestureRafRef.current != null) {
-        cancelAnimationFrame(gestureRafRef.current);
-        gestureRafRef.current = null;
-      }
-    };
-  }, []);
-  const finishDismiss = reactExports.useCallback(() => {
-    if (dismissDoneRef.current) return;
-    const h = viewportHRef.current;
-    setDismissSpring(true);
-    setDismissY(h);
-    if (closeTimerRef.current != null) window.clearTimeout(closeTimerRef.current);
-    closeTimerRef.current = window.setTimeout(() => {
-      closeTimerRef.current = null;
-      closeViewer();
-    }, 280);
-  }, [closeViewer]);
-  const snapDismissBack = reactExports.useCallback(() => {
-    if (closeTimerRef.current != null) {
-      window.clearTimeout(closeTimerRef.current);
-      closeTimerRef.current = null;
-    }
-    setDismissSpring(true);
-    setDismissY(0);
-    window.setTimeout(() => setDismissSpring(false), 320);
-  }, []);
-  reactExports.useEffect(() => {
-    if (stories.length === 0) return;
-    setI((prev) => Math.min(prev, stories.length - 1));
-  }, [stories.length]);
-  reactExports.useEffect(() => {
-    if (!author) {
-      const t = window.setTimeout(() => closeViewer(), 0);
-      return () => clearTimeout(t);
-    }
-  }, [author, closeViewer]);
-  const curMediaForPlayback = curStoryForHooks ? normalizeStoryMedia(curStoryForHooks) : null;
-  const storyHasVideo = !!curMediaForPlayback?.hasVideo;
-  reactExports.useEffect(() => {
-    setVideoDurationSec(null);
-    setMiddleHold(false);
-  }, [curStoryForHooks?.id]);
-  const { progress: storyProgress, playbackState, setVideoDurationFromMetadata } = useStoryPlayback({
-    storyId: curStoryForHooks?.id ?? "",
-    hasVideo: storyHasVideo,
-    videoRef,
-    paused: middleHold || ownViewsOpen,
-    enabled: !!(author && stories.length > 0 && curStoryForHooks?.id),
-    videoDurationSec,
-    onSegmentComplete: () => goForwardRef.current()
-  });
-  reactExports.useEffect(() => {
-    if (!curStoryForHooks?.id || userId === me.id || isGuest) return;
-    recordStoryView(curStoryForHooks.id);
-  }, [curStoryForHooks?.id, userId, me.id, isGuest, recordStoryView]);
-  reactExports.useEffect(() => {
-    setOwnViewsOpen(false);
-  }, [curStoryForHooks?.id, userId]);
-  reactExports.useEffect(() => {
-    if (!author || stories.length === 0) return;
-    const idx = Math.min(Math.max(0, i), stories.length - 1);
-    const urls = [];
-    for (let off = -1; off <= 2; off++) {
-      const s = stories[idx + off];
-      if (!s) continue;
-      const m = normalizeStoryMedia(s);
-      if (m.imageUrl) urls.push(m.imageUrl);
-      if (m.videoUrl) urls.push(m.videoUrl);
-    }
-    preloadStoryUrls(urls);
-  }, [userId, i, stories, author]);
-  if (!author) {
-    return null;
-  }
-  if (stories.length === 0) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "fixed inset-0 bg-black z-[200] flex flex-col items-center justify-center p-6 text-white", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "absolute top-3 end-3 p-2 rounded-full bg-white/10", onClick: closeViewer, "aria-label": "إغلاق", children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 24 }) }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-center text-base mb-2 mt-8", children: "لا توجد ستوريات لهذا الحساب حالياً." }),
-      userId === me.id && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-center text-sm text-white/70 mb-6", children: "أنشئ ستوري من زر + ثم اختر «ستوري»." }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "bg-[#0095F6] px-8 py-2.5 rounded-full font-semibold", onClick: closeViewer, children: "رجوع" })
-    ] });
-  }
-  const displayIdx = Math.min(Math.max(0, i), stories.length - 1);
-  const cur = stories[displayIdx];
-  const storyMedia = normalizeStoryMedia(cur);
-  const storyLiked = (cur.likes || []).includes(me.id);
-  const storyNotes = visibleMediaNotes(state, "story", cur.id, me.id).slice(0, 8);
-  const submitReply = (e) => {
-    e.preventDefault();
-    if (isGuest) {
-      notifyGuestActionBlocked();
-      return;
-    }
-    if (!reply.trim() || !canReplyToStories || userId === me.id) return;
-    const chat = openOrCreateChat(userId);
-    if (!chat) {
-      if (isGuest) notifyGuestActionBlocked();
-      else window.alert("تعذّر فتح المحادثة.");
-      return;
-    }
-    sendMessage(chat.id, {
-      type: "shared_story",
-      content: cur.id,
-      shareText: reply.trim(),
-      replyContext: { kind: "story", storyId: cur.id, storyAuthorId: userId }
-    });
-    setReply("");
-  };
-  const saveAsHighlight = () => {
-    if (!highlightTitle.trim() || userId !== me.id) return;
-    alert(`تم حفظ الهايلايت "${highlightTitle}" بنجاح!`);
-    setShowHighlightModal(false);
-    setHighlightTitle("");
-  };
-  const handleDeleteCurrentStory = () => {
-    if (userId !== me.id || !cur?.id) return;
-    if (!window.confirm("حذف هذه الستوري؟")) return;
-    const remaining = stories.length - 1;
-    const atLast = displayIdx >= remaining && remaining > 0;
-    deleteStory(cur.id);
-    setOwnViewsOpen(false);
-    if (remaining <= 0) {
-      if (onRequestAuthor) onRequestAuthor(null);
-      else closeViewer();
-      return;
-    }
-    if (atLast) setI((prev) => Math.max(0, prev - 1));
-  };
-  const onOwnZonePointerDown = (e) => {
-    if (e.button !== 0 || ownViewsOpen) return;
-    ownPullRef.current = { y0: e.clientY, pointerId: e.pointerId };
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {
-    }
-  };
-  const onOwnZonePointerMove = (e) => {
-    const p = ownPullRef.current;
-    if (!p || e.pointerId !== p.pointerId || ownViewsOpen) return;
-    const pull = p.y0 - e.clientY;
-    if (pull > 96) setOwnViewsOpen(true);
-  };
-  const endOwnZonePull = (e) => {
-    const p = ownPullRef.current;
-    ownPullRef.current = null;
-    try {
-      if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
-        e.currentTarget.releasePointerCapture(e.pointerId);
-      }
-    } catch {
-    }
-    if (ownViewsOpen || !p || e.pointerId !== p.pointerId) return;
-    const pull = p.y0 - e.clientY;
-    if (pull > 44) setOwnViewsOpen(true);
-  };
-  const dismissProgress = dismissY / Math.max(1, viewportHRef.current);
-  const dismissScale = Math.max(0.88, 1 - dismissProgress * 0.1);
-  const backdropOpacity = Math.max(0, 1 - dismissProgress * 0.9);
-  const snapUserSlideBack = reactExports.useCallback(() => {
-    setUserSlideSpring(true);
-    setUserSlideX(0);
-    window.setTimeout(() => setUserSlideSpring(false), 280);
-  }, []);
-  const onGesturePointerDown = (e) => {
-    if (e.button !== 0 || ownViewsOpen) return;
-    if (e.target.closest("[data-story-interactive]")) return;
-    horizDragRef.current = {
-      pointerId: e.pointerId,
-      startX: e.clientX,
-      startSlideX: userSlideX,
-      lastX: e.clientX,
-      lastT: performance.now(),
-      velocity: 0,
-      axis: "none"
-    };
-    dismissDragRef.current = {
-      pointerId: e.pointerId,
-      startY: e.clientY,
-      startDismissY: dismissY,
-      lastY: e.clientY,
-      lastT: performance.now(),
-      velocity: 0
-    };
-    setDismissSpring(false);
-    setUserSlideSpring(false);
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {
-    }
-  };
-  const onGesturePointerMove = (e) => {
-    const h = horizDragRef.current;
-    const p = dismissDragRef.current;
-    if (!h || !p || e.pointerId !== h.pointerId || ownViewsOpen) return;
-    const dx = e.clientX - h.startX;
-    const dy = e.clientY - p.startY;
-    if (h.axis === "none") {
-      if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
-        h.axis = Math.abs(dx) > Math.abs(dy) ? "h" : "v";
-      }
-    }
-    const now = performance.now();
-    const dt = Math.max(1, now - h.lastT);
-    h.velocity = (e.clientX - h.lastX) / dt;
-    h.lastX = e.clientX;
-    h.lastT = now;
-    if (h.axis === "h") {
-      const w = viewportWRef.current;
-      const atStart = !prevAuthorInTray(ring, userId) && dx > 0;
-      const atEnd = !nextAuthorInTray(ring, userId) && dx < 0;
-      let x = h.startSlideX + dx;
-      if (atStart && x > 0) x *= 0.35;
-      if (atEnd && x < 0) x *= 0.35;
-      pendingGestureRef.current.x = Math.max(-w, Math.min(w, x));
-      if (gestureRafRef.current == null) {
-        gestureRafRef.current = requestAnimationFrame(() => {
-          gestureRafRef.current = null;
-          if (typeof pendingGestureRef.current.x === "number") {
-            setUserSlideX(pendingGestureRef.current.x);
-          }
-        });
-      }
-      return;
-    }
-    if (h.axis === "v") {
-      const ddy = Math.max(0, dy);
-      p.velocity = (e.clientY - p.lastY) / dt;
-      p.lastY = e.clientY;
-      p.lastT = now;
-      pendingGestureRef.current.y = p.startDismissY + ddy;
-      if (gestureRafRef.current == null) {
-        gestureRafRef.current = requestAnimationFrame(() => {
-          gestureRafRef.current = null;
-          if (typeof pendingGestureRef.current.y === "number") {
-            setDismissY(pendingGestureRef.current.y);
-          }
-        });
-      }
-    }
-  };
-  const endGestureDrag = (e) => {
-    const h = horizDragRef.current;
-    const p = dismissDragRef.current;
-    horizDragRef.current = null;
-    dismissDragRef.current = null;
-    try {
-      if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
-        e.currentTarget.releasePointerCapture(e.pointerId);
-      }
-    } catch {
-    }
-    if (!h || !p || e.pointerId !== h.pointerId || ownViewsOpen) return;
-    if (h.axis === "h") {
-      const w = viewportWRef.current;
-      const x = userSlideX;
-      const rtl = typeof document !== "undefined" && document.documentElement.getAttribute("dir") === "rtl";
-      const goNext = rtl ? x > w * 0.22 || h.velocity > 0.35 : x < -w * 0.22 || h.velocity < -0.35;
-      const goPrev = rtl ? x < -w * 0.22 || h.velocity < -0.35 : x > w * 0.22 || h.velocity > 0.35;
-      if (goNext) {
-        setUserSlideSpring(true);
-        setUserSlideX(rtl ? w : -w);
-        window.setTimeout(() => {
-          goToNextAuthor();
-          setUserSlideX(0);
-          setUserSlideSpring(false);
-        }, 220);
-      } else if (goPrev) {
-        setUserSlideSpring(true);
-        setUserSlideX(rtl ? -w : w);
-        window.setTimeout(() => {
-          goToPrevAuthor();
-          setUserSlideX(0);
-          setUserSlideSpring(false);
-        }, 220);
-      } else {
-        snapUserSlideBack();
-      }
-      return;
-    }
-    if (h.axis === "v") {
-      const vh = viewportHRef.current;
-      const dy = Math.max(0, e.clientY - p.startY) + p.startDismissY;
-      if (dy > vh * 0.42 || p.velocity > 0.42) finishDismiss();
-      else snapDismissBack();
-    }
-  };
-  const heroScale = openOrigin ? Math.max(0.35, Math.min(1, openOrigin.width * 1.1 / viewportWRef.current)) : 1;
-  const heroTx = openOrigin ? openOrigin.left + openOrigin.width / 2 - viewportWRef.current / 2 : 0;
-  const heroTy = openOrigin ? openOrigin.top + openOrigin.height / 2 - viewportHRef.current / 2 : 0;
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "fixed inset-0 z-[200] touch-none", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx(
-      "div",
-      {
-        className: "absolute inset-0 bg-black",
-        style: {
-          opacity: backdropOpacity,
-          transition: dismissSpring ? "opacity 0.32s cubic-bezier(0.25, 1, 0.35, 1)" : "none"
-        },
-        "aria-hidden": true
-      }
-    ),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs(
-      "div",
-      {
-        className: "absolute inset-0 flex flex-col bg-black " + (entering ? "story-viewer-enter" : ""),
-        style: {
-          transform: entering ? `translate3d(${heroTx}px, ${heroTy}px, 0) scale(${heroScale})` : `translate3d(${userSlideX}px, ${dismissY}px, 0) scale(${dismissScale})`,
-          transformOrigin: "center center",
-          transition: dismissSpring || userSlideSpring ? "transform 0.32s cubic-bezier(0.22, 1, 0.36, 1)" : entering ? void 0 : "none",
-          willChange: "transform"
-        },
-        onPointerDown: onGesturePointerDown,
-        onPointerMove: onGesturePointerMove,
-        onPointerUp: endGestureDrag,
-        onPointerCancel: endGestureDrag,
-        children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "absolute inset-x-0 top-0 z-50 flex flex-col pt-[max(0.25rem,var(--sat))] pointer-events-none", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(StoryProgressBars, { segments: stories, activeIndex: displayIdx, progress: storyProgress }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs(
-              "div",
-              {
-                className: "flex flex-col bg-gradient-to-b from-black/75 via-black/40 to-transparent transition-opacity duration-300 pointer-events-auto " + (topChromeVisible && !ownViewsOpen ? "opacity-100" : "opacity-0 pointer-events-none"),
-                children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex shrink-0 items-center gap-2 px-3 text-white", "data-story-interactive": true, children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: closeViewer, className: "p-2", "aria-label": "رجوع", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronLeft, { size: 24 }) }),
-                    /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", onClick: () => onOpenProfile?.(author.id), className: "flex items-center gap-2 flex-1 min-w-0", children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: author.username, src: author.avatar, size: 32 }),
-                      /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-sm font-semibold inline-flex items-center gap-1", children: [
-                        "@",
-                        author.username,
-                        /* @__PURE__ */ jsxRuntimeExports.jsx(VerifiedMarkForUser, { user: author, size: 16 })
-                      ] })
-                    ] }),
-                    cur.audience === "close" && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs bg-green-600 px-2 py-0.5 rounded-full", children: "مقربون" }),
-                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1", children: [
-                      userId !== me.id && /* @__PURE__ */ jsxRuntimeExports.jsx(
-                        "button",
-                        {
-                          type: "button",
-                          className: "p-2 rounded-full " + (storyLiked ? "text-red-500" : "text-white hover:bg-white/10"),
-                          onClick: (e) => {
-                            e.stopPropagation();
-                            if (isGuest) {
-                              notifyGuestActionBlocked();
-                              return;
-                            }
-                            toggleStoryLike(cur.id);
-                          },
-                          "aria-label": "إعجاب",
-                          children: /* @__PURE__ */ jsxRuntimeExports.jsx(Heart, { size: 22, className: storyLiked ? "fill-current" : "" })
-                        }
-                      ),
-                      userId === me.id && /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "p-2", onClick: () => setShowHighlightModal(true), "aria-label": "حفظ كهايلايت", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Bookmark, { size: 20 }) }),
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "p-2", onClick: () => setShareStoryId(cur.id), "aria-label": "مشاركة", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Share2, { size: 20 }) })
-                    ] })
-                  ] }),
-                  storyNotes.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex justify-center gap-3 flex-wrap px-2 py-2 shrink-0", children: storyNotes.map((n) => {
-                    const nu = userById(state, n.authorId);
-                    if (!nu) return null;
-                    if (n.authorId !== me.id && !isMutual(state, me.id, n.authorId)) return null;
-                    const canReplyNote = onOpenChat && n.authorId !== me.id;
-                    return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col items-center max-w-[4.5rem]", children: [
-                      canReplyNote ? /* @__PURE__ */ jsxRuntimeExports.jsx(
-                        "button",
-                        {
-                          type: "button",
-                          title: "رد في الخاص",
-                          onClick: () => {
-                            if (isGuest) {
-                              notifyGuestActionBlocked();
-                              return;
-                            }
-                            setNoteToReply(n);
-                          },
-                          className: "text-[10px] leading-tight text-start bg-white/10 rounded-xl px-1.5 py-0.5 mb-1 line-clamp-2 text-white hover:bg-white/20 w-full",
-                          children: n.text
-                        }
-                      ) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[10px] leading-tight text-start bg-white/10 rounded-xl px-1.5 py-0.5 mb-1 line-clamp-2 text-white w-full", children: n.text }),
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => onOpenProfile?.(nu.id), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: nu.username, src: nu.avatar, size: 32 }) })
-                    ] }, n.id);
-                  }) })
-                ]
-              }
-            )
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs(
-            "div",
-            {
-              className: "relative flex min-h-0 flex-1 items-center justify-center overflow-hidden text-white",
-              onPointerDown: (e) => {
-                if (e.target.closest("[data-story-interactive]")) return;
-                showTopChrome();
-              },
-              children: [
-                (playbackState === "loading" || playbackState === "buffering") && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-sm", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-9 w-9 rounded-full border-2 border-white/30 border-t-white animate-spin", "aria-hidden": true }) }),
-                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative z-10 flex h-full w-full max-h-full max-w-full items-center justify-center", children: [
-                  storyMedia.hasVideo ? /* @__PURE__ */ jsxRuntimeExports.jsx(
-                    "video",
-                    {
-                      ref: videoRef,
-                      src: storyMedia.videoUrl,
-                      className: "max-h-full max-w-full object-contain select-none touch-manipulation",
-                      playsInline: true,
-                      autoPlay: true,
-                      loop: false,
-                      controls: false,
-                      onPointerDown: () => {
-                        const v = videoRef.current;
-                        if (v?.muted) {
-                          v.muted = false;
-                          v.volume = 1;
-                          void v.play();
-                        }
-                      },
-                      onLoadedMetadata: (e) => {
-                        const d = e.currentTarget.duration;
-                        if (Number.isFinite(d) && d > 0) {
-                          setVideoDurationSec(d);
-                          setVideoDurationFromMetadata(d);
-                        }
-                      }
-                    },
-                    cur.id
-                  ) : storyMedia.hasImage ? /* @__PURE__ */ jsxRuntimeExports.jsx(
-                    "img",
-                    {
-                      src: storyMedia.imageUrl,
-                      className: "max-h-full max-w-full object-contain select-none touch-manipulation",
-                      alt: "",
-                      draggable: false
-                    }
-                  ) : /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-7xl select-none touch-manipulation", children: storyMedia.emojiFallback || cur.image || "📷" }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx(StoryStickerLayer, { story: cur, storyAuthorId: author.id, onOpenProfile })
-                ] }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "div",
-                  {
-                    className: "absolute inset-y-0 start-[26%] end-[28%] z-[35] touch-none",
-                    onPointerDown: (e) => {
-                      if (e.button !== 0) return;
-                      try {
-                        e.currentTarget.setPointerCapture(e.pointerId);
-                      } catch {
-                      }
-                      setMiddleHold(true);
-                    },
-                    onPointerUp: (e) => {
-                      try {
-                        e.currentTarget.releasePointerCapture(e.pointerId);
-                      } catch {
-                      }
-                      setMiddleHold(false);
-                    },
-                    onPointerCancel: (e) => {
-                      try {
-                        e.currentTarget.releasePointerCapture(e.pointerId);
-                      } catch {
-                      }
-                      setMiddleHold(false);
-                    }
-                  }
-                ),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "button",
-                  {
-                    type: "button",
-                    "data-story-interactive": true,
-                    className: "absolute inset-y-0 start-0 w-[26%] z-40 bg-transparent touch-manipulation select-none",
-                    "aria-label": "الستوري السابق",
-                    onClick: (e) => {
-                      e.stopPropagation();
-                      storyTapHaptic();
-                      goBack();
-                    }
-                  }
-                ),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "button",
-                  {
-                    type: "button",
-                    "data-story-interactive": true,
-                    className: "absolute inset-y-0 end-0 w-[28%] z-40 bg-transparent touch-manipulation select-none",
-                    "aria-label": "الستوري التالي",
-                    onClick: (e) => {
-                      e.stopPropagation();
-                      storyTapHaptic();
-                      goForward();
-                    }
-                  }
-                )
-              ]
-            }
-          ),
-          canReplyToStories && userId !== me.id && !isGuest && /* @__PURE__ */ jsxRuntimeExports.jsxs("form", { onSubmit: submitReply, className: "flex shrink-0 gap-2 border-t border-white/10 bg-black/80 p-3", "data-story-interactive": true, children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "input",
-              {
-                value: reply,
-                onChange: (e) => setReply(e.target.value),
-                placeholder: "رد على الستوري...",
-                className: "flex-1 bg-white/10 rounded-full px-4 py-2 text-sm text-white placeholder:text-white/50 outline-none",
-                onClick: (e) => e.stopPropagation()
-              }
-            ),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "submit", className: "p-2 rounded-full bg-primary text-primary-foreground", "aria-label": "إرسال", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Send, { size: 20 }) })
-          ] }),
-          userId === me.id && /* @__PURE__ */ jsxRuntimeExports.jsxs(
-            "div",
-            {
-              className: "z-[45] flex shrink-0 touch-none select-none flex-col items-center justify-center gap-0.5 border-t border-white/5 bg-gradient-to-t from-black via-black/95 to-black/40 px-4 pt-2 pb-[max(0.65rem,var(--sab))]",
-              style: { touchAction: "none" },
-              "data-story-interactive": true,
-              onPointerDown: onOwnZonePointerDown,
-              onPointerMove: onOwnZonePointerMove,
-              onPointerUp: endOwnZonePull,
-              onPointerCancel: endOwnZonePull,
-              children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronUp, { className: "text-white/55", size: 22, strokeWidth: 2.25, "aria-hidden": true }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[11px] font-medium text-white/40 tracking-wide", children: "اسحب لأعلى" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                  "button",
-                  {
-                    type: "button",
-                    className: "mt-1 rounded-full bg-white/10 px-4 py-1.5 text-xs font-semibold text-white/90 backdrop-blur-sm transition-[transform,opacity] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] active:scale-[0.94] active:opacity-80",
-                    onPointerDown: (e) => e.stopPropagation(),
-                    onClick: () => setOwnViewsOpen(true),
-                    children: [
-                      "المشاهدات (",
-                      (cur.viewedByUserIds || []).length,
-                      ")"
-                    ]
-                  }
-                )
-              ]
-            }
-          ),
-          shareStoryId && /* @__PURE__ */ jsxRuntimeExports.jsx(ShareSheet, { target: { kind: "story", storyId: shareStoryId }, onClose: () => setShareStoryId(null) }),
-          noteToReply && onOpenChat && /* @__PURE__ */ jsxRuntimeExports.jsx(NoteReplySheet, { note: noteToReply, contentLabelAr: "ستوري", onClose: () => setNoteToReply(null), onSent: onOpenChat }),
-          showHighlightModal && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 bg-black/50 z-[70] flex items-center justify-center p-4", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "bg-background rounded-3xl p-6 w-full max-w-sm", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-lg font-bold mb-4", children: "حفظ كهايلايت" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-muted-foreground mb-4", children: "سيتم حفظ هذه القصة كهايلايت دائم في ملفك الشخصي" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "input",
-              {
-                type: "text",
-                placeholder: "عنوان الهايلايت",
-                value: highlightTitle,
-                onChange: (e) => setHighlightTitle(e.target.value),
-                className: "w-full bg-input rounded-2xl px-4 py-3 outline-none mb-4"
-              }
-            ),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-2", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => setShowHighlightModal(false), className: "flex-1 py-3 rounded-2xl bg-secondary font-semibold", children: "إلغاء" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: saveAsHighlight, className: "flex-1 py-3 rounded-2xl bg-primary text-primary-foreground font-semibold", children: "حفظ" })
-            ] })
-          ] }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            StoryViewsSheet,
-            {
-              open: userId === me.id && ownViewsOpen,
-              story: cur,
-              state,
-              onClose: () => setOwnViewsOpen(false),
-              onOpenProfile,
-              onDelete: handleDeleteCurrentStory
-            }
-          )
-        ]
-      }
-    )
-  ] });
-}
-const StoryTrayItem = reactExports.memo(function StoryTrayItem2({
-  id,
-  label,
-  unseen,
-  onOpen
-}) {
-  const { state } = useApp();
-  const u = userById(state, id);
-  const btnRef = reactExports.useRef(null);
-  const [visible, setVisible] = reactExports.useState(false);
-  const ioRef = reactExports.useRef(null);
-  reactExports.useEffect(() => {
-    const el = btnRef.current;
-    if (!el) return;
-    ioRef.current = new IntersectionObserver(
-      (entries) => {
-        if (entries[0]?.isIntersecting) setVisible(true);
-      },
-      { rootMargin: "80px" }
-    );
-    ioRef.current.observe(el);
-    return () => ioRef.current?.disconnect();
-  }, []);
-  if (!u) return null;
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
-    "button",
-    {
-      ref: btnRef,
-      type: "button",
-      onClick: () => {
-        const rect = btnRef.current?.getBoundingClientRect();
-        if (rect) onOpen(rect);
-      },
-      className: "flex w-[4.25rem] shrink-0 flex-col items-center gap-1 touch-manipulation story-tray-item",
-      style: {
-        contentVisibility: visible ? "visible" : "auto",
-        containIntrinsicSize: "0 88px"
-      },
-      children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          Avatar,
-          {
-            name: u.username,
-            src: u.avatar,
-            size: 66,
-            ring: true,
-            ringSeen: !unseen
-          }
-        ),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "max-w-[4.25rem] truncate text-[11px] text-foreground", children: label })
-      ]
-    }
-  );
-});
-function StoriesRow({ userIds, onOpenStory, onCreateStory }) {
-  const { state, currentUser, isGuest } = useApp();
-  const t = useT();
-  const me = currentUser;
-  const scrollRef = reactExports.useRef(null);
-  const orderedIds = reactExports.useMemo(
-    () => orderStoryTrayUserIds(state, me.id, userIds),
-    [state.stories, userIds, me.id]
-  );
-  const hasMyStories = reactExports.useMemo(
-    () => userHasVisibleStories(state, me.id, me.id),
-    [state.stories, me.id]
-  );
-  const myBtnRef = reactExports.useRef(null);
-  const openMyStory = reactExports.useCallback(() => {
-    if (isGuest) {
-      notifyGuestActionBlocked();
-      return;
-    }
-    const rect = myBtnRef.current?.getBoundingClientRect();
-    if (hasMyStories) {
-      onOpenStory({ userId: me.id, origin: rect });
-      return;
-    }
-    onCreateStory();
-  }, [hasMyStories, isGuest, me.id, onCreateStory, onOpenStory]);
-  const createNewStory = reactExports.useCallback(
-    (e) => {
-      e?.stopPropagation();
-      e?.preventDefault();
-      if (isGuest) {
-        notifyGuestActionBlocked();
-        return;
-      }
-      onCreateStory();
-    },
-    [isGuest, onCreateStory]
-  );
-  const openFriend = reactExports.useCallback(
-    (id, origin) => {
-      onOpenStory({ userId: id, origin });
-    },
-    [onOpenStory]
-  );
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(
-    "section",
-    {
-      "aria-label": "الستوريات",
-      className: "relative z-10 shrink-0 border-b border-border bg-background",
-      children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-        "div",
-        {
-          ref: scrollRef,
-          className: "flex gap-3 overflow-x-auto overscroll-x-contain px-4 py-3 no-scrollbar scroll-smooth",
-          style: { WebkitOverflowScrolling: "touch" },
-          children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsxs(
-              "button",
-              {
-                ref: myBtnRef,
-                type: "button",
-                onClick: openMyStory,
-                "aria-disabled": isGuest,
-                className: "flex w-[4.25rem] shrink-0 flex-col items-center gap-1 touch-manipulation " + (isGuest ? "cursor-not-allowed opacity-50" : ""),
-                children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative", children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(
-                      Avatar,
-                      {
-                        name: me.username,
-                        src: me.avatar,
-                        size: 66,
-                        ring: hasMyStories,
-                        ringSeen: hasMyStories && !authorHasUnseenStories(state, me.id, me.id)
-                      }
-                    ),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(
-                      "span",
-                      {
-                        role: "button",
-                        tabIndex: 0,
-                        "aria-label": "إنشاء ستوري",
-                        onClick: createNewStory,
-                        onKeyDown: (e) => {
-                          if (e.key === "Enter" || e.key === " ") createNewStory(e);
-                        },
-                        className: "absolute -bottom-0.5 -end-0.5 z-10 flex h-5 w-5 cursor-pointer items-center justify-center rounded-full bg-primary text-xs text-primary-foreground shadow",
-                        children: "+"
-                      }
-                    )
-                  ] }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "max-w-[4.25rem] truncate text-[11px]", children: t("yourStory") })
-                ]
-              }
-            ),
-            orderedIds.map((id) => {
-              const u = userById(state, id);
-              if (!u) return null;
-              const unseen = authorHasUnseenStories(state, me.id, id);
-              return /* @__PURE__ */ jsxRuntimeExports.jsx(
-                StoryTrayItem,
-                {
-                  id,
-                  label: u.username,
-                  unseen,
-                  onOpen: (origin) => openFriend(id, origin)
-                },
-                id
-              );
-            })
-          ]
-        }
-      )
-    }
-  );
-}
-function HomeScreen({
-  onOpenProfile,
-  onOpenChat,
-  restoreFromProfileContext = null,
-  onConsumedRestoreFromProfile
-}) {
-  const {
-    state,
-    currentUser,
-    addComment,
-    deleteComment,
-    isGuest,
-    refreshFromServer,
-    refreshFeedFromServer,
-    loadMoreFeedFromServer,
-    feedHasMore
-  } = useApp();
-  const isHomeTabActive = useIsTabActive("home");
-  const t = useT();
-  const [shareTarget, setShareTarget] = reactExports.useState(null);
-  const [storyOpen, setStoryOpen] = reactExports.useState(null);
-  const [openPostId, setOpenPostId] = reactExports.useState(null);
-  const [focusCommentsOnOpen, setFocusCommentsOnOpen] = reactExports.useState(false);
-  const [commentsSheetPostId, setCommentsSheetPostId] = reactExports.useState(null);
-  const [sheetCommentDraft, setSheetCommentDraft] = reactExports.useState("");
-  const [feedTick, setFeedTick] = reactExports.useState(0);
-  const [visibleCount, setVisibleCount] = reactExports.useState(25);
-  const loadMoreSentinelRef = reactExports.useRef(null);
-  const [pullHint, setPullHint] = reactExports.useState(false);
-  const touchRef = reactExports.useRef({ y0: 0, active: false });
-  const me = currentUser;
-  const closeStory = reactExports.useCallback(() => setStoryOpen(null), []);
-  const openProfileFromStory = reactExports.useCallback((id) => {
-    try {
-      sessionStorage.setItem("retweet_return_story_user_id", storyOpen?.userId || "");
-    } catch {
-    }
-    onOpenProfile(id);
-  }, [onOpenProfile, storyOpen?.userId]);
-  reactExports.useEffect(() => {
-    const handler = (e) => {
-      const d = e.detail;
-      const id = d?.userId;
-      if (id) setStoryOpen({ userId: id, storyId: d?.storyId });
-    };
-    window.addEventListener("retweet-open-story", handler);
-    return () => window.removeEventListener("retweet-open-story", handler);
-  }, []);
-  reactExports.useLayoutEffect(() => {
-    if (!restoreFromProfileContext || restoreFromProfileContext.tab !== "home") return;
-    const d = restoreFromProfileContext;
-    onConsumedRestoreFromProfile?.();
-    if (!d.postId || !d.homeSurface) return;
-    const p = state.posts.find((x) => x.id === d.postId);
-    if (!p) return;
-    const surface = d.homeSurface;
-    if (surface === "feed_comments_sheet") {
-      setCommentsSheetPostId(d.postId);
-      setOpenPostId(null);
-      setFocusCommentsOnOpen(false);
-    } else {
-      setCommentsSheetPostId(null);
-      setFocusCommentsOnOpen(!!d.commentsOpen);
-      setOpenPostId(d.postId);
-    }
-  }, [restoreFromProfileContext, state.posts, onConsumedRestoreFromProfile]);
-  const openPost = reactExports.useMemo(
-    () => openPostId ? state.posts.find((p) => p.id === openPostId) ?? null : null,
-    [openPostId, state.posts]
-  );
-  reactExports.useEffect(() => {
-    if (!commentsSheetPostId) setSheetCommentDraft("");
-  }, [commentsSheetPostId]);
-  const commentsSheetPost = reactExports.useMemo(
-    () => commentsSheetPostId ? state.posts.find((po) => po.id === commentsSheetPostId) ?? null : null,
-    [state.posts, commentsSheetPostId]
-  );
-  const handleStoryCreate = reactExports.useCallback(() => {
-    if (isGuest) {
-      notifyGuestActionBlocked();
-      return;
-    }
-    requestOpenStoryGallery();
-  }, [isGuest]);
-  const goToReelsTab = reactExports.useCallback(() => {
-    window.dispatchEvent(new CustomEvent("retweet-go-reels"));
-  }, []);
-  const tabScrollRef = useTabPanelScrollRef();
-  reactExports.useEffect(() => {
-    const scrollTop = () => tabScrollRef?.current?.scrollTop ?? 0;
-    const onStart = (e) => {
-      touchRef.current = { y0: e.touches[0].clientY, active: scrollTop() <= 2 };
-    };
-    const onEnd = (e) => {
-      if (!touchRef.current.active) return;
-      touchRef.current.active = false;
-      const y = e.changedTouches[0]?.clientY ?? touchRef.current.y0;
-      const dy = y - touchRef.current.y0;
-      if (scrollTop() <= 2 && dy > 72) {
-        setFeedTick((t2) => t2 + 1);
-        setPullHint(true);
-        void refreshFeedFromServer();
-        window.setTimeout(() => setPullHint(false), 1400);
-      }
-    };
-    window.addEventListener("touchstart", onStart, { passive: true });
-    window.addEventListener("touchend", onEnd, { passive: true });
-    return () => {
-      window.removeEventListener("touchstart", onStart);
-      window.removeEventListener("touchend", onEnd);
-    };
-  }, [tabScrollRef, refreshFeedFromServer]);
-  const storyFriends = reactExports.useMemo(
-    () => visibleStoryFriendsUserIds(state, me.id),
-    [state.stories, state.users, me.id, me.following, feedTick]
-  );
-  const storyTrayRing = reactExports.useMemo(
-    () => storyViewerTrayRing(state, me.id),
-    [state.stories, me.id, feedTick]
-  );
-  const openPostById = reactExports.useCallback((postId) => {
-    setFocusCommentsOnOpen(false);
-    setCommentsSheetPostId(null);
-    setOpenPostId(postId);
-  }, []);
-  const openCommentsById = reactExports.useCallback((postId) => {
-    setCommentsSheetPostId(postId);
-  }, []);
-  const feedActions = reactExports.useMemo(
-    () => ({
-      onShare: setShareTarget,
-      onOpenProfile,
-      onOpenChat,
-      openPost: openPostById,
-      openCommentsSheet: openCommentsById
-    }),
-    [onOpenProfile, onOpenChat, openPostById, openCommentsById]
-  );
-  reactExports.useEffect(() => {
-    if (!isHomeTabActive || isGuest) return;
-    void refreshFeedFromServer();
-    refreshFromServer({ urgent: true });
-  }, [isHomeTabActive, isGuest, refreshFromServer, refreshFeedFromServer]);
-  reactExports.useEffect(() => {
-    setVisibleCount(25);
-  }, [feedTick, isHomeTabActive]);
-  const feed = reactExports.useMemo(() => {
-    const seen = /* @__PURE__ */ new Set();
-    return (state.posts ?? []).filter((p) => {
-      if (!p?.id || seen.has(p.id) || isReelFeedPost(p)) return false;
-      seen.add(p.id);
-      return canViewPostInHomeFeed(state, me.id, p, me);
-    }).sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
-  }, [state.posts, state.users, me, feedTick]);
-  reactExports.useEffect(() => {
-    const el = loadMoreSentinelRef.current;
-    if (!el || !isHomeTabActive) return;
-    const io = new IntersectionObserver(
-      (entries) => {
-        if (!entries.some((e) => e.isIntersecting)) return;
-        setVisibleCount((c) => c + 20);
-        if (feedHasMore) void loadMoreFeedFromServer();
-      },
-      { root: null, rootMargin: "400px 0px", threshold: 0 }
-    );
-    io.observe(el);
-    return () => io.disconnect();
-  }, [isHomeTabActive, feedHasMore, loadMoreFeedFromServer, feed.length]);
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative flex min-h-0 flex-1 flex-col bg-background", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs(
-      "div",
-      {
-        className: "flex min-h-full flex-col bg-background pb-2 " + (openPost ? "pointer-events-none select-none" : ""),
-        "aria-hidden": openPost ? true : void 0,
-        children: [
-          pullHint && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mx-3 mt-1 shrink-0 rounded-full bg-primary/90 text-primary-foreground text-center text-xs py-2 px-3 shadow-md", children: "تم التحديث — أحدث المنشورات والستوريات" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            StoriesRow,
-            {
-              userIds: storyFriends,
-              onOpenStory: setStoryOpen,
-              onCreateStory: handleStoryCreate
-            }
-          ),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "px-3 py-2", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 rounded-full border border-border bg-card p-1", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "button",
-              {
-                type: "button",
-                className: "rounded-full bg-background px-3 py-1.5 text-sm font-semibold text-foreground shadow-sm",
-                "aria-label": "الرئيسية",
-                children: "الرئيسية"
-              }
-            ),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs(
-              "button",
-              {
-                type: "button",
-                onClick: goToReelsTab,
-                className: "flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-sm font-semibold text-muted-foreground hover:bg-background/80 hover:text-foreground",
-                "aria-label": "ريلز",
-                children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx(SquarePlay, { size: 14 }),
-                  "ريلز"
-                ]
-              }
-            )
-          ] }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { "aria-label": "الخلاصة", className: "relative z-0 flex flex-col bg-background", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(HomeFeedActionsProvider, { value: feedActions, children: feed.slice(0, visibleCount).map((p) => /* @__PURE__ */ jsxRuntimeExports.jsx(HomeFeedPostItem, { post: p }, p.id)) }),
-            feed.length > visibleCount && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "py-4 text-center text-xs text-muted-foreground", children: "جاري تحميل المزيد…" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { ref: loadMoreSentinelRef, className: "h-1 w-full shrink-0", "aria-hidden": true }),
-            feed.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-center text-muted-foreground py-12", children: t("noPosts") })
-          ] }),
-          shareTarget && /* @__PURE__ */ jsxRuntimeExports.jsx(ShareSheet, { target: { kind: "post", post: shareTarget }, onClose: () => setShareTarget(null) }),
-          commentsSheetPost && (() => {
-            const sheetComments = (Array.isArray(commentsSheetPost.comments) ? commentsSheetPost.comments : []).filter((c) => {
-              if (!c || typeof c !== "object") return false;
-              const row = c;
-              return typeof row.id === "string" && row.id.trim().length > 0 && typeof row.userId === "string" && row.userId.trim().length > 0 && typeof row.text === "string";
-            }).map((c) => ({
-              id: c.id,
-              userId: c.userId,
-              text: c.text,
-              createdAt: typeof c.createdAt === "number" ? c.createdAt : Date.now()
-            }));
-            return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-[60] bg-black/50 flex items-end", onClick: () => setCommentsSheetPostId(null), children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-              "div",
-              {
-                className: "mx-auto flex w-full max-w-md flex-col rounded-t-3xl border-t border-border bg-background text-foreground shadow-2xl",
-                style: { height: "min(72vh, 640px)", maxHeight: "72vh" },
-                onClick: (e) => e.stopPropagation(),
-                children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex shrink-0 items-center justify-between border-b border-border p-3", children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-sm font-semibold", children: [
-                      "التعليقات (",
-                      sheetComments.length,
-                      ")"
-                    ] }),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => setCommentsSheetPostId(null), "aria-label": "إغلاق", children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 22 }) })
-                  ] }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-h-0 flex-1 overflow-y-auto p-3 space-y-2", children: [
-                    sheetComments.map((c) => {
-                      const cu = userById(state, c.userId);
-                      return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative flex gap-2 text-sm", children: [
-                        /* @__PURE__ */ jsxRuntimeExports.jsx(
-                          "button",
-                          {
-                            type: "button",
-                            className: "shrink-0",
-                            onClick: () => cu && onOpenProfile(cu.id, {
-                              postId: commentsSheetPost.id,
-                              tab: "home",
-                              commentsOpen: true,
-                              homeSurface: "feed_comments_sheet"
-                            }),
-                            children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: cu?.username || "?", src: cu?.avatar, size: 32 })
-                          }
-                        ),
-                        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-                          /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                            "button",
-                            {
-                              type: "button",
-                              className: "font-semibold",
-                              onClick: () => cu && onOpenProfile(cu.id, {
-                                postId: commentsSheetPost.id,
-                                tab: "home",
-                                commentsOpen: true,
-                                homeSurface: "feed_comments_sheet"
-                              }),
-                              children: [
-                                "@",
-                                cu?.username
-                              ]
-                            }
-                          ),
-                          " ",
-                          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: c.text })
-                        ] }),
-                        currentUser && c.userId === currentUser.id && /* @__PURE__ */ jsxRuntimeExports.jsx(
-                          "button",
-                          {
-                            type: "button",
-                            onClick: () => {
-                              if (!window.confirm("حذف هذا التعليق؟")) return;
-                              deleteComment(commentsSheetPost.id, c.id);
-                            },
-                            className: "shrink-0 rounded-full p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive",
-                            "aria-label": "حذف التعليق",
-                            children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 16 })
-                          }
-                        )
-                      ] }, c.id);
-                    }),
-                    sheetComments.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-center text-muted-foreground text-sm py-6", children: "لا تعليقات بعد" })
-                  ] }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                    "form",
-                    {
-                      className: "p-3 border-t border-border flex gap-2 shrink-0",
-                      onSubmit: (e) => {
-                        e.preventDefault();
-                        if (!sheetCommentDraft.trim()) return;
-                        addComment(commentsSheetPost.id, sheetCommentDraft);
-                        setSheetCommentDraft("");
-                      },
-                      children: [
-                        /* @__PURE__ */ jsxRuntimeExports.jsx(
-                          "input",
-                          {
-                            value: sheetCommentDraft,
-                            onChange: (e) => setSheetCommentDraft(e.target.value),
-                            placeholder: "أضف تعليقاً...",
-                            className: "flex-1 bg-input rounded-full px-4 py-2 text-sm outline-none"
-                          }
-                        ),
-                        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "submit", className: "text-primary font-semibold text-sm px-2", children: "إرسال" })
-                      ]
-                    }
-                  )
-                ]
-              }
-            ) });
-          })(),
-          storyOpen && /* @__PURE__ */ jsxRuntimeExports.jsx(
-            StoryViewer,
-            {
-              userId: storyOpen.userId,
-              trayRing: storyTrayRing,
-              initialStoryId: storyOpen.storyId,
-              openOrigin: storyOpen.origin,
-              onRequestAuthor: (id) => id ? setStoryOpen({ userId: id }) : closeStory(),
-              onClose: closeStory,
-              onOpenProfile: openProfileFromStory,
-              onOpenChat
-            }
-          )
-        ]
-      }
-    ),
-    openPost && /* @__PURE__ */ jsxRuntimeExports.jsx(
-      PostDetail,
-      {
-        post: openPost,
-        onBack: () => {
-          setOpenPostId(null);
-          setFocusCommentsOnOpen(false);
-        },
-        onOpenProfile,
-        onOpenChat,
-        profileReturnTab: "home",
-        initialFocusComments: focusCommentsOnOpen
-      }
-    )
-  ] });
-}
-function rankUsersBySearchQuery(users, query) {
-  const q = query.trim().toLowerCase();
-  if (!q) return users;
-  const rank = (u) => {
-    const un = u.username.toLowerCase();
-    const em = (u.email || "").toLowerCase();
-    const dn = (u.displayName || "").toLowerCase();
-    if (un === q) return 0;
-    if (un.startsWith(q)) return 1;
-    if (dn === q || dn.startsWith(q)) return 2;
-    if (em === q || em.startsWith(q)) return 3;
-    if (un.includes(q)) return 4;
-    if (dn.includes(q)) return 5;
-    if (em.includes(q)) return 6;
-    return 7;
-  };
-  return [...users].sort((a, b) => {
-    const ra = rank(a);
-    const rb = rank(b);
-    if (ra !== rb) return ra - rb;
-    return a.username.localeCompare(b.username, void 0, { sensitivity: "base" });
-  });
-}
-function shuffle(arr) {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
-function isBlockedBetween(me, other) {
-  return other.blocked.includes(me.id) || me.blocked.includes(other.id);
-}
-function SearchScreen({
-  onOpenProfile,
-  onOpenQuranChat,
-  onOpenChat,
-  restoreFromProfileContext = null,
-  onConsumedRestoreFromProfile
-}) {
-  const { state, currentUser, touchQuranBot, isGuest, mergeDiscoveredUsers, refreshUserDirectory } = useApp();
-  const t = useT();
-  const [q, setQ] = reactExports.useState("");
-  const [remoteHits, setRemoteHits] = reactExports.useState([]);
-  const [recentUsers, setRecentUsers] = reactExports.useState([]);
-  const [searching, setSearching] = reactExports.useState(false);
-  const [openPostId, setOpenPostId] = reactExports.useState(null);
-  const [focusCommentsOnOpen, setFocusCommentsOnOpen] = reactExports.useState(false);
-  const [sharePost, setSharePost] = reactExports.useState(null);
-  const searchSeqRef = reactExports.useRef(0);
-  const me = currentUser;
-  const qq = q.trim();
-  const runServerSearch = reactExports.useCallback(
-    async (query) => {
-      if (!apiBackendEnabled() || !getApiToken() || isGuest) {
-        setRemoteHits([]);
-        setSearching(false);
-        return;
-      }
-      const seq = ++searchSeqRef.current;
-      setSearching(true);
-      const rows = await apiSearchUsers(query);
-      if (seq !== searchSeqRef.current) return;
-      const users = rows.map(userFromSearchResult);
-      setRemoteHits(users);
-      mergeDiscoveredUsers(users);
-      setSearching(false);
-    },
-    [isGuest, mergeDiscoveredUsers]
-  );
-  const loadRecentFromServer = reactExports.useCallback(async () => {
-    if (!apiBackendEnabled() || !getApiToken() || isGuest) {
-      setRecentUsers([]);
-      return;
-    }
-    const rows = await apiFetchUserDirectory();
-    const users = rows.map(userFromSearchResult);
-    setRecentUsers(users);
-    mergeDiscoveredUsers(users);
-  }, [isGuest, mergeDiscoveredUsers]);
-  reactExports.useEffect(() => {
-    void refreshUserDirectory();
-  }, [refreshUserDirectory]);
-  reactExports.useEffect(() => {
-    if (!qq) {
-      setRemoteHits([]);
-      setSearching(false);
-      void loadRecentFromServer();
-      return;
-    }
-    let cancelled = false;
-    setSearching(true);
-    const timer = window.setTimeout(() => {
-      if (cancelled) return;
-      void runServerSearch(qq);
-    }, 220);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [qq, isGuest, runServerSearch, loadRecentFromServer]);
-  reactExports.useEffect(() => {
-    const onRegistered = () => {
-      if (qq) void runServerSearch(qq);
-      else void loadRecentFromServer();
-    };
-    window.addEventListener(USER_REGISTERED_WINDOW_EVENT, onRegistered);
-    return () => window.removeEventListener(USER_REGISTERED_WINDOW_EVENT, onRegistered);
-  }, [qq, runServerSearch, loadRecentFromServer]);
-  reactExports.useEffect(() => {
-    const onVis = () => {
-      if (document.visibilityState !== "visible") return;
-      if (qq) void runServerSearch(qq);
-      else void loadRecentFromServer();
-    };
-    document.addEventListener("visibilitychange", onVis);
-    return () => document.removeEventListener("visibilitychange", onVis);
-  }, [qq, runServerSearch, loadRecentFromServer]);
-  const accountList = reactExports.useMemo(() => {
-    const source = qq ? remoteHits : recentUsers;
-    const byId = /* @__PURE__ */ new Map();
-    for (const u of source) {
-      if (u.id === me.id || isGuestUserId(u.id) || isBlockedBetween(me, u)) continue;
-      byId.set(u.id, u);
-    }
-    if (qq) {
-      for (const u of state.users) {
-        if (u.id === me.id || isGuestUserId(u.id) || isBlockedBetween(me, u)) continue;
-        const un = u.username.toLowerCase();
-        const ql = qq.toLowerCase();
-        if (!un.includes(ql) && !u.email?.toLowerCase().includes(ql)) continue;
-        if (!byId.has(u.id)) byId.set(u.id, u);
-      }
-    }
-    return rankUsersBySearchQuery([...byId.values()], qq);
-  }, [qq, remoteHits, recentUsers, state.users, me]);
-  const tags = trendingHashtags(state);
-  const explorePool = reactExports.useMemo(
-    () => state.posts.filter((p) => {
-      if (p.type !== "post" && p.type !== "reel") return false;
-      const author = userById(state, p.userId);
-      if (!author) return false;
-      if (author.blocked.includes(me.id) || me.blocked.includes(author.id)) return false;
-      return true;
-    }),
-    [state.posts, state.users, me.id, me.blocked]
-  );
-  reactExports.useMemo(() => shuffle(explorePool).slice(0, 30), [explorePool]);
-  reactExports.useLayoutEffect(() => {
-    if (!restoreFromProfileContext || restoreFromProfileContext.tab !== "search") return;
-    const d = restoreFromProfileContext;
-    onConsumedRestoreFromProfile?.();
-    if (!d.postId || !d.homeSurface) return;
-    const p = state.posts.find((x) => x.id === d.postId);
-    if (!p) return;
-    setFocusCommentsOnOpen(!!d.commentsOpen);
-    setOpenPostId(d.postId);
-  }, [restoreFromProfileContext, state.posts, onConsumedRestoreFromProfile]);
-  const openPost = reactExports.useMemo(
-    () => openPostId ? state.posts.find((p) => p.id === openPostId) ?? null : null,
-    [openPostId, state.posts]
-  );
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative flex min-h-0 flex-1 flex-col bg-background", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs(
-      "div",
-      {
-        className: "flex min-h-full flex-1 flex-col bg-white dark:bg-background " + (openPost ? "pointer-events-none select-none" : ""),
-        "aria-hidden": openPost ? true : void 0,
-        children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "px-4 pt-3 text-[2rem] font-bold text-zinc-900 dark:text-zinc-50 tracking-tight", children: "Explore" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "px-4 mt-3", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 rounded-full bg-zinc-100 dark:bg-zinc-800/80 px-4 py-3", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Search, { size: 18, className: "text-zinc-400 shrink-0" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "input",
-              {
-                value: q,
-                onChange: (e) => setQ(e.target.value),
-                placeholder: "Search R - Social",
-                className: "flex-1 bg-transparent outline-none text-sm text-zinc-900 placeholder:text-zinc-400"
-              }
-            )
-          ] }) }),
-          q === "" && tags.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-4 divide-y divide-zinc-100 dark:divide-zinc-800 border-t border-zinc-100", children: tags.slice(0, 12).map(([tag, n], i) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
-            "button",
-            {
-              type: "button",
-              onClick: () => setQ(tag),
-              className: "w-full flex items-center gap-3 px-4 py-3.5 text-start hover:bg-zinc-50 active:bg-zinc-100",
-              children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "w-6 text-center text-sm font-medium text-zinc-400 tabular-nums", children: i + 1 }),
-                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1 min-w-0", children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "font-bold text-zinc-900", children: tag.startsWith("#") ? tag : `#${tag.replace(/^#/, "")}` }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-sm text-zinc-500", children: formatTrendPostCount(n) })
-                ] }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx(Ellipsis, { size: 18, className: "text-zinc-400 shrink-0" })
-              ]
-            },
-            tag
-          )) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs(
-            "button",
-            {
-              type: "button",
-              onClick: () => {
-                if (isGuest) {
-                  notifyGuestActionBlocked();
-                  return;
-                }
-                touchQuranBot();
-                onOpenQuranChat();
-              },
-              className: "w-full flex items-center gap-3 p-3 bg-black text-white rounded-2xl border border-white/10",
-              children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(BookOpen, { size: 28 }),
-                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1 text-start", children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "font-bold", children: t("quranChannel") }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-xs opacity-90", children: "شات مباشر · بوت طارق يرسل أدعية كل فترة" })
-                ] }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs bg-white/20 px-2 py-1 rounded-full", children: "LIVE" })
-              ]
-            }
-          ),
-          qq ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2 px-4 mt-4", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-xs text-muted-foreground", children: qq ? "نتائج البحث" : "حسابات جديدة" }),
-            searching && accountList.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground py-2", children: "جاري التحديث من الخادم…" }),
-            !searching && accountList.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground py-2", children: qq ? "لا توجد حسابات مطابقة" : "لا توجد حسابات بعد" }),
-            accountList.map((u) => /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", onClick: () => onOpenProfile(u.id), className: "w-full flex items-center gap-3 p-2 hover:bg-secondary rounded-2xl", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u.username, src: u.avatar }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 text-start", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "truncate text-sm font-semibold", children: userDisplayName(u) }),
-                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "truncate text-xs text-muted-foreground", dir: "ltr", children: [
-                  "@",
-                  u.username
-                ] }),
-                u.bio ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-xs text-muted-foreground line-clamp-1 mt-0.5", children: u.bio }) : null
-              ] })
-            ] }, u.id))
-          ] }) : null,
-          q.startsWith("#") && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "space-y-2", children: state.posts.filter((p) => p.text.includes(q)).map((p) => {
-            const u = userById(state, p.userId);
-            return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "p-3 border border-border rounded-2xl", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-xs font-semibold", children: [
-                "@",
-                u?.username
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-sm", children: p.text })
-            ] }, p.id);
-          }) }),
-          sharePost && /* @__PURE__ */ jsxRuntimeExports.jsx(ShareSheet, { target: { kind: "post", post: sharePost }, onClose: () => setSharePost(null) })
-        ]
-      }
-    ),
-    openPost && /* @__PURE__ */ jsxRuntimeExports.jsx(
-      PostDetail,
-      {
-        post: openPost,
-        onBack: () => {
-          setOpenPostId(null);
-          setFocusCommentsOnOpen(false);
-        },
-        onOpenProfile,
-        onOpenChat,
-        profileReturnTab: "search",
-        initialFocusComments: focusCommentsOnOpen
-      }
-    )
-  ] });
-}
-const REEL_HEIGHT = 1920;
-const REEL_SAFE_CONTENT_HEIGHT = 1350;
-const REEL_MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
-const REEL_MAX_UPLOAD_MB = 500;
-const REEL_ACCEPT_VIDEO = "video/mp4,video/quicktime,video/webm,video/*";
-function formatReelMaxSizeError(bytes) {
-  const mb = (bytes / (1024 * 1024)).toFixed(0);
-  return `الملف ${mb} ميجا — الحد الأقصى ${REEL_MAX_UPLOAD_MB} ميجا للريلز.`;
-}
-const REEL_SAFE_CONTENT_RATIO = REEL_SAFE_CONTENT_HEIGHT / REEL_HEIGHT;
-const ReelMediaPlayer = reactExports.memo(function ReelMediaPlayer2({
-  media,
-  active: active2,
-  soundOn,
-  paused,
-  onDoubleTap,
-  onHoldStart,
-  onHoldEnd
-}) {
-  const videoRef = reactExports.useRef(null);
-  const holdTimerRef = reactExports.useRef(null);
-  const lastTapRef = reactExports.useRef(null);
-  reactExports.useEffect(() => {
-    const v = videoRef.current;
-    if (!v || !media.hasVideo) return;
-    if (active2) {
-      v.muted = !soundOn;
-      const play = v.play();
-      if (play) play.catch(() => {
-        v.muted = true;
-        void v.play();
-      });
-    } else {
-      v.pause();
-      v.currentTime = 0;
-    }
-  }, [active2, soundOn, media.hasVideo, media.videoUrl]);
-  reactExports.useEffect(() => {
-    const v = videoRef.current;
-    if (!v || !media.hasVideo || !active2) return;
-    if (paused) v.pause();
-    else {
-      const p = v.play();
-      if (p) p.catch(() => {
-      });
-    }
-  }, [paused, active2, media.hasVideo]);
-  const onPointerDown = (e) => {
-    if (e.button !== 0 && e.pointerType !== "touch") return;
-    const now = Date.now();
-    const prev = lastTapRef.current;
-    if (prev && now - prev.t < 320 && Math.hypot(e.clientX - prev.x, e.clientY - prev.y) < 60) {
-      lastTapRef.current = null;
-      onDoubleTap(e.clientX, e.clientY);
-      return;
-    }
-    lastTapRef.current = { t: now, x: e.clientX, y: e.clientY };
-    holdTimerRef.current = window.setTimeout(() => {
-      holdTimerRef.current = null;
-      onHoldStart();
-    }, 380);
-  };
-  const onPointerUp = () => {
-    if (holdTimerRef.current != null) {
-      window.clearTimeout(holdTimerRef.current);
-      holdTimerRef.current = null;
-    }
-    onHoldEnd();
-  };
-  const frameClass = "absolute inset-0 flex items-center justify-center bg-black";
-  const fillFrame = !!media.videoUrl && (/\/media\/videos\//.test(media.videoUrl) || media.videoUrl.includes(".mp4"));
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(
-    "div",
-    {
-      className: "absolute inset-0 cursor-pointer reel-safe-stage",
-      style: {
-        ["--reel-safe-bottom-ratio"]: String(1 - REEL_SAFE_CONTENT_RATIO)
-      },
-      onPointerDown,
-      onPointerUp,
-      onPointerCancel: onPointerUp,
-      children: media.hasVideo && media.videoUrl ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: frameClass, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "video",
-        {
-          ref: videoRef,
-          src: media.videoUrl,
-          loop: true,
-          playsInline: true,
-          preload: "auto",
-          poster: media.posterUrl || void 0,
-          className: "h-full w-full " + (fillFrame ? "object-cover object-center" : "object-contain")
-        }
-      ) }) : media.hasImage && media.imageUrl ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: frameClass, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "img",
-        {
-          src: media.imageUrl,
-          alt: "",
-          className: "h-full w-full " + (fillFrame ? "object-cover object-center" : "object-contain")
-        }
-      ) }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: frameClass + " text-6xl", children: media.emojiFallback || "🎬" })
-    }
-  );
-});
-function HeartBurst({ x, y }) {
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(
-    "div",
-    {
-      className: "pointer-events-none fixed z-[200] -translate-x-1/2 -translate-y-1/2",
-      style: { left: x, top: y },
-      children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-        Heart,
-        {
-          size: 96,
-          className: "fill-white stroke-white drop-shadow-[0_0_24px_rgba(255,255,255,0.6)] animate-reel-heart"
-        }
-      )
-    }
-  );
-}
-function PausedOverlay() {
-  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-black/30", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-full bg-black/50 p-5 backdrop-blur-sm", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pause, { size: 44, className: "fill-white stroke-white" }) }) });
-}
-const REEL_SLIDE_HEIGHT_FALLBACK = "calc(100dvh - var(--sat) - var(--sab))";
-const ReelSlide = reactExports.memo(function ReelSlide2({
-  reelId,
-  slideHeightPx,
-  children
-}) {
-  const slideStyle = slideHeightPx > 0 ? { height: slideHeightPx, minHeight: slideHeightPx } : { height: REEL_SLIDE_HEIGHT_FALLBACK, minHeight: REEL_SLIDE_HEIGHT_FALLBACK };
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(
-    "section",
-    {
-      "data-reel-slide": true,
-      "data-reel-id": reelId,
-      className: "relative w-full shrink-0 overflow-hidden bg-black",
-      style: slideStyle,
-      children
-    }
-  );
-});
-function SideActionButton({
-  onClick,
-  label,
-  icon,
-  count: count2,
-  active: active2,
-  activeColor = "text-rose-500"
-}) {
-  const [pressed, setPressed] = reactExports.useState(false);
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
-    "button",
-    {
-      type: "button",
-      "aria-label": label,
-      onClick,
-      onPointerDown: () => setPressed(true),
-      onPointerUp: () => setPressed(false),
-      onPointerLeave: () => setPressed(false),
-      className: "flex flex-col items-center gap-1 transition-transform duration-100 " + (pressed ? "scale-75" : "scale-100") + " " + (active2 ? activeColor : "text-white"),
-      style: { filter: "drop-shadow(0 2px 8px rgba(0,0,0,0.55))" },
-      children: [
-        icon,
-        count2 != null && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs font-semibold leading-none drop-shadow-sm", children: count2 > 999 ? `${(count2 / 1e3).toFixed(1)}k` : count2 })
-      ]
-    }
-  );
-}
-function ReelsScreen({
-  onOpenProfile,
-  onOpenChat,
-  restoreFromProfileContext = null,
-  onConsumedRestoreFromProfile
-}) {
-  const { state, toggleLike, toggleRepost, currentUser, addComment, isGuest, refreshFromServer } = useApp();
-  const isTabActive = useIsTabActive("reels");
-  const t = useT();
-  const me = currentUser;
-  const guestBlock = () => {
-    if (!isGuest) return false;
-    notifyGuestActionBlocked();
-    return true;
-  };
-  const [tab, setTab] = reactExports.useState("all");
-  const [sharePost, setSharePost] = reactExports.useState(null);
-  const [commentsFor, setCommentsFor] = reactExports.useState(null);
-  const [commentDraft, setCommentDraft] = reactExports.useState("");
-  const [noteToReply, setNoteToReply] = reactExports.useState(null);
-  const [reelPullHint, setReelPullHint] = reactExports.useState(false);
-  const [activeReelId, setActiveReelId] = reactExports.useState(null);
-  const [soundOn, setSoundOn] = reactExports.useState(true);
-  const [soundUnlocked, setSoundUnlocked] = reactExports.useState(false);
-  const [reelMenuId, setReelMenuId] = reactExports.useState(null);
-  const [commentMenuId, setCommentMenuId] = reactExports.useState(null);
-  const [heartBurst, setHeartBurst] = reactExports.useState(null);
-  const [holdPaused, setHoldPaused] = reactExports.useState(false);
-  reactExports.useEffect(() => {
-    window.dispatchEvent(
-      new CustomEvent("retweet-reels-comments-open", {
-        detail: { open: !!commentsFor }
-      })
-    );
-    return () => {
-      window.dispatchEvent(
-        new CustomEvent("retweet-reels-comments-open", {
-          detail: { open: false }
-        })
-      );
-    };
-  }, [commentsFor]);
-  const scrollRef = reactExports.useRef(null);
-  const pullRef = reactExports.useRef({ y0: 0, active: false });
-  const activeReelIdRef = reactExports.useRef(null);
-  const scrollRafRef = reactExports.useRef(null);
-  const snapLockRef = reactExports.useRef(false);
-  const [slideHeightPx, setSlideHeightPx] = reactExports.useState(0);
-  const unlockSound = reactExports.useCallback(() => setSoundUnlocked(true), []);
-  reactExports.useEffect(() => {
-    if (!isTabActive) return;
-    refreshFromServer();
-  }, [refreshFromServer, isTabActive]);
-  reactExports.useEffect(() => {
-    if (!isTabActive) return;
-    document.documentElement.classList.add("retweet-overscroll-lock");
-    return () => document.documentElement.classList.remove("retweet-overscroll-lock");
-  }, [isTabActive]);
-  reactExports.useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const onStart = (e) => {
-      pullRef.current = { y0: e.touches[0].clientY, active: el.scrollTop <= 0 };
-    };
-    const onEnd = (e) => {
-      if (!pullRef.current.active) return;
-      pullRef.current.active = false;
-      const dy = (e.changedTouches[0]?.clientY ?? pullRef.current.y0) - pullRef.current.y0;
-      if (el.scrollTop <= 0 && dy > 72) {
-        refreshFromServer();
-        setReelPullHint(true);
-        window.setTimeout(() => setReelPullHint(false), 1200);
-      }
-    };
-    el.addEventListener("touchstart", onStart, { passive: true });
-    el.addEventListener("touchend", onEnd, { passive: true });
-    return () => {
-      el.removeEventListener("touchstart", onStart);
-      el.removeEventListener("touchend", onEnd);
-    };
-  }, [refreshFromServer]);
-  const allReels = reactExports.useMemo(() => {
-    const seen = /* @__PURE__ */ new Set();
-    return state.posts.filter((p) => {
-      if (!p?.id || !isReelFeedPost(p) || seen.has(p.id)) return false;
-      seen.add(p.id);
-      const author = userById(state, p.userId);
-      if (!author) return true;
-      if (author.blocked.includes(me.id) || me.blocked.includes(author.id)) return false;
-      return true;
-    }).sort((a, b) => b.createdAt - a.createdAt);
-  }, [state.posts, state.users, me.id, me.blocked]);
-  const reels = tab === "friends" ? allReels.filter((p) => me.following.includes(p.userId)) : allReels;
-  const reelIdSetKey = reactExports.useMemo(() => reels.map((r2) => r2.id).sort().join("|"), [reels]);
-  const activeReelIdx = reactExports.useMemo(() => {
-    if (!activeReelId || reels.length === 0) return 0;
-    const i = reels.findIndex((r2) => r2.id === activeReelId);
-    return i >= 0 ? i : 0;
-  }, [reels, activeReelId]);
-  reactExports.useLayoutEffect(() => {
-    if (!isTabActive) return;
-    const el = scrollRef.current;
-    if (!el) return;
-    const measure = () => {
-      const h = el.clientHeight;
-      if (h > 0) setSlideHeightPx(h);
-    };
-    measure();
-    requestAnimationFrame(measure);
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    window.addEventListener("resize", measure);
-    return () => {
-      ro.disconnect();
-      window.removeEventListener("resize", measure);
-    };
-  }, [isTabActive, tab, reelIdSetKey]);
-  reactExports.useEffect(() => {
-    const first = reels[0]?.id ?? null;
-    if (!first) {
-      setActiveReelId(null);
-      activeReelIdRef.current = null;
-      return;
-    }
-    if (!activeReelIdRef.current || !reels.some((r2) => r2.id === activeReelIdRef.current)) {
-      setActiveReelId(first);
-      activeReelIdRef.current = first;
-      const el = scrollRef.current;
-      if (el && slideHeightPx > 0) el.scrollTo({ top: 0, behavior: "auto" });
-      else if (el) el.scrollTop = 0;
-    }
-  }, [reelIdSetKey, tab, slideHeightPx]);
-  reactExports.useEffect(() => {
-    activeReelIdRef.current = activeReelId;
-    setHoldPaused(false);
-  }, [activeReelId]);
-  const snapToNearestReel = reactExports.useCallback(
-    (behavior = "auto") => {
-      const root = scrollRef.current;
-      const h = slideHeightPx;
-      if (!root || h <= 0 || reels.length === 0 || snapLockRef.current) return;
-      const idx = Math.min(reels.length - 1, Math.max(0, Math.round(root.scrollTop / h)));
-      const targetTop = idx * h;
-      const id = reels[idx].id;
-      if (Math.abs(root.scrollTop - targetTop) > 2) {
-        snapLockRef.current = true;
-        root.scrollTo({ top: targetTop, behavior });
-        window.setTimeout(() => {
-          snapLockRef.current = false;
-        }, behavior === "smooth" ? 320 : 48);
-      }
-      if (id !== activeReelIdRef.current) {
-        activeReelIdRef.current = id;
-        setActiveReelId(id);
-      }
-    },
-    [reels, slideHeightPx]
-  );
-  const syncActiveReelFromScroll = reactExports.useCallback(() => {
-    const root = scrollRef.current;
-    const h = slideHeightPx;
-    if (!root || h <= 0 || reels.length === 0) return;
-    const idx = Math.min(reels.length - 1, Math.max(0, Math.round(root.scrollTop / h)));
-    const id = reels[idx].id;
-    if (id !== activeReelIdRef.current) {
-      activeReelIdRef.current = id;
-      setActiveReelId(id);
-    }
-  }, [reels, slideHeightPx]);
-  reactExports.useEffect(() => {
-    const root = scrollRef.current;
-    if (!root || reels.length === 0 || slideHeightPx <= 0) return;
-    const onScroll = () => {
-      if (snapLockRef.current) return;
-      if (scrollRafRef.current != null) cancelAnimationFrame(scrollRafRef.current);
-      scrollRafRef.current = requestAnimationFrame(() => {
-        scrollRafRef.current = null;
-        syncActiveReelFromScroll();
-      });
-    };
-    const onScrollEnd = () => snapToNearestReel("auto");
-    const onTouchEnd = () => {
-      window.setTimeout(() => {
-        const h = slideHeightPx;
-        if (!root || h <= 0) return;
-        const off = root.scrollTop % h;
-        if (off > 6 && off < h - 6) snapToNearestReel("auto");
-      }, 80);
-    };
-    root.addEventListener("scroll", onScroll, { passive: true });
-    root.addEventListener("scrollend", onScrollEnd, { passive: true });
-    root.addEventListener("touchend", onTouchEnd, { passive: true });
-    syncActiveReelFromScroll();
-    return () => {
-      root.removeEventListener("scroll", onScroll);
-      root.removeEventListener("scrollend", onScrollEnd);
-      root.removeEventListener("touchend", onTouchEnd);
-      if (scrollRafRef.current != null) cancelAnimationFrame(scrollRafRef.current);
-    };
-  }, [reelIdSetKey, slideHeightPx, syncActiveReelFromScroll, snapToNearestReel]);
-  reactExports.useLayoutEffect(() => {
-    if (!restoreFromProfileContext || restoreFromProfileContext.tab !== "reels") return;
-    const d = restoreFromProfileContext;
-    onConsumedRestoreFromProfile?.();
-    if (!d.postId) return;
-    const p = state.posts.find((x) => x.id === d.postId);
-    if (!p || !isReelFeedPost(p)) return;
-    if (d.commentsOpen) setCommentsFor(p);
-    else setCommentsFor(null);
-    setActiveReelId(p.id);
-    activeReelIdRef.current = p.id;
-    queueMicrotask(() => {
-      const root = scrollRef.current;
-      const h = slideHeightPx;
-      if (!root || h <= 0) return;
-      const idx = reels.findIndex((r2) => r2.id === d.postId);
-      if (idx < 0) return;
-      root.scrollTo({ top: idx * h, behavior: "auto" });
-    });
-  }, [restoreFromProfileContext, state.posts, onConsumedRestoreFromProfile, reels, slideHeightPx]);
-  const effectiveSoundOn = soundOn && soundUnlocked;
-  const handleDoubleTap = reactExports.useCallback(
-    (postId, x, y) => {
-      if (guestBlock()) return;
-      const post = reels.find((r2) => r2.id === postId);
-      if (!post) return;
-      if (!post.likes.includes(me.id)) toggleLike(postId);
-      try {
-        navigator.vibrate?.(15);
-      } catch {
-      }
-      setHeartBurst({ id: postId, x, y });
-      window.setTimeout(() => setHeartBurst((prev) => prev?.id === postId ? null : prev), 800);
-    },
-    [reels, me.id, toggleLike, isGuest]
-  );
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-black text-white overscroll-none", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs(
-      "div",
-      {
-        className: "pointer-events-auto absolute inset-x-0 top-0 z-40 flex items-end justify-between pb-2 pt-[var(--sat)]",
-        style: {
-          background: "linear-gradient(to bottom, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0) 100%)",
-          backdropFilter: "none"
-        },
-        children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "button",
-            {
-              type: "button",
-              "aria-label": "create",
-              className: "absolute start-4 bottom-2 p-1 text-white",
-              children: /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 24 })
-            }
-          ),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-1 items-center justify-center gap-6 px-4", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "button",
-              {
-                type: "button",
-                onClick: () => setTab("all"),
-                className: "pb-1 text-[15px] font-semibold transition-all duration-200 " + (tab === "all" ? "border-b-2 border-white text-white" : "text-white/55"),
-                children: "ريلز"
-              }
-            ),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "button",
-              {
-                type: "button",
-                onClick: () => setTab("friends"),
-                className: "pb-1 text-[15px] font-semibold transition-all duration-200 " + (tab === "friends" ? "border-b-2 border-white text-white" : "text-white/55"),
-                children: "أصدقاء"
-              }
-            )
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "button",
-            {
-              type: "button",
-              "aria-label": "reels settings",
-              className: "absolute end-4 bottom-2 p-1 text-white",
-              children: /* @__PURE__ */ jsxRuntimeExports.jsx(SlidersHorizontal, { size: 22 })
-            }
-          )
-        ]
-      }
-    ),
-    reelPullHint && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-x-0 top-[calc(var(--sat)+3.5rem)] z-50 flex justify-center", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "rounded-full bg-white/20 px-4 py-1.5 text-xs font-medium backdrop-blur-md", children: "تم التحديث ✓" }) }),
-    heartBurst && /* @__PURE__ */ jsxRuntimeExports.jsx(HeartBurst, { x: heartBurst.x, y: heartBurst.y }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs(
-      "div",
-      {
-        ref: scrollRef,
-        "data-no-tab-swipe": true,
-        className: "reels-snap-viewport no-scrollbar mx-auto h-full min-h-0 w-full max-w-md flex-1 overflow-y-scroll overscroll-none",
-        onPointerDown: unlockSound,
-        onTouchStart: unlockSound,
-        children: [
-          reels.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "p",
-            {
-              className: "flex items-center justify-center text-center text-white/60 px-4 text-sm",
-              style: { minHeight: REEL_SLIDE_HEIGHT_FALLBACK },
-              children: t("noReels")
-            }
-          ),
-          reels.map((r2, idx) => {
-            const slideH = slideHeightPx > 0 ? slideHeightPx : REEL_SLIDE_HEIGHT_FALLBACK;
-            if (Math.abs(idx - activeReelIdx) > 1) {
-              return /* @__PURE__ */ jsxRuntimeExports.jsx(
-                "div",
-                {
-                  className: "reels-snap-slide w-full shrink-0 snap-start snap-always",
-                  style: { height: slideH, minHeight: slideH },
-                  "aria-hidden": true
-                },
-                r2.id
-              );
-            }
-            const u = userById(state, r2.userId);
-            const friendReposterId = (r2.reposts || []).find(
-              (uid2) => uid2 !== me.id && me.following.includes(uid2)
-            );
-            const friendReposter = friendReposterId ? userById(state, friendReposterId) : null;
-            const media = normalizePostMedia(r2);
-            const liked = r2.likes.includes(me.id);
-            const reposted = r2.reposts.includes(me.id);
-            const notes = visibleMediaNotes(state, "post", r2.id, me.id).slice(0, 8);
-            const isActive = isTabActive && activeReelId === r2.id;
-            return /* @__PURE__ */ jsxRuntimeExports.jsxs(ReelSlide, { reelId: r2.id, slideHeightPx: slideH, children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx(
-                ReelMediaPlayer,
-                {
-                  media,
-                  active: isActive,
-                  soundOn: effectiveSoundOn,
-                  paused: isActive && holdPaused,
-                  onDoubleTap: (x, y) => handleDoubleTap(r2.id, x, y),
-                  onHoldStart: () => {
-                    if (isActive) setHoldPaused(true);
-                  },
-                  onHoldEnd: () => setHoldPaused(false)
-                }
-              ),
-              isActive && holdPaused && /* @__PURE__ */ jsxRuntimeExports.jsx(PausedOverlay, {}),
-              /* @__PURE__ */ jsxRuntimeExports.jsx(
-                "div",
-                {
-                  className: "pointer-events-none absolute inset-x-0 bottom-0 z-10",
-                  style: {
-                    height: "65%",
-                    background: "linear-gradient(to top, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.38) 45%, transparent 100%)"
-                  }
-                }
-              ),
-              r2.userId === me.id && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "absolute top-[calc(var(--sat)+3.5rem)] end-4 z-30", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "button",
-                  {
-                    type: "button",
-                    onClick: () => setReelMenuId(reelMenuId === r2.id ? null : r2.id),
-                    className: "rounded-full bg-black/40 p-2 text-white backdrop-blur-sm",
-                    "aria-label": "خيارات الريل",
-                    children: /* @__PURE__ */ jsxRuntimeExports.jsx(EllipsisVertical, { size: 20 })
-                  }
-                ),
-                reelMenuId === r2.id && /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  PostOptionsMenu,
-                  {
-                    post: r2,
-                    onClose: () => setReelMenuId(null),
-                    onDeleted: () => {
-                      setReelMenuId(null);
-                      if (commentsFor?.id === r2.id) setCommentsFor(null);
-                    }
-                  }
-                )
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                "div",
-                {
-                  className: "absolute end-3 z-20 flex flex-col items-center gap-5",
-                  style: {
-                    bottom: "max(5.5rem, calc(var(--retweet-nav-float-inset, 3.5rem) + 56px))"
-                  },
-                  children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(
-                      SideActionButton,
-                      {
-                        onClick: () => {
-                          if (guestBlock()) return;
-                          toggleLike(r2.id);
-                        },
-                        label: "إعجاب",
-                        icon: /* @__PURE__ */ jsxRuntimeExports.jsx(
-                          Heart,
-                          {
-                            size: 30,
-                            strokeWidth: liked ? 0 : 1.75,
-                            className: liked ? "fill-rose-500 text-rose-500" : "fill-transparent text-white",
-                            style: { filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.6))" }
-                          }
-                        ),
-                        count: r2.likes.length,
-                        active: liked,
-                        activeColor: "text-rose-500"
-                      }
-                    ),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(
-                      SideActionButton,
-                      {
-                        onClick: () => setCommentsFor(r2),
-                        label: "تعليقات",
-                        icon: /* @__PURE__ */ jsxRuntimeExports.jsx(MessageCircle, { size: 30, strokeWidth: 1.75, style: { filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.6))" } }),
-                        count: r2.comments.length
-                      }
-                    ),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(
-                      SideActionButton,
-                      {
-                        onClick: () => {
-                          if (guestBlock()) return;
-                          toggleRepost(r2.id);
-                        },
-                        label: "ريبوست",
-                        icon: /* @__PURE__ */ jsxRuntimeExports.jsx(
-                          Repeat2,
-                          {
-                            size: 28,
-                            strokeWidth: 1.9,
-                            className: reposted ? "text-violet-400" : "text-white",
-                            style: { filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.6))" }
-                          }
-                        ),
-                        count: r2.reposts.length,
-                        active: reposted,
-                        activeColor: "text-violet-400"
-                      }
-                    ),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(
-                      SideActionButton,
-                      {
-                        onClick: () => {
-                          if (guestBlock()) return;
-                          setSharePost(r2);
-                        },
-                        label: "مشاركة",
-                        icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Send, { size: 28, strokeWidth: 1.75, style: { filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.6))" } })
-                      }
-                    ),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(
-                      SideActionButton,
-                      {
-                        onClick: () => {
-                          if (guestBlock()) return;
-                        },
-                        label: "حفظ",
-                        icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Bookmark, { size: 28, strokeWidth: 1.75, style: { filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.6))" } })
-                      }
-                    ),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-9 w-9 overflow-hidden rounded-full border-2 border-white/50 shadow-lg", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u?.username || "?", src: u?.avatar, size: 36 }) })
-                  ]
-                }
-              ),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                "div",
-                {
-                  className: "absolute start-3 z-20 max-w-[min(62%,calc(100%-5.5rem))] pe-1",
-                  style: {
-                    bottom: "max(5.5rem, calc(var(--retweet-nav-float-inset, 3.5rem) + 56px))",
-                    paddingInlineEnd: "var(--reel-safe-inline-end, 4.5rem)"
-                  },
-                  children: [
-                    friendReposter && /* @__PURE__ */ jsxRuntimeExports.jsx(
-                      "button",
-                      {
-                        type: "button",
-                        onClick: () => onOpenProfile(friendReposter.id, { postId: r2.id, tab: "reels" }),
-                        className: "mb-2 inline-flex items-center rounded-full bg-black/50 p-1 backdrop-blur-sm",
-                        "aria-label": `@${friendReposter.username} repost`,
-                        children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative", children: [
-                          /* @__PURE__ */ jsxRuntimeExports.jsx(
-                            Avatar,
-                            {
-                              name: friendReposter.username,
-                              src: friendReposter.avatar,
-                              size: 30
-                            }
-                          ),
-                          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "absolute -bottom-1 -end-1 flex h-4 w-4 items-center justify-center rounded-full bg-violet-600 ring-2 ring-black", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Repeat2, { size: 10, className: "text-white" }) })
-                        ] })
-                      }
-                    ),
-                    notes.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-2.5 flex flex-wrap gap-1.5 max-h-14 overflow-y-auto no-scrollbar", children: notes.map((n) => {
-                      const nu = userById(state, n.authorId);
-                      if (!nu) return null;
-                      const show = n.authorId === me.id || isMutual(state, me.id, n.authorId);
-                      if (!show) return null;
-                      const canReplyNote = n.authorId !== me.id;
-                      return /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                        "div",
-                        {
-                          className: "flex items-center gap-1 rounded-full border border-white/20 bg-black/50 py-0.5 ps-1 pe-2 backdrop-blur-sm max-w-[12rem]",
-                          children: [
-                            /* @__PURE__ */ jsxRuntimeExports.jsx(
-                              "button",
-                              {
-                                type: "button",
-                                onClick: () => onOpenProfile(nu.id, { tab: "reels" }),
-                                className: "shrink-0 ring-1 ring-white/30 rounded-full",
-                                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: nu.username, src: nu.avatar, size: 20 })
-                              }
-                            ),
-                            canReplyNote ? /* @__PURE__ */ jsxRuntimeExports.jsx(
-                              "button",
-                              {
-                                type: "button",
-                                onClick: () => {
-                                  if (guestBlock()) return;
-                                  setNoteToReply(n);
-                                },
-                                className: "text-[10px] leading-snug text-white/90 line-clamp-1 text-start hover:underline",
-                                children: n.text
-                              }
-                            ) : /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[10px] leading-snug text-white/90 line-clamp-1", children: n.text })
-                          ]
-                        },
-                        n.id
-                      );
-                    }) }),
-                    /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                      "button",
-                      {
-                        type: "button",
-                        onClick: () => u && onOpenProfile(u.id, { tab: "reels" }),
-                        className: "mb-1 flex items-center gap-1.5",
-                        children: [
-                          /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u?.username || "?", src: u?.avatar, size: 28, className: "ring-2 ring-white/40" }),
-                          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-[14px] font-semibold drop-shadow-sm", children: [
-                            "@",
-                            u?.username ?? "user"
-                          ] }),
-                          u && /* @__PURE__ */ jsxRuntimeExports.jsx(VerifiedMarkForUser, { user: u, size: 15 })
-                        ]
-                      }
-                    ),
-                    r2.text ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[13px] leading-snug text-white/90 line-clamp-2 drop-shadow-sm", children: r2.text }) : null,
-                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-1.5 flex items-center gap-1.5 text-white/70", children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsx(Music2, { size: 13, className: "shrink-0" }),
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[11px] truncate", children: u?.username ? `${u.username} · صوت أصلي` : "صوت أصلي" })
-                    ] })
-                  ]
-                }
-              )
-            ] }, r2.id);
-          })
-        ]
-      }
-    ),
-    sharePost && /* @__PURE__ */ jsxRuntimeExports.jsx(ShareSheet, { target: { kind: "post", post: sharePost }, onClose: () => setSharePost(null) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(
-      NoteReplySheet,
-      {
-        note: noteToReply,
-        contentLabelAr: "الريلز",
-        onClose: () => setNoteToReply(null),
-        onSent: onOpenChat
-      }
-    ),
-    commentsFor && /* @__PURE__ */ jsxRuntimeExports.jsx(
-      "div",
-      {
-        className: "fixed inset-0 z-50 flex items-end bg-black/60",
-        onClick: () => setCommentsFor(null),
-        children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-          "div",
-          {
-            className: "w-full max-w-md mx-auto flex flex-col rounded-t-3xl",
-            style: {
-              background: "rgba(18,18,18,0.97)",
-              backdropFilter: "blur(20px)",
-              WebkitBackdropFilter: "blur(20px)",
-              maxHeight: "68vh",
-              paddingBottom: "var(--sab)"
-            },
-            onClick: (e) => e.stopPropagation(),
-            children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex justify-center pt-3 pb-1", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-1 w-10 rounded-full bg-white/25" }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between px-4 pb-3", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[15px] font-semibold text-white", children: commentsFor.comments.length > 0 ? `${commentsFor.comments.length} تعليق` : "تعليقات" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => setCommentsFor(null), "aria-label": "إغلاق", children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 22, className: "text-white/70" }) })
-              ] }),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1 overflow-y-auto px-4 pb-2 space-y-4 no-scrollbar", children: [
-                commentsFor.comments.map((c) => {
-                  const cu = userById(state, c.userId);
-                  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-2.5 text-sm", children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(
-                      "button",
-                      {
-                        type: "button",
-                        onClick: () => cu && onOpenProfile(cu.id, {
-                          postId: commentsFor.id,
-                          tab: "reels",
-                          commentsOpen: true
-                        }),
-                        children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: cu?.username || "?", src: cu?.avatar, size: 34 })
-                      }
-                    ),
-                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1", children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                        "button",
-                        {
-                          type: "button",
-                          className: "font-semibold text-white/90",
-                          onClick: () => cu && onOpenProfile(cu.id, {
-                            postId: commentsFor.id,
-                            tab: "reels",
-                            commentsOpen: true
-                          }),
-                          children: [
-                            "@",
-                            cu?.username
-                          ]
-                        }
-                      ),
-                      " ",
-                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-white/75", children: c.text })
-                    ] }),
-                    c.userId === me.id && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative shrink-0", children: [
-                      /* @__PURE__ */ jsxRuntimeExports.jsx(
-                        "button",
-                        {
-                          type: "button",
-                          onClick: () => setCommentMenuId(commentMenuId === c.id ? null : c.id),
-                          className: "rounded-full p-1 text-white/50",
-                          "aria-label": "خيارات التعليق",
-                          children: /* @__PURE__ */ jsxRuntimeExports.jsx(EllipsisVertical, { size: 16 })
-                        }
-                      ),
-                      commentMenuId === c.id && commentsFor && /* @__PURE__ */ jsxRuntimeExports.jsx(
-                        CommentOptionsMenu,
-                        {
-                          postId: commentsFor.id,
-                          commentId: c.id,
-                          authorId: c.userId,
-                          onClose: () => setCommentMenuId(null)
-                        }
-                      )
-                    ] })
-                  ] }, c.id);
-                }),
-                commentsFor.comments.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "py-8 text-center text-white/40 text-sm", children: "لا تعليقات بعد" })
-              ] }),
-              !isGuest ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                "form",
-                {
-                  className: "flex gap-2 px-4 pt-2 pb-2 border-t border-white/10",
-                  onSubmit: (e) => {
-                    e.preventDefault();
-                    if (!commentDraft.trim()) return;
-                    addComment(commentsFor.id, commentDraft);
-                    setCommentDraft("");
-                  },
-                  children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: me.username, src: me.avatar, size: 32, className: "shrink-0" }),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(
-                      "input",
-                      {
-                        value: commentDraft,
-                        onChange: (e) => setCommentDraft(e.target.value),
-                        placeholder: "أضف تعليقاً...",
-                        className: "flex-1 rounded-full bg-white/10 px-4 py-2 text-[14px] text-white placeholder-white/35 outline-none",
-                        style: { caretColor: "white" }
-                      }
-                    ),
-                    commentDraft.trim() && /* @__PURE__ */ jsxRuntimeExports.jsx(
-                      "button",
-                      {
-                        type: "submit",
-                        className: "self-center text-[14px] font-bold text-sky-400",
-                        children: "إرسال"
-                      }
-                    )
-                  ]
-                }
-              ) : /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "border-t border-white/10 px-4 py-3 text-center text-xs text-white/40", children: "سجّل الدخول للتعليق" })
-            ]
-          }
-        )
-      }
-    )
-  ] });
-}
-function useLockPageScroll(locked) {
-  reactExports.useEffect(() => {
-    if (!locked || typeof document === "undefined") return;
-    const html = document.documentElement;
-    const body = document.body;
-    const scrollY = window.scrollY;
-    const prev = {
-      htmlOverflow: html.style.overflow,
-      bodyOverflow: body.style.overflow,
-      htmlOverscroll: html.style.overscrollBehavior,
-      bodyOverscroll: body.style.overscrollBehavior,
-      bodyPosition: body.style.position,
-      bodyTop: body.style.top,
-      bodyWidth: body.style.width
-    };
-    html.style.overflow = "hidden";
-    body.style.overflow = "hidden";
-    html.style.overscrollBehavior = "none";
-    body.style.overscrollBehavior = "none";
-    body.style.position = "fixed";
-    body.style.top = `-${scrollY}px`;
-    body.style.width = "100%";
-    return () => {
-      html.style.overflow = prev.htmlOverflow;
-      body.style.overflow = prev.bodyOverflow;
-      html.style.overscrollBehavior = prev.htmlOverscroll;
-      body.style.overscrollBehavior = prev.bodyOverscroll;
-      body.style.position = prev.bodyPosition;
-      body.style.top = prev.bodyTop;
-      body.style.width = prev.bodyWidth;
-      window.scrollTo(0, scrollY);
-    };
-  }, [locked]);
-}
-const NAV_HIDE_PROGRESS_CSS_VAR = "--retweet-nav-hide-progress";
-const REELS_NAV_COLLAPSE_PROGRESS_VAR = "--retweet-reels-nav-collapse-progress";
-const DEFAULT_TRAVEL_PX = 72;
-function clamp$1(n, min, max) {
-  return Math.min(max, Math.max(min, n));
-}
-function useBottomNavSheet(options) {
-  const optionsRef = reactExports.useRef(options);
-  optionsRef.current = options;
-  const navRef = reactExports.useRef(null);
-  const travelRef = reactExports.useRef(DEFAULT_TRAVEL_PX);
-  const suppressTapUntilRef = reactExports.useRef(0);
-  const shouldSuppressTap = reactExports.useCallback(() => Date.now() < suppressTapUntilRef.current, []);
-  const measureTravel = reactExports.useCallback(() => {
-    const el = navRef.current;
-    if (!el) return;
-    const h = el.offsetHeight;
-    if (h > 0) travelRef.current = h;
-  }, []);
-  const publishHideProgress = reactExports.useCallback((p) => {
-    document.documentElement.style.setProperty(NAV_HIDE_PROGRESS_CSS_VAR, String(clamp$1(p, 0, 1)));
-  }, []);
-  reactExports.useLayoutEffect(() => {
-    measureTravel();
-    publishHideProgress(0);
-  }, [measureTravel, publishHideProgress]);
-  reactExports.useLayoutEffect(() => {
-    const el = navRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => measureTravel());
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [measureTravel]);
-  reactExports.useEffect(() => {
-    document.documentElement.style.setProperty(REELS_NAV_COLLAPSE_PROGRESS_VAR, "0");
-    return () => {
-      document.documentElement.style.removeProperty(NAV_HIDE_PROGRESS_CSS_VAR);
-      document.documentElement.style.removeProperty(REELS_NAV_COLLAPSE_PROGRESS_VAR);
-    };
-  }, []);
-  const travel = travelRef.current;
-  const externalDrive = !!optionsRef.current?.externalHideDrive;
-  const navStyle = externalDrive ? {
-    transform: `translate3d(0, calc(var(${NAV_HIDE_PROGRESS_CSS_VAR}, 0) * ${travel}px), 0)`,
-    transformOrigin: "50% 100%",
-    transition: "none",
-    willChange: "transform"
-  } : {
-    transform: "translate3d(0, 0, 0)",
-    transformOrigin: "50% 100%",
-    transition: "none",
-    willChange: "auto"
-  };
-  return {
-    navRef,
-    navStyle,
-    shouldSuppressTap
-  };
-}
-const CHAT_STACK_PROGRESS_VAR = "--retweet-chat-stack-progress";
-const CHAT_STACK_OPEN_FRACTION = 0.5;
-const CHAT_STACK_FLING_VX = 0.42;
-function clampStackProgress(p) {
-  return Math.max(0, Math.min(1, Number.isFinite(p) ? p : 0));
-}
-function publishChatStackCssProgress(progress) {
-  const clamped = clampStackProgress(progress);
-  if (typeof document !== "undefined") {
-    document.documentElement.style.setProperty(CHAT_STACK_PROGRESS_VAR, String(clamped));
-  }
-  return clamped;
-}
-function clearChatStackCssProgress() {
-  if (typeof document === "undefined") return;
-  document.documentElement.style.removeProperty(CHAT_STACK_PROGRESS_VAR);
-}
-function syncStackNavHideProgress(progress) {
-  if (typeof document === "undefined") return;
-  if (progress == null) {
-    document.documentElement.style.removeProperty(NAV_HIDE_PROGRESS_CSS_VAR);
-    return;
-  }
-  document.documentElement.style.setProperty(
-    NAV_HIDE_PROGRESS_CSS_VAR,
-    String(clampStackProgress(progress))
-  );
-}
-function applyOpenStackTransforms(progress, cap, layers2, animate, tapOpen = false) {
-  const { inbox, room } = chatStackOpenFromLeftTransforms(progress, cap);
-  const transition = animate ? `transform ${tapOpen ? 280 : SLIDE_DISMISS_MS}ms ${tapOpen ? "cubic-bezier(0.22, 1, 0.36, 1)" : SLIDE_DISMISS_EASE}` : "none";
-  if (layers2.inboxEl) {
-    layers2.inboxEl.style.transform = inbox;
-    layers2.inboxEl.style.transition = transition;
-  }
-  if (layers2.roomEl) {
-    layers2.roomEl.style.transform = room;
-    layers2.roomEl.style.transition = transition;
-  }
-}
-function applyCloseStackTransforms(dragTx, cap, layers2, animate) {
-  const { progress, inbox, room } = chatStackDismissTransforms(dragTx, cap);
-  const transition = animate ? `transform ${SLIDE_DISMISS_MS}ms ${SLIDE_DISMISS_EASE}` : "none";
-  if (layers2.inboxEl) {
-    layers2.inboxEl.style.transform = inbox;
-    layers2.inboxEl.style.transition = transition;
-  }
-  if (layers2.roomEl) {
-    layers2.roomEl.style.transform = room;
-    layers2.roomEl.style.transition = transition;
-  }
-  return progress;
-}
-function chatStackOpenReleaseTarget(px, cap, velocityX) {
-  const w = Math.max(260, cap);
-  if (velocityX >= CHAT_STACK_FLING_VX) return { commit: true, targetProgress: 1 };
-  if (velocityX <= -CHAT_STACK_FLING_VX) return { commit: false, targetProgress: 0 };
-  const threshold = Math.max(w * CHAT_STACK_OPEN_FRACTION, 64);
-  if (px >= threshold) return { commit: true, targetProgress: 1 };
-  return { commit: false, targetProgress: 0 };
-}
-const DEFAULT_LAYOUT_WIDTH_PX = 390;
-const MIN_LAYOUT_WIDTH_PX = 260;
-function readSafeViewportWidth() {
-  try {
-    if (typeof window === "undefined") return DEFAULT_LAYOUT_WIDTH_PX;
-    const vv = window.visualViewport?.width;
-    const raw = Number(vv ?? window.innerWidth);
-    if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_LAYOUT_WIDTH_PX;
-    return Math.min(Math.max(Math.round(raw), MIN_LAYOUT_WIDTH_PX), APP_COLUMN_MAX_PX);
-  } catch {
-    return DEFAULT_LAYOUT_WIDTH_PX;
-  }
-}
-function readSafeContainerRect(el) {
-  try {
-    if (!el || typeof el.getBoundingClientRect !== "function") return null;
-    const r2 = el.getBoundingClientRect();
-    if (!Number.isFinite(r2.width) || r2.width <= 0) return null;
-    return {
-      left: Number.isFinite(r2.left) ? r2.left : 0,
-      top: Number.isFinite(r2.top) ? r2.top : 0,
-      width: r2.width,
-      height: Number.isFinite(r2.height) && r2.height > 0 ? r2.height : 0
-    };
-  } catch {
-    return null;
-  }
-}
-function readSafeStackCapPx(containerEl, fallbackCapRef) {
-  try {
-    const rect = readSafeContainerRect(containerEl);
-    const fromRect = rect?.width;
-    const fromRef = fallbackCapRef?.current && Number.isFinite(fallbackCapRef.current) ? fallbackCapRef.current : 0;
-    const base = fromRect && fromRect > 0 ? fromRect : fromRef > 0 ? fromRef : readSafeViewportWidth();
-    return Math.max(MIN_LAYOUT_WIDTH_PX, Math.min(Math.round(base), APP_COLUMN_MAX_PX));
-  } catch {
-    return readSafeViewportWidth();
-  }
-}
-const noopGesture = {
-  onPointerDownCapture: () => {
-  },
-  onPointerMoveCapture: () => {
-  },
-  onPointerUpCapture: () => {
-  },
-  onPointerCancelCapture: () => {
-  }
-};
-function ChatStackRoomGestureShell({
-  roomRef,
-  widthCapRef,
-  edgeGesture = noopGesture,
-  children,
-  interactive = true
-}) {
-  reactExports.useEffect(() => {
-    try {
-      if (widthCapRef.current <= 0) widthCapRef.current = readSafeViewportWidth();
-    } catch {
-      widthCapRef.current = readSafeViewportWidth();
-    }
-  }, [widthCapRef]);
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(AppErrorBoundary, { label: "غرفة المحادثة", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-    "div",
-    {
-      ref: roomRef,
-      "data-chat-stack-room": true,
-      "data-chat-dismiss-rtl": "1",
-      className: "chat-no-select chat-room-stack absolute inset-0 z-[2] flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-background [transform:translateZ(0)] " + (interactive ? "pointer-events-auto touch-manipulation" : "pointer-events-none"),
-      children
-    }
-  ) });
-}
-const NATIVE_LONG_PRESS_ATTR = "data-native-long-press";
-const ALLOW_SELECT_SELECTOR = 'input, textarea, select, [contenteditable="true"], .chat-allow-select, .native-allow-select';
-const NO_SELECT_STYLE_ID = "retweet-ios-no-select";
-const NO_SELECT_SHELL_CLASS = "retweet-native-shell";
-const NO_SELECT_GLOBAL_CSS = `
-html.${NO_SELECT_SHELL_CLASS},
-html.${NO_SELECT_SHELL_CLASS} *,
-#root,
-#root * {
-  -webkit-user-select: none !important;
-  user-select: none !important;
-  -webkit-touch-callout: none !important;
-  -webkit-tap-highlight-color: transparent !important;
-  -webkit-user-modify: read-only !important;
-}
-html.${NO_SELECT_SHELL_CLASS} input,
-html.${NO_SELECT_SHELL_CLASS} textarea,
-html.${NO_SELECT_SHELL_CLASS} select,
-html.${NO_SELECT_SHELL_CLASS} [contenteditable="true"],
-html.${NO_SELECT_SHELL_CLASS} .chat-allow-select,
-html.${NO_SELECT_SHELL_CLASS} .chat-allow-select *,
-#root input,
-#root textarea,
-#root select,
-#root [contenteditable="true"],
-#root .chat-allow-select,
-#root .chat-allow-select * {
-  -webkit-user-select: text !important;
-  user-select: text !important;
-  -webkit-touch-callout: auto !important;
-  -webkit-user-modify: read-write !important;
-}
-html.${NO_SELECT_SHELL_CLASS} ::selection,
-#root ::selection {
-  background: transparent !important;
-  color: inherit !important;
-}
-html.${NO_SELECT_SHELL_CLASS} img,
-html.${NO_SELECT_SHELL_CLASS} video,
-html.${NO_SELECT_SHELL_CLASS} canvas,
-html.${NO_SELECT_SHELL_CLASS} svg,
-#root img,
-#root video,
-#root canvas,
-#root svg {
-  -webkit-user-drag: none !important;
-  user-drag: none !important;
-  -webkit-touch-callout: none !important;
-  pointer-events: auto;
-}
-html.${NO_SELECT_SHELL_CLASS} [${NATIVE_LONG_PRESS_ATTR}],
-#root [${NATIVE_LONG_PRESS_ATTR}] {
-  -webkit-user-select: none !important;
-  user-select: none !important;
-  -webkit-touch-callout: none !important;
-  touch-action: none !important;
-}
-.retweet-no-select-pane,
-.retweet-no-select-pane *:not(.chat-allow-select):not(.chat-allow-select *) {
-  -webkit-user-select: none !important;
-  user-select: none !important;
-  -webkit-touch-callout: none !important;
-}
-`.trim();
-function isIosWebKitTouchDevice() {
-  if (typeof navigator === "undefined") return false;
-  const ua = navigator.userAgent;
-  return /iPad|iPhone|iPod/.test(ua) || navigator.maxTouchPoints > 1 && /Mac/.test(navigator.platform);
-}
-function isNoSelectShellActive() {
-  if (typeof window === "undefined") return false;
-  const w = window;
-  if (w.__RETWEET_NO_SELECT_BOOT__ === true) return true;
-  if (w.__RETWEET_NATIVE_SHELL__ === true) return true;
-  if (isNativeCapacitorShell()) return true;
-  if (isIosWebKitTouchDevice()) return true;
-  try {
-    return window.location.pathname.includes("/app");
-  } catch {
-    return true;
-  }
-}
-function isNativeAllowSelectTarget(target) {
-  if (!(target instanceof Element)) return false;
-  return !!target.closest(ALLOW_SELECT_SELECTOR);
-}
-function isNativeLongPressTarget(target) {
-  if (!(target instanceof Element)) return false;
-  return !!target.closest(`[${NATIVE_LONG_PRESS_ATTR}]`);
-}
-function clearNativeSelection() {
-  try {
-    const sel = window.getSelection();
-    if (sel && !sel.isCollapsed) sel.removeAllRanges();
-  } catch {
-  }
-  try {
-    const doc = document;
-    doc.selection?.empty?.();
-  } catch {
-  }
-}
-function blockNativeTextMenu(e) {
-  if (!isNoSelectShellActive()) return;
-  if (isNativeAllowSelectTarget(e.target)) return;
-  if (isNativeLongPressTarget(e.target)) return;
-  e.preventDefault();
-  e.stopPropagation();
-  clearNativeSelection();
-}
-function onSelectionChange() {
-  if (!isNoSelectShellActive()) return;
-  const sel = window.getSelection();
-  if (!sel || sel.isCollapsed) return;
-  const node = sel.anchorNode;
-  if (!node) return;
-  const el = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
-  if (el && isNativeAllowSelectTarget(el)) return;
-  sel.removeAllRanges();
-}
-function injectNoSelectStyles() {
-  if (typeof document === "undefined") return;
-  document.documentElement.classList.add(NO_SELECT_SHELL_CLASS);
-  const root = document.getElementById("root");
-  root?.classList.add("retweet-no-select-pane");
-  document.documentElement.style.setProperty("-webkit-user-select", "none");
-  document.documentElement.style.setProperty("-webkit-touch-callout", "none");
-  if (document.body) {
-    document.body.style.setProperty("-webkit-user-select", "none");
-    document.body.style.setProperty("-webkit-touch-callout", "none");
-  }
-  if (document.getElementById(NO_SELECT_STYLE_ID)) return;
-  const style = document.createElement("style");
-  style.id = NO_SELECT_STYLE_ID;
-  style.textContent = NO_SELECT_GLOBAL_CSS;
-  (document.head || document.documentElement).appendChild(style);
-}
-function isAndroidTouchDevice() {
-  if (typeof navigator === "undefined") return false;
-  return /Android/i.test(navigator.userAgent);
-}
-function installTouchSelectionBlocker() {
-  let startX = 0;
-  let startY = 0;
-  let touchMoved = false;
-  let rafId = 0;
-  const stopRaf = () => {
-    if (rafId) {
-      cancelAnimationFrame(rafId);
-      rafId = 0;
-    }
-  };
-  const loopClearSelection = () => {
-    clearNativeSelection();
-    rafId = requestAnimationFrame(loopClearSelection);
-  };
-  document.addEventListener(
-    "touchstart",
-    (e) => {
-      stopRaf();
-      if (e.touches.length !== 1) return;
-      if (isNativeAllowSelectTarget(e.target)) return;
-      if (isNativeLongPressTarget(e.target)) return;
-      startX = e.touches[0].clientX;
-      startY = e.touches[0].clientY;
-      touchMoved = false;
-      clearNativeSelection();
-      rafId = requestAnimationFrame(loopClearSelection);
-    },
-    { capture: true, passive: true }
-  );
-  document.addEventListener(
-    "touchmove",
-    (e) => {
-      if (!e.touches[0]) return;
-      if (isNativeAllowSelectTarget(e.target)) return;
-      if (isNativeLongPressTarget(e.target)) return;
-      const dx = Math.abs(e.touches[0].clientX - startX);
-      const dy = Math.abs(e.touches[0].clientY - startY);
-      if (dy > dx && dy > 4) {
-        touchMoved = true;
-        stopRaf();
-        return;
-      }
-      if (dx > 12 || dy > 12) {
-        touchMoved = true;
-        stopRaf();
-        return;
-      }
-      if (!touchMoved && !isAndroidTouchDevice()) {
-        e.preventDefault();
-        clearNativeSelection();
-      }
-    },
-    { capture: true, passive: false }
-  );
-  const endTouch = () => {
-    stopRaf();
-    touchMoved = false;
-    clearNativeSelection();
-  };
-  document.addEventListener("touchend", endTouch, { capture: true, passive: true });
-  document.addEventListener("touchcancel", endTouch, { capture: true, passive: true });
-}
-const nativeNoSelectCaptureHandlers = {
-  onSelectStartCapture: blockNativeTextMenu,
-  onContextMenuCapture: blockNativeTextMenu,
-  onDragStartCapture: blockNativeTextMenu,
-  onCopyCapture: blockNativeTextMenu,
-  onCutCapture: blockNativeTextMenu,
-  onPointerDownCapture: (e) => {
-    if (!isNoSelectShellActive()) return;
-    if (isNativeAllowSelectTarget(e.target)) return;
-    if (isNativeLongPressTarget(e.target)) return;
-    clearNativeSelection();
-  }
-};
-let installed = false;
-function installNativeTextSelectionGuard() {
-  if (typeof document === "undefined" || installed) return;
-  installed = true;
-  const w = window;
-  w.__RETWEET_NO_SELECT_BOOT__ = true;
-  injectNoSelectStyles();
-  const opts = { capture: true, passive: false };
-  for (const ev of ["selectstart", "contextmenu", "dragstart", "copy", "cut"]) {
-    document.addEventListener(ev, blockNativeTextMenu, opts);
-  }
-  document.addEventListener("selectionchange", onSelectionChange, { capture: true });
-  document.addEventListener(
-    "mousedown",
-    (e) => {
-      if (isNativeAllowSelectTarget(e.target)) return;
-      if (isNativeLongPressTarget(e.target)) return;
-      clearNativeSelection();
-    },
-    { capture: true, passive: true }
-  );
-  installTouchSelectionBlocker();
-  document.addEventListener(
-    "gesturestart",
-    (e) => {
-      if (!isNativeAllowSelectTarget(e.target)) e.preventDefault();
-    },
-    { capture: true, passive: false }
-  );
-}
-const chatNoSelectCaptureHandlers = nativeNoSelectCaptureHandlers;
-function formatCompactCount(n) {
-  if (!Number.isFinite(n) || n < 0) return "0";
-  if (n < 1e3) return String(Math.floor(n));
-  if (n < 1e6) {
-    const k = n / 1e3;
-    const s2 = (Number.isInteger(k) ? k : Math.round(k * 10) / 10).toString();
-    return s2.replace(/\.0$/, "") + "k";
-  }
-  if (n < 1e9) {
-    const m = n / 1e6;
-    const s2 = (Number.isInteger(m) ? m : Math.round(m * 10) / 10).toString();
-    return s2.replace(/\.0$/, "") + "M";
-  }
-  const b = n / 1e9;
-  const s = (Number.isInteger(b) ? b : Math.round(b * 10) / 10).toString();
-  return s.replace(/\.0$/, "") + "B";
-}
-function mutualConnectionIds(state, meId, otherId) {
-  const me = state.users.find((u) => u.id === meId);
-  const other = state.users.find((u) => u.id === otherId);
-  if (!me || !other) return [];
-  const myFollowing = new Set(me.following);
-  return other.following.filter((fid) => fid !== meId && fid !== otherId && myFollowing.has(fid));
-}
-function ChatDmIntroCard({ other, meId, state, onOpenProfile, isQuran, hasMessages, hideStartConversationHint }) {
-  const postCount = reactExports.useMemo(
-    () => state.posts.filter((p) => p.userId === other.id).length,
-    [state.posts, other.id]
-  );
-  const followerCount = other.displayFollowerCount ?? other.followers.length;
-  const hideFollowStats = other.hideFollowListsFromOthers && other.id !== meId;
-  const mutualIds = reactExports.useMemo(() => mutualConnectionIds(state, meId, other.id), [state, meId, other.id]);
-  const mutualUsers = reactExports.useMemo(
-    () => mutualIds.map((id) => state.users.find((u) => u.id === id)).filter((u) => !!u),
-    [mutualIds, state.users]
-  );
-  const followingEachOther = isMutual(state, meId, other.id);
-  const muted = isQuran ? "text-zinc-400" : "text-muted-foreground";
-  const title = isQuran ? "text-zinc-50" : "text-foreground";
-  const shell = "shrink-0 w-full flex flex-col items-center px-4 py-3 text-center";
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: shell, children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx(
-      "button",
-      {
-        type: "button",
-        onClick: onOpenProfile,
-        className: "rounded-full transition active:scale-[0.98]",
-        "aria-label": `عرض ملف @${other.username}`,
-        children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: other.username, src: other.avatar, size: 72 })
-      }
-    ),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", onClick: onOpenProfile, className: "mt-3 flex max-w-full items-center justify-center gap-1", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "truncate text-lg font-semibold " + title, children: [
-        "@",
-        other.username
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(VerifiedMarkForUser, { user: other, size: 16 })
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4 grid w-full max-w-[280px] grid-cols-3 gap-3", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-base font-bold tabular-nums " + title, children: formatCompactCount(postCount) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-xs " + muted, children: "منشورات" })
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-base font-bold tabular-nums " + title, children: hideFollowStats ? "—" : formatCompactCount(followerCount) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-xs " + muted, children: "متابعون" })
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-base font-bold tabular-nums " + title, children: hideFollowStats ? "—" : formatCompactCount(other.following.length) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-xs " + muted, children: "يتابع" })
-      ] })
-    ] }),
-    mutualUsers.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4 flex max-w-full flex-col items-center gap-2", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex items-center justify-center -space-x-2 rtl:space-x-reverse", children: mutualUsers.slice(0, 3).map((u) => /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u.username, src: u.avatar, size: 28 }, u.id)) }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm " + muted, children: mutualUsers.length === 1 ? `صديق مشترك · @${mutualUsers[0].username}` : `${formatCompactCount(mutualUsers.length)} أصدقاء مشتركون` })
-    ] }) : followingEachOther ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-4 text-sm " + muted, children: "أنتم تتابعان بعضكم" }) : userIsFollowing(state, meId, other.id) ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-4 text-sm " + muted, children: "أنت تتابعه" }) : theyFollowViewer(state, meId, other.id) ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-4 text-sm " + muted, children: "يتابعك" }) : null,
-    other.bio?.trim() ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-3 max-w-sm text-sm leading-relaxed line-clamp-2 " + muted, children: other.bio.trim() }) : null,
-    !hideStartConversationHint && !hasMessages ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-3 text-xs " + muted, children: "أرسل رسالة لبدء المحادثة" }) : null
-  ] });
-}
-const files = ["8689614319 (2).png", "8689614319 (2).webm", "8689614319 (3).png", "8689614319 (3).webm", "8689614319 (4).webm", "8689614319 (5).webm", "8689614319 (6).webm", "8689614319.mp4", "8689614319.png", "8689614319.webm", "d836dde24beb44299e2058beb754927f~tplv-jj85edgx6n-image-medium.jpeg", "photo_2026-05-12_02-16-24.jpg", "photo_2026-05-12_02-16-28.jpg", "sticker.webp", "sticker1.jpg", "sticker2.jpg", "sticker3.jpg", "WhatsApp Image 2026-05-12 at 2.29.36 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.29.37 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.29.37 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.29.37 AM (3).jpeg", "WhatsApp Image 2026-05-12 at 2.29.37 AM (4).jpeg", "WhatsApp Image 2026-05-12 at 2.29.37 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.29.38 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.29.38 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.29.39 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.29.45 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.29.49 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.29.49 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.29.49 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.29.50 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.29.53 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.30.03 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.30.03 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.30.03 AM (3).jpeg", "WhatsApp Image 2026-05-12 at 2.30.03 AM (4).jpeg", "WhatsApp Image 2026-05-12 at 2.30.03 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.30.04 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.30.06 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.30.06 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.30.06 AM (3).jpeg", "WhatsApp Image 2026-05-12 at 2.30.06 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.30.07 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.30.07 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.30.07 AM (3).jpeg", "WhatsApp Image 2026-05-12 at 2.30.07 AM (4).jpeg", "WhatsApp Image 2026-05-12 at 2.30.07 AM (5).jpeg", "WhatsApp Image 2026-05-12 at 2.30.07 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.30.08 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.30.08 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.30.08 AM (3).jpeg", "WhatsApp Image 2026-05-12 at 2.30.08 AM (4).jpeg", "WhatsApp Image 2026-05-12 at 2.30.08 AM (5).jpeg", "WhatsApp Image 2026-05-12 at 2.30.08 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.30.09 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.30.09 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.30.09 AM (3).jpeg", "WhatsApp Image 2026-05-12 at 2.30.09 AM (4).jpeg", "WhatsApp Image 2026-05-12 at 2.30.09 AM (5).jpeg", "WhatsApp Image 2026-05-12 at 2.30.09 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.30.10 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.30.10 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.30.10 AM (3).jpeg", "WhatsApp Image 2026-05-12 at 2.30.10 AM (4).jpeg", "WhatsApp Image 2026-05-12 at 2.30.10 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.30.11 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.30.11 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.30.11 AM (3).jpeg", "WhatsApp Image 2026-05-12 at 2.30.11 AM (4).jpeg", "WhatsApp Image 2026-05-12 at 2.30.11 AM (5).jpeg", "WhatsApp Image 2026-05-12 at 2.30.11 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.30.12 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.30.12 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.30.12 AM (3).jpeg", "WhatsApp Image 2026-05-12 at 2.30.12 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.30.16 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.30.19 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.30.19 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.30.19 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.30.20 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.30.21 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.30.21 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.31.03 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.31.03 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.31.04 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.31.04 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.31.04 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.31.07 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.31.10 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.31.10 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.31.10 AM (3).jpeg", "WhatsApp Image 2026-05-12 at 2.31.10 AM (4).jpeg", "WhatsApp Image 2026-05-12 at 2.31.10 AM (5).jpeg", "WhatsApp Image 2026-05-12 at 2.31.10 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.31.11 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.31.11 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.31.11 AM (3).jpeg", "WhatsApp Image 2026-05-12 at 2.31.11 AM (4).jpeg", "WhatsApp Image 2026-05-12 at 2.31.11 AM (5).jpeg", "WhatsApp Image 2026-05-12 at 2.31.11 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.31.12 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.31.12 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.31.12 AM (3).jpeg", "WhatsApp Image 2026-05-12 at 2.31.12 AM (4).jpeg", "WhatsApp Image 2026-05-12 at 2.31.12 AM (5).jpeg", "WhatsApp Image 2026-05-12 at 2.31.12 AM (6).jpeg", "WhatsApp Image 2026-05-12 at 2.31.12 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.31.13 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.31.13 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.31.13 AM (3).jpeg", "WhatsApp Image 2026-05-12 at 2.31.13 AM (4).jpeg", "WhatsApp Image 2026-05-12 at 2.31.13 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.31.14 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.31.14 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.31.14 AM (3).jpeg", "WhatsApp Image 2026-05-12 at 2.31.14 AM (4).jpeg", "WhatsApp Image 2026-05-12 at 2.31.14 AM (5).jpeg", "WhatsApp Image 2026-05-12 at 2.31.14 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.31.15 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.31.15 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.31.15 AM (3).jpeg", "WhatsApp Image 2026-05-12 at 2.31.15 AM (4).jpeg", "WhatsApp Image 2026-05-12 at 2.31.15 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.31.16 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.31.16 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.31.16 AM (3).jpeg", "WhatsApp Image 2026-05-12 at 2.31.16 AM (4).jpeg", "WhatsApp Image 2026-05-12 at 2.31.16 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.31.17 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.31.17 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.31.17 AM (3).jpeg", "WhatsApp Image 2026-05-12 at 2.31.17 AM (4).jpeg", "WhatsApp Image 2026-05-12 at 2.31.17 AM (5).jpeg", "WhatsApp Image 2026-05-12 at 2.31.17 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.31.18 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.31.18 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.31.18 AM (3).jpeg", "WhatsApp Image 2026-05-12 at 2.31.18 AM (4).jpeg", "WhatsApp Image 2026-05-12 at 2.31.18 AM.jpeg", "WhatsApp Video 2026-05-12 at 2.29.38 AM.mp4", "WhatsApp Video 2026-05-12 at 2.29.39 AM.mp4", "WhatsApp Video 2026-05-12 at 2.29.41 AM.mp4", "WhatsApp Video 2026-05-12 at 2.29.42 AM.mp4", "WhatsApp Video 2026-05-12 at 2.29.44 AM.mp4", "WhatsApp Video 2026-05-12 at 2.29.45 AM.mp4", "WhatsApp Video 2026-05-12 at 2.29.46 AM.mp4", "WhatsApp Video 2026-05-12 at 2.29.47 AM.mp4", "WhatsApp Video 2026-05-12 at 2.29.48 AM.mp4", "WhatsApp Video 2026-05-12 at 2.29.51 AM.mp4", "WhatsApp Video 2026-05-12 at 2.29.52 AM (1).mp4", "WhatsApp Video 2026-05-12 at 2.29.52 AM.mp4", "WhatsApp Video 2026-05-12 at 2.29.54 AM.mp4", "WhatsApp Video 2026-05-12 at 2.29.55 AM.mp4", "WhatsApp Video 2026-05-12 at 2.29.56 AM.mp4", "WhatsApp Video 2026-05-12 at 2.29.57 AM.mp4", "WhatsApp Video 2026-05-12 at 2.29.58 AM.mp4", "WhatsApp Video 2026-05-12 at 2.29.59 AM.mp4", "WhatsApp Video 2026-05-12 at 2.30.00 AM.mp4", "WhatsApp Video 2026-05-12 at 2.30.01 AM.mp4", "WhatsApp Video 2026-05-12 at 2.30.02 AM.mp4", "WhatsApp Video 2026-05-12 at 2.30.03 AM.mp4", "WhatsApp Video 2026-05-12 at 2.30.05 AM.mp4", "WhatsApp Video 2026-05-12 at 2.30.12 AM (1).mp4", "WhatsApp Video 2026-05-12 at 2.30.12 AM.mp4", "WhatsApp Video 2026-05-12 at 2.30.13 AM (1).mp4", "WhatsApp Video 2026-05-12 at 2.30.13 AM (2).mp4", "WhatsApp Video 2026-05-12 at 2.30.13 AM.mp4", "WhatsApp Video 2026-05-12 at 2.30.14 AM.mp4", "WhatsApp Video 2026-05-12 at 2.30.15 AM (1).mp4", "WhatsApp Video 2026-05-12 at 2.30.15 AM.mp4", "WhatsApp Video 2026-05-12 at 2.30.17 AM.mp4", "WhatsApp Video 2026-05-12 at 2.30.18 AM (1).mp4", "WhatsApp Video 2026-05-12 at 2.30.18 AM.mp4", "WhatsApp Video 2026-05-12 at 2.30.20 AM.mp4", "WhatsApp Video 2026-05-12 at 2.31.01 AM.mp4", "WhatsApp Video 2026-05-12 at 2.31.02 AM.mp4", "WhatsApp Video 2026-05-12 at 2.31.03 AM.mp4", "WhatsApp Video 2026-05-12 at 2.31.04 AM.mp4", "WhatsApp Video 2026-05-12 at 2.31.05 AM.mp4", "WhatsApp Video 2026-05-12 at 2.31.06 AM.mp4", "WhatsApp Video 2026-05-12 at 2.31.09 AM.mp4"];
-const manifest = {
-  files
-};
-const VIDEO_STICKER_RE = /\.(mp4|webm|mov|m4v|ogg)(\?.*)?$/i;
-function stickerPublicUrl(fileName) {
-  const base = "/".replace(/\/?$/, "/");
-  const name = fileName.replace(/^\/+/, "").replace(/^stickers\/custom\//i, "");
-  return `${base}stickers/custom/${name.split("/").map(encodeURIComponent).join("/")}`;
-}
-let cached = null;
-function getCustomStickerLibrary() {
-  if (cached) return cached;
-  const files2 = Array.isArray(manifest.files) ? manifest.files : [];
-  cached = files2.map((name, i) => ({
-    id: `custom_${i}_${name}`,
-    src: stickerPublicUrl(name)
-  }));
-  return cached;
-}
-function isVideoStickerSrc(src) {
-  const value2 = src.trim().toLowerCase();
-  return value2.startsWith("data:video") || VIDEO_STICKER_RE.test(value2);
-}
-const TAB_LABELS = {
-  favorite: "مفضلة",
-  from_image: "من صورتي",
-  custom: "مخصص"
-};
-const BASE_TABS = ["custom", "favorite", "from_image"];
-const GRID_COLS = 5;
-const ROW_PX = 76;
-const GRID_PAD_PX = 16;
-function stickerGridPanelHeight(itemCount) {
-  if (itemCount === 0) return 120;
-  const rows = Math.ceil(itemCount / GRID_COLS);
-  const content = rows * ROW_PX + GRID_PAD_PX;
-  const cap = typeof window !== "undefined" ? Math.min(Math.round(window.innerHeight * 0.58), 520) : 480;
-  return Math.min(Math.max(content, 108), cap);
-}
-function StickerMediaGrid({
-  items,
-  onPick,
-  emptyText
-}) {
-  const panelHeight = stickerGridPanelHeight(items.length);
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(
-    "div",
-    {
-      className: "min-h-0 shrink-0 overflow-y-auto overflow-x-hidden overscroll-y-contain touch-pan-y",
-      style: { maxHeight: panelHeight, WebkitOverflowScrolling: "touch" },
-      children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "p-1.5 grid grid-cols-5 gap-1.5 content-start pb-2 w-full", children: items.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "col-span-5 py-10 text-center text-sm text-muted-foreground", children: emptyText }) : items.map((item) => {
-        const isVid = isVideoStickerSrc(item.src);
-        return /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "button",
-          {
-            type: "button",
-            onClick: () => onPick(item.src),
-            className: "aspect-square w-full min-h-[64px] overflow-hidden rounded-md p-0 border-0 bg-transparent hover:bg-secondary/30 active:scale-[0.97] transition",
-            children: isVid ? /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "video",
-              {
-                src: item.src,
-                className: "w-full h-full object-contain block bg-transparent",
-                muted: true,
-                playsInline: true,
-                loop: true,
-                autoPlay: true,
-                preload: "metadata"
-              }
-            ) : /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "img",
-              {
-                src: item.src,
-                alt: "",
-                className: "w-full h-full object-contain block bg-transparent",
-                loading: "lazy",
-                decoding: "async",
-                draggable: false
-              }
-            )
-          },
-          item.id
-        );
-      }) })
-    }
-  );
-}
-const ChatStickerPicker = reactExports.memo(function ChatStickerPicker2({
-  isQuranChannel,
-  userStickers: _userStickers,
-  favoriteStickerContents = [],
-  createdStickerContents: _createdStickerContents,
-  onPick,
-  onClose,
-  isTyping = false
-}) {
-  const [tab, setTab] = reactExports.useState("custom");
-  const fileRef = reactExports.useRef(null);
-  const fileStickers = reactExports.useMemo(() => getCustomStickerLibrary(), []);
-  const favoriteItems = reactExports.useMemo(
-    () => (favoriteStickerContents || []).map((src, i) => ({
-      id: `fav_${i}_${String(src).slice(0, 48)}`,
-      src
-    })),
-    [favoriteStickerContents]
-  );
-  const shell = "border-t border-border flex flex-col min-h-0 max-h-[72vh] " + (isQuranChannel ? "bg-zinc-900 border-zinc-700" : "bg-background");
-  const onFileChange = (e) => {
-    const f = e.target.files?.[0];
-    e.target.value = "";
-    if (!f || !f.type.startsWith("image/")) return;
-    const r2 = new FileReader();
-    r2.onload = () => {
-      const data = String(r2.result || "");
-      if (data.startsWith("data:image")) onPick(data, { createdFromImage: true });
-    };
-    r2.readAsDataURL(f);
-  };
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: shell, children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("input", { ref: fileRef, type: "file", accept: "image/*", className: "hidden", onChange: onFileChange }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-1 p-2 border-b border-border overflow-x-auto no-scrollbar shrink-0", children: [
-      BASE_TABS.map((id) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
-        "button",
-        {
-          type: "button",
-          onClick: () => setTab(id),
-          className: "shrink-0 px-2.5 py-1.5 rounded-full text-[11px] font-semibold whitespace-nowrap " + (tab === id ? "bg-primary text-primary-foreground" : "bg-secondary"),
-          children: [
-            TAB_LABELS[id],
-            id === "custom" && fileStickers.length > 0 ? ` (${fileStickers.length})` : ""
-          ]
-        },
-        id
-      )),
-      isTyping && /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "button",
-        {
-          type: "button",
-          className: "shrink-0 px-2.5 py-1.5 rounded-full text-[11px] font-semibold whitespace-nowrap bg-green-500 text-white",
-          children: "يكتب الان"
-        },
-        "typing"
-      )
-    ] }),
-    tab === "from_image" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col items-center justify-center gap-3 px-4 py-10 min-h-[200px] shrink-0", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-full bg-secondary p-4", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Image$1, { size: 40, className: "text-muted-foreground" }) }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-center text-muted-foreground max-w-xs", children: "اختر صورة من معرضك لتحويلها إلى ملصق وإرسالها فوراً في المحادثة." }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "button",
-        {
-          type: "button",
-          className: "bg-primary text-primary-foreground px-6 py-3 rounded-2xl text-sm font-semibold",
-          onClick: () => fileRef.current?.click(),
-          children: "اختيار صورة"
-        }
-      )
-    ] }),
-    tab === "favorite" && /* @__PURE__ */ jsxRuntimeExports.jsx(
-      StickerMediaGrid,
-      {
-        items: favoriteItems,
-        onPick: (src) => onPick(src),
-        emptyText: "لا ملصقات في المفضلة بعد — اضغط مطولاً على ملصق في الشات واختر «إضافة للمفضلة»"
-      }
-    ),
-    tab === "custom" && /* @__PURE__ */ jsxRuntimeExports.jsx(
-      StickerMediaGrid,
-      {
-        items: fileStickers,
-        onPick: (src) => onPick(src),
-        emptyText: "ضع الصور في public/stickers/custom ثم npm run stickers:manifest"
-      }
-    )
-  ] });
-});
-const CHAT_DRAWING_BG_TRANSPARENT = -1;
-const GRADIENT_FILLS = [
-  (ctx, w, h) => {
-    const g = ctx.createLinearGradient(0, 0, w, h);
-    g.addColorStop(0, "#833ab4");
-    g.addColorStop(0.45, "#fd1d1d");
-    g.addColorStop(1, "#fcb045");
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, w, h);
-  },
-  (ctx, w, h) => {
-    const g = ctx.createLinearGradient(0, 0, w, h);
-    g.addColorStop(0, "#00c6ff");
-    g.addColorStop(1, "#0072ff");
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, w, h);
-  },
-  (ctx, w, h) => {
-    const g = ctx.createLinearGradient(0, 0, w, h);
-    g.addColorStop(0, "#11998e");
-    g.addColorStop(1, "#38ef7d");
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, w, h);
-  },
-  (ctx, w, h) => {
-    const g = ctx.createLinearGradient(w, 0, 0, h);
-    g.addColorStop(0, "#fc466b");
-    g.addColorStop(1, "#3f5efb");
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, w, h);
-  },
-  (ctx, w, h) => {
-    const g = ctx.createLinearGradient(0, h, w, 0);
-    g.addColorStop(0, "#0f0c29");
-    g.addColorStop(0.5, "#302b63");
-    g.addColorStop(1, "#24243e");
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, w, h);
-  },
-  (ctx, w, h) => {
-    const g = ctx.createLinearGradient(0, 0, w, 0);
-    g.addColorStop(0, "#ffe259");
-    g.addColorStop(1, "#ffa751");
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, w, h);
-  }
-];
-const DRAW_GRADIENT_COUNT = GRADIENT_FILLS.length;
-function scaleLayers(layers2, ow, oh, nw, nh) {
-  if (ow <= 0 || oh <= 0 || nw <= 0 || nh <= 0) return layers2;
-  const sx = nw / ow;
-  const sy = nh / oh;
-  const scalePt = Math.sqrt(sx * sy);
-  return layers2.map((L) => {
-    if (L.kind === "stroke") {
-      return {
-        kind: "stroke",
-        color: L.color,
-        width: Math.max(1, L.width * scalePt),
-        points: L.points.map(([x, y]) => [x * sx, y * sy])
-      };
-    }
-    return {
-      kind: "text",
-      x: L.x * sx,
-      y: L.y * sy,
-      text: L.text,
-      color: L.color,
-      fontSize: Math.max(12, L.fontSize * scalePt)
-    };
-  });
-}
-function drawStroke(ctx, color, lineW, points) {
-  if (points.length === 0) return;
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
-  ctx.strokeStyle = color;
-  ctx.lineWidth = lineW;
-  if (points.length === 1) {
-    ctx.beginPath();
-    ctx.fillStyle = color;
-    ctx.arc(points[0][0], points[0][1], Math.max(lineW / 2, 1.5), 0, Math.PI * 2);
-    ctx.fill();
-    return;
-  }
-  ctx.beginPath();
-  ctx.moveTo(points[0][0], points[0][1]);
-  for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
-  ctx.stroke();
-}
-function paintDrawingToContext(ctx, cw, ch, bgIndex, layers2, draft, opts) {
-  if (bgIndex >= 0) {
-    GRADIENT_FILLS[bgIndex % GRADIENT_FILLS.length](ctx, cw, ch);
-  } else if (opts?.neutralFillWhenTransparent) {
-    ctx.fillStyle = "rgba(244, 244, 245, 0.96)";
-    try {
-      if (typeof document !== "undefined" && document.documentElement.classList.contains("dark")) {
-        ctx.fillStyle = "rgba(24, 24, 27, 0.92)";
-      }
-    } catch {
-    }
-    ctx.fillRect(0, 0, cw, ch);
-  } else {
-    ctx.clearRect(0, 0, cw, ch);
-  }
-  for (const L of layers2) {
-    if (L.kind === "stroke") drawStroke(ctx, L.color, L.width, L.points);
-    else {
-      ctx.font = `bold ${L.fontSize}px system-ui, -apple-system, sans-serif`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.strokeStyle = "rgba(0,0,0,0.6)";
-      ctx.lineWidth = Math.max(3, L.fontSize / 10);
-      ctx.fillStyle = L.color;
-      ctx.strokeText(L.text, L.x, L.y);
-      ctx.fillText(L.text, L.x, L.y);
-    }
-  }
-  if (draft && draft.points.length) drawStroke(ctx, draft.color, draft.width, draft.points);
-}
-function parseDrawingPayload(raw) {
-  try {
-    const p = JSON.parse(raw);
-    if (p?.v !== 1 || typeof p.w !== "number" || typeof p.h !== "number" || !Array.isArray(p.layers)) return null;
-    if (typeof p.bgIndex !== "number") return null;
-    return p;
-  } catch {
-    return null;
-  }
-}
-function ChatDrawingCanvas({
-  payload,
-  className,
-  maxHeightPx = 280,
-  /** في الفقاعة: خلفية خفيفة تحت الرسم الشفاف حتى تظهر الخطوط البيضاء */
-  forChatDisplay
-}) {
-  const wrapRef = reactExports.useRef(null);
-  const canvasRef = reactExports.useRef(null);
-  reactExports.useLayoutEffect(() => {
-    const wrap = wrapRef.current;
-    const canvas2 = canvasRef.current;
-    if (!wrap || !canvas2 || payload.w < 2 || payload.h < 2) return;
-    const paint = () => {
-      let wBox = Math.max(1, Math.floor(wrap.clientWidth));
-      if (wBox < 8) {
-        const dprGuess = typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 1, 2) : 1;
-        wBox = Math.min(360, Math.max(160, Math.round(payload.w / dprGuess)));
-      }
-      const ratio = payload.h / payload.w;
-      let hBox = Math.round(wBox * ratio);
-      hBox = Math.min(maxHeightPx, Math.max(48, hBox));
-      wBox = Math.max(8, Math.round(hBox / ratio));
-      const dpr = typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 1, 2) : 1;
-      const cw = Math.floor(wBox * dpr);
-      const ch = Math.floor(hBox * dpr);
-      if (cw < 2 || ch < 2) return;
-      canvas2.style.width = `${wBox}px`;
-      canvas2.style.height = `${hBox}px`;
-      canvas2.width = cw;
-      canvas2.height = ch;
-      const ctx = canvas2.getContext("2d");
-      if (!ctx) return;
-      const neutralFill = !!forChatDisplay && payload.bgIndex < 0;
-      paintDrawingToContext(ctx, cw, ch, payload.bgIndex, payload.layers, null, {
-        neutralFillWhenTransparent: neutralFill
-      });
-    };
-    paint();
-    const ro = new ResizeObserver(() => paint());
-    ro.observe(wrap);
-    return () => ro.disconnect();
-  }, [payload, maxHeightPx, forChatDisplay]);
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(
-    "div",
-    {
-      ref: wrapRef,
-      className: (className ?? "w-full") + " min-w-0",
-      style: {
-        width: "100%",
-        maxHeight: maxHeightPx,
-        aspectRatio: `${payload.w} / ${payload.h}`
-      },
-      children: /* @__PURE__ */ jsxRuntimeExports.jsx("canvas", { ref: canvasRef, className: "block h-auto w-full rounded-lg", "aria-hidden": true })
-    }
-  );
-}
-function ViewOnceMediaOverlay({
-  media,
-  src,
-  onClose
-}) {
-  if (typeof document === "undefined") return null;
-  const drawPayload = media === "drawing" ? parseDrawingPayload(src) : null;
-  return reactDomExports.createPortal(
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "fixed inset-0 z-[370] flex flex-col bg-black", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex shrink-0 justify-end p-3", children: /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onClose, className: "rounded-full bg-white/10 p-2.5 text-white hover:bg-white/20", "aria-label": "إغلاق", children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 22 }) }) }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex min-h-0 flex-1 items-center justify-center p-2", children: media === "drawing" ? drawPayload ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-full w-full max-w-lg flex-col items-center justify-center", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChatDrawingCanvas, { payload: drawPayload, className: "w-full", maxHeightPx: 620 }) }) : /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-center text-sm text-white/80", children: "تعذر عرض الرسمة" }) : media === "image" ? /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src, alt: "", className: "max-h-full max-w-full object-contain" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("video", { src, controls: true, autoPlay: true, className: "max-h-full max-w-full object-contain", playsInline: true }) })
-    ] }),
-    document.body
-  );
-}
-function clientToCanvas(e, canvas2) {
-  const rect = canvas2.getBoundingClientRect();
-  const scaleX = canvas2.width / rect.width;
-  const scaleY = canvas2.height / rect.height;
-  return [(e.clientX - rect.left) * scaleX, (e.clientY - rect.top) * scaleY];
-}
-function ChatDrawComposeModal({
-  onClose,
-  onSend,
-  senderName,
-  senderAvatar,
-  isQuranChannel,
-  /** طبقة فوق منطقة الرسائل (ترى المحادثة تحتها) بدل شاشة كاملة منفصلة */
-  overMessages
-}) {
-  const wrapRef = reactExports.useRef(null);
-  const canvasRef = reactExports.useRef(null);
-  const [layers2, setLayers] = reactExports.useState([]);
-  const [bgIndex, setBgIndex] = reactExports.useState(CHAT_DRAWING_BG_TRANSPARENT);
-  const [penColor, setPenColor] = reactExports.useState("#ffffff");
-  const [penWidth, setPenWidth] = reactExports.useState(5);
-  const [viewOnce, setViewOnce] = reactExports.useState(false);
-  const draftRef = reactExports.useRef(null);
-  const PEN_COLORS = ["#ffffff", "#000000", "#ff3040", "#fcb045", "#833ab4", "#4fce5d", "#00c9ff", "#ffe500"];
-  const redraw = reactExports.useCallback(() => {
-    const canvas2 = canvasRef.current;
-    if (!canvas2) return;
-    const ctx = canvas2.getContext("2d");
-    if (!ctx) return;
-    paintDrawingToContext(ctx, canvas2.width, canvas2.height, bgIndex, layers2, draftRef.current);
-  }, [bgIndex, layers2]);
-  const resizeCanvas = reactExports.useCallback(() => {
-    const wrap = wrapRef.current;
-    const canvas2 = canvasRef.current;
-    if (!wrap || !canvas2) return;
-    const dpr = typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 1, 2) : 1;
-    const w = Math.floor(wrap.clientWidth * dpr);
-    const h = Math.floor(wrap.clientHeight * dpr);
-    if (w < 1 || h < 1) return;
-    const ow = canvas2.width;
-    const oh = canvas2.height;
-    if (ow === w && oh === h) {
-      const ctx2 = canvas2.getContext("2d");
-      if (ctx2) paintDrawingToContext(ctx2, w, h, bgIndex, layers2, draftRef.current);
-      return;
-    }
-    draftRef.current = null;
-    let nextLayers = layers2;
-    if (ow > 0 && oh > 0 && (ow !== w || oh !== h)) {
-      nextLayers = scaleLayers(layers2, ow, oh, w, h);
-      setLayers(nextLayers);
-    }
-    canvas2.width = w;
-    canvas2.height = h;
-    const ctx = canvas2.getContext("2d");
-    if (ctx) paintDrawingToContext(ctx, w, h, bgIndex, nextLayers, null);
-  }, [bgIndex, layers2]);
-  reactExports.useEffect(() => {
-    const wrap = wrapRef.current;
-    if (!wrap) return;
-    resizeCanvas();
-    const ro = new ResizeObserver(() => resizeCanvas());
-    ro.observe(wrap);
-    return () => ro.disconnect();
-  }, [resizeCanvas]);
-  reactExports.useEffect(() => {
-    redraw();
-  }, [redraw]);
-  reactExports.useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-  const addTextCenter = reactExports.useCallback(() => {
-    const canvas2 = canvasRef.current;
-    if (!canvas2) return;
-    const raw = window.prompt("اكتب على الشاشة", "");
-    if (raw == null || !raw.trim()) return;
-    const fontSize = Math.max(22, Math.round(canvas2.width / 14));
-    setLayers((prev) => [
-      ...prev,
-      {
-        kind: "text",
-        x: canvas2.width / 2,
-        y: canvas2.height / 2,
-        text: raw.trim(),
-        color: penColor,
-        fontSize
-      }
-    ]);
-  }, [penColor]);
-  const onPointerDown = (e) => {
-    if (!canvasRef.current) return;
-    e.preventDefault();
-    e.target.setPointerCapture(e.pointerId);
-    const p = clientToCanvas(e, canvasRef.current);
-    draftRef.current = { color: penColor, width: penWidth, points: [p] };
-    redraw();
-  };
-  const onPointerMove = (e) => {
-    if (!draftRef.current || !canvasRef.current) return;
-    e.preventDefault();
-    const p = clientToCanvas(e, canvasRef.current);
-    draftRef.current.points.push(p);
-    const canvas2 = canvasRef.current;
-    const ctx = canvas2.getContext("2d");
-    if (!ctx) return;
-    paintDrawingToContext(ctx, canvas2.width, canvas2.height, bgIndex, layers2, draftRef.current);
-  };
-  const onPointerUp = (e) => {
-    if (!draftRef.current || !canvasRef.current) return;
-    try {
-      e.target.releasePointerCapture(e.pointerId);
-    } catch {
-    }
-    const d = draftRef.current;
-    draftRef.current = null;
-    if (d.points.length === 0) return;
-    setLayers((prev) => [...prev, { kind: "stroke", color: d.color, width: d.width, points: d.points }]);
-  };
-  const undo = () => setLayers((prev) => prev.slice(0, -1));
-  const buildPayload = reactExports.useCallback(() => {
-    const canvas2 = canvasRef.current;
-    if (!canvas2 || canvas2.width < 2 || canvas2.height < 2 || layers2.length === 0) return null;
-    return {
-      v: 1,
-      w: canvas2.width,
-      h: canvas2.height,
-      bgIndex,
-      layers: layers2
-    };
-  }, [bgIndex, layers2]);
-  const handleSend = () => {
-    const payload = buildPayload();
-    if (!payload) return;
-    onSend({ type: "drawing", content: JSON.stringify(payload), viewOnce });
-    onClose();
-  };
-  const toolBtn = "flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white backdrop-blur-sm transition hover:bg-white/20 active:scale-95";
-  const cycleBg = (delta) => {
-    setBgIndex((prev) => {
-      if (prev === CHAT_DRAWING_BG_TRANSPARENT) {
-        return delta > 0 ? 0 : DRAW_GRADIENT_COUNT - 1;
-      }
-      const g = prev + delta;
-      if (g < 0) return DRAW_GRADIENT_COUNT - 1;
-      if (g >= DRAW_GRADIENT_COUNT) return CHAT_DRAWING_BG_TRANSPARENT;
-      return g;
-    });
-  };
-  const bgLabel = bgIndex === CHAT_DRAWING_BG_TRANSPARENT ? "خلفية: المحادثة" : `خلفية: ${bgIndex + 1}/${DRAW_GRADIENT_COUNT}`;
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
-    "div",
-    {
-      className: (overMessages ? "absolute inset-0 z-[85] flex min-h-0 flex-col bg-black/25 " : "fixed inset-0 z-[365] mx-auto flex min-h-0 max-w-md flex-col bg-black/30 backdrop-blur-md ") + "pointer-events-auto",
-      children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex shrink-0 items-center justify-between gap-2 px-3 pb-2 pt-[max(0.75rem,var(--sat))]", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onClose, className: toolBtn, "aria-label": "إغلاق", children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 20 }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "min-w-0 flex-1 text-center text-xs font-medium text-white/95 sm:text-sm", children: "رسم وكتابة" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => cycleBg(-1), className: toolBtn, "aria-label": "خلفية سابقة", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronRight, { size: 20, className: "rtl:rotate-180" }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => cycleBg(1), className: toolBtn, "aria-label": "خلفية تالية", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronLeft, { size: 20, className: "rtl:rotate-180" }) })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "px-3 pb-1 text-center text-[10px] text-white/70", children: bgLabel }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { ref: wrapRef, className: "relative min-h-0 flex-1 touch-none px-2 pb-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "canvas",
-          {
-            ref: canvasRef,
-            className: "h-full w-full touch-none rounded-2xl bg-transparent",
-            style: { touchAction: "none" },
-            onPointerDown,
-            onPointerMove,
-            onPointerUp,
-            onPointerCancel: onPointerUp
-          }
-        ) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "shrink-0 space-y-3 border-t border-white/10 bg-zinc-950/90 px-3 pb-[max(1rem,var(--sab))] pt-3 backdrop-blur-md", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex flex-wrap items-center gap-2", children: PEN_COLORS.map((c) => /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "button",
-            {
-              type: "button",
-              "aria-label": `لون ${c}`,
-              className: "h-9 w-9 shrink-0 rounded-full border-2 transition active:scale-95 " + (penColor === c ? "border-white scale-110" : "border-white/25"),
-              style: { backgroundColor: c },
-              onClick: () => setPenColor(c)
-            },
-            c
-          )) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-wrap items-center gap-2", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs text-zinc-500", children: "سمك الخط" }),
-            [3, 6, 12].map((w) => /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "button",
-              {
-                type: "button",
-                onClick: () => setPenWidth(w),
-                className: "rounded-full px-3 py-1.5 text-xs font-semibold transition " + (penWidth === w ? "bg-white text-black" : "bg-white/10 text-white hover:bg-white/20"),
-                children: w === 3 ? "رفيع" : w === 6 ? "متوسط" : "عريض"
-              },
-              w
-            )),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: undo, className: toolBtn + " ms-auto", "aria-label": "تراجع", disabled: !layers2.length, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Undo2, { size: 18, className: layers2.length ? "" : "opacity-40" }) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: addTextCenter, className: toolBtn, "aria-label": "نص", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Type, { size: 18 }) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "button",
-              {
-                type: "button",
-                onClick: () => setBgIndex(CHAT_DRAWING_BG_TRANSPARENT),
-                className: toolBtn + (bgIndex === CHAT_DRAWING_BG_TRANSPARENT ? " ring-2 ring-white/60" : ""),
-                "aria-label": "إظهار المحادثة خلف الرسم",
-                title: "خلفية شفافة — تظهر المحادثة",
-                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Image$1, { size: 18 })
-              }
-            )
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs(
-            "label",
-            {
-              className: "flex cursor-pointer items-center justify-between gap-3 text-sm " + (isQuranChannel ? "text-emerald-100" : "text-zinc-200"),
-              children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "flex items-center gap-2", children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx(Eye, { size: 16, className: "opacity-70" }),
-                  "مشاهدة لمرة واحدة"
-                ] }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("input", { type: "checkbox", checked: viewOnce, onChange: (e) => setViewOnce(e.target.checked), className: "h-4 w-4 accent-violet-500" })
-              ]
-            }
-          ),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs(
-            "button",
-            {
-              type: "button",
-              onClick: handleSend,
-              disabled: !layers2.length,
-              className: "flex w-full items-center justify-center gap-2 rounded-full py-3 text-sm font-semibold shadow-lg active:scale-[0.99] disabled:opacity-40 " + (isQuranChannel ? "bg-emerald-500 text-black" : "bg-white text-black"),
-              children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: senderName || "?", src: senderAvatar, size: 28 }),
-                "إرسال الرسمة"
-              ]
-            }
-          )
-        ] })
-      ]
-    }
-  );
-}
-function ChatInlineMediaLightbox({ media, src, sender, senderLabel, onClose }) {
-  const [menuOpen, setMenuOpen] = reactExports.useState(false);
-  const menuRef = reactExports.useRef(null);
-  const download = reactExports.useCallback(() => {
-    const a = document.createElement("a");
-    a.href = src;
-    const ext = media === "video" ? "mp4" : "jpg";
-    a.download = `retweet-chat-${Date.now()}.${ext}`;
-    a.rel = "noopener";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-  }, [src, media]);
-  reactExports.useEffect(() => {
-    const onKey = (e) => {
-      if (e.key === "Escape") {
-        setMenuOpen(false);
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      window.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prev;
-    };
-  }, [onClose]);
-  reactExports.useEffect(() => {
-    if (!menuOpen) return;
-    const onDoc = (e) => {
-      if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false);
-    };
-    document.addEventListener("click", onDoc, true);
-    return () => document.removeEventListener("click", onDoc, true);
-  }, [menuOpen]);
-  if (typeof document === "undefined") return null;
-  const displayName = senderLabel.startsWith("@") ? senderLabel : `@${senderLabel.replace(/^@/, "")}`;
-  const body = /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "fixed inset-0 z-[382] flex flex-col bg-black", role: "dialog", "aria-modal": "true", "aria-label": "عرض الوسائط", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs(
-      "header",
-      {
-        dir: "ltr",
-        className: "flex shrink-0 items-center gap-2 border-b border-white/10 px-2 pb-2 pt-[max(10px,var(--sat))]",
-        children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onClose, className: "rounded-full p-2.5 text-white transition hover:bg-white/10", "aria-label": "رجوع", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronLeft, { size: 26, strokeWidth: 2.25 }) }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-w-0 flex-1 items-center justify-center gap-2 px-1", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: displayName.replace(/^@/, ""), src: sender?.avatar, size: 34 }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "truncate text-sm font-semibold text-white", children: displayName })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative flex shrink-0 items-center gap-0.5", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "button",
-              {
-                type: "button",
-                onClick: download,
-                className: "rounded-full p-2.5 text-white transition hover:bg-white/10",
-                "aria-label": "تحميل",
-                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Download, { size: 22, strokeWidth: 2 })
-              }
-            ),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative", ref: menuRef, children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx(
-                "button",
-                {
-                  type: "button",
-                  onClick: () => setMenuOpen((v) => !v),
-                  className: "rounded-full p-2.5 text-white transition hover:bg-white/10",
-                  "aria-label": "خيارات",
-                  "aria-expanded": menuOpen,
-                  children: /* @__PURE__ */ jsxRuntimeExports.jsx(EllipsisVertical, { size: 22, strokeWidth: 2 })
-                }
-              ),
-              menuOpen && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute end-0 top-full z-[2] mt-1 min-w-[11rem] overflow-hidden rounded-xl border border-white/10 bg-zinc-900/95 py-1 shadow-2xl backdrop-blur-md", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                "button",
-                {
-                  type: "button",
-                  className: "flex w-full items-center gap-2 px-4 py-2.5 text-start text-sm text-white hover:bg-white/10",
-                  onClick: () => {
-                    setMenuOpen(false);
-                    download();
-                  },
-                  children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(Download, { size: 18, strokeWidth: 2, className: "opacity-90" }),
-                    "تحميل"
-                  ]
-                }
-              ) })
-            ] })
-          ] })
-        ]
-      }
-    ),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex min-h-0 flex-1 items-center justify-center overflow-hidden px-1 pb-[var(--sab)]", children: media === "image" ? /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src, alt: "", className: "max-h-full max-w-full object-contain" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("video", { src, controls: true, playsInline: true, autoPlay: true, className: "max-h-full max-w-full object-contain", preload: "metadata" }) })
-  ] });
-  return reactDomExports.createPortal(body, document.body);
-}
-function ShareFeedPostSection({ postId }) {
-  const { state, currentUser } = useApp();
-  const post = state.posts.find((p) => p.id === postId);
-  const author = post ? userById(state, post.userId) : null;
-  const liked = currentUser && post ? post.likes.includes(currentUser.id) : false;
-  const reposted = currentUser && post ? post.reposts.includes(currentUser.id) : false;
-  if (!post || !author) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "px-4 py-8 text-center text-sm text-muted-foreground", children: "منشور غير متوفر" });
-  }
-  const caption = [post.text?.trim()].filter(Boolean).join(" ") || "";
-  const img = post.image?.trim();
-  const hasImg = isRenderableMediaUrl(img);
-  const emojiOnly = !!(img && !hasImg && img.length <= 6);
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-h-0 flex-1 flex-col bg-background", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3 px-4 pt-4", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: author.username, src: author.avatar, size: 44 }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1 text-start", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1 truncate text-base font-semibold", children: [
-          "@",
-          author.username,
-          /* @__PURE__ */ jsxRuntimeExports.jsx(VerifiedMarkForUser, { user: author, size: 16 })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-xs text-muted-foreground", children: post.type === "tweet" ? "تغريدة" : post.type === "reel" ? "ريلز" : "منشور" })
-      ] })
-    ] }),
-    caption && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { dir: "auto", className: "mt-3 whitespace-pre-wrap px-4 text-start text-sm leading-relaxed [overflow-wrap:anywhere]", children: caption }),
-    hasImg && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-3 flex w-full justify-center bg-muted/20 px-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: resolveMediaUrl(img), alt: "", className: "max-h-[min(58vh,520px)] w-full max-w-lg object-contain" }) }),
-    emojiOnly && !post.video && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-3 flex min-h-[12rem] items-center justify-center bg-muted/20 text-5xl", children: img }),
-    post.video && isRenderableMediaUrl(post.video) && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-3 flex w-full justify-center bg-muted/30 px-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx("video", { src: resolveMediaUrl(post.video), controls: true, className: "max-h-[min(58vh,520px)] w-full max-w-lg object-contain", playsInline: true, preload: "metadata" }) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4 flex items-center gap-6 px-4 text-sm text-muted-foreground", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "inline-flex items-center gap-1.5", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Heart, { size: 18, className: liked ? "fill-red-500 text-red-500" : "" }),
-        post.likes.length
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "inline-flex items-center gap-1.5", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(MessageCircle, { size: 18 }),
-        post.comments.length
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "inline-flex items-center gap-1.5", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Repeat2, { size: 18, className: reposted ? "text-emerald-500" : "" }),
-        post.reposts.length
-      ] }),
-      post.type === "reel" && /* @__PURE__ */ jsxRuntimeExports.jsx(Film, { size: 18, className: "ms-auto opacity-70" })
-    ] })
-  ] });
-}
-function ShareFeedStorySection({ storyId }) {
-  const { state } = useApp();
-  const story = state.stories.find((s) => s.id === storyId);
-  const author = story ? userById(state, story.userId) : null;
-  if (!story || !author) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "px-4 py-8 text-center text-sm text-muted-foreground", children: "ستوري غير متوفر" });
-  }
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-h-0 flex-1 flex-col bg-background", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3 px-4 pt-4", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: author.username, src: author.avatar, size: 44 }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1 text-start", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1 truncate text-base font-semibold", children: [
-          "@",
-          author.username,
-          /* @__PURE__ */ jsxRuntimeExports.jsx(VerifiedMarkForUser, { user: author, size: 16 })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-xs text-muted-foreground", children: "ستوري" })
-      ] })
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-4 flex min-h-0 flex-1 items-center justify-center bg-muted/20 px-2 pb-8", children: (() => {
-      const sm = normalizeStoryMedia(story);
-      if (sm.hasVideo) {
-        return /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "video",
-          {
-            src: sm.videoUrl,
-            controls: true,
-            className: "max-h-[min(62vh,560px)] w-full max-w-lg object-contain",
-            playsInline: true,
-            preload: "metadata"
-          }
-        );
-      }
-      if (sm.hasImage) {
-        return /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "img",
-          {
-            src: sm.imageUrl,
-            alt: "",
-            className: "max-h-[min(62vh,560px)] w-full max-w-lg object-contain"
-          }
-        );
-      }
-      return /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-6xl", children: sm.emojiFallback || "📷" });
-    })() })
-  ] });
-}
-function ChatSharedFeedOverlay({
-  items,
-  initialIndex,
-  onClose
-}) {
-  const scrollKeyRef = reactExports.useRef("");
-  const key2 = reactExports.useMemo(() => items.map((i) => i.messageId).join("|") + "#" + initialIndex, [items, initialIndex]);
-  reactExports.useLayoutEffect(() => {
-    if (items.length === 0) return;
-    if (scrollKeyRef.current === key2) return;
-    scrollKeyRef.current = key2;
-    const safe = Math.min(Math.max(0, initialIndex), items.length - 1);
-    const id = items[safe]?.messageId;
-    if (!id) return;
-    requestAnimationFrame(() => {
-      document.getElementById(`chat-share-section-${id}`)?.scrollIntoView({ block: "start", behavior: "auto" });
-    });
-  }, [items, initialIndex, key2]);
-  reactExports.useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-      scrollKeyRef.current = "";
-    };
-  }, []);
-  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-[380] flex justify-center bg-background", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex h-[100dvh] w-full max-w-md flex-col overflow-hidden", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("header", { className: "flex shrink-0 items-center gap-3 px-3 py-2.5", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onClose, className: "shrink-0 rounded-full p-2 hover:bg-secondary", "aria-label": "إغلاق", children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 22 }) }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "truncate text-sm font-semibold", children: "مشاركات المحادثة" }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "truncate text-[11px] text-muted-foreground", children: "مرّر لأعلى أو لأسفل بين المنشورات والستوريات المشتركة" })
-      ] })
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "min-h-0 flex-1 overflow-y-auto overscroll-y-none [scrollbar-gutter:stable]", children: items.map((item) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
-      "section",
-      {
-        id: `chat-share-section-${item.messageId}`,
-        className: "flex min-h-[100dvh] flex-col bg-background",
-        children: [
-          item.shareText && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "shrink-0 px-4 pb-2 pt-3 text-sm text-muted-foreground", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-foreground/90", children: [
-            '"',
-            item.shareText,
-            '"'
-          ] }) }),
-          item.kind === "post" ? /* @__PURE__ */ jsxRuntimeExports.jsx(ShareFeedPostSection, { postId: item.targetId }) : /* @__PURE__ */ jsxRuntimeExports.jsx(ShareFeedStorySection, { storyId: item.targetId })
-        ]
-      },
-      item.messageId
-    )) })
-  ] }) });
-}
-function SharedPostPreview({ postId, comment, compact = false, variant = "default" }) {
-  const { state, currentUser } = useApp();
-  const post = state.posts.find((p) => p.id === postId);
-  const author = post ? userById(state, post.userId) : null;
-  if (!post || !author) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-2xl bg-muted/40 p-3 dark:bg-zinc-900/60", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-center text-xs text-muted-foreground", children: "منشور غير متوفر" }) });
-  }
-  const liked = currentUser ? post.likes.includes(currentUser.id) : false;
-  const reposted = currentUser ? post.reposts.includes(currentUser.id) : false;
-  if (variant === "chat") {
-    const caption = [post.text?.trim()].filter(Boolean).join(" ") || (post.image && !isRenderableMediaUrl(post.image) ? post.image : "") || "…";
-    const img = post.image?.trim();
-    const resolvedImg = img ? resolveMediaUrl(img) : "";
-    const hasImg = !!(resolvedImg && isRenderableMediaUrl(resolvedImg));
-    const emojiOnly = img && !hasImg && img.length <= 6;
-    const mediaFrame = "relative w-full overflow-hidden rounded-none bg-transparent";
-    return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "w-full max-w-[min(96vw,360px)] overflow-hidden rounded-none border-0 bg-transparent shadow-none ring-0", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 px-1 py-1.5", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: author.username, src: author.avatar, size: 22 }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1 text-start", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1 truncate", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "truncate text-xs font-semibold", children: userDisplayName(author) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx(VerifiedMarkForUser, { user: author, size: 12 })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[10px] text-muted-foreground", children: post.type === "tweet" ? "تغريدة" : post.type === "reel" ? "ريلز" : "منشور" })
-        ] })
-      ] }),
-      comment && /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "px-1 pb-1.5 text-[11px] italic text-muted-foreground", children: [
-        '"',
-        comment,
-        '"'
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2 px-0 pb-1", children: [
-        hasImg && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: mediaFrame, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "img",
-          {
-            src: resolvedImg,
-            alt: "",
-            className: "block max-h-[min(52vh,400px)] min-h-[220px] w-full object-cover object-center"
-          }
-        ) }),
-        emojiOnly && !post.video && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex min-h-[5rem] items-center justify-center rounded-none bg-transparent text-5xl", children: img }),
-        post.video && isRenderableMediaUrl(post.video) && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: mediaFrame, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "video",
-          {
-            src: resolveMediaUrl(post.video),
-            controls: true,
-            className: "block max-h-[min(52vh,400px)] min-h-[220px] w-full object-cover object-center",
-            playsInline: true,
-            preload: "metadata"
-          }
-        ) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "line-clamp-2 px-0.5 text-start text-[11px] leading-snug text-foreground/90", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "font-semibold", children: [
-            "@",
-            author.username
-          ] }),
-          " ",
-          caption
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3 pt-1 text-[10px] text-muted-foreground", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "inline-flex items-center gap-0.5", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Heart, { size: 12, className: liked ? "fill-red-500 text-red-500" : "" }),
-            post.likes.length
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "inline-flex items-center gap-0.5", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(MessageCircle, { size: 12 }),
-            post.comments.length
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "inline-flex items-center gap-0.5", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Repeat2, { size: 12, className: reposted ? "text-emerald-500" : "" }),
-            post.reposts.length
-          ] }),
-          post.type === "reel" && /* @__PURE__ */ jsxRuntimeExports.jsx(Film, { size: 12, className: "ms-auto opacity-70" })
-        ] })
-      ] })
-    ] });
-  }
-  if (compact) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl bg-muted/40 p-3 dark:bg-zinc-900/60", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-2 flex items-center gap-2", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: author.username, src: author.avatar, size: 20 }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-xs font-medium", children: [
-          "@",
-          author.username
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs text-muted-foreground", children: "• منشور" })
-      ] }),
-      post.text && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mb-2 line-clamp-2 text-sm", children: post.text }),
-      post.image && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-2 aspect-video overflow-hidden rounded-lg bg-muted/50", children: isRenderableMediaUrl(post.image) ? /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: resolveMediaUrl(post.image), className: "h-full w-full object-cover", alt: "" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-full items-center justify-center text-3xl", children: post.image }) }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3 text-xs text-muted-foreground", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
-          "❤️ ",
-          post.likes.length
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
-          "💬 ",
-          post.comments.length
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
-          "🔄 ",
-          post.reposts.length
-        ] })
-      ] })
-    ] });
-  }
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "overflow-hidden rounded-xl bg-muted/30 dark:bg-zinc-900/70", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 p-3", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: author.username, src: author.avatar, size: 24 }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-sm font-medium", children: [
-            "@",
-            author.username
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(VerifiedMarkForUser, { user: author, size: 12 })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-xs text-muted-foreground", children: post.type === "tweet" ? "تغريدة" : post.type === "reel" ? "ريلز" : "منشور" })
-      ] })
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-3 p-3 pt-0", children: [
-      comment && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-sm italic text-muted-foreground", children: [
-        '"',
-        comment,
-        '"'
-      ] }),
-      post.text && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "whitespace-pre-wrap text-sm", children: post.text }),
-      post.image && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "aspect-square overflow-hidden rounded-lg bg-muted/40 dark:bg-zinc-800/50", children: isRenderableMediaUrl(post.image) ? /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: resolveMediaUrl(post.image), className: "h-full w-full object-cover", alt: "" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-full items-center justify-center text-5xl", children: post.image }) }),
-      post.video && isRenderableMediaUrl(post.video) && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "overflow-hidden rounded-lg bg-muted/50 dark:bg-zinc-800/60", children: /* @__PURE__ */ jsxRuntimeExports.jsx("video", { src: resolveMediaUrl(post.video), controls: true, className: "w-full", playsInline: true, preload: "metadata" }) }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between pt-2 text-xs text-muted-foreground", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-4", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Heart, { size: 14, className: liked ? "fill-current text-red-500" : "" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: post.likes.length })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(MessageCircle, { size: 14 }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: post.comments.length })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Repeat2, { size: 14, className: reposted ? "text-emerald-500" : "" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: post.reposts.length })
-          ] })
-        ] }),
-        post.type === "reel" && /* @__PURE__ */ jsxRuntimeExports.jsx(Film, { size: 14 })
-      ] })
-    ] })
-  ] });
-}
-function SharedStoryChatPreview({ storyId, comment }) {
-  const { state } = useApp();
-  const story = state.stories.find((s) => s.id === storyId);
-  const author = story ? userById(state, story.userId) : null;
-  if (!story || !author) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-2xl bg-muted/40 p-3 dark:bg-zinc-900/60", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-center text-xs text-muted-foreground", children: "ستوري غير متوفر" }) });
-  }
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "w-full max-w-[min(96vw,360px)] overflow-hidden rounded-none border-0 bg-transparent shadow-none ring-0", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 px-1 py-1.5", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: author.username, src: author.avatar, size: 22 }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1 text-start", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1 truncate", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "truncate text-xs font-semibold", children: [
-            "@",
-            author.username
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(VerifiedMarkForUser, { user: author, size: 12 })
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[10px] text-muted-foreground", children: "ستوري" })
-      ] })
-    ] }),
-    comment && /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "px-1 pb-1.5 text-[11px] italic text-muted-foreground", children: [
-      '"',
-      comment,
-      '"'
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "px-0 pb-1", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "relative w-full overflow-hidden rounded-none bg-transparent", children: (() => {
-      const sm = normalizeStoryMedia(story);
-      if (sm.hasVideo) {
-        return /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "video",
-          {
-            src: sm.videoUrl,
-            className: "block max-h-[min(52vh,400px)] min-h-[220px] w-full object-cover object-center",
-            muted: true,
-            playsInline: true,
-            preload: "metadata"
-          }
-        );
-      }
-      if (sm.hasImage) {
-        return /* @__PURE__ */ jsxRuntimeExports.jsx(
-          "img",
-          {
-            src: sm.imageUrl,
-            alt: "",
-            className: "block max-h-[min(52vh,400px)] min-h-[220px] w-full object-cover object-center"
-          }
-        );
-      }
-      return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex min-h-[220px] items-center justify-center text-5xl", children: sm.emojiFallback || "📷" });
-    })() }) })
-  ] });
-}
-function SharedGroupInvitePreview({
-  inviteCode,
-  onJoined
-}) {
-  const { joinGroupByInviteCode } = useApp();
-  const [busy, setBusy] = reactExports.useState(false);
-  const [info, setInfo] = reactExports.useState(null);
-  const [err, setErr] = reactExports.useState("");
-  reactExports.useEffect(() => {
-    const token = getApiToken();
-    if (!token || !apiBackendEnabled()) {
-      setErr("الخادم غير متصل");
-      return;
-    }
-    let cancelled = false;
-    void (async () => {
-      const row = await apiFetchGroupInvitePreview(token, inviteCode);
-      if (cancelled) return;
-      if (row) {
-        setInfo({
-          name: row.name,
-          avatar: row.avatar,
-          memberCount: row.memberCount,
-          isPublicGroup: row.isPublicGroup,
-          alreadyMember: row.alreadyMember
-        });
-        setErr("");
-      } else {
-        setErr("رابط مجموعة غير صالح");
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [inviteCode]);
-  const join = async () => {
-    setBusy(true);
-    setErr("");
-    const res = await joinGroupByInviteCode(inviteCode);
-    setBusy(false);
-    if (!res.ok) {
-      setErr(res.error);
-      return;
-    }
-    onJoined?.(res.chatId);
-  };
-  if (err && !info) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-2xl bg-muted/40 p-3 text-center text-xs text-muted-foreground", children: err });
-  }
-  if (!info) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-2xl bg-muted/40 p-3 text-center text-xs text-muted-foreground", children: "…" });
-  }
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "w-full max-w-[min(96vw,340px)] overflow-hidden rounded-2xl border border-border bg-card p-3 shadow-sm", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: info.name, src: info.avatar, size: 52 }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1 text-start", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "truncate font-semibold", children: info.name }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-0.5 flex items-center gap-1 text-xs text-muted-foreground", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(Users, { size: 14 }),
-          info.memberCount,
-          " عضو"
-        ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[10px] text-muted-foreground mt-0.5", children: info.isPublicGroup ? "مجموعة عامة" : "مجموعة خاصة — طلب انضمام" })
-      ] })
-    ] }),
-    !info.alreadyMember && /* @__PURE__ */ jsxRuntimeExports.jsx(
-      "button",
-      {
-        type: "button",
-        disabled: busy,
-        onClick: () => void join(),
-        className: "mt-3 w-full rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-50",
-        children: busy ? "…" : info.isPublicGroup ? "انضمام للمجموعة" : "طلب انضمام"
-      }
-    ),
-    info.alreadyMember && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-3 text-center text-xs text-primary font-medium", children: "أنت عضو في هذه المجموعة" }),
-    err && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-center text-xs text-destructive", children: err })
-  ] });
-}
-function parseLegacyNoteReply(content) {
-  const m = content.match(/^↩️ رد على نوتك:\n«([\s\S]*?)»\n—\n([\s\S]*)$/);
-  if (!m) return null;
-  return { noteText: m[1], reply: m[2] };
-}
-function ChatNoteReplyBubble({ message, mine }) {
-  const ctx = message.replyContext?.kind === "note" ? message.replyContext : null;
-  const legacy = !ctx ? parseLegacyNoteReply(message.content) : null;
-  const noteText = ctx?.noteText ?? legacy?.noteText;
-  const replyText = ctx ? message.content : legacy?.reply ?? message.content;
-  if (!noteText) return null;
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex w-fit max-w-[75%] min-w-0 flex-col gap-2", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs(
-      "div",
-      {
-        className: "rounded-2xl border px-3 py-2 text-start text-xs " + (mine ? "border-white/20 bg-white/10" : "border-border bg-muted/50"),
-        children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mb-1 font-semibold opacity-80", children: "نوتك" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "whitespace-pre-wrap leading-relaxed", children: noteText })
-        ]
-      }
-    ),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { dir: "auto", className: "select-none whitespace-pre-wrap break-words text-[15px] leading-relaxed", children: replyText })
-  ] });
-}
-function ChatStoryReplyStack({
-  message,
-  shareText
-}) {
-  const { state } = useApp();
-  const storyId = message.replyContext?.kind === "story" ? message.replyContext.storyId : message.content;
-  const story = state.stories.find((s) => s.id === storyId);
-  const author = story ? userById(state, story.userId) : null;
-  if (!story || !author) {
-    return shareText ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "select-none text-sm", children: shareText }) : null;
-  }
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex w-full max-w-[min(96vw,360px)] flex-col gap-2", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsxs(
-      "button",
-      {
-        type: "button",
-        className: "overflow-hidden rounded-2xl border border-border/80 bg-muted/40 text-start shadow-sm active:scale-[0.99]",
-        onClick: (e) => {
-          e.stopPropagation();
-          openStoryViewer(story.userId, story.id);
-        },
-        children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 border-b border-border/60 px-2.5 py-1.5", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: author.username, src: author.avatar, size: 24 }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-xs font-semibold", children: [
-              "@",
-              author.username
-            ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ms-auto text-[10px] text-muted-foreground", children: "ستوري · اضغط للفتح" })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "relative aspect-[9/14] max-h-44 w-full bg-black", children: (() => {
-            const sm = normalizeStoryMedia(story);
-            if (sm.hasVideo) {
-              return /* @__PURE__ */ jsxRuntimeExports.jsx(
-                "video",
-                {
-                  src: sm.videoUrl,
-                  className: "h-full w-full object-cover",
-                  muted: true,
-                  playsInline: true,
-                  preload: "metadata"
-                }
-              );
-            }
-            if (sm.hasImage) {
-              return /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: sm.imageUrl, alt: "", className: "h-full w-full object-cover" });
-            }
-            return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-full w-full items-center justify-center text-4xl", children: sm.emojiFallback || "📷" });
-          })() })
-        ]
-      }
-    ),
-    shareText && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { dir: "auto", className: "whitespace-pre-wrap px-0.5 text-sm leading-relaxed", children: shareText })
-  ] });
-}
-const SWIPE_THRESHOLD = 48;
-const SWIPE_MAX = 76;
-function ChatSwipeMessageRowInner({
-  message,
-  mine,
-  avatarName,
-  avatarSrc,
-  reservePeerAvatarSlot,
-  isQuran,
-  children,
-  onSwipeReply,
-  onAvatarClick,
-  onPointerDown,
-  onPointerMove,
-  onPointerUp
-}) {
-  const [dragX, setDragX] = reactExports.useState(0);
-  const dragXRef = reactExports.useRef(0);
-  const swipeRef = reactExports.useRef(null);
-  const handleDown = reactExports.useCallback(
-    (e) => {
-      swipeRef.current = { x: e.clientX, y: e.clientY, active: true };
-      dragXRef.current = 0;
-      setDragX(0);
-      onPointerDown(e, message);
-    },
-    [message, onPointerDown]
-  );
-  const handleMove = reactExports.useCallback(
-    (e) => {
-      const s = swipeRef.current;
-      if (s?.active) {
-        const dx = e.clientX - s.x;
-        const dy = e.clientY - s.y;
-        if (dx > 6 && Math.abs(dx) > Math.abs(dy) * 1.1) {
-          if (dragXRef.current === 0) {
-            try {
-              e.currentTarget.setPointerCapture(e.pointerId);
-            } catch {
-            }
-          }
-          e.stopPropagation();
-          const next = Math.min(SWIPE_MAX, dx * 0.92);
-          dragXRef.current = next;
-          setDragX(next);
-          return;
-        }
-        if (Math.abs(dy) > 18) {
-          swipeRef.current = { ...s, active: false };
-          dragXRef.current = 0;
-          setDragX(0);
-        }
-      }
-      onPointerMove(e);
-    },
-    [onPointerMove]
-  );
-  const handleUp = reactExports.useCallback(
-    (e) => {
-      const dx = dragXRef.current;
-      if (dx >= SWIPE_THRESHOLD) onSwipeReply();
-      dragXRef.current = 0;
-      setDragX(0);
-      swipeRef.current = null;
-      try {
-        e.currentTarget.releasePointerCapture(e.pointerId);
-      } catch {
-      }
-      onPointerUp(e, message);
-    },
-    [message, onPointerUp, onSwipeReply]
-  );
-  const replyOpacity = dragX > 0 ? Math.min(1, dragX / SWIPE_THRESHOLD) : 0;
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(
-    "div",
-    {
-      "data-mine": mine ? "1" : "0",
-      className: "chat-msg-row chat-msg-enter w-full touch-manipulation select-none",
-      style: {
-        direction: "ltr",
-        display: "flex",
-        justifyContent: mine ? "flex-end" : "flex-start"
-      },
-      children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-        "div",
-        {
-          className: "flex w-max max-w-[min(75vw,280px)] items-end gap-2 " + (mine ? "" : "flex-row"),
-          onPointerDown: handleDown,
-          onPointerMove: handleMove,
-          onPointerUp: handleUp,
-          onPointerCancel: handleUp,
-          onContextMenu: (e) => e.preventDefault(),
-          onSelectStart: (e) => e.preventDefault(),
-          onDragStart: (e) => e.preventDefault(),
-          children: [
-            !mine && reservePeerAvatarSlot && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "mb-0.5 h-7 w-7 shrink-0 self-end", "aria-hidden": true }),
-            !mine && !reservePeerAvatarSlot && avatarName != null && avatarName !== "" && (onAvatarClick ? /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "button",
-              {
-                type: "button",
-                className: "mb-0.5 shrink-0 self-end touch-manipulation rounded-full transition active:scale-95 hover:opacity-90",
-                "aria-label": `@${avatarName}`,
-                onPointerDown: (e) => e.stopPropagation(),
-                onClick: (e) => {
-                  e.stopPropagation();
-                  onAvatarClick();
-                },
-                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: avatarName, src: avatarSrc, size: 28 })
-              }
-            ) : /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: avatarName, src: avatarSrc, size: 28, className: "mb-0.5 shrink-0 self-end" })),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative w-max max-w-full", children: [
-              dragX > 6 && /* @__PURE__ */ jsxRuntimeExports.jsx(
-                "span",
-                {
-                  className: "pointer-events-none absolute top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full " + (mine ? "right-full mr-2" : "left-0 -translate-x-[calc(100%+6px)]") + " " + (isQuran ? "bg-zinc-800 text-zinc-300" : "bg-zinc-200 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-200"),
-                  style: { opacity: replyOpacity },
-                  "aria-hidden": true,
-                  children: /* @__PURE__ */ jsxRuntimeExports.jsx(Reply, { size: 16, strokeWidth: 2.25 })
-                }
-              ),
-              /* @__PURE__ */ jsxRuntimeExports.jsx(
-                "div",
-                {
-                  className: "relative w-max max-w-full will-change-transform",
-                  style: {
-                    transform: dragX > 0 ? `translateX(${dragX}px)` : void 0,
-                    transition: dragX > 0 ? "none" : "transform 0.22s cubic-bezier(0.32, 0.72, 0, 1)"
-                  },
-                  children
-                }
-              )
-            ] })
-          ]
-        }
-      )
-    }
-  );
-}
-function messageChanged(a, b) {
-  return a.id !== b.id || a.status !== b.status || a.content !== b.content || a.type !== b.type || JSON.stringify(a.reactions) !== JSON.stringify(b.reactions);
-}
-const ChatSwipeMessageRow = reactExports.memo(ChatSwipeMessageRowInner, (prev, next) => {
-  if (messageChanged(prev.message, next.message)) return false;
-  if (prev.mine !== next.mine) return false;
-  if (prev.avatarName !== next.avatarName) return false;
-  if (prev.avatarSrc !== next.avatarSrc) return false;
-  if (prev.reservePeerAvatarSlot !== next.reservePeerAvatarSlot) return false;
-  if (prev.isQuran !== next.isQuran) return false;
-  if (prev.onPointerDown !== next.onPointerDown) return false;
-  if (prev.onPointerMove !== next.onPointerMove) return false;
-  if (prev.onPointerUp !== next.onPointerUp) return false;
-  return true;
-});
-function ChatMessageStatus({
-  status,
-  mine,
-  compact = false
-}) {
-  if (!mine || !status) return null;
-  const size = compact ? 13 : 14;
-  const readClass = "text-[#53bdeb]";
-  const mutedClass = mine ? "text-white/75" : "text-muted-foreground";
-  if (status === "failed") {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx(
-      CircleAlert,
-      {
-        size,
-        className: "text-red-400",
-        strokeWidth: 2.25,
-        "aria-label": "فشل الإرسال",
-        title: "فشل الإرسال — تحقق من اتصالك"
-      }
-    );
-  }
-  if (status === "read") {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx(CheckCheck, { size, className: readClass, strokeWidth: 2.25, "aria-label": "مقروء" });
-  }
-  if (status === "delivered") {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx(CheckCheck, { size, className: mutedClass, strokeWidth: 2.25, "aria-label": "تم التسليم" });
-  }
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(Check, { size, className: mutedClass, strokeWidth: 2.25, "aria-label": "مرسل" });
-}
-function ChatListOutgoingStatusIcon({ status }) {
-  if (status === "failed") {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx(CircleAlert, { size: 12, className: "shrink-0 text-red-400", strokeWidth: 2.25, "aria-hidden": true });
-  }
-  if (!status || status === "sent") {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx(Check, { size: 12, className: "shrink-0 text-muted-foreground/70", strokeWidth: 2.25, "aria-hidden": true });
-  }
-  if (status === "read") {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx(CheckCheck, { size: 12, className: "shrink-0 text-[#53bdeb]", strokeWidth: 2.25, "aria-hidden": true });
-  }
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(CheckCheck, { size: 12, className: "shrink-0 text-muted-foreground/70", strokeWidth: 2.25, "aria-hidden": true });
 }
 function createLazyMeasurementsView(count2, flat, getItemKey) {
   const cache2 = new Array(count2);
@@ -29182,6 +22729,7420 @@ function useVirtualizer(options) {
     ...options
   });
 }
+function LazyInView({
+  children,
+  fallback,
+  rootMargin = "280px 0px",
+  minHeight = "min-h-[12rem]"
+}) {
+  const ref = reactExports.useRef(null);
+  const [visible, setVisible] = reactExports.useState(false);
+  reactExports.useEffect(() => {
+    const el = ref.current;
+    if (!el || visible) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setVisible(true);
+          io.disconnect();
+        }
+      },
+      { root: null, rootMargin, threshold: 0.01 }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [rootMargin, visible]);
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { ref, className: visible ? void 0 : minHeight, children: visible ? children : fallback ?? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-full " + minHeight + " bg-muted/30" }) });
+}
+function postFeedSignature(post) {
+  return [
+    post.id,
+    post.createdAt,
+    post.text ?? "",
+    post.image ?? "",
+    post.video ?? "",
+    post.type ?? "",
+    post.likes?.length ?? 0,
+    post.comments?.length ?? 0,
+    post.reposts?.length ?? 0
+  ].join("|");
+}
+const dict = {
+  ar: {
+    home: "الرئيسية",
+    search: "البحث",
+    reels: "ريلز",
+    chat: "الرسائل",
+    profile: "البروفايل",
+    settings: "الإعدادات",
+    notifications: "الإشعارات",
+    create: "إنشاء",
+    post: "منشور",
+    tweet: "تغريدة",
+    story: "ستوري",
+    follow: "متابعة",
+    following: "متابَع",
+    followingDone: "تمت المتابعة",
+    mutualFriends: "أصدقاء",
+    followBack: "رد المتابعة",
+    followers: "متابعون",
+    followsCount: "يتابع",
+    message: "رسالة",
+    edit: "تعديل البروفايل",
+    share: "مشاركة البروفايل",
+    block: "حظر",
+    unblock: "إلغاء الحظر",
+    private: "حساب خاص",
+    darkMode: "الوضع الليلي",
+    language: "اللغة",
+    logout: "تسجيل الخروج",
+    accountInfo: "معلومات الحساب",
+    changePwd: "تغيير كلمة المرور",
+    help: "مركز المساعدة",
+    about: "عن التطبيق",
+    requests: "طلبات الرسائل",
+    group: "مجموعة",
+    channel: "قناة",
+    note: "نوت",
+    addNote: "أضف نوت",
+    members: "أعضاء",
+    leave: "خروج من القناة",
+    searchPlaceholder: "ابحث...",
+    trending: "الرائج",
+    quranChannel: "بوت طارق رمدي",
+    quranDesc: "أدعية وتذكير",
+    yourStory: "قصتك",
+    noPosts: "لا يوجد منشورات",
+    noChats: "لا توجد محادثات",
+    noReels: "لا يوجد ريلز",
+    comments: "تعليقات",
+    likes: "إعجابات",
+    reposts: "إعادات نشر",
+    send: "إرسال",
+    typeMessage: "اكتب رسالة...",
+    closeFriends: "الأصدقاء المقربون",
+    audienceAll: "الجميع",
+    audienceClose: "أصدقاء مقربون",
+    accountPrivate: "حسابك الآن خاص",
+    locked: "محتوى مقفل — تابع لرؤيته",
+    save: "حفظ",
+    cancel: "إلغاء",
+    close: "إغلاق",
+    delete: "حذف",
+    accept: "قبول",
+    create_: "إنشاء",
+    next: "التالي",
+    accounts: "الحسابات",
+    addAccount: "إضافة حساب",
+    newGroup: "مجموعة جديدة",
+    newChannel: "قناة جديدة",
+    onlyOwner: "فقط مالك القناة يمكنه الكتابة",
+    inviteHost: "دعوة كمساهم",
+    removeHost: "إزالة مساهم",
+    blocked: "تم الحظر",
+    privacy: "الخصوصية والأمان",
+    preferences: "التفضيلات",
+    support: "الدعم",
+    addMembers: "اختر الأعضاء (٢ على الأقل)",
+    groupPickTwoHint: "اختر عضوين على الأقل لإنشاء المجموعة",
+    groupName: "اسم المجموعة",
+    channelName: "اسم القناة",
+    typing: "يكتب...",
+    recording: "جاري التسجيل...",
+    stop: "إيقاف",
+    publish: "نشر",
+    attach: "إرفاق",
+    msgReply: "رد",
+    msgForward: "إعادة توجيه",
+    msgCopy: "نسخ",
+    msgDeleteForYou: "حذف عندك فقط",
+    msgReport: "إبلاغ",
+    msgMore: "المزيد",
+    msgCopied: "تم النسخ",
+    msgReportThanks: "تم استلام البلاغ",
+    msgMoreSoon: "المزيد قريباً",
+    msgCloseMenu: "إغلاق القائمة",
+    msgForwardedFrom: "معاد توجيه من",
+    msgPin: "تثبيت",
+    msgUnpin: "إلغاء التثبيت",
+    stickerAddFavorite: "إضافة إلى المفضلة",
+    stickerFavoriteAdded: "تمت الإضافة للمفضلة",
+    forwardPickChat: "إعادة توجيه إلى…",
+    forwardEmpty: "لا محادثات مطابقة",
+    pinnedBar: "مثبت",
+    chatListPin: "تثبيت المحادثة في الأعلى",
+    chatListUnpin: "إلغاء تثبيت المحادثة",
+    chatMenuDelete: "حذف",
+    chatMenuDeleteConfirm: "حذف هذه المحادثة من جهازك؟",
+    msgRequestOpenMessage: "عرض الرسالة",
+    msgRequestAcceptOpen: "قبول والدردشة",
+    msgRequestDecline: "رفض",
+    chatMenuMute: "كتم الإشعارات",
+    chatMenuUnmute: "إلغاء كتم الإشعارات",
+    chatRepliedToYou: "ردّ عليك",
+    chatRepliedTo: "رد على",
+    chatReply: "رد",
+    chatReplyingTo: "الرد على",
+    groupChangeNameImage: "تغيير الاسم والصورة",
+    groupAdd: "إضافة",
+    groupSearch: "بحث",
+    groupMute: "كتم",
+    groupOptions: "خيارات",
+    groupTheme: "السمات والملصقات",
+    groupInviteLink: "رابط الدعوة",
+    groupPeople: "الأعضاء",
+    groupYou: "أنت",
+    groupInvited: "منضمون",
+    groupRequireJoinApproval: "يتطلب الموافقة للانضمام",
+    groupFollow: "متابعة",
+    groupFollowing: "متابَع",
+    groupAdmin: "مشرف",
+    groupPendingJoin: "طلبات انضمام",
+    groupNicknames: "الألقاب",
+    groupPrivacySafety: "الخصوصية والأمان",
+    groupThemeDefault: "الوضع الافتراضي",
+    groupSomethingNotWorking: "حدث خطأ ما",
+    groupCreateNew: "إنشاء محادثة جماعية جديدة",
+    groupSharedMedia: "الوسائط المشتركة",
+    chatRowLongPressHint: "اضغط مطولاً على المحادثة للخيارات (تثبيت، كتم، حذف)",
+    settingsActivity: "الإعدادات والنشاط",
+    accountsCenter: "مركز الحسابات",
+    accountsCenterDesc: "إدارة تجربتك عبر Retweet بحساباتك المرتبطة.",
+    activeAccountsAdd: "الحسابات النشطة / إضافة حساب",
+    verifyAccount: "توثيق الحساب",
+    verifiedAccount: "حسابك موثّق",
+    howYouUseApp: "طريقة استخدام التطبيق",
+    saved: "العناصر المحفوظة",
+    archive: "أرشيف القصص",
+    timeManagement: "إدارة الوقت",
+    whoCanSee: "من يمكنه رؤية محتواك",
+    allowStoryReplies: "السماح بالرد على ستورياتي",
+    showLikesOnProfile: "إظهار الإعجابات والمحفوظات في ملفي",
+    hideFollowLists: "إخفاء المتابعين والمتابَعين",
+    blockedAccounts: "الحسابات المحظورة",
+    noBlockedAccounts: "لا توجد حسابات محظورة",
+    unblockUser: "فك الحظر",
+    verifyHint: "راجع أن معلومات حسابك صحيحة، ثم اضغط تأكيد لإكمال التوثيق.",
+    confirmVerify: "تأكيد",
+    pwdCurrent: "كلمة المرور الحالية",
+    pwdNew: "كلمة المرور الجديدة",
+    pwdChanged: "تم تغيير كلمة المرور",
+    pwdChangeFailed: "تعذر التغيير",
+    comingSoonPanel: "هذه الشاشة قيد الإعداد — ستتوفر قريباً.",
+    closeFriendsHint: "شارك القصص والمنشورات مع أصدقائك المقربين فقط.",
+    closeFriendsEmpty: "تابِ حسابات لإضافتها كأصدقاء مقربين.",
+    notificationsSettings: "إعدادات الإشعارات",
+    timeMgmtHint: "تذكيرات الاستخدام وحدود وقت التصفّح.",
+    savedHint: "المنشورات والريلز التي حفظتها.",
+    archiveHint: "قصصك التي انتهت صلاحيتها (٢٤ ساعة). يمكنك إعادة نشرها أو حفظها في الهايلايت.",
+    archiveEmpty: "لا توجد قصص في الأرشيف بعد.",
+    archiveEmptyDetail: "عند انتهاء صلاحية قصة (بعد ٢٤ ساعة) تُنقل تلقائياً إلى هنا.",
+    storiesArchive: "أرشيف القصص",
+    addToCloseFriends: "إضافة",
+    privacyPolicy: "سياسة الخصوصية",
+    deleteAccount: "حذف الحساب",
+    deleteAccountHint: "سيُحذف حسابك وجميع منشوراتك ورسائلك نهائياً. لا يمكن التراجع.",
+    deleteAccountConfirmLabel: "اكتب DELETE للتأكيد",
+    deleteAccountPassword: "كلمة المرور",
+    deleteAccountDone: "تم حذف الحساب",
+    deleteAccountFailed: "تعذر حذف الحساب"
+  },
+  en: {
+    home: "Home",
+    search: "Search",
+    reels: "Reels",
+    chat: "Messages",
+    profile: "Profile",
+    settings: "Settings",
+    notifications: "Notifications",
+    create: "Create",
+    post: "Post",
+    tweet: "Tweet",
+    story: "Story",
+    follow: "Follow",
+    following: "Following",
+    followingDone: "Following",
+    mutualFriends: "Friends",
+    followBack: "Follow back",
+    followers: "Followers",
+    followsCount: "Following",
+    message: "Message",
+    edit: "Edit Profile",
+    share: "Share Profile",
+    block: "Block",
+    unblock: "Unblock",
+    private: "Private Account",
+    darkMode: "Dark Mode",
+    language: "Language",
+    logout: "Log out",
+    accountInfo: "Account Info",
+    changePwd: "Change Password",
+    help: "Help Center",
+    about: "About",
+    requests: "Message Requests",
+    group: "Group",
+    channel: "Channel",
+    note: "Note",
+    addNote: "Add a note",
+    members: "members",
+    leave: "Leave channel",
+    searchPlaceholder: "Search...",
+    trending: "Trending",
+    quranChannel: "Quran Channel",
+    quranDesc: "Du'as & Hadith",
+    yourStory: "Your story",
+    noPosts: "No posts yet",
+    noChats: "No conversations",
+    noReels: "No reels yet",
+    comments: "Comments",
+    likes: "Likes",
+    reposts: "Reposts",
+    send: "Send",
+    typeMessage: "Message...",
+    closeFriends: "Close Friends",
+    audienceAll: "Everyone",
+    audienceClose: "Close friends",
+    accountPrivate: "Your account is now private",
+    locked: "Locked — follow to view",
+    save: "Save",
+    cancel: "Cancel",
+    close: "Close",
+    delete: "Delete",
+    accept: "Accept",
+    create_: "Create",
+    next: "Next",
+    accounts: "Accounts",
+    addAccount: "Add account",
+    newGroup: "New group",
+    newChannel: "New channel",
+    onlyOwner: "Only the channel owner can post",
+    inviteHost: "Invite as host",
+    removeHost: "Remove host",
+    blocked: "Blocked",
+    privacy: "Privacy & Security",
+    preferences: "Preferences",
+    support: "Support",
+    addMembers: "Pick members (min 2)",
+    groupPickTwoHint: "Select at least 2 people to create a group",
+    groupName: "Group name",
+    channelName: "Channel name",
+    typing: "typing...",
+    recording: "Recording...",
+    stop: "Stop",
+    publish: "Publish",
+    attach: "Attach",
+    msgReply: "Reply",
+    msgForward: "Forward",
+    msgCopy: "Copy",
+    msgDeleteForYou: "Delete for you",
+    msgReport: "Report",
+    msgMore: "More",
+    msgCopied: "Copied",
+    msgReportThanks: "Report received",
+    msgMoreSoon: "More options coming soon",
+    msgCloseMenu: "Close menu",
+    msgForwardedFrom: "Forwarded from",
+    msgPin: "Pin",
+    msgUnpin: "Unpin",
+    stickerAddFavorite: "Add to favorites",
+    stickerFavoriteAdded: "Saved to sticker favorites",
+    forwardPickChat: "Forward to…",
+    forwardEmpty: "No matching chats",
+    pinnedBar: "Pinned",
+    chatListPin: "Pin chat to top",
+    chatListUnpin: "Unpin chat",
+    chatMenuDelete: "Delete",
+    chatMenuDeleteConfirm: "Delete this conversation from your device?",
+    msgRequestOpenMessage: "View message",
+    msgRequestAcceptOpen: "Accept and chat",
+    msgRequestDecline: "Decline",
+    chatMenuMute: "Mute notifications",
+    chatMenuUnmute: "Unmute notifications",
+    chatRepliedToYou: "Replied to you",
+    chatRepliedTo: "Replied to",
+    chatReply: "Reply",
+    chatReplyingTo: "Replying to",
+    groupChangeNameImage: "Change name and image",
+    groupAdd: "Add",
+    groupSearch: "Search",
+    groupMute: "Mute",
+    groupOptions: "Options",
+    groupTheme: "Theme & stickers",
+    groupInviteLink: "Invite link",
+    groupPeople: "People",
+    groupYou: "You",
+    groupInvited: "Invited",
+    groupRequireJoinApproval: "Require approval to join",
+    groupFollow: "Follow",
+    groupFollowing: "Following",
+    groupAdmin: "Admin",
+    groupPendingJoin: "Join requests",
+    groupNicknames: "Nicknames",
+    groupPrivacySafety: "Privacy & safety",
+    groupThemeDefault: "Default",
+    groupSomethingNotWorking: "Something isn't working",
+    groupCreateNew: "Create a new group chat",
+    groupSharedMedia: "Shared media",
+    chatRowLongPressHint: "Long-press the chat row for options (pin, mute, delete)",
+    settingsActivity: "Settings and activity",
+    accountsCenter: "Accounts Center",
+    accountsCenterDesc: "Manage your experience across linked Retweet accounts.",
+    activeAccountsAdd: "Active accounts / Add account",
+    verifyAccount: "Account verification",
+    verifiedAccount: "Your account is verified",
+    howYouUseApp: "How you use Retweet",
+    saved: "Saved",
+    archive: "Stories archive",
+    timeManagement: "Time management",
+    whoCanSee: "Who can see your content",
+    allowStoryReplies: "Allow replies to my stories",
+    showLikesOnProfile: "Show likes and saved on my profile",
+    hideFollowLists: "Hide followers and following lists",
+    blockedAccounts: "Blocked accounts",
+    noBlockedAccounts: "No blocked accounts",
+    unblockUser: "Unblock",
+    verifyHint: "Make sure your account details are correct, then confirm to verify.",
+    confirmVerify: "Confirm",
+    pwdCurrent: "Current password",
+    pwdNew: "New password",
+    pwdChanged: "Password changed",
+    pwdChangeFailed: "Could not change password",
+    comingSoonPanel: "This screen is being built — coming soon.",
+    closeFriendsHint: "Share stories and posts with close friends only.",
+    closeFriendsEmpty: "Follow accounts to add them as close friends.",
+    notificationsSettings: "Notification settings",
+    timeMgmtHint: "Usage reminders and time limits.",
+    savedHint: "Posts and reels you saved.",
+    archiveHint: "Stories that expired after 24 hours. Repost or save to highlights.",
+    archiveEmpty: "No stories in your archive yet.",
+    archiveEmptyDetail: "When a story expires after 24 hours, it moves here automatically.",
+    storiesArchive: "Stories archive",
+    addToCloseFriends: "Add",
+    privacyPolicy: "Privacy Policy",
+    deleteAccount: "Delete account",
+    deleteAccountHint: "Your account, posts, and messages will be permanently deleted. This cannot be undone.",
+    deleteAccountConfirmLabel: "Type DELETE to confirm",
+    deleteAccountPassword: "Password",
+    deleteAccountDone: "Account deleted",
+    deleteAccountFailed: "Could not delete account"
+  }
+};
+function useT() {
+  const lang = reactExports.useContext(AppLanguageCtx);
+  return (k) => dict[lang][k] ?? k;
+}
+function PostOptionsMenu({
+  post,
+  onClose,
+  onDeleted
+}) {
+  const { currentUser, deletePost } = useApp();
+  const t = useT();
+  const panelRef = reactExports.useRef(null);
+  const isOwner = currentUser?.id === post.userId;
+  reactExports.useEffect(() => {
+    const onDoc = (e) => {
+      if (panelRef.current && !panelRef.current.contains(e.target)) onClose();
+    };
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
+  if (!isOwner) return null;
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "div",
+    {
+      ref: panelRef,
+      dir: "rtl",
+      className: "absolute end-2 top-full z-50 mt-1 min-w-[11rem] overflow-hidden rounded-xl border border-border bg-popover py-1 text-sm shadow-lg",
+      role: "menu",
+      children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "button",
+        {
+          type: "button",
+          role: "menuitem",
+          className: "flex w-full flex-row items-center gap-2 px-4 py-2.5 text-start text-destructive hover:bg-destructive/10",
+          onClick: () => {
+            const label = post.type === "tweet" ? "حذف هذه التغريدة؟" : post.type === "reel" ? "حذف هذا الريل؟" : "حذف هذا المنشور؟";
+            if (!window.confirm(label)) return;
+            deletePost(post.id);
+            onDeleted?.();
+            onClose();
+          },
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 18, className: "shrink-0" }),
+            t("delete")
+          ]
+        }
+      )
+    }
+  );
+}
+function CommentOptionsMenu({
+  postId,
+  commentId,
+  authorId,
+  onClose
+}) {
+  const { currentUser, deleteComment } = useApp();
+  const t = useT();
+  const panelRef = reactExports.useRef(null);
+  const isOwner = currentUser?.id === authorId;
+  reactExports.useEffect(() => {
+    const onDoc = (e) => {
+      if (panelRef.current && !panelRef.current.contains(e.target)) onClose();
+    };
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
+  if (!isOwner) return null;
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "div",
+    {
+      ref: panelRef,
+      dir: "rtl",
+      className: "absolute end-0 top-full z-50 mt-1 min-w-[10rem] overflow-hidden rounded-xl border border-border bg-popover py-1 text-sm shadow-lg",
+      role: "menu",
+      children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "button",
+        {
+          type: "button",
+          role: "menuitem",
+          className: "flex w-full flex-row items-center gap-2 px-3 py-2 text-start text-destructive hover:bg-destructive/10",
+          onClick: () => {
+            if (!window.confirm("حذف هذا التعليق؟")) return;
+            deleteComment(postId, commentId);
+            onClose();
+          },
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 16, className: "shrink-0" }),
+            t("delete")
+          ]
+        }
+      )
+    }
+  );
+}
+function formatRelativeTime(createdAt, lang = "ar") {
+  const sec = Math.max(0, Math.floor((Date.now() - createdAt) / 1e3));
+  if (lang === "en") {
+    if (sec < 60) return "just now";
+    const m2 = Math.floor(sec / 60);
+    if (m2 < 60) return m2 === 1 ? "1 min ago" : `${m2} min ago`;
+    const h2 = Math.floor(m2 / 60);
+    if (h2 < 24) return h2 === 1 ? "1 hour ago" : `${h2} hours ago`;
+    const d2 = Math.floor(h2 / 24);
+    if (d2 < 7) return d2 === 1 ? "1 day ago" : `${d2} days ago`;
+    const w2 = Math.floor(d2 / 7);
+    if (w2 < 5) return w2 === 1 ? "1 week ago" : `${w2} weeks ago`;
+    const mo2 = Math.floor(d2 / 30);
+    if (mo2 < 12) return mo2 <= 1 ? "1 month ago" : `${mo2} months ago`;
+    const y2 = Math.floor(d2 / 365);
+    return y2 <= 1 ? "1 year ago" : `${y2} years ago`;
+  }
+  if (sec < 45) return "الآن";
+  if (sec < 90) return "منذ دقيقة";
+  const m = Math.floor(sec / 60);
+  if (m < 60) return m === 1 ? "منذ دقيقة" : `منذ ${m} دقائق`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return h === 1 ? "منذ ساعة" : `منذ ${h} ساعات`;
+  const d = Math.floor(h / 24);
+  if (d === 1) return "منذ يوم";
+  if (d < 7) return `منذ ${d} أيام`;
+  const w = Math.floor(d / 7);
+  if (w === 1) return "منذ أسبوع";
+  if (w < 5) return `منذ ${w} أسابيع`;
+  const mo = Math.floor(d / 30);
+  if (mo <= 1) return "منذ شهر";
+  if (mo < 12) return `منذ ${mo} أشهر`;
+  const y = Math.floor(d / 365);
+  return y <= 1 ? "منذ سنة" : `منذ ${y} سنوات`;
+}
+function NoteReplySheet({ note, contentLabelAr, onClose, onSent }) {
+  const { state: state2, replyToMediaNoteAsDm, isGuest } = useApp();
+  const [text, setText] = reactExports.useState("");
+  if (!note) return null;
+  const author = userById$1(state2, note.authorId);
+  const send = () => {
+    if (isGuest) {
+      notifyGuestActionBlocked();
+      return;
+    }
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    const res = replyToMediaNoteAsDm({
+      noteAuthorId: note.authorId,
+      noteText: note.text,
+      replyText: trimmed,
+      contentLabelAr
+    });
+    if (res) {
+      setText("");
+      onSent(res.chatId);
+      onClose();
+    }
+  };
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-[120] bg-black/50 flex items-end justify-center", onClick: onClose, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "div",
+    {
+      className: "w-full max-w-md bg-background rounded-t-3xl p-4 pb-6 shadow-xl border border-border",
+      onClick: (e) => e.stopPropagation(),
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between mb-3", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "font-semibold text-sm", children: "رد على النوت في الخاص" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onClose, className: "p-2 rounded-full hover:bg-secondary", "aria-label": "إغلاق", children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 20 }) })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-xs text-muted-foreground mb-2", children: [
+          "@",
+          author?.username,
+          " — ",
+          contentLabelAr
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-sm bg-secondary/80 rounded-xl p-3 mb-3 border border-border line-clamp-4", children: note.text }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "textarea",
+          {
+            value: text,
+            onChange: (e) => setText(e.target.value),
+            placeholder: "اكتب ردك…",
+            rows: 3,
+            className: "w-full bg-input rounded-xl px-3 py-2 text-sm outline-none resize-none mb-3"
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            type: "button",
+            onClick: send,
+            disabled: !text.trim(),
+            className: "w-full bg-primary text-primary-foreground rounded-xl py-3 font-semibold text-sm disabled:opacity-50",
+            children: "إرسال في الخاص"
+          }
+        )
+      ]
+    }
+  ) });
+}
+const MENTION_OR_HASHTAG = /(@[a-z0-9_]{1,30})|(#[\w\u0600-\u06FF]+)/gi;
+function mentionPillClassName(variant = "default") {
+  switch (variant) {
+    case "mine":
+      return "inline-flex max-w-full items-center rounded-full bg-white/28 px-1.5 py-px text-[0.9em] font-semibold leading-snug text-white align-baseline";
+    case "glass":
+      return "inline-flex max-w-full items-center rounded-full bg-white/22 px-1.5 py-px text-[0.9em] font-semibold leading-snug text-white align-baseline";
+    case "composerQuran":
+      return "inline-flex max-w-full items-center rounded-full bg-emerald-400/22 px-1.5 py-px text-[0.9em] font-semibold leading-snug text-emerald-100 align-baseline";
+    case "composer":
+      return "inline-flex max-w-full items-center rounded-full bg-[#0084ff]/18 px-1.5 py-px text-[0.9em] font-semibold leading-snug text-[#0084ff] align-baseline dark:bg-[#0084ff]/28 dark:text-[#6eb6ff]";
+    default:
+      return "inline-flex max-w-full items-center rounded-full bg-[#0084ff]/14 px-1.5 py-px text-[0.9em] font-semibold leading-snug text-[#0084ff] align-baseline dark:bg-[#0084ff]/22 dark:text-[#6eb6ff]";
+  }
+}
+function MentionPill({
+  username,
+  variant = "default",
+  className,
+  onClick
+}) {
+  const cls = cn(mentionPillClassName(variant), className);
+  const content = /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "inline-flex items-center gap-px", dir: "rtl", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { dir: "ltr", children: username }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "@" })
+  ] });
+  if (onClick) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick, className: cls, children: content });
+  }
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: cls, children: content });
+}
+function createMentionRenderer(opts) {
+  const variant = opts.variant ?? "default";
+  return (username, key2) => {
+    const u = opts.users?.find((x) => x.username.toLowerCase() === username.toLowerCase());
+    const onClick = opts.onUserClick || opts.onUsernameClick ? (e) => {
+      e.stopPropagation();
+      if (u && opts.onUserClick) opts.onUserClick(u.id);
+      else opts.onUsernameClick?.(username);
+    } : void 0;
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(MentionPill, { username, variant, onClick }, key2);
+  };
+}
+function renderMentionHashtagNodes(raw, opts) {
+  const text = raw.length > 12e3 ? raw.slice(0, 12e3) + "…" : raw;
+  const out = [];
+  let last = 0;
+  let k = 0;
+  for (const m of text.matchAll(MENTION_OR_HASHTAG)) {
+    const idx = m.index ?? 0;
+    if (idx > last) out.push(/* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: text.slice(last, idx) }, `t${k++}`));
+    const piece = m[0];
+    if (piece.startsWith("@")) out.push(opts.renderMention(piece.slice(1), `m${k++}`));
+    else out.push(opts.renderHashtag(piece, `h${k++}`));
+    last = idx + piece.length;
+  }
+  if (last < text.length) out.push(/* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: text.slice(last) }, `t${k++}`));
+  return out;
+}
+function renderComposerMentionOverlay(text, variant = "composer") {
+  if (!text) return [];
+  return renderMentionHashtagNodes(text, {
+    renderMention: (uname, key2) => /* @__PURE__ */ jsxRuntimeExports.jsx(MentionPill, { username: uname, variant }, key2),
+    renderHashtag: (h, key2) => /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-inherit", children: h }, key2)
+  });
+}
+function ProgressiveImage({ src, alt = "", className, priority = false, onClick }) {
+  const rootRef = reactExports.useRef(null);
+  const [visible, setVisible] = reactExports.useState(priority);
+  const [loaded, setLoaded] = reactExports.useState(false);
+  const [failed, setFailed] = reactExports.useState(false);
+  const resolved = reactExports.useMemo(() => resolveMediaUrl(src) || src, [src]);
+  const thumb = reactExports.useMemo(() => thumbnailMediaUrl(resolved), [resolved]);
+  reactExports.useEffect(() => {
+    if (priority) {
+      setVisible(true);
+      return;
+    }
+    const el = rootRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") {
+      setVisible(true);
+      return;
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) {
+          setVisible(true);
+          io.disconnect();
+        }
+      },
+      { rootMargin: "320px 0px", threshold: 0.01 }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [priority, resolved]);
+  reactExports.useEffect(() => {
+    setLoaded(false);
+    setFailed(false);
+  }, [resolved]);
+  const showSrc = visible && !failed ? loaded || !thumb ? resolved : thumb : void 0;
+  const inner = /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { ref: rootRef, className: cn("relative overflow-hidden bg-muted/40", className), children: [
+    !loaded && /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "div",
+      {
+        className: "absolute inset-0 animate-pulse bg-muted/60",
+        "aria-hidden": true
+      }
+    ),
+    visible && showSrc && /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "img",
+      {
+        src: showSrc,
+        alt,
+        loading: priority ? "eager" : "lazy",
+        decoding: "async",
+        draggable: false,
+        className: cn(
+          "h-full w-full object-cover transition-opacity duration-300",
+          loaded ? "opacity-100" : "opacity-0"
+        ),
+        onLoad: () => {
+          if (showSrc === thumb && thumb !== resolved) {
+            const full = new Image();
+            full.src = resolved;
+            full.onload = () => setLoaded(true);
+          } else {
+            setLoaded(true);
+          }
+        },
+        onError: () => setFailed(true),
+        onClick
+      }
+    )
+  ] });
+  if (onClick) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "block w-full border-0 p-0 bg-transparent", onClick, children: inner });
+  }
+  return inner;
+}
+const RS_ACCENT = "#5AC8D8";
+function displayNameFromUsername(username) {
+  const base = username.replace(/^@/, "").trim();
+  if (!base) return "?";
+  return base.split(/[._-]+/).filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(" ");
+}
+function formatChatListTime(createdAt) {
+  const diff = Math.max(0, Date.now() - createdAt);
+  const m = Math.floor(diff / 6e4);
+  if (m < 1) return "now";
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `${d}d`;
+  try {
+    return new Date(createdAt).toLocaleDateString(void 0, { month: "short", day: "numeric" });
+  } catch {
+    return "";
+  }
+}
+function formatTrendPostCount(n) {
+  if (n >= 1e6) return `${(n / 1e6).toFixed(1).replace(/\.0$/, "")}M posts`;
+  if (n >= 1e3) return `${(n / 1e3).toFixed(1).replace(/\.0$/, "")}K posts`;
+  return `${n} posts`;
+}
+function userDisplayName(u) {
+  const dn = u.displayName?.trim();
+  if (dn) return dn;
+  return displayNameFromUsername(u.username);
+}
+function waveBarsFromAnalyser$1(analyser, barCount) {
+  const n = analyser.frequencyBinCount;
+  const data = new Uint8Array(n);
+  analyser.getByteFrequencyData(data);
+  const heights = [];
+  for (let b = 0; b < barCount; b++) {
+    const t0 = (b / barCount) ** 1.05;
+    const t1 = ((b + 1) / barCount) ** 1.05;
+    const start = Math.floor(n * t0);
+    const end = Math.ceil(n * t1);
+    let sum = 0;
+    for (let i = start; i < end; i++) sum += data[Math.min(i, n - 1)];
+    const avg = sum / Math.max(1, end - start) / 255;
+    const boosted = Math.min(1.15, avg * 1.75 + 0.03);
+    const eased = Math.pow(boosted, 0.82);
+    const pct = Math.round(20 + eased * 80);
+    heights.push(Math.min(100, Math.max(17, pct)));
+  }
+  return heights;
+}
+function useVoicePlaybackSrc$1(src) {
+  const [playbackSrc, setPlaybackSrc] = reactExports.useState(src);
+  reactExports.useEffect(() => {
+    if (!src.startsWith("data:")) {
+      setPlaybackSrc(src);
+      return;
+    }
+    let revoked = null;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const blob = await (await fetch(src)).blob();
+        if (cancelled) return;
+        revoked = URL.createObjectURL(blob);
+        setPlaybackSrc(revoked);
+      } catch {
+        if (!cancelled) setPlaybackSrc(src);
+      }
+    })();
+    return () => {
+      cancelled = true;
+      if (revoked) URL.revokeObjectURL(revoked);
+    };
+  }, [src]);
+  return playbackSrc;
+}
+function VoiceWavePlayer({
+  src,
+  className = "",
+  durationSec
+}) {
+  const playbackSrc = useVoicePlaybackSrc$1(src);
+  const useVideoEl = voiceUsesVideoElement$1(playbackSrc);
+  const audioRef = reactExports.useRef(null);
+  const videoRef = reactExports.useRef(null);
+  const analyserGraphRef = reactExports.useRef(null);
+  const ensureAnalyserRef = reactExports.useRef(null);
+  const waveRafRef = reactExports.useRef(0);
+  const waveSmoothRef = reactExports.useRef(Array.from({ length: VOICE_WAVE_BARS$1 }, () => 40));
+  const waveFrameRef = reactExports.useRef(0);
+  const [playing, setPlaying] = reactExports.useState(false);
+  const [loading, setLoading] = reactExports.useState(false);
+  const [cur, setCur] = reactExports.useState(0);
+  const [dur, setDur] = reactExports.useState(durationSec || 0);
+  const [levelsLive, setLevelsLive] = reactExports.useState(null);
+  const idleHeights = reactExports.useMemo(() => voiceWaveHeightsFromSrc$1(src), [src]);
+  const idleRef = reactExports.useRef(idleHeights);
+  idleRef.current = idleHeights;
+  reactExports.useEffect(() => {
+    waveSmoothRef.current = idleRef.current.slice();
+    setLevelsLive(null);
+    setPlaying(false);
+    setCur(0);
+    setDur(durationSec || 0);
+    if (waveRafRef.current) cancelAnimationFrame(waveRafRef.current);
+    waveRafRef.current = 0;
+    void analyserGraphRef.current?.ctx.close().catch(() => {
+    });
+    analyserGraphRef.current = null;
+    ensureAnalyserRef.current = null;
+    const el = useVideoEl ? videoRef.current : audioRef.current;
+    if (!el) return void 0;
+    try {
+      el.load();
+    } catch {
+    }
+    const onT = () => setCur(el.currentTime);
+    const onMeta = () => {
+      const d = el.duration;
+      setDur(d && isFinite(d) && d > 0 ? d : durationSec || 0);
+    };
+    const onPlay = () => setPlaying(true);
+    const stopWaveRaf = () => {
+      if (waveRafRef.current) cancelAnimationFrame(waveRafRef.current);
+      waveRafRef.current = 0;
+    };
+    const onWaveStop = () => {
+      stopWaveRaf();
+      setLevelsLive(null);
+    };
+    const onPause = () => {
+      setPlaying(false);
+      onWaveStop();
+    };
+    const onEnded = () => {
+      setPlaying(false);
+      setCur(0);
+      onWaveStop();
+    };
+    const attachAnalyser = async () => {
+      if (analyserGraphRef.current) return;
+      const AW = typeof window !== "undefined" && (window.AudioContext || window.webkitAudioContext);
+      if (!AW) return;
+      try {
+        const ctx = new AW();
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 512;
+        analyser.smoothingTimeConstant = 0.72;
+        const source = ctx.createMediaElementSource(el);
+        source.connect(analyser);
+        analyser.connect(ctx.destination);
+        analyserGraphRef.current = { ctx, analyser };
+        await ctx.resume();
+      } catch {
+        analyserGraphRef.current = null;
+      }
+    };
+    ensureAnalyserRef.current = attachAnalyser;
+    const waveLoop = () => {
+      if (el.paused) return;
+      const graph = analyserGraphRef.current;
+      if (!graph) return;
+      const raw = waveBarsFromAnalyser$1(graph.analyser, VOICE_WAVE_BARS$1);
+      const sm = waveSmoothRef.current;
+      for (let i = 0; i < VOICE_WAVE_BARS$1; i++) {
+        sm[i] = sm[i] * 0.56 + raw[i] * 0.44;
+      }
+      waveFrameRef.current += 1;
+      if ((waveFrameRef.current & 3) === 0) setLevelsLive([...sm]);
+      waveRafRef.current = requestAnimationFrame(waveLoop);
+    };
+    const onPlaying = () => {
+      setLoading(false);
+      void ensureAnalyserRef.current?.();
+      void analyserGraphRef.current?.ctx.resume().catch(() => {
+      });
+      waveSmoothRef.current = idleRef.current.slice();
+      waveFrameRef.current = 0;
+      stopWaveRaf();
+      if (analyserGraphRef.current) waveRafRef.current = requestAnimationFrame(waveLoop);
+    };
+    el.addEventListener("timeupdate", onT);
+    el.addEventListener("loadedmetadata", onMeta);
+    el.addEventListener("play", onPlay);
+    el.addEventListener("playing", onPlaying);
+    el.addEventListener("pause", onPause);
+    el.addEventListener("ended", onEnded);
+    return () => {
+      el.removeEventListener("timeupdate", onT);
+      el.removeEventListener("loadedmetadata", onMeta);
+      el.removeEventListener("play", onPlay);
+      el.removeEventListener("playing", onPlaying);
+      el.removeEventListener("pause", onPause);
+      el.removeEventListener("ended", onEnded);
+      stopWaveRaf();
+      setLevelsLive(null);
+      void analyserGraphRef.current?.ctx.close().catch(() => {
+      });
+      analyserGraphRef.current = null;
+      ensureAnalyserRef.current = null;
+    };
+  }, [playbackSrc, useVideoEl, durationSec]);
+  const toggle = async () => {
+    const el = useVideoEl ? videoRef.current : audioRef.current;
+    if (!el) return;
+    try {
+      if (!el.paused) {
+        el.pause();
+        setLoading(false);
+        return;
+      }
+      setLoading(true);
+      await waitVoiceMediaCanPlay(el);
+      await el.play();
+    } catch {
+      try {
+        await waitVoiceMediaCanPlay(el);
+        await el.play();
+      } catch {
+        setLoading(false);
+      }
+    }
+  };
+  const total = dur || durationSec || 0;
+  const filledBars = total > 0 ? Math.min(VOICE_WAVE_BARS$1, Math.ceil(cur / total * VOICE_WAVE_BARS$1)) : 0;
+  const remaining = Math.max(0, total - cur);
+  const displayHeights = levelsLive ?? idleHeights;
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex w-full flex-col " + className, children: [
+    useVideoEl ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "video",
+      {
+        ref: videoRef,
+        src: playbackSrc,
+        preload: "auto",
+        className: VOICE_MEDIA_OFFSCREEN$1,
+        playsInline: true,
+        controls: false
+      }
+    ) : /* @__PURE__ */ jsxRuntimeExports.jsx("audio", { ref: audioRef, src: playbackSrc, preload: "auto", className: VOICE_MEDIA_OFFSCREEN$1 }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "div",
+      {
+        className: "flex w-full min-w-0 items-center gap-3 rounded-2xl bg-muted/60 px-2.5 py-2 dark:bg-muted/40",
+        dir: "ltr",
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              type: "button",
+              onClick: toggle,
+              className: "flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-white transition active:scale-[0.97] dark:bg-white dark:text-zinc-950",
+              "aria-label": playing ? "إيقاف" : loading ? "تحميل" : "تشغيل",
+              disabled: loading && !playing,
+              children: loading && !playing ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" }) : playing ? /* @__PURE__ */ jsxRuntimeExports.jsx(Pause, { size: 18, className: "fill-current" }) : /* @__PURE__ */ jsxRuntimeExports.jsx(Play, { size: 18, className: "ms-0.5 fill-current" })
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-w-0 flex-1 flex-col gap-1", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-9 min-w-0 flex-1 items-end justify-stretch gap-[2px] px-0.5", children: displayHeights.map((hPct, i) => {
+              const active2 = i < filledBars;
+              return /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "span",
+                {
+                  className: "min-h-[4px] min-w-[2px] max-w-[4px] flex-1 origin-bottom rounded-full transition-colors duration-100 " + (active2 ? "bg-zinc-800 dark:bg-white" : "bg-zinc-400/42 dark:bg-white/24") + (playing && active2 ? " motion-safe:opacity-95" : ""),
+                  style: { height: `${hPct}%` }
+                },
+                i
+              );
+            }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex items-center justify-end px-0.5", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[12px] font-semibold tabular-nums tracking-tight text-zinc-600 dark:text-zinc-300", children: total > 0 ? fmtVoiceTime$1(remaining) : "—" }) })
+          ] })
+        ]
+      }
+    )
+  ] });
+}
+function TweetVoicePlayer({ src, className = "" }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(VoiceWavePlayer, { src: resolveMediaUrl(src), className });
+}
+function VideoPauseWhenHidden({
+  children,
+  rootMargin = "80px 0px",
+  pauseAudio = true
+}) {
+  const ref = reactExports.useRef(null);
+  reactExports.useEffect(() => {
+    const root = ref.current;
+    if (!root || typeof IntersectionObserver === "undefined") return;
+    const pauseMedia = () => {
+      for (const v of root.querySelectorAll("video")) {
+        v.pause();
+        try {
+          v.currentTime = 0;
+        } catch {
+        }
+      }
+      if (pauseAudio) {
+        for (const a of root.querySelectorAll("audio")) {
+          a.pause();
+        }
+      }
+    };
+    const io = new IntersectionObserver(
+      (entries) => {
+        for (const e of entries) {
+          if (!e.isIntersecting) pauseMedia();
+        }
+      },
+      { root: null, rootMargin, threshold: 0.08 }
+    );
+    io.observe(root);
+    const key2 = `io:${rootMargin}`;
+    registerLeakResource(key2, "observer", "VideoPauseWhenHidden", rootMargin);
+    return () => {
+      io.disconnect();
+      unregisterLeakResource(key2);
+      pauseMedia();
+    };
+  }, [rootMargin, pauseAudio]);
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { ref, children });
+}
+const FEED_POST_DIR = "rtl";
+function ProfilePostMetaRow({
+  author,
+  timeLabel,
+  onOpenAuthor,
+  onOpenPost,
+  onMenu
+}) {
+  const name = userDisplayName(author);
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { dir: "ltr", className: "flex min-w-0 items-center gap-1", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "button",
+      {
+        type: "button",
+        onClick: onOpenPost ?? onOpenAuthor,
+        className: "flex min-w-0 flex-1 items-center gap-1 overflow-hidden text-left",
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "shrink-0 font-bold text-[15px] leading-tight text-foreground", children: name }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(VerifiedMarkForUser, { user: author, size: 15 }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "min-w-0 truncate text-[15px] text-muted-foreground", children: [
+            "@",
+            author.username,
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { "aria-hidden": true, className: "mx-0.5", children: "·" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "tabular-nums", children: timeLabel })
+          ] })
+        ]
+      }
+    ),
+    onMenu ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "button",
+      {
+        type: "button",
+        onClick: (e) => {
+          e.stopPropagation();
+          onMenu();
+        },
+        className: "shrink-0 rounded-full p-1.5 text-muted-foreground hover:bg-secondary/80 active:scale-95",
+        "aria-label": "خيارات المنشور",
+        children: /* @__PURE__ */ jsxRuntimeExports.jsx(Ellipsis, { size: 18, strokeWidth: 1.75 })
+      }
+    ) : null
+  ] });
+}
+function PostFeedCaption({
+  children,
+  onClick,
+  variant = "post",
+  profileInset = false
+}) {
+  if (!children) return null;
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "div",
+    {
+      role: onClick ? "button" : void 0,
+      tabIndex: onClick ? 0 : void 0,
+      onClick,
+      onKeyDown: onClick ? (e) => e.key === "Enter" && onClick() : void 0,
+      dir: FEED_POST_DIR,
+      className: "whitespace-pre-wrap text-right break-words " + (profileInset ? "px-0 pb-2 pt-0.5" : "px-4 ") + (variant === "tweet" ? "pb-2 pt-0.5 text-[16px] leading-relaxed text-foreground" : "pb-3 text-[15px] leading-relaxed text-foreground") + (onClick ? " cursor-pointer" : ""),
+      children
+    }
+  );
+}
+function PostFeedMedia({
+  children,
+  aspect = "square",
+  onClick,
+  profileInset = false
+}) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "div",
+    {
+      role: onClick ? "button" : void 0,
+      tabIndex: onClick ? 0 : void 0,
+      onClick,
+      onKeyDown: onClick ? (e) => e.key === "Enter" && onClick() : void 0,
+      className: "relative cursor-pointer overflow-hidden rounded-2xl bg-muted " + (profileInset ? "mx-0" : "mx-4 ") + (aspect === "video" ? "aspect-video" : "aspect-square"),
+      children
+    }
+  );
+}
+function PostFeedMediaBlock({
+  post,
+  postMedia,
+  notesOverlay,
+  onOpen,
+  profileInset = false
+}) {
+  if (!postShowsFeedMedia(post)) return null;
+  if (postMedia.hasImage) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsxs(PostFeedMedia, { aspect: post.type === "reel" ? "video" : "square", onClick: onOpen, profileInset, children: [
+      notesOverlay,
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        ProgressiveImage,
+        {
+          src: postMedia.imageUrl,
+          alt: "",
+          className: "h-full w-full"
+        }
+      )
+    ] });
+  }
+  if (postMedia.hasAudio && postMedia.audioUrl) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: (profileInset ? "mx-0 w-full shrink-0" : "mx-4 w-[calc(100%-2rem)] shrink-0") + " mb-1", children: /* @__PURE__ */ jsxRuntimeExports.jsx(TweetVoicePlayer, { src: postMedia.audioUrl }) });
+  }
+  if (postMedia.hasVideo) {
+    const reelGrid = post.type === "reel";
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(VideoPauseWhenHidden, { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(PostFeedMedia, { aspect: reelGrid ? "square" : "video", onClick: onOpen, profileInset, children: [
+      notesOverlay,
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "video",
+        {
+          src: postMedia.videoUrl,
+          poster: postMedia.posterUrl || void 0,
+          controls: true,
+          playsInline: true,
+          preload: "none",
+          className: "h-full w-full " + (reelGrid ? "object-cover object-center" : "object-cover"),
+          onClick: (e) => e.stopPropagation()
+        }
+      )
+    ] }) });
+  }
+  if (post.image && !post.video) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(PostFeedMedia, { onClick: onOpen, profileInset, children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-full min-h-[8rem] items-center justify-center text-5xl", children: postMedia.emojiFallback || post.image }) });
+  }
+  if (!post.text && post.type === "post") {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "button",
+      {
+        type: "button",
+        onClick: onOpen,
+        className: (profileInset ? "mx-0 w-full" : "mx-4 w-[calc(100%-2rem)]") + " mb-1 flex min-h-[100px] cursor-pointer items-center justify-center rounded-2xl border border-border/60 bg-muted/50 text-xs text-muted-foreground hover:bg-muted/70 active:scale-[0.99]",
+        children: "اضغط للمنشور كامل"
+      }
+    );
+  }
+  return null;
+}
+function PostFeedActions({
+  liked,
+  reposted,
+  likeCount,
+  commentCount,
+  repostCount,
+  onLike,
+  onComment,
+  onRepost,
+  onShare,
+  profileInset = false
+}) {
+  const btn = "inline-flex items-center gap-1 rounded-md py-1 text-foreground/85 transition active:scale-95";
+  const countBase = "text-[13px] tabular-nums";
+  const likeCountCls = countBase + (liked ? " text-[var(--color-like,#ef4444)]" : " text-muted-foreground");
+  const commentCountCls = countBase + " text-muted-foreground";
+  const repostCountCls = countBase + (reposted ? " text-primary" : " text-muted-foreground");
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "div",
+    {
+      dir: "ltr",
+      className: "flex flex-row items-center justify-between gap-2" + (profileInset ? " px-0 py-2.5" : " px-3 py-2.5"),
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-row items-center gap-4 sm:gap-5", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", onClick: onLike, className: btn, "aria-pressed": liked, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(HeartIcon, { liked, size: 20 }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: likeCountCls, children: likeCount })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", onClick: onComment, className: btn, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(CommentIcon, { size: 20 }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: commentCountCls, children: commentCount })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "button",
+            {
+              type: "button",
+              onClick: onRepost,
+              className: btn + (reposted ? " text-primary" : ""),
+              "aria-pressed": reposted,
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(RepostIcon, { reposted, size: 20 }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: repostCountCls, children: repostCount })
+              ]
+            }
+          )
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onShare, className: btn, "aria-label": "مشاركة", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ShareIcon, { size: 19 }) })
+      ]
+    }
+  );
+}
+function FeedPostColumnShell({
+  author,
+  onOpenAuthor,
+  children,
+  className = ""
+}) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "relative px-3 py-3 " + className, dir: "ltr", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-3", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onOpenAuthor, className: "h-10 w-10 shrink-0 self-start", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: author.username, src: author.avatar, size: 40 }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "min-w-0 flex-1", children })
+  ] }) });
+}
+function HeartIcon({ liked, size = 24 }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("svg", { width: size, height: size, viewBox: "0 0 24 24", fill: "none", "aria-hidden": true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "path",
+    {
+      d: "M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z",
+      stroke: "currentColor",
+      strokeWidth: "1.75",
+      fill: liked ? "var(--color-like, #ef4444)" : "none",
+      className: liked ? "stroke-[var(--color-like,#ef4444)]" : ""
+    }
+  ) });
+}
+function CommentIcon({ size = 24 }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("svg", { width: size, height: size, viewBox: "0 0 24 24", fill: "none", "aria-hidden": true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "path",
+    {
+      d: "M21 11.5a8.4 8.4 0 0 1-8.4 8.4c-1.2 0-2.35-.25-3.4-.7L3 21l1.8-6.2A8.38 8.38 0 0 1 3 11.5 8.4 8.4 0 0 1 11.4 3 8.4 8.4 0 0 1 21 11.5z",
+      stroke: "currentColor",
+      strokeWidth: "1.75",
+      strokeLinejoin: "round"
+    }
+  ) });
+}
+function RepostIcon({ reposted, size = 24 }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("svg", { width: size, height: size, viewBox: "0 0 24 24", fill: "none", "aria-hidden": true, className: reposted ? "text-primary" : "", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "path",
+    {
+      d: "M17 1l4 4-4 4M3 11V9a4 4 0 0 1 4-4h14M7 23l-4-4 4-4M21 13v2a4 4 0 0 1-4 4H3",
+      stroke: "currentColor",
+      strokeWidth: "1.75",
+      strokeLinecap: "round",
+      strokeLinejoin: "round"
+    }
+  ) });
+}
+function ShareIcon({ size = 22 }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("svg", { width: size, height: size, viewBox: "0 0 24 24", fill: "none", "aria-hidden": true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "path",
+    {
+      d: "M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z",
+      stroke: "currentColor",
+      strokeWidth: "1.75",
+      strokeLinecap: "round",
+      strokeLinejoin: "round"
+    }
+  ) });
+}
+function PostCardInner({
+  post,
+  onShare,
+  onOpenProfile,
+  onOpen,
+  onOpenCommentsSheet,
+  hideQuickComment,
+  onOpenChat,
+  profileReturnTab
+}) {
+  useProfiledRender("PostCard");
+  const { toggleLike, toggleRepost, addComment } = useAppActions();
+  const currentUser = useAppSelector((s) => {
+    const id = s.currentUserId;
+    if (!id) return null;
+    return userById$1(s, id) ?? null;
+  });
+  const isGuest = useIsGuestSelector();
+  const lang = useAppSelector((s) => s.language);
+  const author = useAppSelector((s) => userById$1(s, post.userId));
+  const users = useAppSelector((s) => s.users);
+  const postId = post.id;
+  const feedNotes = useAppSelector(
+    reactExports.useCallback(
+      (s) => {
+        const cu = userById$1(s, s.currentUserId);
+        if (!cu) return [];
+        const raw = visibleMediaNotes(s, "post", postId, cu.id).slice(0, 5);
+        return raw.filter((n) => {
+          const nu = userById$1(s, n.authorId);
+          return nu && (n.authorId === cu.id || isMutual(s, cu.id, n.authorId));
+        });
+      },
+      [postId]
+    ),
+    reactExports.useCallback((a, b) => {
+      if (a === b) return true;
+      if (a.length !== b.length) return false;
+      for (let i = 0; i < a.length; i++) {
+        if (a[i].id !== b[i].id || a[i].text !== b[i].text) return false;
+      }
+      return true;
+    }, [])
+  );
+  const [noteToReply, setNoteToReply] = reactExports.useState(null);
+  const postMedia = reactExports.useMemo(
+    () => normalizePostMedia(post),
+    [post.image, post.video, post.audio, post.type]
+  );
+  const displayType = reactExports.useMemo(
+    () => resolvePostDisplayType(post),
+    [post.type, post.image, post.video, post.text]
+  );
+  const [comment, setComment] = reactExports.useState("");
+  const [menuOpen, setMenuOpen] = reactExports.useState(false);
+  const postLikes = Array.isArray(post.likes) ? post.likes : [];
+  const postComments = Array.isArray(post.comments) ? post.comments : [];
+  const postReposts = Array.isArray(post.reposts) ? post.reposts : [];
+  const guestBlock = () => {
+    if (!isGuest) return false;
+    notifyGuestActionBlocked();
+    return true;
+  };
+  const liked = currentUser ? postLikes.includes(currentUser.id) : false;
+  const reposted = currentUser ? postReposts.includes(currentUser.id) : false;
+  if (!author) return null;
+  const openAuthorProfile = (userId) => {
+    const ctx = profileReturnTab ? { tab: profileReturnTab } : void 0;
+    reactExports.startTransition(() => onOpenProfile(userId, ctx));
+  };
+  const postKindAr = post.type === "tweet" ? "التغريدة" : post.type === "reel" ? "الريلز" : "المنشور";
+  const renderedPostText = reactExports.useMemo(() => {
+    if (!post.text) return null;
+    return renderMentionHashtagNodes(post.text, {
+      renderMention: createMentionRenderer({
+        users,
+        onUserClick: (userId) => reactExports.startTransition(() => openAuthorProfile(userId))
+      }),
+      renderHashtag: (h, key2) => /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-primary", children: h }, key2)
+    });
+  }, [post.text, users]);
+  const notesOverlay = feedNotes.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "pointer-events-none absolute inset-x-0 top-0 z-10 flex gap-2 overflow-x-auto bg-gradient-to-b from-black/55 via-black/25 to-transparent px-2.5 pb-8 pt-2.5", children: feedNotes.map((n) => {
+    const nu = users.find((u) => u.id === n.authorId);
+    if (!nu) return null;
+    const canReplyNote = !!onOpenChat && n.authorId !== currentUser.id;
+    return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "pointer-events-auto flex max-w-[7.5rem] shrink-0 flex-col items-start gap-1", children: [
+      canReplyNote ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          type: "button",
+          title: "رد في الخاص",
+          onClick: (e) => {
+            e.stopPropagation();
+            if (guestBlock()) return;
+            setNoteToReply(n);
+          },
+          className: "line-clamp-2 w-full rounded-xl border border-white/25 bg-black/45 px-2 py-1 text-start text-[11px] font-medium leading-snug text-white backdrop-blur-sm hover:bg-black/55 active:scale-[0.98]",
+          children: n.text
+        }
+      ) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "line-clamp-2 w-full rounded-xl border border-white/25 bg-black/45 px-2 py-1 text-start text-[11px] font-medium leading-snug text-white backdrop-blur-sm", children: n.text }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          type: "button",
+          className: "pointer-events-auto",
+          onClick: (e) => {
+            e.stopPropagation();
+            openAuthorProfile(nu.id);
+          },
+          children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: nu.username, src: nu.avatar, size: 26 })
+        }
+      )
+    ] }, n.id);
+  }) }) : null;
+  const showFeedMedia = postShowsFeedMedia({ ...post, type: displayType });
+  const isAudioOnlyMedia = postMedia.hasAudio && !postMedia.hasImage && !postMedia.hasVideo;
+  const mediaLazyMinH = postMedia.hasVideo || displayType === "reel" ? "min-h-[12rem]" : "min-h-[12rem]";
+  const mediaBlock = /* @__PURE__ */ jsxRuntimeExports.jsx(
+    PostFeedMediaBlock,
+    {
+      post: { ...post, type: displayType },
+      postMedia,
+      notesOverlay,
+      onOpen,
+      profileInset: true
+    }
+  );
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("article", { className: "feed-post-card border-b border-border", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(FeedPostColumnShell, { author, onOpenAuthor: () => openAuthorProfile(author.id), children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        ProfilePostMetaRow,
+        {
+          author,
+          timeLabel: formatRelativeTime(post.createdAt, lang),
+          onOpenAuthor: () => openAuthorProfile(author.id),
+          onOpenPost: onOpen,
+          onMenu: currentUser?.id === post.userId ? () => setMenuOpen((v) => !v) : void 0
+        }
+      ),
+      menuOpen && /* @__PURE__ */ jsxRuntimeExports.jsx(PostOptionsMenu, { post, onClose: () => setMenuOpen(false) }),
+      renderedPostText && /* @__PURE__ */ jsxRuntimeExports.jsx(
+        PostFeedCaption,
+        {
+          variant: displayType === "tweet" ? "tweet" : "post",
+          onClick: onOpen,
+          profileInset: true,
+          children: renderedPostText
+        }
+      ),
+      showFeedMedia && !isAudioOnlyMedia ? /* @__PURE__ */ jsxRuntimeExports.jsx(LazyInView, { minHeight: mediaLazyMinH, rootMargin: "320px 0px", children: mediaBlock }) : showFeedMedia ? mediaBlock : null,
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        PostFeedActions,
+        {
+          liked,
+          reposted,
+          likeCount: postLikes.length,
+          commentCount: postComments.length,
+          repostCount: postReposts.length,
+          onLike: () => {
+            if (guestBlock()) return;
+            reactExports.startTransition(() => toggleLike(post.id));
+          },
+          onComment: () => reactExports.startTransition(() => (onOpenCommentsSheet ?? onOpen)()),
+          onRepost: () => {
+            if (guestBlock()) return;
+            reactExports.startTransition(() => toggleRepost(post.id));
+          },
+          onShare: () => {
+            if (guestBlock()) return;
+            onShare(post);
+          },
+          profileInset: true
+        }
+      ),
+      !hideQuickComment && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "form",
+        {
+          onSubmit: (e) => {
+            e.preventDefault();
+            if (guestBlock()) return;
+            if (comment.trim()) {
+              addComment(post.id, comment);
+              setComment("");
+            }
+          },
+          dir: "rtl",
+          className: "flex flex-row gap-2 px-0 pt-2",
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "input",
+              {
+                value: comment,
+                onChange: (e) => setComment(e.target.value),
+                placeholder: "تعليق سريع...",
+                className: "flex-1 rounded-full bg-input px-4 py-2 text-sm outline-none"
+              }
+            ),
+            comment && /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "submit", className: "text-sm font-semibold text-primary", children: "نشر" })
+          ]
+        }
+      )
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      NoteReplySheet,
+      {
+        note: noteToReply,
+        contentLabelAr: postKindAr,
+        onClose: () => setNoteToReply(null),
+        onSent: (chatId) => onOpenChat?.(chatId)
+      }
+    )
+  ] });
+}
+const PostCard = reactExports.memo(
+  PostCardInner,
+  (prev, next) => postFeedSignature(prev.post) === postFeedSignature(next.post) && prev.hideQuickComment === next.hideQuickComment && prev.profileReturnTab === next.profileReturnTab
+);
+const HomeFeedActionsRefCtx = reactExports.createContext(null);
+function HomeFeedActionsProvider({
+  value: value2,
+  children
+}) {
+  const ref = reactExports.useRef(value2);
+  ref.current = value2;
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(HomeFeedActionsRefCtx.Provider, { value: ref, children });
+}
+function useHomeFeedActions() {
+  const ref = reactExports.useContext(HomeFeedActionsRefCtx);
+  if (!ref) throw new Error("HomeFeedActionsProvider missing");
+  return ref.current;
+}
+const HomeFeedPostItem = reactExports.memo(
+  function HomeFeedPostItem2({ post }) {
+    const { onShare, onOpenProfile, onOpenChat, openPost, openCommentsSheet } = useHomeFeedActions();
+    const onOpen = reactExports.useCallback(() => openPost(post.id), [openPost, post.id]);
+    const onOpenCommentsSheet = reactExports.useCallback(
+      () => openCommentsSheet(post.id),
+      [openCommentsSheet, post.id]
+    );
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(
+      PostCard,
+      {
+        post,
+        onShare,
+        onOpenProfile,
+        profileReturnTab: "home",
+        onOpenChat,
+        onOpen,
+        onOpenCommentsSheet,
+        hideQuickComment: true
+      }
+    );
+  },
+  (prev, next) => postFeedSignature(prev.post) === postFeedSignature(next.post)
+);
+const ESTIMATE_PX = 480;
+const OVERSCAN = 3;
+const VirtualizedHomeFeed = reactExports.memo(function VirtualizedHomeFeed2({
+  posts,
+  scrollRef,
+  headerOffsetPx,
+  feedHasMore,
+  onLoadMore,
+  feedActions
+}) {
+  useProfiledRender("VirtualizedHomeFeed");
+  const getScrollElement = reactExports.useCallback(() => scrollRef.current, [scrollRef]);
+  const virtualizer = useVirtualizer({
+    count: posts.length,
+    getScrollElement,
+    estimateSize: () => ESTIMATE_PX,
+    overscan: OVERSCAN,
+    scrollMargin: headerOffsetPx,
+    getItemKey: (index2) => posts[index2]?.id ?? index2
+  });
+  const virtualItems = virtualizer.getVirtualItems();
+  reactExports.useEffect(() => {
+    const last = virtualItems[virtualItems.length - 1];
+    if (!last || !feedHasMore) return;
+    if (last.index >= posts.length - 5) onLoadMore();
+  }, [virtualItems, posts.length, feedHasMore, onLoadMore]);
+  if (!posts.length) return null;
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(HomeFeedActionsProvider, { value: feedActions, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "div",
+    {
+      className: "relative w-full",
+      style: { height: virtualizer.getTotalSize() + headerOffsetPx },
+      children: virtualItems.map((vi) => {
+        const post = posts[vi.index];
+        if (!post) return null;
+        return /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "div",
+          {
+            "data-index": vi.index,
+            ref: virtualizer.measureElement,
+            className: "absolute start-0 w-full",
+            style: {
+              top: 0,
+              transform: `translateY(${vi.start + headerOffsetPx}px)`
+            },
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx(HomeFeedPostItem, { post })
+          },
+          post.id
+        );
+      })
+    }
+  ) });
+});
+function useScreenPerf(screenName, opts) {
+  const active2 = opts?.active ?? true;
+  const mountMark = reactExports.useRef(`${screenName}-mount-${Math.random().toString(36).slice(2, 8)}`);
+  const mounted = reactExports.useRef(false);
+  reactExports.useEffect(() => {
+    if (!active2) return;
+    const mark = mountMark.current;
+    perfMark(`${mark}-start`);
+    perfScreenMount(screenName);
+    mounted.current = true;
+    perfLogMemory(screenName);
+    return () => {
+      if (!mounted.current) return;
+      perfMark(`${mark}-end`);
+      perfMeasure(`screen:${screenName}`, `${mark}-start`, `${mark}-end`);
+    };
+  }, [screenName, active2]);
+}
+function authorHasUnseenStories(state2, viewerId, authorId) {
+  const stories = storiesForUser(state2, authorId, viewerId);
+  if (stories.length === 0) return false;
+  return stories.some((s) => !storyViewedBy(s, viewerId));
+}
+function storyViewedBy(story, viewerId) {
+  return (story.viewedByUserIds || []).includes(viewerId);
+}
+function firstUnseenStoryIndex(stories, viewerId) {
+  const i = stories.findIndex((s) => !storyViewedBy(s, viewerId));
+  return i >= 0 ? i : 0;
+}
+function orderStoryTrayUserIds(state2, viewerId, userIds) {
+  const latest = /* @__PURE__ */ new Map();
+  for (const s of state2.stories) {
+    if (!userIds.includes(s.userId)) continue;
+    latest.set(s.userId, Math.max(latest.get(s.userId) ?? 0, s.createdAt));
+  }
+  const unseen = [];
+  const seen = [];
+  for (const id of userIds) {
+    if (authorHasUnseenStories(state2, viewerId, id)) unseen.push(id);
+    else seen.push(id);
+  }
+  const byLatest = (a, b) => (latest.get(b) ?? 0) - (latest.get(a) ?? 0);
+  unseen.sort(byLatest);
+  seen.sort(byLatest);
+  return [...unseen, ...seen];
+}
+function storyViewerTrayRing(state2, viewerId) {
+  const friends = visibleStoryUserIds(state2, viewerId).filter((id) => id !== viewerId);
+  const me = userById$1(state2, viewerId);
+  const hasMe = storiesForUser(state2, viewerId, viewerId).length > 0;
+  const orderedFriends = orderStoryTrayUserIds(state2, viewerId, friends);
+  if (hasMe && me) return [viewerId, ...orderedFriends];
+  return orderedFriends;
+}
+function nextAuthorInTray(ring, current) {
+  const i = ring.indexOf(current);
+  if (i < 0 || i >= ring.length - 1) return null;
+  return ring[i + 1] ?? null;
+}
+function prevAuthorInTray(ring, current) {
+  const i = ring.indexOf(current);
+  if (i <= 0) return null;
+  return ring[i - 1] ?? null;
+}
+function storyViewerSeenAt(story, viewerId) {
+  return story.viewedAtByUserIds?.[viewerId];
+}
+function formatStoryViewTime(ts) {
+  const diff = Date.now() - ts;
+  if (diff < 6e4) return "الآن";
+  if (diff < 36e5) return `${Math.floor(diff / 6e4)} د`;
+  if (diff < 864e5) return `${Math.floor(diff / 36e5)} س`;
+  return new Date(ts).toLocaleDateString("ar", { day: "numeric", month: "short" });
+}
+function buildShareUrl(target) {
+  const base = typeof window !== "undefined" ? `${window.location.origin}${window.location.pathname}` : "";
+  if (target.kind === "post") return `${base}?post=${encodeURIComponent(target.post.id)}`;
+  return `${base}?story=${encodeURIComponent(target.storyId)}`;
+}
+function ShareSheet({ target, onClose }) {
+  const { state: state2, currentUser, openOrCreateChat, sendMessage, addMediaNote, isGuest } = useApp();
+  const me = currentUser;
+  const friends = me.following.map((id) => userById$1(state2, id)).filter(Boolean);
+  const [noteMode, setNoteMode] = reactExports.useState(false);
+  const [noteText, setNoteText] = reactExports.useState("");
+  const [shareComment, setShareComment] = reactExports.useState("");
+  const previewLabel = target.kind === "post" ? target.post.type === "reel" ? "ريلز" : "منشور" : "ستوري";
+  const sendToFriend = (otherId) => {
+    if (isGuest) {
+      notifyGuestActionBlocked();
+      return;
+    }
+    const chat = openOrCreateChat(otherId);
+    if (!chat) {
+      if (isGuest) notifyGuestActionBlocked();
+      else window.alert("تعذّر فتح المحادثة.");
+      return;
+    }
+    if (target.kind === "post") {
+      const note = shareComment.trim();
+      sendMessage(chat.id, {
+        type: "shared_post",
+        content: target.post.id,
+        ...note ? { shareText: note } : {}
+      });
+    } else {
+      const note = shareComment.trim();
+      sendMessage(chat.id, {
+        type: "shared_story",
+        content: target.storyId,
+        ...note ? { shareText: note } : {}
+      });
+    }
+    setShareComment("");
+    onClose();
+  };
+  const copyLink = async () => {
+    const url2 = buildShareUrl(target);
+    try {
+      await navigator.clipboard.writeText(url2);
+      alert("تم نسخ الرابط");
+    } catch {
+      alert(url2);
+    }
+  };
+  const submitNote = () => {
+    if (isGuest) {
+      notifyGuestActionBlocked();
+      return;
+    }
+    if (!noteText.trim()) return;
+    if (target.kind === "post") {
+      addMediaNote("post", target.post.id, noteText);
+    } else {
+      addMediaNote("story", target.storyId, noteText);
+    }
+    setNoteText("");
+    setNoteMode(false);
+    alert("تم إرسال النوت");
+    onClose();
+  };
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 bg-black/50 z-50 flex items-end", onClick: onClose, children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "bg-background w-full rounded-t-3xl p-4 max-h-[70vh] overflow-y-auto", onClick: (e) => e.stopPropagation(), children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-12 h-1 bg-muted rounded-full mx-auto mb-4" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("h3", { className: "font-semibold mb-3 text-center", children: [
+      "مشاركة ",
+      previewLabel
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-2 mb-4", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", onClick: copyLink, className: "flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl bg-secondary font-medium text-sm", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Link2, { size: 18 }),
+        "نسخ الرابط"
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "button",
+        {
+          type: "button",
+          onClick: () => setNoteMode((n) => !n),
+          className: "flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl font-medium text-sm " + (noteMode ? "bg-primary text-primary-foreground" : "bg-secondary"),
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(StickyNote, { size: 18 }),
+            "نوت"
+          ]
+        }
+      )
+    ] }),
+    noteMode && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-4 space-y-2", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "textarea",
+        {
+          value: noteText,
+          onChange: (e) => setNoteText(e.target.value),
+          placeholder: "اكتب نوتك (يظهر لأصدقائك عند مشاهدة المحتوى)",
+          maxLength: 80,
+          rows: 2,
+          className: "w-full bg-input rounded-2xl px-3 py-2 text-sm outline-none resize-none"
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: submitNote, className: "w-full bg-primary text-primary-foreground py-2 rounded-2xl font-semibold text-sm", children: "إرسال النوت" })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-4 space-y-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "textarea",
+      {
+        value: shareComment,
+        onChange: (e) => setShareComment(e.target.value),
+        placeholder: "اكتب تعليق للمشاركة (اختياري)",
+        maxLength: 100,
+        rows: 2,
+        className: "w-full bg-input rounded-2xl px-3 py-2 text-sm outline-none resize-none"
+      }
+    ) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("h4", { className: "text-xs text-muted-foreground mb-2 px-1", children: "إرسال إلى" }),
+    friends.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-center text-muted-foreground py-4 text-sm", children: "تابع أصدقاء أولاً" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "grid grid-cols-4 gap-3", children: friends.map((u) => u && /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", onClick: () => sendToFriend(u.id), className: "flex flex-col items-center gap-1", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u.username, src: u.avatar, size: 56 }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs truncate w-full text-center", children: u.username })
+    ] }, u.id)) })
+  ] }) });
+}
+function PostDetail({ post: postProp, onBack, onOpenProfile, onOpenChat, profileReturnTab, initialFocusComments }) {
+  const { state: state2, currentUser, toggleLike, toggleRepost, addComment, deleteComment, isGuest } = useApp();
+  const post = reactExports.useMemo(
+    () => state2.posts.find((p) => p.id === postProp.id) ?? postProp,
+    [state2.posts, postProp]
+  );
+  const [noteToReply, setNoteToReply] = reactExports.useState(null);
+  const [menuOpen, setMenuOpen] = reactExports.useState(false);
+  const lang = state2.language;
+  const t = useT();
+  const author = userById$1(state2, post.userId);
+  const [comment, setComment] = reactExports.useState("");
+  const [shareOpen, setShareOpen] = reactExports.useState(false);
+  const me = currentUser;
+  const postLikes = Array.isArray(post.likes) ? post.likes : [];
+  const postReposts = Array.isArray(post.reposts) ? post.reposts : [];
+  const postComments = Array.isArray(post.comments) ? post.comments : [];
+  const guestBlock = () => {
+    if (!isGuest) return false;
+    notifyGuestActionBlocked();
+    return true;
+  };
+  const liked = postLikes.includes(me.id);
+  const reposted = postReposts.includes(me.id);
+  const postKindAr = post.type === "tweet" ? "التغريدة" : post.type === "reel" ? "الريلز" : "المنشور";
+  const detailNotes = visibleMediaNotes(state2, "post", post.id, me.id).slice(0, 8).filter((n) => {
+    const nu = userById$1(state2, n.authorId);
+    return nu && (n.authorId === me.id || isMutual(state2, me.id, n.authorId));
+  });
+  const returnCtx = reactExports.useCallback(
+    (commentsOpen) => {
+      const homeSurface = profileReturnTab === "home" || profileReturnTab === "search" ? "post_detail_full" : void 0;
+      return {
+        postId: post.id,
+        tab: profileReturnTab,
+        commentsOpen: !!commentsOpen,
+        ...homeSurface ? { homeSurface } : {}
+      };
+    },
+    [post.id, profileReturnTab]
+  );
+  reactExports.useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    try {
+      window.dispatchEvent(new CustomEvent("retweet-post-detail-open"));
+    } catch {
+    }
+    return () => {
+      document.body.style.overflow = prev;
+      try {
+        window.dispatchEvent(new CustomEvent("retweet-post-detail-close"));
+      } catch {
+      }
+    };
+  }, []);
+  reactExports.useEffect(() => {
+    if (!initialFocusComments) return;
+    const t2 = window.setTimeout(() => {
+      document.getElementById("post-comments-anchor")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 100);
+    return () => window.clearTimeout(t2);
+  }, [initialFocusComments]);
+  const renderedPostText = reactExports.useMemo(() => {
+    if (!post.text) return null;
+    return renderMentionHashtagNodes(post.text, {
+      renderMention: createMentionRenderer({
+        users: state2.users,
+        onUserClick: (userId) => reactExports.startTransition(() => onOpenProfile(userId, returnCtx(false)))
+      }),
+      renderHashtag: (h, key2) => /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-primary", children: h }, key2)
+    });
+  }, [post.text, state2.users, onOpenProfile, returnCtx]);
+  if (!author) return null;
+  const submitComment = () => {
+    if (guestBlock()) return;
+    const text = comment.trim();
+    if (!text) return;
+    addComment(post.id, text);
+    setComment("");
+  };
+  const ownerMenu = me.id === post.userId ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative shrink-0", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "button",
+      {
+        type: "button",
+        onClick: () => setMenuOpen((v) => !v),
+        className: "rounded-full p-2 hover:bg-secondary",
+        "aria-label": "خيارات",
+        children: /* @__PURE__ */ jsxRuntimeExports.jsx(Ellipsis, { size: 22 })
+      }
+    ),
+    menuOpen && /* @__PURE__ */ jsxRuntimeExports.jsx(PostOptionsMenu, { post, onClose: () => setMenuOpen(false), onDeleted: onBack })
+  ] }) : null;
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(SlideDismissShell, { onDismiss: onBack, variant: "overlay", overlayZIndex: 220, panelSwipeDismiss: true, children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex h-[100dvh] w-full max-w-md flex-col overflow-hidden bg-background shadow-2xl", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "header",
+      {
+        dir: "rtl",
+        className: "shrink-0 z-20 border-b border-border bg-background/95 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/80 pt-[max(0.75rem,var(--sat))]",
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between gap-2 px-3 pb-1 sm:hidden", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SlideDismissBackButton,
+              {
+                onDismiss: onBack,
+                className: "shrink-0 rounded-full p-2 hover:bg-secondary active:bg-secondary/80",
+                "aria-label": "رجوع",
+                children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowRight, { size: 22, strokeWidth: 1.75 })
+              }
+            ),
+            ownerMenu ?? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "w-10 shrink-0", "aria-hidden": true })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-w-0 items-center gap-2.5 px-3 pb-2.5 pt-0.5 sm:gap-3 sm:py-2", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SlideDismissBackButton,
+              {
+                onDismiss: onBack,
+                className: "hidden shrink-0 rounded-full p-2 hover:bg-secondary active:bg-secondary/80 sm:inline-flex",
+                "aria-label": "رجوع",
+                children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowRight, { size: 22, strokeWidth: 1.75 })
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                type: "button",
+                onClick: () => reactExports.startTransition(() => onOpenProfile(author.id, returnCtx(false))),
+                className: "shrink-0",
+                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: author.username, src: author.avatar, size: 36 })
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1 text-start", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                "button",
+                {
+                  type: "button",
+                  onClick: () => reactExports.startTransition(() => onOpenProfile(author.id, returnCtx(false))),
+                  className: "inline-flex max-w-full items-center gap-1 truncate font-semibold text-sm leading-tight",
+                  children: [
+                    "@",
+                    author.username,
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(VerifiedMarkForUser, { user: author, size: 16 })
+                  ]
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "mt-0.5 block text-xs leading-snug text-muted-foreground", children: formatRelativeTime(post.createdAt, lang) })
+            ] }),
+            ownerMenu && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "hidden sm:block", children: ownerMenu })
+          ] })
+        ]
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-h-0 flex-1 overflow-y-auto overscroll-y-contain pb-4", children: [
+      post.text && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { dir: "rtl", className: "whitespace-pre-wrap px-4 py-3 text-right text-base leading-relaxed break-words", children: renderedPostText }),
+      post.image && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative flex items-center justify-center bg-muted", children: [
+        detailNotes.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "pointer-events-none absolute inset-x-0 top-0 z-10 flex gap-2 overflow-x-auto bg-gradient-to-b from-black/55 via-black/25 to-transparent px-2.5 pb-8 pt-2.5", children: detailNotes.map((n) => {
+          const nu = userById$1(state2, n.authorId);
+          const canReplyNote = n.authorId !== me.id;
+          return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "pointer-events-auto flex max-w-[7.5rem] shrink-0 flex-col items-start gap-1", children: [
+            canReplyNote ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                type: "button",
+                title: "رد على النوت",
+                onClick: () => {
+                  if (guestBlock()) return;
+                  setNoteToReply(n);
+                },
+                className: "line-clamp-2 w-full rounded-xl border border-white/25 bg-black/45 px-2 py-1 text-start text-[11px] font-medium leading-snug text-white backdrop-blur-sm hover:bg-black/55",
+                children: n.text
+              }
+            ) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "line-clamp-2 w-full rounded-xl border border-white/25 bg-black/45 px-2 py-1 text-start text-[11px] font-medium leading-snug text-white backdrop-blur-sm", children: n.text }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => reactExports.startTransition(() => onOpenProfile(nu.id, returnCtx(false))), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: nu.username, src: nu.avatar, size: 26 }) })
+          ] }, n.id);
+        }) }),
+        isRenderableMediaUrl(post.image) ? /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: resolveMediaUrl(post.image), className: "max-h-[70vh] w-full object-contain", alt: "" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex min-h-[10rem] items-center justify-center py-12 text-5xl", children: post.image })
+      ] }),
+      post.video && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative flex items-center justify-center bg-black", children: [
+        detailNotes.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "pointer-events-none absolute inset-x-0 top-0 z-10 flex gap-2 overflow-x-auto bg-gradient-to-b from-black/55 via-black/25 to-transparent px-2.5 pb-8 pt-2.5", children: detailNotes.map((n) => {
+          const nu = userById$1(state2, n.authorId);
+          const canReplyNote = n.authorId !== me.id;
+          return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "pointer-events-auto flex max-w-[7.5rem] shrink-0 flex-col items-start gap-1", children: [
+            canReplyNote ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                type: "button",
+                title: "رد على النوت",
+                onClick: () => {
+                  if (guestBlock()) return;
+                  setNoteToReply(n);
+                },
+                className: "line-clamp-2 w-full rounded-xl border border-white/25 bg-black/45 px-2 py-1 text-start text-[11px] font-medium leading-snug text-white backdrop-blur-sm hover:bg-black/55",
+                children: n.text
+              }
+            ) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "line-clamp-2 w-full rounded-xl border border-white/25 bg-black/45 px-2 py-1 text-start text-[11px] font-medium leading-snug text-white backdrop-blur-sm", children: n.text }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => reactExports.startTransition(() => onOpenProfile(nu.id, returnCtx(false))), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: nu.username, src: nu.avatar, size: 26 }) })
+          ] }, n.id);
+        }) }),
+        isRenderableMediaUrl(post.video) ? /* @__PURE__ */ jsxRuntimeExports.jsx("video", { src: resolveMediaUrl(post.video), controls: true, playsInline: true, className: "max-h-[70vh] w-full object-contain" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex min-h-[10rem] items-center justify-center py-12 text-5xl text-white", children: post.video })
+      ] }),
+      post.audio && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "px-4 pt-3", children: isRenderableMediaUrl(post.audio) ? /* @__PURE__ */ jsxRuntimeExports.jsx(TweetVoicePlayer, { src: post.audio }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-xl border border-border bg-card px-3 py-2 text-sm text-muted-foreground", children: "مقطع صوتي" }) }),
+      !post.image && !post.video && !post.audio && detailNotes.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "px-4 pb-2 flex gap-2 overflow-x-auto no-scrollbar", children: detailNotes.map((n) => {
+        const nu = userById$1(state2, n.authorId);
+        const canReplyNote = n.authorId !== me.id;
+        return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col items-center shrink-0 max-w-[4rem]", children: [
+          canReplyNote ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              type: "button",
+              onClick: () => {
+                if (guestBlock()) return;
+                setNoteToReply(n);
+              },
+              className: "text-[9px] leading-tight text-start bg-secondary rounded-lg px-1.5 py-0.5 mb-0.5 line-clamp-3 border border-border",
+              children: n.text
+            }
+          ) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[9px] leading-tight text-start bg-secondary rounded-lg px-1.5 py-0.5 mb-0.5 line-clamp-3 border border-border", children: n.text }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => reactExports.startTransition(() => onOpenProfile(nu.id, returnCtx(false))), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: nu.username, src: nu.avatar, size: 28 }) })
+        ] }, n.id);
+      }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-5 px-4 pt-3", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => {
+          if (guestBlock()) return;
+          reactExports.startTransition(() => toggleLike(post.id));
+        }, className: "flex items-center gap-1", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Heart, { size: 24, className: liked ? "fill-[var(--color-like)] stroke-[var(--color-like)]" : "" }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { className: "flex items-center gap-1", children: /* @__PURE__ */ jsxRuntimeExports.jsx(MessageCircle, { size: 24 }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => {
+          if (guestBlock()) return;
+          reactExports.startTransition(() => toggleRepost(post.id));
+        }, className: reposted ? "text-primary" : "", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Repeat2, { size: 24 }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "ms-auto", onClick: () => {
+          if (guestBlock()) return;
+          setShareOpen(true);
+        }, "aria-label": "مشاركة", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Send, { size: 22 }) })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "px-4 pt-2 text-sm space-y-1", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("b", { children: postLikes.length }),
+        " ",
+        t("likes"),
+        " · ",
+        /* @__PURE__ */ jsxRuntimeExports.jsx("b", { children: postReposts.length }),
+        " ",
+        t("reposts"),
+        " · ",
+        /* @__PURE__ */ jsxRuntimeExports.jsx("b", { children: postComments.length }),
+        " ",
+        t("comments")
+      ] }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "px-4 pt-3 space-y-2 border-t border-border mt-3 pb-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { id: "post-comments-anchor", className: "font-semibold text-sm pt-2 scroll-mt-24 sm:scroll-mt-20", children: t("comments") }),
+        postComments.map((c) => {
+          const u = userById$1(state2, c.userId);
+          return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative flex gap-2 text-sm", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "shrink-0 rounded-full", onClick: () => reactExports.startTransition(() => u && onOpenProfile(u.id, returnCtx(true))), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u?.username || "?", src: u?.avatar, size: 28 }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", className: "font-semibold", onClick: () => reactExports.startTransition(() => u && onOpenProfile(u.id, returnCtx(true))), children: [
+                "@",
+                u?.username
+              ] }),
+              " ",
+              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { dir: "auto", className: "break-words", children: c.text })
+            ] }),
+            c.userId === me.id && /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                type: "button",
+                onClick: () => {
+                  if (!window.confirm("حذف هذا التعليق؟")) return;
+                  deleteComment(post.id, c.id);
+                },
+                className: "shrink-0 rounded-full p-1.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive",
+                "aria-label": "حذف التعليق",
+                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 16 })
+              }
+            )
+          ] }, c.id);
+        }),
+        postComments.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground", children: "—" })
+      ] }),
+      shareOpen && /* @__PURE__ */ jsxRuntimeExports.jsx(ShareSheet, { target: { kind: "post", post }, onClose: () => setShareOpen(false) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        NoteReplySheet,
+        {
+          note: noteToReply,
+          contentLabelAr: postKindAr,
+          onClose: () => setNoteToReply(null),
+          onSent: onOpenChat
+        }
+      )
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "form",
+      {
+        onSubmit: (e) => {
+          e.preventDefault();
+          submitComment();
+        },
+        className: "flex shrink-0 gap-2 border-t border-border bg-background px-4 py-3 pb-[max(0.75rem,var(--sab))]",
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "input",
+            {
+              value: comment,
+              onChange: (e) => setComment(e.target.value),
+              placeholder: "أضف تعليقاً...",
+              className: "flex-1 rounded-full bg-input px-4 py-2.5 text-sm outline-none"
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              type: "submit",
+              disabled: !comment.trim(),
+              className: "shrink-0 text-sm font-semibold text-primary disabled:opacity-40",
+              children: t("send")
+            }
+          )
+        ]
+      }
+    )
+  ] }) });
+}
+function preloadStoryUrls(urls) {
+  if (typeof window === "undefined") return;
+  for (const raw of urls) {
+    const u = raw?.trim();
+    if (!u || u.startsWith("data:")) continue;
+    const isVideo = /\.(mp4|webm|mov)(\?|$)/i.test(u) || u.includes("/videos/");
+    if (isVideo) {
+      const v = document.createElement("video");
+      v.preload = "auto";
+      v.muted = true;
+      v.playsInline = true;
+      v.src = u;
+    } else {
+      const img = new Image();
+      img.decoding = "async";
+      img.src = u;
+    }
+  }
+}
+function StoryViewsSheet({
+  open,
+  story,
+  onClose,
+  onOpenProfile,
+  onDelete
+}) {
+  const users = useAppSelector((s) => s.users);
+  const [sheetY, setSheetY] = reactExports.useState(0);
+  const [sheetSpring, setSheetSpring] = reactExports.useState(false);
+  const dragRef = reactExports.useRef(null);
+  const sheetMaxRef = reactExports.useRef(0);
+  const viewerIds = [...new Set(story.viewedByUserIds || [])];
+  const viewers = viewerIds.map((id) => {
+    const u = users.find((x) => x.id === id);
+    if (!u) return null;
+    const at = storyViewerSeenAt(story, id) ?? story.createdAt;
+    return { user: u, at };
+  }).filter(Boolean);
+  viewers.sort((a, b) => b.at - a.at);
+  reactExports.useEffect(() => {
+    if (!open) {
+      setSheetY(0);
+      setSheetSpring(false);
+    }
+  }, [open]);
+  reactExports.useEffect(() => {
+    sheetMaxRef.current = Math.min(window.innerHeight * 0.78, 640);
+  }, [open]);
+  const snapClose = reactExports.useCallback(() => {
+    setSheetSpring(true);
+    setSheetY(sheetMaxRef.current);
+    window.setTimeout(() => onClose(), 280);
+  }, [onClose]);
+  const snapOpen = reactExports.useCallback(() => {
+    setSheetSpring(true);
+    setSheetY(0);
+    window.setTimeout(() => setSheetSpring(false), 320);
+  }, []);
+  const onSheetPointerDown = (e) => {
+    if (e.button !== 0) return;
+    dragRef.current = {
+      pointerId: e.pointerId,
+      startY: e.clientY,
+      startSheetY: sheetY,
+      lastY: e.clientY,
+      lastT: performance.now(),
+      velocity: 0
+    };
+    setSheetSpring(false);
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+    }
+  };
+  const onSheetPointerMove = (e) => {
+    const p = dragRef.current;
+    if (!p || e.pointerId !== p.pointerId) return;
+    const dy = Math.max(0, e.clientY - p.startY);
+    const now = performance.now();
+    const dt = Math.max(1, now - p.lastT);
+    p.velocity = (e.clientY - p.lastY) / dt;
+    p.lastY = e.clientY;
+    p.lastT = now;
+    setSheetY(p.startSheetY + dy);
+  };
+  const endSheetDrag = (e) => {
+    const p = dragRef.current;
+    dragRef.current = null;
+    try {
+      if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+    } catch {
+    }
+    if (!p || e.pointerId !== p.pointerId) return;
+    const dy = sheetY;
+    if (dy > sheetMaxRef.current * 0.28 || p.velocity > 0.45) snapClose();
+    else snapOpen();
+  };
+  if (!open) return null;
+  const sheetProgress = sheetY / Math.max(1, sheetMaxRef.current);
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "fixed inset-0 z-[80] flex flex-col justify-end", role: "dialog", "aria-modal": "true", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "button",
+      {
+        type: "button",
+        className: "absolute inset-0 bg-black/50 backdrop-blur-md transition-opacity duration-200",
+        style: { opacity: Math.max(0, 1 - sheetProgress * 0.5) },
+        "aria-label": "إغلاق",
+        onClick: snapClose
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "div",
+      {
+        className: "relative mx-auto w-full max-w-md flex flex-col rounded-t-[1.35rem] border border-white/10 border-b-0 bg-[#1c1c1e] shadow-[0_-12px_48px_rgba(0,0,0,0.55)] touch-none",
+        style: {
+          maxHeight: "min(78dvh, 640px)",
+          transform: `translate3d(0, ${sheetY}px, 0)`,
+          transition: sheetSpring ? "transform 0.32s cubic-bezier(0.32, 0.72, 0, 1)" : "none"
+        },
+        onPointerDown: onSheetPointerDown,
+        onPointerMove: onSheetPointerMove,
+        onPointerUp: endSheetDrag,
+        onPointerCancel: endSheetDrag,
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex justify-center pt-2.5 pb-1", "aria-hidden": true, children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-1 w-11 rounded-full bg-white/25" }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("h2", { className: "px-4 pb-2 text-center text-[15px] font-semibold text-white", children: [
+            "المشاهدات · ",
+            viewers.length
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-2 [-webkit-overflow-scrolling:touch]", children: viewers.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "py-12 text-center text-sm text-white/45", children: "لا مشاهدات بعد" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("ul", { className: "space-y-0.5 pb-2", children: viewers.map(({ user: vu, at }) => /* @__PURE__ */ jsxRuntimeExports.jsx("li", { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "button",
+            {
+              type: "button",
+              className: "flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-start active:bg-white/10",
+              onClick: () => {
+                onClose();
+                onOpenProfile?.(vu.id);
+              },
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: vu.username, src: vu.avatar, size: 44 }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "min-w-0 flex-1", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "flex items-center gap-1 font-medium text-white", children: [
+                  "@",
+                  vu.username,
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(VerifiedMarkForUser, { user: vu, size: 14 })
+                ] }) }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "shrink-0 text-xs text-white/45", children: formatStoryViewTime(at) })
+              ]
+            }
+          ) }, vu.id)) }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "shrink-0 space-y-2 border-t border-white/10 p-3 pb-[max(0.75rem,var(--sab))]", children: [
+            onDelete && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "button",
+              {
+                type: "button",
+                className: "flex w-full items-center justify-center gap-2 rounded-2xl bg-red-500/20 py-3 text-sm font-semibold text-red-300",
+                onClick: onDelete,
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 18, "aria-hidden": true }),
+                  "حذف الستوري"
+                ]
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                type: "button",
+                className: "w-full rounded-2xl bg-white/12 py-3 text-sm font-semibold text-white",
+                onClick: snapClose,
+                children: "تم"
+              }
+            )
+          ] })
+        ]
+      }
+    )
+  ] });
+}
+function CountdownBlock({ targetAt, title }) {
+  const [now, setNow] = reactExports.useState(() => Date.now());
+  reactExports.useEffect(() => {
+    const t = window.setInterval(() => setNow(Date.now()), 1e3);
+    return () => clearInterval(t);
+  }, []);
+  const left = Math.max(0, targetAt - now);
+  const d = Math.floor(left / 864e5);
+  const h = Math.floor(left % 864e5 / 36e5);
+  const m = Math.floor(left % 36e5 / 6e4);
+  const s = Math.floor(left % 6e4 / 1e3);
+  const line = d > 0 ? `${d}ي ${h}س` : h > 0 ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`;
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-2xl bg-white text-black px-3 py-2.5 shadow-lg min-w-[9rem] text-center border border-black/5", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[10px] font-semibold tracking-wide text-black/50", children: title }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-lg font-bold tabular-nums mt-0.5", children: left <= 0 ? "0:00" : line })
+  ] });
+}
+function wrapStyle(sk) {
+  const rot = sk.rotation ?? 0;
+  return {
+    left: `${sk.x}%`,
+    top: `${sk.y}%`,
+    transform: `translate(-50%, -50%) rotate(${rot}deg)`
+  };
+}
+function StoryStickerLayer({
+  story,
+  storyAuthorId,
+  onOpenProfile
+}) {
+  const { currentUser, voteStoryPoll, answerStoryQuiz, rateStorySlider, openOrCreateChat, sendMessage, isGuest } = useApp();
+  const me = currentUser;
+  const isOwn = me.id === storyAuthorId;
+  const list = story.stickers || [];
+  const [sliderDraft, setSliderDraft] = reactExports.useState({});
+  const sendQuestion = (sk) => {
+    if (isGuest) {
+      notifyGuestActionBlocked();
+      return;
+    }
+    const text = window.prompt(`رد على: «${sk.prompt}»`, "");
+    if (!text?.trim()) return;
+    const ch = openOrCreateChat(storyAuthorId);
+    if (!ch) {
+      if (isGuest) notifyGuestActionBlocked();
+      else window.alert("تعذّر فتح المحادثة.");
+      return;
+    }
+    sendMessage(ch.id, { type: "text", content: `↩️ رد على ملصق السؤال في الستوري:
+«${sk.prompt}»
+—
+${text.trim()}` });
+  };
+  if (list.length === 0) return null;
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 pointer-events-none z-[25]", children: list.map((sk) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "absolute pointer-events-auto", style: wrapStyle(sk), onClick: (e) => e.stopPropagation(), children: [
+    sk.kind === "poll" && /* @__PURE__ */ jsxRuntimeExports.jsx(PollSticker, { sk, storyId: story.id, isOwn, meId: me.id, voteStoryPoll }),
+    sk.kind === "question" && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "button",
+      {
+        type: "button",
+        disabled: isOwn,
+        onClick: () => sendQuestion(sk),
+        className: "rounded-2xl px-3 py-2.5 shadow-lg text-start min-w-[10rem] max-w-[14rem] border border-white/20 bg-gradient-to-br from-[#a855f7] via-[#ec4899] to-[#f97316] text-white " + (isOwn ? "opacity-75 cursor-default" : "active:scale-[0.98]"),
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[10px] opacity-90", children: "اسألني" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-sm font-semibold leading-snug", children: sk.prompt }),
+          !isOwn && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[10px] mt-1 opacity-90 underline", children: "اضغط للرد في الخاص" })
+        ]
+      }
+    ),
+    sk.kind === "countdown" && /* @__PURE__ */ jsxRuntimeExports.jsx(CountdownBlock, { targetAt: sk.targetAt, title: sk.title }),
+    sk.kind === "location" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-2xl bg-white text-black px-3 py-2 shadow-lg flex items-center gap-2 border border-black/5", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-lg", children: "📍" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-sm font-semibold", children: sk.place })
+    ] }),
+    sk.kind === "mention" && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "button",
+      {
+        type: "button",
+        onClick: () => onOpenProfile?.(sk.userId),
+        className: "rounded-full bg-white/95 text-black px-3 py-1.5 text-sm font-bold shadow-lg border border-black/10",
+        children: [
+          "@",
+          sk.username
+        ]
+      }
+    ),
+    sk.kind === "hashtag" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-full bg-white/95 text-[#0095F6] px-3 py-1.5 text-sm font-bold shadow-lg border border-black/10", children: [
+      "#",
+      sk.tag.replace(/^#/, "")
+    ] }),
+    sk.kind === "quiz" && /* @__PURE__ */ jsxRuntimeExports.jsx(QuizSticker, { sk, storyId: story.id, meId: me.id, isOwn, answerStoryQuiz }),
+    sk.kind === "slider" && /* @__PURE__ */ jsxRuntimeExports.jsx(
+      SliderSticker,
+      {
+        sk,
+        storyId: story.id,
+        meId: me.id,
+        isOwn,
+        draft: sliderDraft[sk.id] ?? (sk.ratings?.[me.id] ?? 50),
+        setDraft: (v) => setSliderDraft((d) => ({ ...d, [sk.id]: v })),
+        rateStorySlider
+      }
+    )
+  ] }, sk.id)) });
+}
+function PollSticker({
+  sk,
+  storyId,
+  isOwn,
+  meId,
+  voteStoryPoll
+}) {
+  const total = sk.votesLeft.length + sk.votesRight.length;
+  const lp = total ? Math.round(sk.votesLeft.length / total * 100) : 50;
+  const rp = 100 - lp;
+  const mine = sk.votesLeft.includes(meId) ? "left" : sk.votesRight.includes(meId) ? "right" : null;
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-2xl bg-white text-black shadow-xl overflow-hidden min-w-[11rem] max-w-[15rem] border border-black/8", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "px-3 pt-2.5 pb-2 text-sm font-semibold leading-snug", children: sk.question }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col gap-1 px-2 pb-2", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "button",
+        {
+          type: "button",
+          disabled: isOwn,
+          onClick: () => voteStoryPoll(storyId, sk.id, "left"),
+          className: "relative rounded-xl py-2.5 px-2 text-sm font-medium overflow-hidden text-start " + (mine === "left" ? "ring-2 ring-[#0095F6]" : "") + (isOwn ? " opacity-90" : " active:scale-[0.98]"),
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "relative z-10", children: sk.left }),
+            total > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "span",
+              {
+                className: "absolute inset-0 bg-black/[0.06] origin-left transition-all",
+                style: { transform: `scaleX(${lp / 100})` }
+              }
+            ),
+            total > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "absolute end-2 top-1/2 -translate-y-1/2 text-xs font-bold text-black/50", children: [
+              lp,
+              "%"
+            ] })
+          ]
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "button",
+        {
+          type: "button",
+          disabled: isOwn,
+          onClick: () => voteStoryPoll(storyId, sk.id, "right"),
+          className: "relative rounded-xl py-2.5 px-2 text-sm font-medium overflow-hidden text-start " + (mine === "right" ? "ring-2 ring-[#0095F6]" : "") + (isOwn ? " opacity-90" : " active:scale-[0.98]"),
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "relative z-10", children: sk.right }),
+            total > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "span",
+              {
+                className: "absolute inset-0 bg-black/[0.06] origin-left transition-all",
+                style: { transform: `scaleX(${rp / 100})` }
+              }
+            ),
+            total > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "absolute end-2 top-1/2 -translate-y-1/2 text-xs font-bold text-black/50", children: [
+              rp,
+              "%"
+            ] })
+          ]
+        }
+      )
+    ] })
+  ] });
+}
+function QuizSticker({
+  sk,
+  storyId,
+  meId,
+  isOwn,
+  answerStoryQuiz
+}) {
+  const picked = sk.answers?.[meId];
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-2xl bg-white text-black shadow-xl min-w-[11rem] max-w-[15rem] border border-black/8 overflow-hidden", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "px-3 pt-2.5 pb-2 text-sm font-semibold", children: sk.question }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex flex-col gap-1 px-2 pb-2", children: sk.options.map((opt, i) => {
+      const correct = i === sk.correctIndex;
+      const wrongPick = picked !== void 0 && picked === i && !correct;
+      const rightPick = picked !== void 0 && picked === i && correct;
+      const showCorrect = picked !== void 0 && correct;
+      return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "button",
+        {
+          type: "button",
+          disabled: isOwn || picked !== void 0,
+          onClick: () => answerStoryQuiz(storyId, sk.id, i),
+          className: "rounded-xl py-2 px-2 text-sm text-start font-medium border w-full " + (rightPick || showCorrect ? "bg-emerald-500/15 border-emerald-500" : "") + (wrongPick ? "bg-red-500/15 border-red-400" : !showCorrect && !wrongPick ? "border-transparent bg-black/[0.04]" : ""),
+          children: [
+            opt,
+            picked !== void 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "float-end text-xs font-bold", children: correct ? "✓" : picked === i ? "✗" : "" })
+          ]
+        },
+        i
+      );
+    }) })
+  ] });
+}
+function SliderSticker({
+  sk,
+  storyId,
+  meId,
+  isOwn,
+  draft,
+  setDraft,
+  rateStorySlider
+}) {
+  const vals = Object.values(sk.ratings || {});
+  const avg = vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length) : null;
+  const done = sk.ratings?.[meId] != null;
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-2xl bg-white/95 text-black px-3 py-2.5 shadow-xl min-w-[10rem] max-w-[14rem] border border-black/8", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-center text-2xl mb-0.5", children: sk.emoji }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-xs font-semibold text-center mb-2 text-black/70", children: sk.label }),
+    avg != null && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-center text-[11px] text-black/50 mb-1", children: [
+      "المتوسط ≈ ",
+      avg
+    ] }),
+    !isOwn && !done && /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "input",
+        {
+          type: "range",
+          min: 0,
+          max: 100,
+          value: draft,
+          onChange: (e) => setDraft(Number(e.target.value)),
+          className: "w-full accent-[#0095F6]"
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          type: "button",
+          className: "mt-1 w-full rounded-full bg-[#0095F6] text-white text-xs py-1.5 font-semibold",
+          onClick: () => rateStorySlider(storyId, sk.id, draft),
+          children: "إرسال"
+        }
+      )
+    ] }),
+    !isOwn && done && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-center text-xs text-emerald-600 font-semibold", children: [
+      "تم إرسال تقييمك (",
+      sk.ratings?.[meId],
+      ")"
+    ] })
+  ] });
+}
+const MAX_STORY_UPLOAD_BYTES = 78 * 1024 * 1024;
+let pendingStoryPickFile = null;
+function takePendingStoryFile() {
+  const f = pendingStoryPickFile;
+  pendingStoryPickFile = null;
+  return f;
+}
+async function fileFromDataUrl(dataUrl) {
+  const res = await fetch(dataUrl);
+  const blob = await res.blob();
+  const mime = blob.type || "image/jpeg";
+  const ext = mime === "image/gif" ? "gif" : mime === "image/png" ? "png" : mime.startsWith("video/") ? "mp4" : "jpg";
+  return new File([blob], `story.${ext}`, { type: mime });
+}
+async function normalizeStoryImageFile(file) {
+  const isHeic = /heic|heif/i.test(file.type) || /\.hei[cf]$/i.test(file.name);
+  if (isHeic || !file.type.startsWith("image/") && !file.type) {
+    try {
+      const bitmap = await createImageBitmap(file);
+      const maxSide = 1080;
+      const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+      const w = Math.max(1, Math.round(bitmap.width * scale));
+      const h = Math.max(1, Math.round(bitmap.height * scale));
+      const canvas2 = document.createElement("canvas");
+      canvas2.width = w;
+      canvas2.height = h;
+      const ctx = canvas2.getContext("2d");
+      if (!ctx) {
+        bitmap.close();
+        return file;
+      }
+      ctx.drawImage(bitmap, 0, 0, w, h);
+      bitmap.close();
+      const blob = await new Promise(
+        (resolve) => canvas2.toBlob((b) => resolve(b), "image/jpeg", 0.88)
+      );
+      if (blob) return new File([blob], "story.jpg", { type: "image/jpeg" });
+    } catch {
+    }
+  }
+  if (!file.type.startsWith("image/") || file.type === "image/gif") return file;
+  try {
+    const bitmap = await createImageBitmap(file);
+    const maxSide = 1080;
+    const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+    const w = Math.max(1, Math.round(bitmap.width * scale));
+    const h = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas2 = document.createElement("canvas");
+    canvas2.width = w;
+    canvas2.height = h;
+    const ctx = canvas2.getContext("2d");
+    if (!ctx) {
+      bitmap.close();
+      return file;
+    }
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    bitmap.close();
+    const quality = file.size > 3e6 ? 0.82 : 0.88;
+    const blob = await new Promise(
+      (resolve) => canvas2.toBlob((b) => resolve(b), "image/jpeg", quality)
+    );
+    if (!blob) return file;
+    return new File([blob], "story.jpg", { type: "image/jpeg" });
+  } catch {
+    return file;
+  }
+}
+async function prepareStoryFile(file) {
+  if (file.type.startsWith("image/")) {
+    return normalizeStoryImageFile(file);
+  }
+  return file;
+}
+const MAX_STORY_VIDEO_DURATION_SEC = 60;
+function uploadTimeoutMs$1(file) {
+  if (file.type.startsWith("video/")) {
+    if (file.size > 40 * 1024 * 1024) return 3e5;
+    if (file.size > 15 * 1024 * 1024) return 24e4;
+    return 18e4;
+  }
+  if (file.size > 40 * 1024 * 1024) return 18e4;
+  if (file.size > 15 * 1024 * 1024) return 12e4;
+  return 6e4;
+}
+async function validateStoryVideoFile(file, maxDurationSec = MAX_STORY_VIDEO_DURATION_SEC) {
+  if (!file.type.startsWith("video/")) return { ok: true };
+  const cap = Math.max(1, Math.min(60, maxDurationSec));
+  return new Promise((resolve) => {
+    const url2 = URL.createObjectURL(file);
+    const v = document.createElement("video");
+    v.preload = "metadata";
+    const done = (result) => {
+      URL.revokeObjectURL(url2);
+      resolve(result);
+    };
+    v.onloadedmetadata = () => {
+      const d = v.duration;
+      if (Number.isFinite(d) && d > cap + 1) {
+        done({
+          ok: false,
+          error: `مدة الفيديو ${Math.ceil(d)} ثانية — الحد الأقصى ${cap} ثانية.`
+        });
+        return;
+      }
+      done({ ok: true });
+    };
+    v.onerror = () => done({ ok: true });
+    v.src = url2;
+  });
+}
+async function uploadStoryFile(file, opts) {
+  const token = getApiToken();
+  if (!apiBackendEnabled() || !token) {
+    return { ok: false, error: "الخادم غير متصل — شغّل API ثم أعد المحاولة" };
+  }
+  await ensureApiRuntimeConfig();
+  try {
+    const durationCheck = await validateStoryVideoFile(
+      file,
+      opts?.maxVideoDurationSec ?? MAX_STORY_VIDEO_DURATION_SEC
+    );
+    if (!durationCheck.ok) return durationCheck;
+    let prepared = await prepareStoryFile(file);
+    if (prepared.size > MAX_STORY_UPLOAD_BYTES) {
+      const mb = (prepared.size / (1024 * 1024)).toFixed(0);
+      return {
+        ok: false,
+        error: `الملف ${mb} ميجا — الحد الأقصى 78 ميجا. جرّب قصّ الفيديو أو صورة أخف.`
+      };
+    }
+    const up = await apiUploadMedia(token, prepared, {
+      timeoutMs: uploadTimeoutMs$1(prepared),
+      storyVideo: prepared.type.startsWith("video/")
+    });
+    if (!up.ok) return { ok: false, error: up.error };
+    return { ok: true, url: up.url };
+  } catch {
+    return {
+      ok: false,
+      error: "تعذر رفع الستوري — الخادم غير متصل. شغّل npm run api:tunnel على جهازك"
+    };
+  }
+}
+async function resolveStoryMediaForSave(media) {
+  const t = media?.trim() || "";
+  if (!t || t === "📷") return { ok: false, error: "اختر صورة أو فيديو للستوري" };
+  if (t.startsWith("blob:")) {
+    try {
+      const res = await fetch(t);
+      const blob = await res.blob();
+      const ext = blob.type.startsWith("video/") ? "mp4" : "jpg";
+      const file = new File([blob], `story.${ext}`, { type: blob.type || "application/octet-stream" });
+      return uploadStoryFile(file);
+    } catch {
+      return { ok: false, error: "أعد اختيار الملف من زر الإرفاق" };
+    }
+  }
+  if (!t.startsWith("data:")) {
+    return { ok: true, url: t };
+  }
+  const token = getApiToken();
+  if (!apiBackendEnabled() || !token) return { ok: true, url: t };
+  await ensureApiRuntimeConfig();
+  try {
+    const file = await fileFromDataUrl(t);
+    return uploadStoryFile(file);
+  } catch {
+    return {
+      ok: false,
+      error: "تعذر رفع الستوري — الخادم غير متصل. شغّل npm run api:tunnel على جهازك"
+    };
+  }
+}
+function storyPayloadFromUrl(url2) {
+  if (isVideoMediaRef(url2)) return { image: "🎬", video: url2 };
+  return { image: url2 };
+}
+function storyArchiveThumbnailUrl(story) {
+  const media = normalizeStoryMedia(story);
+  if (media.hasImage) return media.imageUrl;
+  if (media.hasVideo && media.imageUrl) return media.imageUrl;
+  return null;
+}
+function normalizeStoryMedia(story) {
+  const imageRaw = story.image?.trim() || "";
+  const videoRaw = story.video?.trim() || "";
+  const videoUrl = videoRaw ? resolveMediaUrl(videoRaw) : "";
+  const imageUrl = imageRaw && !isVideoMediaRef(imageRaw) ? resolveMediaUrl(imageRaw) : "";
+  const hasVideo = !!videoUrl && isRenderableMediaUrl(videoUrl);
+  const hasImage = !!imageUrl && isRenderableMediaUrl(imageUrl);
+  const emojiFallback = !hasVideo && !hasImage ? imageRaw || (videoRaw && !isVideoMediaRef(videoRaw) ? videoRaw : "") : "";
+  return { imageUrl, videoUrl, hasVideo, hasImage, emojiFallback };
+}
+const resolvePostMediaForSave = resolveStoryMediaForSave;
+const STORY_IMAGE_DURATION_MS = 5e3;
+const STORY_VIDEO_MAX_MS = 6e4;
+const STORY_VIDEO_MIN_MS = 1e3;
+function storyDurationMs(opts) {
+  if (opts.hasVideo && opts.videoDurationSec && Number.isFinite(opts.videoDurationSec)) {
+    const ms = Math.ceil(opts.videoDurationSec * 1e3);
+    return Math.max(STORY_VIDEO_MIN_MS, Math.min(STORY_VIDEO_MAX_MS, ms));
+  }
+  return STORY_IMAGE_DURATION_MS;
+}
+function useStoryPlayback({
+  storyId,
+  hasVideo,
+  videoRef,
+  paused,
+  enabled,
+  videoDurationSec,
+  onSegmentComplete
+}) {
+  const [progress, setProgress] = reactExports.useState(0);
+  const [playbackState, setPlaybackState] = reactExports.useState("idle");
+  const durationMsRef = reactExports.useRef(STORY_IMAGE_DURATION_MS);
+  const elapsedMsRef = reactExports.useRef(0);
+  const progressRef = reactExports.useRef(0);
+  const rafRef = reactExports.useRef(null);
+  const completedRef = reactExports.useRef(false);
+  const onCompleteRef = reactExports.useRef(onSegmentComplete);
+  onCompleteRef.current = onSegmentComplete;
+  const cancelRaf = reactExports.useCallback(() => {
+    if (rafRef.current != null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+  }, []);
+  const refreshDuration = reactExports.useCallback(() => {
+    durationMsRef.current = storyDurationMs({
+      hasVideo,
+      videoDurationSec: videoDurationSec ?? void 0
+    });
+  }, [hasVideo, videoDurationSec]);
+  const fireComplete = reactExports.useCallback(() => {
+    if (completedRef.current) return;
+    completedRef.current = true;
+    progressRef.current = 1;
+    setProgress(1);
+    setPlaybackState("idle");
+    onCompleteRef.current();
+  }, []);
+  const resetSegment = reactExports.useCallback(() => {
+    completedRef.current = false;
+    elapsedMsRef.current = 0;
+    progressRef.current = 0;
+    setProgress(0);
+    refreshDuration();
+    setPlaybackState(hasVideo ? "loading" : "playing");
+  }, [hasVideo, refreshDuration]);
+  reactExports.useEffect(() => {
+    resetSegment();
+  }, [storyId, resetSegment]);
+  reactExports.useEffect(() => {
+    refreshDuration();
+  }, [refreshDuration]);
+  const setVideoDurationFromMetadata = reactExports.useCallback((sec) => {
+    if (!Number.isFinite(sec) || sec <= 0) return;
+    durationMsRef.current = storyDurationMs({ hasVideo: true, videoDurationSec: sec });
+    elapsedMsRef.current = 0;
+    progressRef.current = 0;
+    completedRef.current = false;
+    setProgress(0);
+    setPlaybackState(paused ? "paused" : "playing");
+  }, [paused]);
+  reactExports.useEffect(() => {
+    if (!enabled || !hasVideo) return;
+    const v = videoRef.current;
+    if (!v) return;
+    const onWaiting = () => setPlaybackState("buffering");
+    const onPlaying = () => setPlaybackState(paused ? "paused" : "playing");
+    const onLoadedMeta = () => {
+      refreshDuration();
+      setPlaybackState(paused ? "paused" : "playing");
+    };
+    const onTimeUpdate = () => {
+      if (paused) return;
+      const d = v.duration;
+      if (!Number.isFinite(d) || d <= 0) return;
+      const p = Math.min(1, Math.max(0, v.currentTime / d));
+      progressRef.current = p;
+      setProgress(p);
+      setPlaybackState("playing");
+      if (p >= 0.995) fireComplete();
+    };
+    const onEnded = () => fireComplete();
+    v.addEventListener("waiting", onWaiting);
+    v.addEventListener("playing", onPlaying);
+    v.addEventListener("loadedmetadata", onLoadedMeta);
+    v.addEventListener("timeupdate", onTimeUpdate);
+    v.addEventListener("ended", onEnded);
+    return () => {
+      v.removeEventListener("waiting", onWaiting);
+      v.removeEventListener("playing", onPlaying);
+      v.removeEventListener("loadedmetadata", onLoadedMeta);
+      v.removeEventListener("timeupdate", onTimeUpdate);
+      v.removeEventListener("ended", onEnded);
+    };
+  }, [storyId, enabled, hasVideo, paused, videoRef, fireComplete, refreshDuration]);
+  reactExports.useEffect(() => {
+    const v = videoRef.current;
+    if (!v || !hasVideo || !enabled) return;
+    if (paused) {
+      try {
+        v.pause();
+      } catch {
+      }
+      setPlaybackState((s) => s === "buffering" ? "buffering" : "paused");
+    } else {
+      const p = v.play();
+      if (p) p.catch(() => void 0);
+      if (v.readyState >= 2) setPlaybackState("playing");
+    }
+  }, [paused, hasVideo, enabled, videoRef, storyId]);
+  reactExports.useEffect(() => {
+    if (!enabled || hasVideo) {
+      cancelRaf();
+      return;
+    }
+    if (paused) {
+      elapsedMsRef.current = progressRef.current * durationMsRef.current;
+      cancelRaf();
+      setPlaybackState("paused");
+      return;
+    }
+    setPlaybackState("playing");
+    const startAt = performance.now() - elapsedMsRef.current;
+    const tick = (now) => {
+      const dur = durationMsRef.current;
+      const elapsed = now - startAt;
+      const p = dur > 0 ? Math.min(1, elapsed / dur) : 0;
+      progressRef.current = p;
+      setProgress(p);
+      if (p >= 1) {
+        cancelRaf();
+        fireComplete();
+        return;
+      }
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return cancelRaf;
+  }, [storyId, enabled, hasVideo, paused, cancelRaf, fireComplete]);
+  return {
+    progress,
+    playbackState,
+    resetSegment,
+    setVideoDurationFromMetadata
+  };
+}
+const StoryProgressBars = reactExports.memo(function StoryProgressBars2({
+  segments: segments2,
+  activeIndex,
+  progress
+}) {
+  const pct = Math.min(100, Math.max(0, progress * 100));
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex gap-1 p-2 shrink-0", role: "progressbar", "aria-valuenow": Math.round(pct), "aria-valuemin": 0, "aria-valuemax": 100, children: segments2.map((seg, idx) => /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex-1 h-[2px] bg-white/35 rounded-full overflow-hidden", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "div",
+    {
+      className: "h-full bg-white rounded-full will-change-[width]",
+      style: {
+        width: idx < activeIndex ? "100%" : idx === activeIndex ? `${pct}%` : "0%"
+      }
+    }
+  ) }, seg.id)) });
+});
+function storyTapHaptic() {
+  try {
+    navigator.vibrate?.(8);
+  } catch {
+  }
+}
+const StoryViewer = reactExports.memo(function StoryViewer2({
+  userId,
+  trayRing,
+  initialStoryId,
+  openOrigin,
+  onClose,
+  onOpenProfile,
+  onOpenChat,
+  onRequestAuthor
+}) {
+  useProfiledRender("StoryViewer");
+  const {
+    openOrCreateChat,
+    sendMessage,
+    toggleStoryLike,
+    recordStoryView,
+    deleteStory
+  } = useAppActions();
+  const currentUser = useCurrentUser();
+  const isGuest = useIsGuestSelector();
+  const me = currentUser;
+  const author = useAppSelector((s) => userById$1(s, userId));
+  const stories = useAppSelector((s) => storiesForUser(s, userId, me.id));
+  const onCloseRef = reactExports.useRef(onClose);
+  onCloseRef.current = onClose;
+  const ring = trayRing.length > 0 ? trayRing : [userId];
+  const [i, setI] = reactExports.useState(0);
+  const pendingStoryIdRef = reactExports.useRef(initialStoryId);
+  const [entering, setEntering] = reactExports.useState(true);
+  const [userSlideX, setUserSlideX] = reactExports.useState(0);
+  const [userSlideSpring, setUserSlideSpring] = reactExports.useState(false);
+  const horizDragRef = reactExports.useRef(null);
+  const viewportWRef = reactExports.useRef(typeof window !== "undefined" ? window.innerWidth : 390);
+  const cappedStoryIndex = stories.length > 0 ? Math.min(Math.max(0, i), stories.length - 1) : 0;
+  const curStoryForHooks = stories.length > 0 ? stories[cappedStoryIndex] : void 0;
+  const [reply, setReply] = reactExports.useState("");
+  const [shareStoryId, setShareStoryId] = reactExports.useState(null);
+  const [noteToReply, setNoteToReply] = reactExports.useState(null);
+  const [showHighlightModal, setShowHighlightModal] = reactExports.useState(false);
+  const [highlightTitle, setHighlightTitle] = reactExports.useState("");
+  const snapRef = reactExports.useRef({ storiesLen: stories.length, userId, ring });
+  snapRef.current = { storiesLen: stories.length, userId, ring };
+  const canReplyToStories = userId === me.id || author?.allowStoryReplies !== false;
+  const [videoDurationSec, setVideoDurationSec] = reactExports.useState(null);
+  const [middleHold, setMiddleHold] = reactExports.useState(false);
+  const [topChromeVisible, setTopChromeVisible] = reactExports.useState(true);
+  const videoRef = reactExports.useRef(null);
+  const chromeHideTimerRef = reactExports.useRef(null);
+  const [ownViewsOpen, setOwnViewsOpen] = reactExports.useState(false);
+  const ownPullRef = reactExports.useRef(null);
+  const [dismissY, setDismissY] = reactExports.useState(0);
+  const [dismissSpring, setDismissSpring] = reactExports.useState(false);
+  const dismissDragRef = reactExports.useRef(null);
+  const viewportHRef = reactExports.useRef(typeof window !== "undefined" ? window.innerHeight : 800);
+  const dismissDoneRef = reactExports.useRef(false);
+  const closeTimerRef = reactExports.useRef(null);
+  const gestureRafRef = reactExports.useRef(null);
+  const pendingGestureRef = reactExports.useRef({});
+  reactExports.useEffect(() => {
+    const releaseFullscreen = lockStoryFullscreen();
+    document.documentElement.classList.add("retweet-story-open");
+    return () => {
+      releaseFullscreen();
+      document.documentElement.classList.remove("retweet-story-open");
+      if (closeTimerRef.current != null) {
+        window.clearTimeout(closeTimerRef.current);
+        closeTimerRef.current = null;
+      }
+      dismissDoneRef.current = false;
+    };
+  }, []);
+  const closeViewer = reactExports.useCallback(() => {
+    if (dismissDoneRef.current) return;
+    dismissDoneRef.current = true;
+    onCloseRef.current();
+  }, []);
+  const showTopChrome = reactExports.useCallback(() => {
+    setTopChromeVisible(true);
+    if (chromeHideTimerRef.current != null) window.clearTimeout(chromeHideTimerRef.current);
+    chromeHideTimerRef.current = window.setTimeout(() => {
+      chromeHideTimerRef.current = null;
+      setTopChromeVisible(false);
+    }, 3e3);
+  }, []);
+  reactExports.useEffect(() => {
+    showTopChrome();
+    return () => {
+      if (chromeHideTimerRef.current != null) window.clearTimeout(chromeHideTimerRef.current);
+    };
+  }, [userId, curStoryForHooks?.id, showTopChrome]);
+  reactExports.useEffect(() => {
+    const v = videoRef.current;
+    if (!v || !curStoryForHooks) return;
+    const media = normalizeStoryMedia(curStoryForHooks);
+    if (!media.hasVideo) return;
+    const playWithSound = () => {
+      v.muted = false;
+      v.volume = 1;
+      const p = v.play();
+      if (p) {
+        p.catch(() => {
+          v.muted = true;
+          void v.play();
+        });
+      }
+    };
+    playWithSound();
+    v.addEventListener("loadeddata", playWithSound, { once: true });
+    return () => v.removeEventListener("loadeddata", playWithSound);
+  }, [curStoryForHooks?.id, curStoryForHooks?.video, curStoryForHooks?.image]);
+  const goToNextAuthor = reactExports.useCallback(() => {
+    const nextU = nextAuthorInTray(ring, userId);
+    if (nextU) {
+      pendingStoryIdRef.current = void 0;
+      onRequestAuthor?.(nextU);
+      return true;
+    }
+    if (onRequestAuthor) onRequestAuthor(null);
+    else closeViewer();
+    return false;
+  }, [onRequestAuthor, ring, userId, closeViewer]);
+  const goToPrevAuthor = reactExports.useCallback(() => {
+    const prevU = prevAuthorInTray(ring, userId);
+    if (prevU) {
+      pendingStoryIdRef.current = void 0;
+      onRequestAuthor?.(prevU);
+      return true;
+    }
+    return false;
+  }, [onRequestAuthor, ring, userId]);
+  const goForward = reactExports.useCallback(() => {
+    setI((prev) => {
+      const { storiesLen } = snapRef.current;
+      if (prev < storiesLen - 1) return prev + 1;
+      goToNextAuthor();
+      return prev;
+    });
+  }, [goToNextAuthor]);
+  const goBack = reactExports.useCallback(() => {
+    setI((prev) => {
+      if (prev > 0) return prev - 1;
+      goToPrevAuthor();
+      return prev;
+    });
+  }, [goToPrevAuthor]);
+  const goForwardRef = reactExports.useRef(goForward);
+  goForwardRef.current = goForward;
+  reactExports.useEffect(() => {
+    setDismissY(0);
+    setDismissSpring(false);
+    setUserSlideX(0);
+    setUserSlideSpring(false);
+    setEntering(true);
+    const t = window.setTimeout(() => setEntering(false), 400);
+    const list = stories;
+    const fromId = pendingStoryIdRef.current;
+    let start = 0;
+    if (fromId) {
+      const fi = list.findIndex((s) => s.id === fromId);
+      start = fi >= 0 ? fi : 0;
+      pendingStoryIdRef.current = void 0;
+    } else {
+      start = firstUnseenStoryIndex(list, me.id);
+    }
+    setI(start);
+    return () => clearTimeout(t);
+  }, [userId]);
+  reactExports.useEffect(() => {
+    const onResize = () => {
+      viewportHRef.current = window.innerHeight;
+      viewportWRef.current = window.innerWidth;
+    };
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      if (gestureRafRef.current != null) {
+        cancelAnimationFrame(gestureRafRef.current);
+        gestureRafRef.current = null;
+      }
+    };
+  }, []);
+  const finishDismiss = reactExports.useCallback(() => {
+    if (dismissDoneRef.current) return;
+    const h = viewportHRef.current;
+    setDismissSpring(true);
+    setDismissY(h);
+    if (closeTimerRef.current != null) window.clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = window.setTimeout(() => {
+      closeTimerRef.current = null;
+      closeViewer();
+    }, 280);
+  }, [closeViewer]);
+  const snapDismissBack = reactExports.useCallback(() => {
+    if (closeTimerRef.current != null) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+    setDismissSpring(true);
+    setDismissY(0);
+    window.setTimeout(() => setDismissSpring(false), 320);
+  }, []);
+  reactExports.useEffect(() => {
+    if (stories.length === 0) return;
+    setI((prev) => Math.min(prev, stories.length - 1));
+  }, [stories.length]);
+  reactExports.useEffect(() => {
+    if (!author) {
+      const t = window.setTimeout(() => closeViewer(), 0);
+      return () => clearTimeout(t);
+    }
+  }, [author, closeViewer]);
+  const curMediaForPlayback = curStoryForHooks ? normalizeStoryMedia(curStoryForHooks) : null;
+  const storyHasVideo = !!curMediaForPlayback?.hasVideo;
+  reactExports.useEffect(() => {
+    setVideoDurationSec(null);
+    setMiddleHold(false);
+  }, [curStoryForHooks?.id]);
+  const { progress: storyProgress, playbackState, setVideoDurationFromMetadata } = useStoryPlayback({
+    storyId: curStoryForHooks?.id ?? "",
+    hasVideo: storyHasVideo,
+    videoRef,
+    paused: middleHold || ownViewsOpen,
+    enabled: !!(author && stories.length > 0 && curStoryForHooks?.id),
+    videoDurationSec,
+    onSegmentComplete: () => goForwardRef.current()
+  });
+  reactExports.useEffect(() => {
+    if (!curStoryForHooks?.id || userId === me.id || isGuest) return;
+    recordStoryView(curStoryForHooks.id);
+  }, [curStoryForHooks?.id, userId, me.id, isGuest, recordStoryView]);
+  reactExports.useEffect(() => {
+    setOwnViewsOpen(false);
+  }, [curStoryForHooks?.id, userId]);
+  reactExports.useEffect(() => {
+    if (!author || stories.length === 0) return;
+    const idx = Math.min(Math.max(0, i), stories.length - 1);
+    const urls = [];
+    for (let off = -1; off <= 2; off++) {
+      const s = stories[idx + off];
+      if (!s) continue;
+      const m = normalizeStoryMedia(s);
+      if (m.imageUrl) urls.push(m.imageUrl);
+      if (m.videoUrl) urls.push(m.videoUrl);
+    }
+    preloadStoryUrls(urls);
+  }, [userId, i, stories, author]);
+  const users = useAppSelector((s) => s.users);
+  const cappedIdx = stories.length > 0 ? Math.min(Math.max(0, i), stories.length - 1) : 0;
+  const curId = stories[cappedIdx]?.id ?? "";
+  const storyNotes = useAppSelector(
+    reactExports.useCallback(
+      (s) => curId ? visibleMediaNotes(s, "story", curId, me.id).slice(0, 8) : [],
+      [curId, me.id]
+    )
+  );
+  if (!author) {
+    return null;
+  }
+  if (stories.length === 0) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "fixed inset-0 bg-black z-[200] flex flex-col items-center justify-center p-6 text-white", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "absolute top-3 end-3 p-2 rounded-full bg-white/10", onClick: closeViewer, "aria-label": "إغلاق", children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 24 }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-center text-base mb-2 mt-8", children: "لا توجد ستوريات لهذا الحساب حالياً." }),
+      userId === me.id && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-center text-sm text-white/70 mb-6", children: "أنشئ ستوري من زر + ثم اختر «ستوري»." }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "bg-[#0095F6] px-8 py-2.5 rounded-full font-semibold", onClick: closeViewer, children: "رجوع" })
+    ] });
+  }
+  const displayIdx = cappedIdx;
+  const cur = stories[displayIdx];
+  const storyMedia = normalizeStoryMedia(cur);
+  const storyLiked = (cur.likes || []).includes(me.id);
+  const submitReply = (e) => {
+    e.preventDefault();
+    if (isGuest) {
+      notifyGuestActionBlocked();
+      return;
+    }
+    if (!reply.trim() || !canReplyToStories || userId === me.id) return;
+    const chat = openOrCreateChat(userId);
+    if (!chat) {
+      if (isGuest) notifyGuestActionBlocked();
+      else window.alert("تعذّر فتح المحادثة.");
+      return;
+    }
+    sendMessage(chat.id, {
+      type: "shared_story",
+      content: cur.id,
+      shareText: reply.trim(),
+      replyContext: { kind: "story", storyId: cur.id, storyAuthorId: userId }
+    });
+    setReply("");
+  };
+  const saveAsHighlight = () => {
+    if (!highlightTitle.trim() || userId !== me.id) return;
+    alert(`تم حفظ الهايلايت "${highlightTitle}" بنجاح!`);
+    setShowHighlightModal(false);
+    setHighlightTitle("");
+  };
+  const handleDeleteCurrentStory = () => {
+    if (userId !== me.id || !cur?.id) return;
+    if (!window.confirm("حذف هذه الستوري؟")) return;
+    const remaining = stories.length - 1;
+    const atLast = displayIdx >= remaining && remaining > 0;
+    deleteStory(cur.id);
+    setOwnViewsOpen(false);
+    if (remaining <= 0) {
+      if (onRequestAuthor) onRequestAuthor(null);
+      else closeViewer();
+      return;
+    }
+    if (atLast) setI((prev) => Math.max(0, prev - 1));
+  };
+  const onOwnZonePointerDown = (e) => {
+    if (e.button !== 0 || ownViewsOpen) return;
+    ownPullRef.current = { y0: e.clientY, pointerId: e.pointerId };
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+    }
+  };
+  const onOwnZonePointerMove = (e) => {
+    const p = ownPullRef.current;
+    if (!p || e.pointerId !== p.pointerId || ownViewsOpen) return;
+    const pull = p.y0 - e.clientY;
+    if (pull > 96) setOwnViewsOpen(true);
+  };
+  const endOwnZonePull = (e) => {
+    const p = ownPullRef.current;
+    ownPullRef.current = null;
+    try {
+      if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+    } catch {
+    }
+    if (ownViewsOpen || !p || e.pointerId !== p.pointerId) return;
+    const pull = p.y0 - e.clientY;
+    if (pull > 44) setOwnViewsOpen(true);
+  };
+  const dismissProgress = dismissY / Math.max(1, viewportHRef.current);
+  const dismissScale = Math.max(0.88, 1 - dismissProgress * 0.1);
+  const backdropOpacity = Math.max(0, 1 - dismissProgress * 0.9);
+  const snapUserSlideBack = reactExports.useCallback(() => {
+    setUserSlideSpring(true);
+    setUserSlideX(0);
+    window.setTimeout(() => setUserSlideSpring(false), 280);
+  }, []);
+  const onGesturePointerDown = (e) => {
+    if (e.button !== 0 || ownViewsOpen) return;
+    if (e.target.closest("[data-story-interactive]")) return;
+    horizDragRef.current = {
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startSlideX: userSlideX,
+      lastX: e.clientX,
+      lastT: performance.now(),
+      velocity: 0,
+      axis: "none"
+    };
+    dismissDragRef.current = {
+      pointerId: e.pointerId,
+      startY: e.clientY,
+      startDismissY: dismissY,
+      lastY: e.clientY,
+      lastT: performance.now(),
+      velocity: 0
+    };
+    setDismissSpring(false);
+    setUserSlideSpring(false);
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+    }
+  };
+  const onGesturePointerMove = (e) => {
+    const h = horizDragRef.current;
+    const p = dismissDragRef.current;
+    if (!h || !p || e.pointerId !== h.pointerId || ownViewsOpen) return;
+    const dx = e.clientX - h.startX;
+    const dy = e.clientY - p.startY;
+    if (h.axis === "none") {
+      if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+        h.axis = Math.abs(dx) > Math.abs(dy) ? "h" : "v";
+      }
+    }
+    const now = performance.now();
+    const dt = Math.max(1, now - h.lastT);
+    h.velocity = (e.clientX - h.lastX) / dt;
+    h.lastX = e.clientX;
+    h.lastT = now;
+    if (h.axis === "h") {
+      const w = viewportWRef.current;
+      const atStart = !prevAuthorInTray(ring, userId) && dx > 0;
+      const atEnd = !nextAuthorInTray(ring, userId) && dx < 0;
+      let x = h.startSlideX + dx;
+      if (atStart && x > 0) x *= 0.35;
+      if (atEnd && x < 0) x *= 0.35;
+      pendingGestureRef.current.x = Math.max(-w, Math.min(w, x));
+      if (gestureRafRef.current == null) {
+        gestureRafRef.current = requestAnimationFrame(() => {
+          gestureRafRef.current = null;
+          if (typeof pendingGestureRef.current.x === "number") {
+            setUserSlideX(pendingGestureRef.current.x);
+          }
+        });
+      }
+      return;
+    }
+    if (h.axis === "v") {
+      const ddy = Math.max(0, dy);
+      p.velocity = (e.clientY - p.lastY) / dt;
+      p.lastY = e.clientY;
+      p.lastT = now;
+      pendingGestureRef.current.y = p.startDismissY + ddy;
+      if (gestureRafRef.current == null) {
+        gestureRafRef.current = requestAnimationFrame(() => {
+          gestureRafRef.current = null;
+          if (typeof pendingGestureRef.current.y === "number") {
+            setDismissY(pendingGestureRef.current.y);
+          }
+        });
+      }
+    }
+  };
+  const endGestureDrag = (e) => {
+    const h = horizDragRef.current;
+    const p = dismissDragRef.current;
+    horizDragRef.current = null;
+    dismissDragRef.current = null;
+    try {
+      if (e.currentTarget.hasPointerCapture?.(e.pointerId)) {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      }
+    } catch {
+    }
+    if (!h || !p || e.pointerId !== h.pointerId || ownViewsOpen) return;
+    if (h.axis === "h") {
+      const w = viewportWRef.current;
+      const x = userSlideX;
+      const rtl = typeof document !== "undefined" && document.documentElement.getAttribute("dir") === "rtl";
+      const goNext = rtl ? x > w * 0.22 || h.velocity > 0.35 : x < -w * 0.22 || h.velocity < -0.35;
+      const goPrev = rtl ? x < -w * 0.22 || h.velocity < -0.35 : x > w * 0.22 || h.velocity > 0.35;
+      if (goNext) {
+        setUserSlideSpring(true);
+        setUserSlideX(rtl ? w : -w);
+        window.setTimeout(() => {
+          goToNextAuthor();
+          setUserSlideX(0);
+          setUserSlideSpring(false);
+        }, 220);
+      } else if (goPrev) {
+        setUserSlideSpring(true);
+        setUserSlideX(rtl ? -w : w);
+        window.setTimeout(() => {
+          goToPrevAuthor();
+          setUserSlideX(0);
+          setUserSlideSpring(false);
+        }, 220);
+      } else {
+        snapUserSlideBack();
+      }
+      return;
+    }
+    if (h.axis === "v") {
+      const vh = viewportHRef.current;
+      const dy = Math.max(0, e.clientY - p.startY) + p.startDismissY;
+      if (dy > vh * 0.42 || p.velocity > 0.42) finishDismiss();
+      else snapDismissBack();
+    }
+  };
+  const heroScale = openOrigin ? Math.max(0.35, Math.min(1, openOrigin.width * 1.1 / viewportWRef.current)) : 1;
+  const heroTx = openOrigin ? openOrigin.left + openOrigin.width / 2 - viewportWRef.current / 2 : 0;
+  const heroTy = openOrigin ? openOrigin.top + openOrigin.height / 2 - viewportHRef.current / 2 : 0;
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "fixed inset-0 z-[200] touch-none", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "div",
+      {
+        className: "absolute inset-0 bg-black",
+        style: {
+          opacity: backdropOpacity,
+          transition: dismissSpring ? "opacity 0.32s cubic-bezier(0.25, 1, 0.35, 1)" : "none"
+        },
+        "aria-hidden": true
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "div",
+      {
+        className: "absolute inset-0 flex flex-col bg-black " + (entering ? "story-viewer-enter" : ""),
+        style: {
+          transform: entering ? `translate3d(${heroTx}px, ${heroTy}px, 0) scale(${heroScale})` : `translate3d(${userSlideX}px, ${dismissY}px, 0) scale(${dismissScale})`,
+          transformOrigin: "center center",
+          transition: dismissSpring || userSlideSpring ? "transform 0.32s cubic-bezier(0.22, 1, 0.36, 1)" : entering ? void 0 : "none",
+          willChange: "transform"
+        },
+        onPointerDown: onGesturePointerDown,
+        onPointerMove: onGesturePointerMove,
+        onPointerUp: endGestureDrag,
+        onPointerCancel: endGestureDrag,
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "absolute inset-x-0 top-0 z-50 flex flex-col pt-[max(0.25rem,var(--sat))] pointer-events-none", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(StoryProgressBars, { segments: stories, activeIndex: displayIdx, progress: storyProgress }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "div",
+              {
+                className: "flex flex-col bg-gradient-to-b from-black/75 via-black/40 to-transparent transition-opacity duration-300 pointer-events-auto " + (topChromeVisible && !ownViewsOpen ? "opacity-100" : "opacity-0 pointer-events-none"),
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex shrink-0 items-center gap-2 px-3 text-white", "data-story-interactive": true, children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: closeViewer, className: "p-2", "aria-label": "رجوع", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronLeft, { size: 24 }) }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", onClick: () => onOpenProfile?.(author.id), className: "flex items-center gap-2 flex-1 min-w-0", children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: author.username, src: author.avatar, size: 32 }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-sm font-semibold inline-flex items-center gap-1", children: [
+                        "@",
+                        author.username,
+                        /* @__PURE__ */ jsxRuntimeExports.jsx(VerifiedMarkForUser, { user: author, size: 16 })
+                      ] })
+                    ] }),
+                    cur.audience === "close" && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs bg-green-600 px-2 py-0.5 rounded-full", children: "مقربون" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1", children: [
+                      userId !== me.id && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                        "button",
+                        {
+                          type: "button",
+                          className: "p-2 rounded-full " + (storyLiked ? "text-red-500" : "text-white hover:bg-white/10"),
+                          onClick: (e) => {
+                            e.stopPropagation();
+                            if (isGuest) {
+                              notifyGuestActionBlocked();
+                              return;
+                            }
+                            toggleStoryLike(cur.id);
+                          },
+                          "aria-label": "إعجاب",
+                          children: /* @__PURE__ */ jsxRuntimeExports.jsx(Heart, { size: 22, className: storyLiked ? "fill-current" : "" })
+                        }
+                      ),
+                      userId === me.id && /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "p-2", onClick: () => setShowHighlightModal(true), "aria-label": "حفظ كهايلايت", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Bookmark, { size: 20 }) }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "p-2", onClick: () => setShareStoryId(cur.id), "aria-label": "مشاركة", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Share2, { size: 20 }) })
+                    ] })
+                  ] }),
+                  storyNotes.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex justify-center gap-3 flex-wrap px-2 py-2 shrink-0", children: storyNotes.map((n) => {
+                    const nu = users.find((u) => u.id === n.authorId);
+                    if (!nu) return null;
+                    if (n.authorId !== me.id && !isMutual({ users }, me.id, n.authorId))
+                      return null;
+                    const canReplyNote = onOpenChat && n.authorId !== me.id;
+                    return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col items-center max-w-[4.5rem]", children: [
+                      canReplyNote ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+                        "button",
+                        {
+                          type: "button",
+                          title: "رد في الخاص",
+                          onClick: () => {
+                            if (isGuest) {
+                              notifyGuestActionBlocked();
+                              return;
+                            }
+                            setNoteToReply(n);
+                          },
+                          className: "text-[10px] leading-tight text-start bg-white/10 rounded-xl px-1.5 py-0.5 mb-1 line-clamp-2 text-white hover:bg-white/20 w-full",
+                          children: n.text
+                        }
+                      ) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[10px] leading-tight text-start bg-white/10 rounded-xl px-1.5 py-0.5 mb-1 line-clamp-2 text-white w-full", children: n.text }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => onOpenProfile?.(nu.id), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: nu.username, src: nu.avatar, size: 32 }) })
+                    ] }, n.id);
+                  }) })
+                ]
+              }
+            )
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "div",
+            {
+              className: "relative flex min-h-0 flex-1 items-center justify-center overflow-hidden text-white",
+              onPointerDown: (e) => {
+                if (e.target.closest("[data-story-interactive]")) return;
+                showTopChrome();
+              },
+              children: [
+                (playbackState === "loading" || playbackState === "buffering") && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-sm", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-9 w-9 rounded-full border-2 border-white/30 border-t-white animate-spin", "aria-hidden": true }) }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative z-10 flex h-full w-full max-h-full max-w-full items-center justify-center", children: [
+                  storyMedia.hasVideo ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "video",
+                    {
+                      ref: videoRef,
+                      src: storyMedia.videoUrl,
+                      className: "max-h-full max-w-full object-contain select-none touch-manipulation",
+                      playsInline: true,
+                      autoPlay: true,
+                      loop: false,
+                      controls: false,
+                      onPointerDown: () => {
+                        const v = videoRef.current;
+                        if (v?.muted) {
+                          v.muted = false;
+                          v.volume = 1;
+                          void v.play();
+                        }
+                      },
+                      onLoadedMetadata: (e) => {
+                        const d = e.currentTarget.duration;
+                        if (Number.isFinite(d) && d > 0) {
+                          setVideoDurationSec(d);
+                          setVideoDurationFromMetadata(d);
+                        }
+                      }
+                    },
+                    cur.id
+                  ) : storyMedia.hasImage ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "img",
+                    {
+                      src: storyMedia.imageUrl,
+                      className: "max-h-full max-w-full object-contain select-none touch-manipulation",
+                      alt: "",
+                      draggable: false
+                    }
+                  ) : /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-7xl select-none touch-manipulation", children: storyMedia.emojiFallback || cur.image || "📷" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(StoryStickerLayer, { story: cur, storyAuthorId: author.id, onOpenProfile })
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "div",
+                  {
+                    className: "absolute inset-y-0 start-[26%] end-[28%] z-[35] touch-none",
+                    onPointerDown: (e) => {
+                      if (e.button !== 0) return;
+                      try {
+                        e.currentTarget.setPointerCapture(e.pointerId);
+                      } catch {
+                      }
+                      setMiddleHold(true);
+                    },
+                    onPointerUp: (e) => {
+                      try {
+                        e.currentTarget.releasePointerCapture(e.pointerId);
+                      } catch {
+                      }
+                      setMiddleHold(false);
+                    },
+                    onPointerCancel: (e) => {
+                      try {
+                        e.currentTarget.releasePointerCapture(e.pointerId);
+                      } catch {
+                      }
+                      setMiddleHold(false);
+                    }
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "button",
+                  {
+                    type: "button",
+                    "data-story-interactive": true,
+                    className: "absolute inset-y-0 start-0 w-[26%] z-40 bg-transparent touch-manipulation select-none",
+                    "aria-label": "الستوري السابق",
+                    onClick: (e) => {
+                      e.stopPropagation();
+                      storyTapHaptic();
+                      goBack();
+                    }
+                  }
+                ),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "button",
+                  {
+                    type: "button",
+                    "data-story-interactive": true,
+                    className: "absolute inset-y-0 end-0 w-[28%] z-40 bg-transparent touch-manipulation select-none",
+                    "aria-label": "الستوري التالي",
+                    onClick: (e) => {
+                      e.stopPropagation();
+                      storyTapHaptic();
+                      goForward();
+                    }
+                  }
+                )
+              ]
+            }
+          ),
+          canReplyToStories && userId !== me.id && !isGuest && /* @__PURE__ */ jsxRuntimeExports.jsxs("form", { onSubmit: submitReply, className: "flex shrink-0 gap-2 border-t border-white/10 bg-black/80 p-3", "data-story-interactive": true, children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "input",
+              {
+                value: reply,
+                onChange: (e) => setReply(e.target.value),
+                placeholder: "رد على الستوري...",
+                className: "flex-1 bg-white/10 rounded-full px-4 py-2 text-sm text-white placeholder:text-white/50 outline-none",
+                onClick: (e) => e.stopPropagation()
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "submit", className: "p-2 rounded-full bg-primary text-primary-foreground", "aria-label": "إرسال", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Send, { size: 20 }) })
+          ] }),
+          userId === me.id && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "div",
+            {
+              className: "z-[45] flex shrink-0 touch-none select-none flex-col items-center justify-center gap-0.5 border-t border-white/5 bg-gradient-to-t from-black via-black/95 to-black/40 px-4 pt-2 pb-[max(0.65rem,var(--sab))]",
+              style: { touchAction: "none" },
+              "data-story-interactive": true,
+              onPointerDown: onOwnZonePointerDown,
+              onPointerMove: onOwnZonePointerMove,
+              onPointerUp: endOwnZonePull,
+              onPointerCancel: endOwnZonePull,
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronUp, { className: "text-white/55", size: 22, strokeWidth: 2.25, "aria-hidden": true }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[11px] font-medium text-white/40 tracking-wide", children: "اسحب لأعلى" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                  "button",
+                  {
+                    type: "button",
+                    className: "mt-1 rounded-full bg-white/10 px-4 py-1.5 text-xs font-semibold text-white/90 backdrop-blur-sm transition-[transform,opacity] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] active:scale-[0.94] active:opacity-80",
+                    onPointerDown: (e) => e.stopPropagation(),
+                    onClick: () => setOwnViewsOpen(true),
+                    children: [
+                      "المشاهدات (",
+                      (cur.viewedByUserIds || []).length,
+                      ")"
+                    ]
+                  }
+                )
+              ]
+            }
+          ),
+          shareStoryId && /* @__PURE__ */ jsxRuntimeExports.jsx(ShareSheet, { target: { kind: "story", storyId: shareStoryId }, onClose: () => setShareStoryId(null) }),
+          noteToReply && onOpenChat && /* @__PURE__ */ jsxRuntimeExports.jsx(NoteReplySheet, { note: noteToReply, contentLabelAr: "ستوري", onClose: () => setNoteToReply(null), onSent: onOpenChat }),
+          showHighlightModal && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 bg-black/50 z-[70] flex items-center justify-center p-4", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "bg-background rounded-3xl p-6 w-full max-w-sm", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-lg font-bold mb-4", children: "حفظ كهايلايت" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-muted-foreground mb-4", children: "سيتم حفظ هذه القصة كهايلايت دائم في ملفك الشخصي" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "input",
+              {
+                type: "text",
+                placeholder: "عنوان الهايلايت",
+                value: highlightTitle,
+                onChange: (e) => setHighlightTitle(e.target.value),
+                className: "w-full bg-input rounded-2xl px-4 py-3 outline-none mb-4"
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-2", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => setShowHighlightModal(false), className: "flex-1 py-3 rounded-2xl bg-secondary font-semibold", children: "إلغاء" }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: saveAsHighlight, className: "flex-1 py-3 rounded-2xl bg-primary text-primary-foreground font-semibold", children: "حفظ" })
+            ] })
+          ] }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            StoryViewsSheet,
+            {
+              open: userId === me.id && ownViewsOpen,
+              story: cur,
+              onClose: () => setOwnViewsOpen(false),
+              onOpenProfile,
+              onDelete: handleDeleteCurrentStory
+            }
+          )
+        ]
+      }
+    )
+  ] });
+});
+const StoryTrayItem = reactExports.memo(function StoryTrayItem2({
+  label,
+  avatar,
+  unseen,
+  onOpen
+}) {
+  const btnRef = reactExports.useRef(null);
+  const [visible, setVisible] = reactExports.useState(false);
+  const ioRef = reactExports.useRef(null);
+  reactExports.useEffect(() => {
+    const el = btnRef.current;
+    if (!el) return;
+    ioRef.current = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting) setVisible(true);
+      },
+      { rootMargin: "80px" }
+    );
+    ioRef.current.observe(el);
+    return () => ioRef.current?.disconnect();
+  }, []);
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "button",
+    {
+      ref: btnRef,
+      type: "button",
+      onClick: () => {
+        const rect = btnRef.current?.getBoundingClientRect();
+        if (rect) onOpen(rect);
+      },
+      className: "flex w-[4.25rem] shrink-0 flex-col items-center gap-1 touch-manipulation story-tray-item",
+      style: {
+        contentVisibility: visible ? "visible" : "auto",
+        containIntrinsicSize: "0 88px"
+      },
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: label, src: avatar, size: 66, ring: true, ringSeen: !unseen }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "max-w-[4.25rem] truncate text-[11px] text-foreground", children: label })
+      ]
+    }
+  );
+});
+const StoriesRow = reactExports.memo(function StoriesRow2({ userIds, onOpenStory, onCreateStory }) {
+  useProfiledRender("StoriesRow");
+  const isGuest = useIsGuestSelector();
+  const me = useAppSelector((s) => {
+    const id = s.currentUserId;
+    if (!id) return null;
+    return userById$1(s, id) ?? null;
+  });
+  const t = useT();
+  const scrollRef = reactExports.useRef(null);
+  const orderedIds = useAppSelector(
+    reactExports.useCallback(
+      (s) => {
+        const meId = s.currentUserId;
+        if (!meId) return [];
+        return orderStoryTrayUserIds(s, meId, userIds);
+      },
+      [userIds]
+    ),
+    equalIdArrays
+  );
+  const hasMyStories = useAppSelector(
+    reactExports.useCallback(
+      (s) => {
+        const meId = s.currentUserId;
+        if (!meId) return false;
+        return userHasVisibleStories(s, meId, meId);
+      },
+      []
+    )
+  );
+  const myRingSeen = useAppSelector(
+    reactExports.useCallback(
+      (s) => {
+        const meId = s.currentUserId;
+        if (!meId) return true;
+        return !authorHasUnseenStories(s, meId, meId);
+      },
+      []
+    )
+  );
+  const trayUsers = useAppSelector(
+    reactExports.useCallback(
+      (s) => orderedIds.map((id) => {
+        const u = userById$1(s, id);
+        if (!u) return null;
+        return {
+          id,
+          label: u.username,
+          avatar: u.avatar,
+          unseen: me?.id ? authorHasUnseenStories(s, me.id, id) : false
+        };
+      }),
+      [orderedIds, me?.id]
+    ),
+    (a, b) => {
+      if (a === b) return true;
+      if (!a || !b || a.length !== b.length) return false;
+      for (let i = 0; i < a.length; i++) {
+        const x = a[i];
+        const y = b[i];
+        if (!x || !y) return x === y;
+        if (x.id !== y.id || x.unseen !== y.unseen || x.avatar !== y.avatar || x.label !== y.label) {
+          return false;
+        }
+      }
+      return true;
+    }
+  );
+  const myBtnRef = reactExports.useRef(null);
+  const openMyStory = reactExports.useCallback(() => {
+    if (!me) return;
+    if (isGuest) {
+      notifyGuestActionBlocked();
+      return;
+    }
+    const rect = myBtnRef.current?.getBoundingClientRect();
+    if (hasMyStories) {
+      onOpenStory({ userId: me.id, origin: rect });
+      return;
+    }
+    onCreateStory();
+  }, [hasMyStories, isGuest, me, onCreateStory, onOpenStory]);
+  const createNewStory = reactExports.useCallback(
+    (e) => {
+      e?.stopPropagation();
+      e?.preventDefault();
+      if (isGuest) {
+        notifyGuestActionBlocked();
+        return;
+      }
+      onCreateStory();
+    },
+    [isGuest, onCreateStory]
+  );
+  const openFriend = reactExports.useCallback(
+    (id, origin) => {
+      onOpenStory({ userId: id, origin });
+    },
+    [onOpenStory]
+  );
+  if (!me) return null;
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "section",
+    {
+      "aria-label": "الستوريات",
+      className: "relative z-10 shrink-0 border-b border-border bg-background",
+      children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "div",
+        {
+          ref: scrollRef,
+          className: "flex gap-3 overflow-x-auto overscroll-x-contain px-4 py-3 no-scrollbar scroll-smooth",
+          style: { WebkitOverflowScrolling: "touch" },
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "button",
+              {
+                ref: myBtnRef,
+                type: "button",
+                onClick: openMyStory,
+                "aria-disabled": isGuest,
+                className: "flex w-[4.25rem] shrink-0 flex-col items-center gap-1 touch-manipulation " + (isGuest ? "cursor-not-allowed opacity-50" : ""),
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      Avatar,
+                      {
+                        name: me.username,
+                        src: me.avatar,
+                        size: 66,
+                        ring: hasMyStories,
+                        ringSeen: hasMyStories && myRingSeen
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "span",
+                      {
+                        role: "button",
+                        tabIndex: 0,
+                        "aria-label": "إنشاء ستوري",
+                        onClick: createNewStory,
+                        onKeyDown: (e) => {
+                          if (e.key === "Enter" || e.key === " ") createNewStory(e);
+                        },
+                        className: "absolute -bottom-0.5 -end-0.5 z-10 flex h-5 w-5 cursor-pointer items-center justify-center rounded-full bg-primary text-xs text-primary-foreground shadow",
+                        children: "+"
+                      }
+                    )
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "max-w-[4.25rem] truncate text-[11px]", children: t("yourStory") })
+                ]
+              }
+            ),
+            trayUsers.map((row) => {
+              if (!row) return null;
+              return /* @__PURE__ */ jsxRuntimeExports.jsx(
+                StoryTrayItem,
+                {
+                  label: row.label,
+                  avatar: row.avatar,
+                  unseen: row.unseen,
+                  onOpen: (origin) => openFriend(row.id, origin)
+                },
+                row.id
+              );
+            })
+          ]
+        }
+      )
+    }
+  );
+});
+const HomeScreen = reactExports.memo(function HomeScreen2({
+  onOpenProfile,
+  onOpenChat,
+  restoreFromProfileContext = null,
+  onConsumedRestoreFromProfile
+}) {
+  useProfiledRender("HomeScreen");
+  const {
+    addComment,
+    deleteComment,
+    refreshFeedFromServer,
+    loadMoreFeedFromServer
+  } = useAppActions();
+  const currentUser = useAppSelector((s) => {
+    const id = s.currentUserId;
+    if (!id) return null;
+    return userById$1(s, id) ?? null;
+  });
+  const isGuest = useIsGuestSelector();
+  const posts = useAppSelector((s) => s.posts);
+  const { homeFeedPosts: feed, feedHasMore } = useHomeFeed();
+  const isHomeTabActive = useIsTabActive("home");
+  useScreenPerf("HomeScreen", { active: isHomeTabActive });
+  const t = useT();
+  const [shareTarget, setShareTarget] = reactExports.useState(null);
+  const [storyOpen, setStoryOpen] = reactExports.useState(null);
+  const [openPostId, setOpenPostId] = reactExports.useState(null);
+  const [focusCommentsOnOpen, setFocusCommentsOnOpen] = reactExports.useState(false);
+  const [commentsSheetPostId, setCommentsSheetPostId] = reactExports.useState(null);
+  const [sheetCommentDraft, setSheetCommentDraft] = reactExports.useState("");
+  const [feedTick, setFeedTick] = reactExports.useState(0);
+  const headerRef = reactExports.useRef(null);
+  const [headerHeight, setHeaderHeight] = reactExports.useState(280);
+  const loadMoreBusyRef = reactExports.useRef(false);
+  const [pullHint, setPullHint] = reactExports.useState(false);
+  const touchRef = reactExports.useRef({ y0: 0, active: false });
+  const closeStory = reactExports.useCallback(() => setStoryOpen(null), []);
+  const openProfileFromStory = reactExports.useCallback((id) => {
+    try {
+      sessionStorage.setItem("retweet_return_story_user_id", storyOpen?.userId || "");
+    } catch {
+    }
+    onOpenProfile(id);
+  }, [onOpenProfile, storyOpen?.userId]);
+  reactExports.useEffect(() => {
+    const handler = (e) => {
+      const d = e.detail;
+      const id = d?.userId;
+      if (id) setStoryOpen({ userId: id, storyId: d?.storyId });
+    };
+    window.addEventListener("retweet-open-story", handler);
+    return () => window.removeEventListener("retweet-open-story", handler);
+  }, []);
+  reactExports.useLayoutEffect(() => {
+    if (!restoreFromProfileContext || restoreFromProfileContext.tab !== "home") return;
+    const d = restoreFromProfileContext;
+    onConsumedRestoreFromProfile?.();
+    if (!d.postId || !d.homeSurface) return;
+    const p = posts.find((x) => x.id === d.postId);
+    if (!p) return;
+    const surface = d.homeSurface;
+    if (surface === "feed_comments_sheet") {
+      setCommentsSheetPostId(d.postId);
+      setOpenPostId(null);
+      setFocusCommentsOnOpen(false);
+    } else {
+      setCommentsSheetPostId(null);
+      setFocusCommentsOnOpen(!!d.commentsOpen);
+      setOpenPostId(d.postId);
+    }
+  }, [restoreFromProfileContext, posts, onConsumedRestoreFromProfile]);
+  const openPost = reactExports.useMemo(
+    () => openPostId ? posts.find((p) => p.id === openPostId) ?? null : null,
+    [openPostId, posts]
+  );
+  reactExports.useEffect(() => {
+    if (!commentsSheetPostId) setSheetCommentDraft("");
+  }, [commentsSheetPostId]);
+  const commentsSheetPost = reactExports.useMemo(
+    () => commentsSheetPostId ? posts.find((po) => po.id === commentsSheetPostId) ?? null : null,
+    [posts, commentsSheetPostId]
+  );
+  const handleStoryCreate = reactExports.useCallback(() => {
+    if (isGuest) {
+      notifyGuestActionBlocked();
+      return;
+    }
+    requestOpenStoryGallery();
+  }, [isGuest]);
+  const goToReelsTab = reactExports.useCallback(() => {
+    window.dispatchEvent(new CustomEvent("retweet-go-reels"));
+  }, []);
+  const tabScrollRef = useTabPanelScrollRef();
+  const pullHintTimerRef = reactExports.useRef(null);
+  reactExports.useEffect(() => {
+    return () => {
+      if (pullHintTimerRef.current != null) window.clearTimeout(pullHintTimerRef.current);
+    };
+  }, []);
+  reactExports.useEffect(() => {
+    const scrollTop = () => tabScrollRef?.current?.scrollTop ?? 0;
+    const onStart = (e) => {
+      touchRef.current = { y0: e.touches[0].clientY, active: scrollTop() <= 2 };
+    };
+    const onEnd = (e) => {
+      if (!touchRef.current.active) return;
+      touchRef.current.active = false;
+      const y = e.changedTouches[0]?.clientY ?? touchRef.current.y0;
+      const dy = y - touchRef.current.y0;
+      if (scrollTop() <= 2 && dy > 72) {
+        setFeedTick((t2) => t2 + 1);
+        setPullHint(true);
+        void refreshFeedFromServer();
+        if (pullHintTimerRef.current != null) window.clearTimeout(pullHintTimerRef.current);
+        pullHintTimerRef.current = window.setTimeout(() => {
+          pullHintTimerRef.current = null;
+          setPullHint(false);
+        }, 1400);
+      }
+    };
+    window.addEventListener("touchstart", onStart, { passive: true });
+    window.addEventListener("touchend", onEnd, { passive: true });
+    return () => {
+      window.removeEventListener("touchstart", onStart);
+      window.removeEventListener("touchend", onEnd);
+    };
+  }, [tabScrollRef, refreshFeedFromServer]);
+  const storyFriends = useAppSelector(
+    reactExports.useCallback(
+      (s) => {
+        const meId = s.currentUserId;
+        if (!meId) return [];
+        return visibleStoryFriendsUserIds(s, meId);
+      },
+      [feedTick]
+    ),
+    equalIdArrays
+  );
+  const storyTrayRing = useAppSelector(
+    reactExports.useCallback(
+      (s) => {
+        const meId = s.currentUserId;
+        if (!meId) return [];
+        return storyViewerTrayRing(s, meId);
+      },
+      [feedTick]
+    ),
+    equalIdArrays
+  );
+  const openPostById = reactExports.useCallback((postId) => {
+    setFocusCommentsOnOpen(false);
+    setCommentsSheetPostId(null);
+    setOpenPostId(postId);
+  }, []);
+  const openCommentsById = reactExports.useCallback((postId) => {
+    setCommentsSheetPostId(postId);
+  }, []);
+  const feedActions = reactExports.useMemo(
+    () => ({
+      onShare: setShareTarget,
+      onOpenProfile,
+      onOpenChat,
+      openPost: openPostById,
+      openCommentsSheet: openCommentsById
+    }),
+    [onOpenProfile, onOpenChat, openPostById, openCommentsById]
+  );
+  reactExports.useEffect(() => {
+    if (!isHomeTabActive || isGuest) return;
+    void refreshFeedFromServer();
+  }, [isHomeTabActive, isGuest, refreshFeedFromServer]);
+  reactExports.useLayoutEffect(() => {
+    const h = headerRef.current?.offsetHeight;
+    if (h && h > 0) setHeaderHeight(h);
+  }, [storyFriends.length, pullHint, feedTick]);
+  const handleLoadMore = reactExports.useCallback(() => {
+    if (loadMoreBusyRef.current || !feedHasMore) return;
+    loadMoreBusyRef.current = true;
+    void loadMoreFeedFromServer().finally(() => {
+      loadMoreBusyRef.current = false;
+    });
+  }, [feedHasMore, loadMoreFeedFromServer]);
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative flex min-h-0 flex-1 flex-col bg-background", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "div",
+      {
+        className: "flex min-h-full flex-col bg-background pb-2 " + (openPost ? "pointer-events-none select-none" : ""),
+        "aria-hidden": openPost ? true : void 0,
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { ref: headerRef, className: "shrink-0", children: [
+            pullHint && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mx-3 mt-1 shrink-0 rounded-full bg-primary/90 text-primary-foreground text-center text-xs py-2 px-3 shadow-md", children: "تم التحديث — أحدث المنشورات والستوريات" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              StoriesRow,
+              {
+                userIds: storyFriends,
+                onOpenStory: setStoryOpen,
+                onCreateStory: handleStoryCreate
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "px-3 py-2", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "grid grid-cols-2 rounded-full border border-border bg-card p-1", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  type: "button",
+                  className: "rounded-full bg-background px-3 py-1.5 text-sm font-semibold text-foreground shadow-sm",
+                  "aria-label": "الرئيسية",
+                  children: "الرئيسية"
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                "button",
+                {
+                  type: "button",
+                  onClick: goToReelsTab,
+                  className: "flex items-center justify-center gap-1 rounded-full px-3 py-1.5 text-sm font-semibold text-muted-foreground hover:bg-background/80 hover:text-foreground",
+                  "aria-label": "ريلز",
+                  children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(SquarePlay, { size: 14 }),
+                    "ريلز"
+                  ]
+                }
+              )
+            ] }) })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { "aria-label": "الخلاصة", className: "relative z-0 flex flex-col bg-background", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              VirtualizedHomeFeed,
+              {
+                posts: feed,
+                scrollRef: tabScrollRef,
+                headerOffsetPx: headerHeight,
+                feedHasMore,
+                onLoadMore: handleLoadMore,
+                feedActions
+              }
+            ),
+            feed.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-center text-muted-foreground py-12", children: t("noPosts") })
+          ] }),
+          shareTarget && /* @__PURE__ */ jsxRuntimeExports.jsx(ShareSheet, { target: { kind: "post", post: shareTarget }, onClose: () => setShareTarget(null) }),
+          commentsSheetPost && (() => {
+            const sheetComments = (Array.isArray(commentsSheetPost.comments) ? commentsSheetPost.comments : []).filter((c) => {
+              if (!c || typeof c !== "object") return false;
+              const row = c;
+              return typeof row.id === "string" && row.id.trim().length > 0 && typeof row.userId === "string" && row.userId.trim().length > 0 && typeof row.text === "string";
+            }).map((c) => ({
+              id: c.id,
+              userId: c.userId,
+              text: c.text,
+              createdAt: typeof c.createdAt === "number" ? c.createdAt : Date.now()
+            }));
+            return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-[60] bg-black/50 flex items-end", onClick: () => setCommentsSheetPostId(null), children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "div",
+              {
+                className: "mx-auto flex w-full max-w-md flex-col rounded-t-3xl border-t border-border bg-background text-foreground shadow-2xl",
+                style: { height: "min(72vh, 640px)", maxHeight: "72vh" },
+                onClick: (e) => e.stopPropagation(),
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex shrink-0 items-center justify-between border-b border-border p-3", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-sm font-semibold", children: [
+                      "التعليقات (",
+                      sheetComments.length,
+                      ")"
+                    ] }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => setCommentsSheetPostId(null), "aria-label": "إغلاق", children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 22 }) })
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-h-0 flex-1 overflow-y-auto p-3 space-y-2", children: [
+                    sheetComments.map((c) => {
+                      const cu = userById$1(state, c.userId);
+                      return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative flex gap-2 text-sm", children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsx(
+                          "button",
+                          {
+                            type: "button",
+                            className: "shrink-0",
+                            onClick: () => cu && onOpenProfile(cu.id, {
+                              postId: commentsSheetPost.id,
+                              tab: "home",
+                              commentsOpen: true,
+                              homeSurface: "feed_comments_sheet"
+                            }),
+                            children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: cu?.username || "?", src: cu?.avatar, size: 32 })
+                          }
+                        ),
+                        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+                          /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                            "button",
+                            {
+                              type: "button",
+                              className: "font-semibold",
+                              onClick: () => cu && onOpenProfile(cu.id, {
+                                postId: commentsSheetPost.id,
+                                tab: "home",
+                                commentsOpen: true,
+                                homeSurface: "feed_comments_sheet"
+                              }),
+                              children: [
+                                "@",
+                                cu?.username
+                              ]
+                            }
+                          ),
+                          " ",
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: c.text })
+                        ] }),
+                        currentUser && c.userId === currentUser.id && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                          "button",
+                          {
+                            type: "button",
+                            onClick: () => {
+                              if (!window.confirm("حذف هذا التعليق؟")) return;
+                              deleteComment(commentsSheetPost.id, c.id);
+                            },
+                            className: "shrink-0 rounded-full p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive",
+                            "aria-label": "حذف التعليق",
+                            children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 16 })
+                          }
+                        )
+                      ] }, c.id);
+                    }),
+                    sheetComments.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-center text-muted-foreground text-sm py-6", children: "لا تعليقات بعد" })
+                  ] }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                    "form",
+                    {
+                      className: "p-3 border-t border-border flex gap-2 shrink-0",
+                      onSubmit: (e) => {
+                        e.preventDefault();
+                        if (!sheetCommentDraft.trim()) return;
+                        addComment(commentsSheetPost.id, sheetCommentDraft);
+                        setSheetCommentDraft("");
+                      },
+                      children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsx(
+                          "input",
+                          {
+                            value: sheetCommentDraft,
+                            onChange: (e) => setSheetCommentDraft(e.target.value),
+                            placeholder: "أضف تعليقاً...",
+                            className: "flex-1 bg-input rounded-full px-4 py-2 text-sm outline-none"
+                          }
+                        ),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "submit", className: "text-primary font-semibold text-sm px-2", children: "إرسال" })
+                      ]
+                    }
+                  )
+                ]
+              }
+            ) });
+          })(),
+          storyOpen && /* @__PURE__ */ jsxRuntimeExports.jsx(
+            StoryViewer,
+            {
+              userId: storyOpen.userId,
+              trayRing: storyTrayRing,
+              initialStoryId: storyOpen.storyId,
+              openOrigin: storyOpen.origin,
+              onRequestAuthor: (id) => id ? setStoryOpen({ userId: id }) : closeStory(),
+              onClose: closeStory,
+              onOpenProfile: openProfileFromStory,
+              onOpenChat
+            }
+          )
+        ]
+      }
+    ),
+    openPost && /* @__PURE__ */ jsxRuntimeExports.jsx(
+      PostDetail,
+      {
+        post: openPost,
+        onBack: () => {
+          setOpenPostId(null);
+          setFocusCommentsOnOpen(false);
+        },
+        onOpenProfile,
+        onOpenChat,
+        profileReturnTab: "home",
+        initialFocusComments: focusCommentsOnOpen
+      }
+    )
+  ] });
+});
+function rankUsersBySearchQuery(users, query) {
+  const q = query.trim().toLowerCase();
+  if (!q) return users;
+  const rank = (u) => {
+    const un = u.username.toLowerCase();
+    const em = (u.email || "").toLowerCase();
+    const dn = (u.displayName || "").toLowerCase();
+    if (un === q) return 0;
+    if (un.startsWith(q)) return 1;
+    if (dn === q || dn.startsWith(q)) return 2;
+    if (em === q || em.startsWith(q)) return 3;
+    if (un.includes(q)) return 4;
+    if (dn.includes(q)) return 5;
+    if (em.includes(q)) return 6;
+    return 7;
+  };
+  return [...users].sort((a, b) => {
+    const ra = rank(a);
+    const rb = rank(b);
+    if (ra !== rb) return ra - rb;
+    return a.username.localeCompare(b.username, void 0, { sensitivity: "base" });
+  });
+}
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+function isBlockedBetween(me, other) {
+  return other.blocked.includes(me.id) || me.blocked.includes(other.id);
+}
+function SearchScreen({
+  onOpenProfile,
+  onOpenQuranChat,
+  onOpenChat,
+  restoreFromProfileContext = null,
+  onConsumedRestoreFromProfile
+}) {
+  const { state: state2, currentUser, touchQuranBot, isGuest, mergeDiscoveredUsers, refreshUserDirectory } = useApp();
+  const t = useT();
+  const [q, setQ] = reactExports.useState("");
+  const [remoteHits, setRemoteHits] = reactExports.useState([]);
+  const [recentUsers, setRecentUsers] = reactExports.useState([]);
+  const [searching, setSearching] = reactExports.useState(false);
+  const [openPostId, setOpenPostId] = reactExports.useState(null);
+  const [focusCommentsOnOpen, setFocusCommentsOnOpen] = reactExports.useState(false);
+  const [sharePost, setSharePost] = reactExports.useState(null);
+  const searchSeqRef = reactExports.useRef(0);
+  const me = currentUser;
+  const qq = q.trim();
+  const runServerSearch = reactExports.useCallback(
+    async (query) => {
+      if (!apiBackendEnabled() || !getApiToken() || isGuest) {
+        setRemoteHits([]);
+        setSearching(false);
+        return;
+      }
+      const seq = ++searchSeqRef.current;
+      setSearching(true);
+      const rows = await apiSearchUsers(query);
+      if (seq !== searchSeqRef.current) return;
+      const users = rows.map(userFromSearchResult);
+      setRemoteHits(users);
+      mergeDiscoveredUsers(users);
+      setSearching(false);
+    },
+    [isGuest, mergeDiscoveredUsers]
+  );
+  const loadRecentFromServer = reactExports.useCallback(async () => {
+    if (!apiBackendEnabled() || !getApiToken() || isGuest) {
+      setRecentUsers([]);
+      return;
+    }
+    const rows = await apiFetchUserDirectory();
+    const users = rows.map(userFromSearchResult);
+    setRecentUsers(users);
+    mergeDiscoveredUsers(users);
+  }, [isGuest, mergeDiscoveredUsers]);
+  reactExports.useEffect(() => {
+    void refreshUserDirectory();
+  }, [refreshUserDirectory]);
+  reactExports.useEffect(() => {
+    if (!qq) {
+      setRemoteHits([]);
+      setSearching(false);
+      void loadRecentFromServer();
+      return;
+    }
+    let cancelled = false;
+    setSearching(true);
+    const timer = window.setTimeout(() => {
+      if (cancelled) return;
+      void runServerSearch(qq);
+    }, 220);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [qq, isGuest, runServerSearch, loadRecentFromServer]);
+  reactExports.useEffect(() => {
+    const onRegistered = () => {
+      if (qq) void runServerSearch(qq);
+      else void loadRecentFromServer();
+    };
+    window.addEventListener(USER_REGISTERED_WINDOW_EVENT, onRegistered);
+    return () => window.removeEventListener(USER_REGISTERED_WINDOW_EVENT, onRegistered);
+  }, [qq, runServerSearch, loadRecentFromServer]);
+  reactExports.useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState !== "visible") return;
+      if (qq) void runServerSearch(qq);
+      else void loadRecentFromServer();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [qq, runServerSearch, loadRecentFromServer]);
+  const accountList = reactExports.useMemo(() => {
+    const source = qq ? remoteHits : recentUsers;
+    const byId = /* @__PURE__ */ new Map();
+    for (const u of source) {
+      if (u.id === me.id || isGuestUserId(u.id) || isBlockedBetween(me, u)) continue;
+      byId.set(u.id, u);
+    }
+    if (qq) {
+      for (const u of state2.users) {
+        if (u.id === me.id || isGuestUserId(u.id) || isBlockedBetween(me, u)) continue;
+        const un = u.username.toLowerCase();
+        const ql = qq.toLowerCase();
+        if (!un.includes(ql) && !u.email?.toLowerCase().includes(ql)) continue;
+        if (!byId.has(u.id)) byId.set(u.id, u);
+      }
+    }
+    return rankUsersBySearchQuery([...byId.values()], qq);
+  }, [qq, remoteHits, recentUsers, state2.users, me]);
+  const tags = trendingHashtags(state2);
+  const explorePool = reactExports.useMemo(
+    () => state2.posts.filter((p) => {
+      if (p.type !== "post" && p.type !== "reel") return false;
+      const author = userById$1(state2, p.userId);
+      if (!author) return false;
+      if (author.blocked.includes(me.id) || me.blocked.includes(author.id)) return false;
+      return true;
+    }),
+    [state2.posts, state2.users, me.id, me.blocked]
+  );
+  reactExports.useMemo(() => shuffle(explorePool).slice(0, 30), [explorePool]);
+  reactExports.useLayoutEffect(() => {
+    if (!restoreFromProfileContext || restoreFromProfileContext.tab !== "search") return;
+    const d = restoreFromProfileContext;
+    onConsumedRestoreFromProfile?.();
+    if (!d.postId || !d.homeSurface) return;
+    const p = state2.posts.find((x) => x.id === d.postId);
+    if (!p) return;
+    setFocusCommentsOnOpen(!!d.commentsOpen);
+    setOpenPostId(d.postId);
+  }, [restoreFromProfileContext, state2.posts, onConsumedRestoreFromProfile]);
+  const openPost = reactExports.useMemo(
+    () => openPostId ? state2.posts.find((p) => p.id === openPostId) ?? null : null,
+    [openPostId, state2.posts]
+  );
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative flex min-h-0 flex-1 flex-col bg-background", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "div",
+      {
+        className: "flex min-h-full flex-1 flex-col bg-white dark:bg-background " + (openPost ? "pointer-events-none select-none" : ""),
+        "aria-hidden": openPost ? true : void 0,
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "px-4 pt-3 text-[2rem] font-bold text-zinc-900 dark:text-zinc-50 tracking-tight", children: "Explore" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "px-4 mt-3", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 rounded-full bg-zinc-100 dark:bg-zinc-800/80 px-4 py-3", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Search, { size: 18, className: "text-zinc-400 shrink-0" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "input",
+              {
+                value: q,
+                onChange: (e) => setQ(e.target.value),
+                placeholder: "Search R - Social",
+                className: "flex-1 bg-transparent outline-none text-sm text-zinc-900 placeholder:text-zinc-400"
+              }
+            )
+          ] }) }),
+          q === "" && tags.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-4 divide-y divide-zinc-100 dark:divide-zinc-800 border-t border-zinc-100", children: tags.slice(0, 12).map(([tag, n], i) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "button",
+            {
+              type: "button",
+              onClick: () => setQ(tag),
+              className: "w-full flex items-center gap-3 px-4 py-3.5 text-start hover:bg-zinc-50 active:bg-zinc-100",
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "w-6 text-center text-sm font-medium text-zinc-400 tabular-nums", children: i + 1 }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1 min-w-0", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "font-bold text-zinc-900", children: tag.startsWith("#") ? tag : `#${tag.replace(/^#/, "")}` }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-sm text-zinc-500", children: formatTrendPostCount(n) })
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Ellipsis, { size: 18, className: "text-zinc-400 shrink-0" })
+              ]
+            },
+            tag
+          )) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "button",
+            {
+              type: "button",
+              onClick: () => {
+                if (isGuest) {
+                  notifyGuestActionBlocked();
+                  return;
+                }
+                touchQuranBot();
+                onOpenQuranChat();
+              },
+              className: "w-full flex items-center gap-3 p-3 bg-black text-white rounded-2xl border border-white/10",
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(BookOpen, { size: 28 }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1 text-start", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "font-bold", children: t("quranChannel") }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-xs opacity-90", children: "شات مباشر · بوت طارق يرسل أدعية كل فترة" })
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs bg-white/20 px-2 py-1 rounded-full", children: "LIVE" })
+              ]
+            }
+          ),
+          qq ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2 px-4 mt-4", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-xs text-muted-foreground", children: qq ? "نتائج البحث" : "حسابات جديدة" }),
+            searching && accountList.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground py-2", children: "جاري التحديث من الخادم…" }),
+            !searching && accountList.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground py-2", children: qq ? "لا توجد حسابات مطابقة" : "لا توجد حسابات بعد" }),
+            accountList.map((u) => /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", onClick: () => onOpenProfile(u.id), className: "w-full flex items-center gap-3 p-2 hover:bg-secondary rounded-2xl", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u.username, src: u.avatar }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 text-start", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "truncate text-sm font-semibold", children: userDisplayName(u) }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "truncate text-xs text-muted-foreground", dir: "ltr", children: [
+                  "@",
+                  u.username
+                ] }),
+                u.bio ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-xs text-muted-foreground line-clamp-1 mt-0.5", children: u.bio }) : null
+              ] })
+            ] }, u.id))
+          ] }) : null,
+          q.startsWith("#") && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "space-y-2", children: state2.posts.filter((p) => p.text.includes(q)).map((p) => {
+            const u = userById$1(state2, p.userId);
+            return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "p-3 border border-border rounded-2xl", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-xs font-semibold", children: [
+                "@",
+                u?.username
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-sm", children: p.text })
+            ] }, p.id);
+          }) }),
+          sharePost && /* @__PURE__ */ jsxRuntimeExports.jsx(ShareSheet, { target: { kind: "post", post: sharePost }, onClose: () => setSharePost(null) })
+        ]
+      }
+    ),
+    openPost && /* @__PURE__ */ jsxRuntimeExports.jsx(
+      PostDetail,
+      {
+        post: openPost,
+        onBack: () => {
+          setOpenPostId(null);
+          setFocusCommentsOnOpen(false);
+        },
+        onOpenProfile,
+        onOpenChat,
+        profileReturnTab: "search",
+        initialFocusComments: focusCommentsOnOpen
+      }
+    )
+  ] });
+}
+const REEL_HEIGHT = 1920;
+const REEL_SAFE_CONTENT_HEIGHT = 1350;
+const REEL_MAX_UPLOAD_BYTES = 500 * 1024 * 1024;
+const REEL_MAX_UPLOAD_MB = 500;
+const REEL_ACCEPT_VIDEO = "video/mp4,video/quicktime,video/webm,video/*";
+function formatReelMaxSizeError(bytes) {
+  const mb = (bytes / (1024 * 1024)).toFixed(0);
+  return `الملف ${mb} ميجا — الحد الأقصى ${REEL_MAX_UPLOAD_MB} ميجا للريلز.`;
+}
+const REEL_SAFE_CONTENT_RATIO = REEL_SAFE_CONTENT_HEIGHT / REEL_HEIGHT;
+const ReelMediaPlayer = reactExports.memo(function ReelMediaPlayer2({
+  media,
+  active: active2,
+  soundOn,
+  paused,
+  onDoubleTap,
+  onHoldStart,
+  onHoldEnd
+}) {
+  const videoRef = reactExports.useRef(null);
+  const holdTimerRef = reactExports.useRef(null);
+  const lastTapRef = reactExports.useRef(null);
+  reactExports.useEffect(() => {
+    const v = videoRef.current;
+    if (!v || !media.hasVideo) return;
+    if (active2) {
+      v.muted = !soundOn;
+      const play = v.play();
+      if (play) play.catch(() => {
+        v.muted = true;
+        void v.play();
+      });
+    } else {
+      v.pause();
+      v.currentTime = 0;
+    }
+  }, [active2, soundOn, media.hasVideo, media.videoUrl]);
+  reactExports.useEffect(() => {
+    const v = videoRef.current;
+    if (!v || !media.hasVideo || !active2) return;
+    if (paused) v.pause();
+    else {
+      const p = v.play();
+      if (p) p.catch(() => {
+      });
+    }
+  }, [paused, active2, media.hasVideo]);
+  const onPointerDown = (e) => {
+    if (e.button !== 0 && e.pointerType !== "touch") return;
+    const now = Date.now();
+    const prev = lastTapRef.current;
+    if (prev && now - prev.t < 320 && Math.hypot(e.clientX - prev.x, e.clientY - prev.y) < 60) {
+      lastTapRef.current = null;
+      onDoubleTap(e.clientX, e.clientY);
+      return;
+    }
+    lastTapRef.current = { t: now, x: e.clientX, y: e.clientY };
+    holdTimerRef.current = window.setTimeout(() => {
+      holdTimerRef.current = null;
+      onHoldStart();
+    }, 380);
+  };
+  const onPointerUp = () => {
+    if (holdTimerRef.current != null) {
+      window.clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+    onHoldEnd();
+  };
+  const frameClass = "absolute inset-0 flex items-center justify-center bg-black";
+  const fillFrame = !!media.videoUrl && (/\/media\/videos\//.test(media.videoUrl) || media.videoUrl.includes(".mp4"));
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "div",
+    {
+      className: "absolute inset-0 cursor-pointer reel-safe-stage",
+      style: {
+        ["--reel-safe-bottom-ratio"]: String(1 - REEL_SAFE_CONTENT_RATIO)
+      },
+      onPointerDown,
+      onPointerUp,
+      onPointerCancel: onPointerUp,
+      children: media.hasVideo && media.videoUrl ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: frameClass, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "video",
+        {
+          ref: videoRef,
+          src: media.videoUrl,
+          loop: true,
+          playsInline: true,
+          preload: active2 ? "auto" : "metadata",
+          poster: media.posterUrl || void 0,
+          className: "h-full w-full " + (fillFrame ? "object-cover object-center" : "object-contain")
+        }
+      ) }) : media.hasImage && media.imageUrl ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: frameClass, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "img",
+        {
+          src: media.imageUrl,
+          alt: "",
+          className: "h-full w-full " + (fillFrame ? "object-cover object-center" : "object-contain")
+        }
+      ) }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: frameClass + " text-6xl", children: media.emojiFallback || "🎬" })
+    }
+  );
+});
+function HeartBurst({ x, y }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "div",
+    {
+      className: "pointer-events-none fixed z-[200] -translate-x-1/2 -translate-y-1/2",
+      style: { left: x, top: y },
+      children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+        Heart,
+        {
+          size: 96,
+          className: "fill-white stroke-white drop-shadow-[0_0_24px_rgba(255,255,255,0.6)] animate-reel-heart"
+        }
+      )
+    }
+  );
+}
+function PausedOverlay() {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "pointer-events-none absolute inset-0 z-30 flex items-center justify-center bg-black/30", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-full bg-black/50 p-5 backdrop-blur-sm", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Pause, { size: 44, className: "fill-white stroke-white" }) }) });
+}
+const REEL_SLIDE_HEIGHT_FALLBACK = "calc(100dvh - var(--sat) - var(--sab))";
+const ReelSlide = reactExports.memo(function ReelSlide2({
+  reelId,
+  slideHeightPx,
+  children
+}) {
+  const slideStyle = slideHeightPx > 0 ? { height: slideHeightPx, minHeight: slideHeightPx } : { height: REEL_SLIDE_HEIGHT_FALLBACK, minHeight: REEL_SLIDE_HEIGHT_FALLBACK };
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "section",
+    {
+      "data-reel-slide": true,
+      "data-reel-id": reelId,
+      className: "relative w-full shrink-0 overflow-hidden bg-black",
+      style: slideStyle,
+      children
+    }
+  );
+});
+function SideActionButton({
+  onClick,
+  label,
+  icon,
+  count: count2,
+  active: active2,
+  activeColor = "text-rose-500"
+}) {
+  const [pressed, setPressed] = reactExports.useState(false);
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "button",
+    {
+      type: "button",
+      "aria-label": label,
+      onClick,
+      onPointerDown: () => setPressed(true),
+      onPointerUp: () => setPressed(false),
+      onPointerLeave: () => setPressed(false),
+      className: "flex flex-col items-center gap-1 transition-transform duration-100 " + (pressed ? "scale-75" : "scale-100") + " " + (active2 ? activeColor : "text-white"),
+      style: { filter: "drop-shadow(0 2px 8px rgba(0,0,0,0.55))" },
+      children: [
+        icon,
+        count2 != null && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs font-semibold leading-none drop-shadow-sm", children: count2 > 999 ? `${(count2 / 1e3).toFixed(1)}k` : count2 })
+      ]
+    }
+  );
+}
+const ReelsScreen = reactExports.memo(function ReelsScreen2({
+  onOpenProfile,
+  onOpenChat,
+  restoreFromProfileContext = null,
+  onConsumedRestoreFromProfile
+}) {
+  useProfiledRender("ReelsScreen");
+  const { toggleLike, toggleRepost, addComment, refreshFromServer } = useAppActions();
+  const currentUser = useCurrentUser();
+  const isGuest = useIsGuestSelector();
+  const posts = usePosts();
+  const lang = useAppLanguage();
+  const users = useAppSelector((s) => s.users);
+  const mediaNotes = useAppSelector((s) => s.mediaNotes);
+  const isTabActive = useIsTabActive("reels");
+  useScreenPerf("ReelsScreen", { active: isTabActive });
+  const t = useT();
+  const me = currentUser;
+  const notesState = reactExports.useMemo(
+    () => ({
+      users,
+      mediaNotes,
+      currentUserId: me.id,
+      posts: [],
+      stories: [],
+      chats: [],
+      notifications: [],
+      language: lang,
+      theme: "light"
+    }),
+    [users, mediaNotes, me.id, lang]
+  );
+  const allReels = useReelsPosts(me.id, me.blocked ?? []);
+  const guestBlock = () => {
+    if (!isGuest) return false;
+    notifyGuestActionBlocked();
+    return true;
+  };
+  const [tab, setTab] = reactExports.useState("all");
+  const [sharePost, setSharePost] = reactExports.useState(null);
+  const [commentsFor, setCommentsFor] = reactExports.useState(null);
+  const [commentDraft, setCommentDraft] = reactExports.useState("");
+  const [noteToReply, setNoteToReply] = reactExports.useState(null);
+  const [reelPullHint, setReelPullHint] = reactExports.useState(false);
+  const [activeReelId, setActiveReelId] = reactExports.useState(null);
+  const [soundOn, setSoundOn] = reactExports.useState(true);
+  const [soundUnlocked, setSoundUnlocked] = reactExports.useState(false);
+  const [reelMenuId, setReelMenuId] = reactExports.useState(null);
+  const [commentMenuId, setCommentMenuId] = reactExports.useState(null);
+  const [heartBurst, setHeartBurst] = reactExports.useState(null);
+  const [holdPaused, setHoldPaused] = reactExports.useState(false);
+  reactExports.useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("retweet-reels-comments-open", {
+        detail: { open: !!commentsFor }
+      })
+    );
+    return () => {
+      window.dispatchEvent(
+        new CustomEvent("retweet-reels-comments-open", {
+          detail: { open: false }
+        })
+      );
+    };
+  }, [commentsFor]);
+  const scrollRef = reactExports.useRef(null);
+  const pullRef = reactExports.useRef({ y0: 0, active: false });
+  const activeReelIdRef = reactExports.useRef(null);
+  const scrollRafRef = reactExports.useRef(null);
+  const snapLockRef = reactExports.useRef(false);
+  const [slideHeightPx, setSlideHeightPx] = reactExports.useState(0);
+  const unlockSound = reactExports.useCallback(() => setSoundUnlocked(true), []);
+  reactExports.useEffect(() => {
+    if (!isTabActive) return;
+    refreshFromServer();
+  }, [refreshFromServer, isTabActive]);
+  reactExports.useEffect(() => {
+    if (!isTabActive) return;
+    document.documentElement.classList.add("retweet-overscroll-lock");
+    return () => document.documentElement.classList.remove("retweet-overscroll-lock");
+  }, [isTabActive]);
+  reactExports.useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onStart = (e) => {
+      pullRef.current = { y0: e.touches[0].clientY, active: el.scrollTop <= 0 };
+    };
+    const onEnd = (e) => {
+      if (!pullRef.current.active) return;
+      pullRef.current.active = false;
+      const dy = (e.changedTouches[0]?.clientY ?? pullRef.current.y0) - pullRef.current.y0;
+      if (el.scrollTop <= 0 && dy > 72) {
+        refreshFromServer();
+        setReelPullHint(true);
+        window.setTimeout(() => setReelPullHint(false), 1200);
+      }
+    };
+    el.addEventListener("touchstart", onStart, { passive: true });
+    el.addEventListener("touchend", onEnd, { passive: true });
+    return () => {
+      el.removeEventListener("touchstart", onStart);
+      el.removeEventListener("touchend", onEnd);
+    };
+  }, [refreshFromServer]);
+  const reels = tab === "friends" ? allReels.filter((p) => me.following.includes(p.userId)) : allReels;
+  const reelIdSetKey = reactExports.useMemo(() => reels.map((r2) => r2.id).sort().join("|"), [reels]);
+  const activeReelIdx = reactExports.useMemo(() => {
+    if (!activeReelId || reels.length === 0) return 0;
+    const i = reels.findIndex((r2) => r2.id === activeReelId);
+    return i >= 0 ? i : 0;
+  }, [reels, activeReelId]);
+  reactExports.useLayoutEffect(() => {
+    if (!isTabActive) return;
+    const el = scrollRef.current;
+    if (!el) return;
+    const measure = () => {
+      const h = el.clientHeight;
+      if (h > 0) setSlideHeightPx(h);
+    };
+    measure();
+    requestAnimationFrame(measure);
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    window.addEventListener("resize", measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [isTabActive, tab, reelIdSetKey]);
+  reactExports.useEffect(() => {
+    const first = reels[0]?.id ?? null;
+    if (!first) {
+      setActiveReelId(null);
+      activeReelIdRef.current = null;
+      return;
+    }
+    if (!activeReelIdRef.current || !reels.some((r2) => r2.id === activeReelIdRef.current)) {
+      setActiveReelId(first);
+      activeReelIdRef.current = first;
+      const el = scrollRef.current;
+      if (el && slideHeightPx > 0) el.scrollTo({ top: 0, behavior: "auto" });
+      else if (el) el.scrollTop = 0;
+    }
+  }, [reelIdSetKey, tab, slideHeightPx]);
+  reactExports.useEffect(() => {
+    activeReelIdRef.current = activeReelId;
+    setHoldPaused(false);
+  }, [activeReelId]);
+  const snapToNearestReel = reactExports.useCallback(
+    (behavior = "auto") => {
+      const root = scrollRef.current;
+      const h = slideHeightPx;
+      if (!root || h <= 0 || reels.length === 0 || snapLockRef.current) return;
+      const idx = Math.min(reels.length - 1, Math.max(0, Math.round(root.scrollTop / h)));
+      const targetTop = idx * h;
+      const id = reels[idx].id;
+      if (Math.abs(root.scrollTop - targetTop) > 2) {
+        snapLockRef.current = true;
+        root.scrollTo({ top: targetTop, behavior });
+        window.setTimeout(() => {
+          snapLockRef.current = false;
+        }, behavior === "smooth" ? 320 : 48);
+      }
+      if (id !== activeReelIdRef.current) {
+        activeReelIdRef.current = id;
+        setActiveReelId(id);
+      }
+    },
+    [reels, slideHeightPx]
+  );
+  const syncActiveReelFromScroll = reactExports.useCallback(() => {
+    const root = scrollRef.current;
+    const h = slideHeightPx;
+    if (!root || h <= 0 || reels.length === 0) return;
+    const idx = Math.min(reels.length - 1, Math.max(0, Math.round(root.scrollTop / h)));
+    const id = reels[idx].id;
+    if (id !== activeReelIdRef.current) {
+      activeReelIdRef.current = id;
+      setActiveReelId(id);
+    }
+  }, [reels, slideHeightPx]);
+  reactExports.useEffect(() => {
+    const root = scrollRef.current;
+    if (!root || reels.length === 0 || slideHeightPx <= 0) return;
+    const onScroll = () => {
+      if (snapLockRef.current) return;
+      if (scrollRafRef.current != null) cancelAnimationFrame(scrollRafRef.current);
+      scrollRafRef.current = requestAnimationFrame(() => {
+        scrollRafRef.current = null;
+        syncActiveReelFromScroll();
+      });
+    };
+    const onScrollEnd = () => snapToNearestReel("auto");
+    const onTouchEnd = () => {
+      window.setTimeout(() => {
+        const h = slideHeightPx;
+        if (!root || h <= 0) return;
+        const off = root.scrollTop % h;
+        if (off > 6 && off < h - 6) snapToNearestReel("auto");
+      }, 80);
+    };
+    root.addEventListener("scroll", onScroll, { passive: true });
+    root.addEventListener("scrollend", onScrollEnd, { passive: true });
+    root.addEventListener("touchend", onTouchEnd, { passive: true });
+    syncActiveReelFromScroll();
+    return () => {
+      root.removeEventListener("scroll", onScroll);
+      root.removeEventListener("scrollend", onScrollEnd);
+      root.removeEventListener("touchend", onTouchEnd);
+      if (scrollRafRef.current != null) cancelAnimationFrame(scrollRafRef.current);
+    };
+  }, [reelIdSetKey, slideHeightPx, syncActiveReelFromScroll, snapToNearestReel]);
+  reactExports.useLayoutEffect(() => {
+    if (!restoreFromProfileContext || restoreFromProfileContext.tab !== "reels") return;
+    const d = restoreFromProfileContext;
+    onConsumedRestoreFromProfile?.();
+    if (!d.postId) return;
+    const p = posts.find((x) => x.id === d.postId);
+    if (!p || !isReelFeedPost(p)) return;
+    if (d.commentsOpen) setCommentsFor(p);
+    else setCommentsFor(null);
+    setActiveReelId(p.id);
+    activeReelIdRef.current = p.id;
+    queueMicrotask(() => {
+      const root = scrollRef.current;
+      const h = slideHeightPx;
+      if (!root || h <= 0) return;
+      const idx = reels.findIndex((r2) => r2.id === d.postId);
+      if (idx < 0) return;
+      root.scrollTo({ top: idx * h, behavior: "auto" });
+    });
+  }, [restoreFromProfileContext, posts, onConsumedRestoreFromProfile, reels, slideHeightPx]);
+  const effectiveSoundOn = soundOn && soundUnlocked;
+  const handleDoubleTap = reactExports.useCallback(
+    (postId, x, y) => {
+      if (guestBlock()) return;
+      const post = reels.find((r2) => r2.id === postId);
+      if (!post) return;
+      if (!post.likes.includes(me.id)) toggleLike(postId);
+      try {
+        navigator.vibrate?.(15);
+      } catch {
+      }
+      setHeartBurst({ id: postId, x, y });
+      window.setTimeout(() => setHeartBurst((prev) => prev?.id === postId ? null : prev), 800);
+    },
+    [reels, me.id, toggleLike, isGuest]
+  );
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-black text-white overscroll-none", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "div",
+      {
+        className: "pointer-events-auto absolute inset-x-0 top-0 z-40 flex items-end justify-between px-4 pb-2 pt-2",
+        style: {
+          background: "linear-gradient(to bottom, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0) 100%)",
+          backdropFilter: "none"
+        },
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              type: "button",
+              "aria-label": "create",
+              className: "absolute start-4 bottom-2 p-1 text-white",
+              children: /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 24 })
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-1 items-center justify-center gap-6 px-4", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                type: "button",
+                onClick: () => setTab("all"),
+                className: "pb-1 text-[15px] font-semibold transition-all duration-200 " + (tab === "all" ? "border-b-2 border-white text-white" : "text-white/55"),
+                children: "ريلز"
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                type: "button",
+                onClick: () => setTab("friends"),
+                className: "pb-1 text-[15px] font-semibold transition-all duration-200 " + (tab === "friends" ? "border-b-2 border-white text-white" : "text-white/55"),
+                children: "أصدقاء"
+              }
+            )
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              type: "button",
+              "aria-label": "reels settings",
+              className: "absolute end-4 bottom-2 p-1 text-white",
+              children: /* @__PURE__ */ jsxRuntimeExports.jsx(SlidersHorizontal, { size: 22 })
+            }
+          )
+        ]
+      }
+    ),
+    reelPullHint && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-x-0 top-[calc(var(--sat)+3.5rem)] z-50 flex justify-center", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "rounded-full bg-white/20 px-4 py-1.5 text-xs font-medium backdrop-blur-md", children: "تم التحديث ✓" }) }),
+    heartBurst && /* @__PURE__ */ jsxRuntimeExports.jsx(HeartBurst, { x: heartBurst.x, y: heartBurst.y }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "div",
+      {
+        ref: scrollRef,
+        "data-no-tab-swipe": true,
+        className: "reels-snap-viewport no-scrollbar mx-auto h-full min-h-0 w-full max-w-md flex-1 overflow-y-scroll overscroll-none",
+        onPointerDown: unlockSound,
+        onTouchStart: unlockSound,
+        children: [
+          reels.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "p",
+            {
+              className: "flex items-center justify-center text-center text-white/60 px-4 text-sm",
+              style: { minHeight: REEL_SLIDE_HEIGHT_FALLBACK },
+              children: t("noReels")
+            }
+          ),
+          reels.map((r2, idx) => {
+            const slideH = slideHeightPx > 0 ? slideHeightPx : REEL_SLIDE_HEIGHT_FALLBACK;
+            if (Math.abs(idx - activeReelIdx) > 1) {
+              return /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "div",
+                {
+                  className: "reels-snap-slide w-full shrink-0 snap-start snap-always",
+                  style: { height: slideH, minHeight: slideH },
+                  "aria-hidden": true
+                },
+                r2.id
+              );
+            }
+            const u = users.find((x) => x.id === r2.userId);
+            const friendReposterId = (r2.reposts || []).find(
+              (uid2) => uid2 !== me.id && me.following.includes(uid2)
+            );
+            const friendReposter = friendReposterId ? users.find((x) => x.id === friendReposterId) : null;
+            const media = normalizePostMedia(r2);
+            const liked = r2.likes.includes(me.id);
+            const reposted = r2.reposts.includes(me.id);
+            const notes = visibleMediaNotes(notesState, "post", r2.id, me.id).slice(0, 8);
+            const isActive = isTabActive && activeReelId === r2.id;
+            return /* @__PURE__ */ jsxRuntimeExports.jsxs(ReelSlide, { reelId: r2.id, slideHeightPx: slideH, children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                ReelMediaPlayer,
+                {
+                  media,
+                  active: isActive,
+                  soundOn: effectiveSoundOn,
+                  paused: isActive && holdPaused,
+                  onDoubleTap: (x, y) => handleDoubleTap(r2.id, x, y),
+                  onHoldStart: () => {
+                    if (isActive) setHoldPaused(true);
+                  },
+                  onHoldEnd: () => setHoldPaused(false)
+                }
+              ),
+              isActive && holdPaused && /* @__PURE__ */ jsxRuntimeExports.jsx(PausedOverlay, {}),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "div",
+                {
+                  className: "pointer-events-none absolute inset-x-0 bottom-0 z-10",
+                  style: {
+                    height: "65%",
+                    background: "linear-gradient(to top, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.38) 45%, transparent 100%)"
+                  }
+                }
+              ),
+              r2.userId === me.id && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "absolute top-[calc(var(--sat)+3.5rem)] end-4 z-30", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "button",
+                  {
+                    type: "button",
+                    onClick: () => setReelMenuId(reelMenuId === r2.id ? null : r2.id),
+                    className: "rounded-full bg-black/40 p-2 text-white backdrop-blur-sm",
+                    "aria-label": "خيارات الريل",
+                    children: /* @__PURE__ */ jsxRuntimeExports.jsx(EllipsisVertical, { size: 20 })
+                  }
+                ),
+                reelMenuId === r2.id && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  PostOptionsMenu,
+                  {
+                    post: r2,
+                    onClose: () => setReelMenuId(null),
+                    onDeleted: () => {
+                      setReelMenuId(null);
+                      if (commentsFor?.id === r2.id) setCommentsFor(null);
+                    }
+                  }
+                )
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                "div",
+                {
+                  className: "absolute end-3 z-20 flex flex-col items-center gap-5",
+                  style: {
+                    bottom: "max(5.5rem, calc(var(--retweet-nav-float-inset, 3.5rem) + 56px))"
+                  },
+                  children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      SideActionButton,
+                      {
+                        onClick: () => {
+                          if (guestBlock()) return;
+                          toggleLike(r2.id);
+                        },
+                        label: "إعجاب",
+                        icon: /* @__PURE__ */ jsxRuntimeExports.jsx(
+                          Heart,
+                          {
+                            size: 30,
+                            strokeWidth: liked ? 0 : 1.75,
+                            className: liked ? "fill-rose-500 text-rose-500" : "fill-transparent text-white",
+                            style: { filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.6))" }
+                          }
+                        ),
+                        count: r2.likes.length,
+                        active: liked,
+                        activeColor: "text-rose-500"
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      SideActionButton,
+                      {
+                        onClick: () => setCommentsFor(r2),
+                        label: "تعليقات",
+                        icon: /* @__PURE__ */ jsxRuntimeExports.jsx(MessageCircle, { size: 30, strokeWidth: 1.75, style: { filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.6))" } }),
+                        count: r2.comments.length
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      SideActionButton,
+                      {
+                        onClick: () => {
+                          if (guestBlock()) return;
+                          toggleRepost(r2.id);
+                        },
+                        label: "ريبوست",
+                        icon: /* @__PURE__ */ jsxRuntimeExports.jsx(
+                          Repeat2,
+                          {
+                            size: 28,
+                            strokeWidth: 1.9,
+                            className: reposted ? "text-violet-400" : "text-white",
+                            style: { filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.6))" }
+                          }
+                        ),
+                        count: r2.reposts.length,
+                        active: reposted,
+                        activeColor: "text-violet-400"
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      SideActionButton,
+                      {
+                        onClick: () => {
+                          if (guestBlock()) return;
+                          setSharePost(r2);
+                        },
+                        label: "مشاركة",
+                        icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Send, { size: 28, strokeWidth: 1.75, style: { filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.6))" } })
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      SideActionButton,
+                      {
+                        onClick: () => {
+                          if (guestBlock()) return;
+                        },
+                        label: "حفظ",
+                        icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Bookmark, { size: 28, strokeWidth: 1.75, style: { filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.6))" } })
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-9 w-9 overflow-hidden rounded-full border-2 border-white/50 shadow-lg", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u?.username || "?", src: u?.avatar, size: 36 }) })
+                  ]
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                "div",
+                {
+                  className: "absolute start-3 z-20 max-w-[min(62%,calc(100%-5.5rem))] pe-1",
+                  style: {
+                    bottom: "max(5.5rem, calc(var(--retweet-nav-float-inset, 3.5rem) + 56px))",
+                    paddingInlineEnd: "var(--reel-safe-inline-end, 4.5rem)"
+                  },
+                  children: [
+                    friendReposter && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "button",
+                      {
+                        type: "button",
+                        onClick: () => onOpenProfile(friendReposter.id, { postId: r2.id, tab: "reels" }),
+                        className: "mb-2 inline-flex items-center rounded-full bg-black/50 p-1 backdrop-blur-sm",
+                        "aria-label": `@${friendReposter.username} repost`,
+                        children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative", children: [
+                          /* @__PURE__ */ jsxRuntimeExports.jsx(
+                            Avatar,
+                            {
+                              name: friendReposter.username,
+                              src: friendReposter.avatar,
+                              size: 30
+                            }
+                          ),
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "absolute -bottom-1 -end-1 flex h-4 w-4 items-center justify-center rounded-full bg-violet-600 ring-2 ring-black", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Repeat2, { size: 10, className: "text-white" }) })
+                        ] })
+                      }
+                    ),
+                    notes.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-2.5 flex flex-wrap gap-1.5 max-h-14 overflow-y-auto no-scrollbar", children: notes.map((n) => {
+                      const nu = userById$1(state, n.authorId);
+                      if (!nu) return null;
+                      const show = n.authorId === me.id || isMutual(state, me.id, n.authorId);
+                      if (!show) return null;
+                      const canReplyNote = n.authorId !== me.id;
+                      return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                        "div",
+                        {
+                          className: "flex items-center gap-1 rounded-full border border-white/20 bg-black/50 py-0.5 ps-1 pe-2 backdrop-blur-sm max-w-[12rem]",
+                          children: [
+                            /* @__PURE__ */ jsxRuntimeExports.jsx(
+                              "button",
+                              {
+                                type: "button",
+                                onClick: () => onOpenProfile(nu.id, { tab: "reels" }),
+                                className: "shrink-0 ring-1 ring-white/30 rounded-full",
+                                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: nu.username, src: nu.avatar, size: 20 })
+                              }
+                            ),
+                            canReplyNote ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+                              "button",
+                              {
+                                type: "button",
+                                onClick: () => {
+                                  if (guestBlock()) return;
+                                  setNoteToReply(n);
+                                },
+                                className: "text-[10px] leading-snug text-white/90 line-clamp-1 text-start hover:underline",
+                                children: n.text
+                              }
+                            ) : /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[10px] leading-snug text-white/90 line-clamp-1", children: n.text })
+                          ]
+                        },
+                        n.id
+                      );
+                    }) }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                      "button",
+                      {
+                        type: "button",
+                        onClick: () => u && onOpenProfile(u.id, { tab: "reels" }),
+                        className: "mb-1 flex items-center gap-1.5",
+                        children: [
+                          /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u?.username || "?", src: u?.avatar, size: 28, className: "ring-2 ring-white/40" }),
+                          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-[14px] font-semibold drop-shadow-sm", children: [
+                            "@",
+                            u?.username ?? "user"
+                          ] }),
+                          u && /* @__PURE__ */ jsxRuntimeExports.jsx(VerifiedMarkForUser, { user: u, size: 15 })
+                        ]
+                      }
+                    ),
+                    r2.text ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[13px] leading-snug text-white/90 line-clamp-2 drop-shadow-sm", children: r2.text }) : null,
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-1.5 flex items-center gap-1.5 text-white/70", children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx(Music2, { size: 13, className: "shrink-0" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[11px] truncate", children: u?.username ? `${u.username} · صوت أصلي` : "صوت أصلي" })
+                    ] })
+                  ]
+                }
+              )
+            ] }, r2.id);
+          })
+        ]
+      }
+    ),
+    sharePost && /* @__PURE__ */ jsxRuntimeExports.jsx(ShareSheet, { target: { kind: "post", post: sharePost }, onClose: () => setSharePost(null) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      NoteReplySheet,
+      {
+        note: noteToReply,
+        contentLabelAr: "الريلز",
+        onClose: () => setNoteToReply(null),
+        onSent: onOpenChat
+      }
+    ),
+    commentsFor && /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "div",
+      {
+        className: "fixed inset-0 z-50 flex items-end bg-black/60",
+        onClick: () => setCommentsFor(null),
+        children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "div",
+          {
+            className: "w-full max-w-md mx-auto flex flex-col rounded-t-3xl",
+            style: {
+              background: "rgba(18,18,18,0.97)",
+              backdropFilter: "blur(20px)",
+              WebkitBackdropFilter: "blur(20px)",
+              maxHeight: "68vh",
+              paddingBottom: "var(--sab)"
+            },
+            onClick: (e) => e.stopPropagation(),
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex justify-center pt-3 pb-1", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-1 w-10 rounded-full bg-white/25" }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between px-4 pb-3", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[15px] font-semibold text-white", children: commentsFor.comments.length > 0 ? `${commentsFor.comments.length} تعليق` : "تعليقات" }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => setCommentsFor(null), "aria-label": "إغلاق", children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 22, className: "text-white/70" }) })
+              ] }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1 overflow-y-auto px-4 pb-2 space-y-4 no-scrollbar", children: [
+                commentsFor.comments.map((c) => {
+                  const cu = userById$1(state, c.userId);
+                  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-2.5 text-sm", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "button",
+                      {
+                        type: "button",
+                        onClick: () => cu && onOpenProfile(cu.id, {
+                          postId: commentsFor.id,
+                          tab: "reels",
+                          commentsOpen: true
+                        }),
+                        children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: cu?.username || "?", src: cu?.avatar, size: 34 })
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1", children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                        "button",
+                        {
+                          type: "button",
+                          className: "font-semibold text-white/90",
+                          onClick: () => cu && onOpenProfile(cu.id, {
+                            postId: commentsFor.id,
+                            tab: "reels",
+                            commentsOpen: true
+                          }),
+                          children: [
+                            "@",
+                            cu?.username
+                          ]
+                        }
+                      ),
+                      " ",
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-white/75", children: c.text })
+                    ] }),
+                    c.userId === me.id && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative shrink-0", children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx(
+                        "button",
+                        {
+                          type: "button",
+                          onClick: () => setCommentMenuId(commentMenuId === c.id ? null : c.id),
+                          className: "rounded-full p-1 text-white/50",
+                          "aria-label": "خيارات التعليق",
+                          children: /* @__PURE__ */ jsxRuntimeExports.jsx(EllipsisVertical, { size: 16 })
+                        }
+                      ),
+                      commentMenuId === c.id && commentsFor && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                        CommentOptionsMenu,
+                        {
+                          postId: commentsFor.id,
+                          commentId: c.id,
+                          authorId: c.userId,
+                          onClose: () => setCommentMenuId(null)
+                        }
+                      )
+                    ] })
+                  ] }, c.id);
+                }),
+                commentsFor.comments.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "py-8 text-center text-white/40 text-sm", children: "لا تعليقات بعد" })
+              ] }),
+              !isGuest ? /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                "form",
+                {
+                  className: "flex gap-2 px-4 pt-2 pb-2 border-t border-white/10",
+                  onSubmit: (e) => {
+                    e.preventDefault();
+                    if (!commentDraft.trim()) return;
+                    addComment(commentsFor.id, commentDraft);
+                    setCommentDraft("");
+                  },
+                  children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: me.username, src: me.avatar, size: 32, className: "shrink-0" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "input",
+                      {
+                        value: commentDraft,
+                        onChange: (e) => setCommentDraft(e.target.value),
+                        placeholder: "أضف تعليقاً...",
+                        className: "flex-1 rounded-full bg-white/10 px-4 py-2 text-[14px] text-white placeholder-white/35 outline-none",
+                        style: { caretColor: "white" }
+                      }
+                    ),
+                    commentDraft.trim() && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "button",
+                      {
+                        type: "submit",
+                        className: "self-center text-[14px] font-bold text-sky-400",
+                        children: "إرسال"
+                      }
+                    )
+                  ]
+                }
+              ) : /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "border-t border-white/10 px-4 py-3 text-center text-xs text-white/40", children: "سجّل الدخول للتعليق" })
+            ]
+          }
+        )
+      }
+    )
+  ] });
+});
+function useLockPageScroll(locked) {
+  reactExports.useEffect(() => {
+    if (!locked || typeof document === "undefined") return;
+    const html = document.documentElement;
+    const body = document.body;
+    const scrollY = window.scrollY;
+    const prev = {
+      htmlOverflow: html.style.overflow,
+      bodyOverflow: body.style.overflow,
+      htmlOverscroll: html.style.overscrollBehavior,
+      bodyOverscroll: body.style.overscrollBehavior,
+      bodyPosition: body.style.position,
+      bodyTop: body.style.top,
+      bodyWidth: body.style.width
+    };
+    html.style.overflow = "hidden";
+    body.style.overflow = "hidden";
+    html.style.overscrollBehavior = "none";
+    body.style.overscrollBehavior = "none";
+    body.style.position = "fixed";
+    body.style.top = `-${scrollY}px`;
+    body.style.width = "100%";
+    return () => {
+      html.style.overflow = prev.htmlOverflow;
+      body.style.overflow = prev.bodyOverflow;
+      html.style.overscrollBehavior = prev.htmlOverscroll;
+      body.style.overscrollBehavior = prev.bodyOverscroll;
+      body.style.position = prev.bodyPosition;
+      body.style.top = prev.bodyTop;
+      body.style.width = prev.bodyWidth;
+      window.scrollTo(0, scrollY);
+    };
+  }, [locked]);
+}
+const NAV_HIDE_PROGRESS_CSS_VAR = "--retweet-nav-hide-progress";
+const REELS_NAV_COLLAPSE_PROGRESS_VAR = "--retweet-reels-nav-collapse-progress";
+const DEFAULT_TRAVEL_PX = 72;
+function clamp$1(n, min, max) {
+  return Math.min(max, Math.max(min, n));
+}
+function useBottomNavSheet(options) {
+  const optionsRef = reactExports.useRef(options);
+  optionsRef.current = options;
+  const navRef = reactExports.useRef(null);
+  const travelRef = reactExports.useRef(DEFAULT_TRAVEL_PX);
+  const suppressTapUntilRef = reactExports.useRef(0);
+  const shouldSuppressTap = reactExports.useCallback(() => Date.now() < suppressTapUntilRef.current, []);
+  const measureTravel = reactExports.useCallback(() => {
+    const el = navRef.current;
+    if (!el) return;
+    const h = el.offsetHeight;
+    if (h > 0) travelRef.current = h;
+  }, []);
+  const publishHideProgress = reactExports.useCallback((p) => {
+    document.documentElement.style.setProperty(NAV_HIDE_PROGRESS_CSS_VAR, String(clamp$1(p, 0, 1)));
+  }, []);
+  reactExports.useLayoutEffect(() => {
+    measureTravel();
+    publishHideProgress(0);
+  }, [measureTravel, publishHideProgress]);
+  reactExports.useLayoutEffect(() => {
+    const el = navRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => measureTravel());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [measureTravel]);
+  reactExports.useEffect(() => {
+    document.documentElement.style.setProperty(REELS_NAV_COLLAPSE_PROGRESS_VAR, "0");
+    return () => {
+      document.documentElement.style.removeProperty(NAV_HIDE_PROGRESS_CSS_VAR);
+      document.documentElement.style.removeProperty(REELS_NAV_COLLAPSE_PROGRESS_VAR);
+    };
+  }, []);
+  const travel = travelRef.current;
+  const externalDrive = !!optionsRef.current?.externalHideDrive;
+  const navStyle = externalDrive ? {
+    transform: `translate3d(0, calc(var(${NAV_HIDE_PROGRESS_CSS_VAR}, 0) * ${travel}px), 0)`,
+    transformOrigin: "50% 100%",
+    transition: "none",
+    willChange: "transform"
+  } : {
+    transform: "translate3d(0, 0, 0)",
+    transformOrigin: "50% 100%",
+    transition: "none",
+    willChange: "auto"
+  };
+  return {
+    navRef,
+    navStyle,
+    shouldSuppressTap
+  };
+}
+const CHAT_STACK_PROGRESS_VAR = "--retweet-chat-stack-progress";
+const CHAT_STACK_OPEN_FRACTION = 0.5;
+const CHAT_STACK_FLING_VX = 0.42;
+function clampStackProgress(p) {
+  return Math.max(0, Math.min(1, Number.isFinite(p) ? p : 0));
+}
+function publishChatStackCssProgress(progress) {
+  const clamped = clampStackProgress(progress);
+  if (typeof document !== "undefined") {
+    document.documentElement.style.setProperty(CHAT_STACK_PROGRESS_VAR, String(clamped));
+  }
+  return clamped;
+}
+function clearChatStackCssProgress() {
+  if (typeof document === "undefined") return;
+  document.documentElement.style.removeProperty(CHAT_STACK_PROGRESS_VAR);
+}
+function syncStackNavHideProgress(progress) {
+  if (typeof document === "undefined") return;
+  if (progress == null) {
+    document.documentElement.style.removeProperty(NAV_HIDE_PROGRESS_CSS_VAR);
+    return;
+  }
+  document.documentElement.style.setProperty(
+    NAV_HIDE_PROGRESS_CSS_VAR,
+    String(clampStackProgress(progress))
+  );
+}
+function applyOpenStackTransforms(progress, cap, layers2, animate, tapOpen = false) {
+  const { inbox, room } = chatStackOpenFromLeftTransforms(progress, cap);
+  const transition = animate ? `transform ${tapOpen ? 280 : SLIDE_DISMISS_MS}ms ${tapOpen ? "cubic-bezier(0.22, 1, 0.36, 1)" : SLIDE_DISMISS_EASE}` : "none";
+  if (layers2.inboxEl) {
+    layers2.inboxEl.style.transform = inbox;
+    layers2.inboxEl.style.transition = transition;
+  }
+  if (layers2.roomEl) {
+    layers2.roomEl.style.transform = room;
+    layers2.roomEl.style.transition = transition;
+  }
+}
+function applyCloseStackTransforms(dragTx, cap, layers2, animate) {
+  const { progress, inbox, room } = chatStackDismissTransforms(dragTx, cap);
+  const transition = animate ? `transform ${SLIDE_DISMISS_MS}ms ${SLIDE_DISMISS_EASE}` : "none";
+  if (layers2.inboxEl) {
+    layers2.inboxEl.style.transform = inbox;
+    layers2.inboxEl.style.transition = transition;
+  }
+  if (layers2.roomEl) {
+    layers2.roomEl.style.transform = room;
+    layers2.roomEl.style.transition = transition;
+  }
+  return progress;
+}
+function chatStackOpenReleaseTarget(px, cap, velocityX) {
+  const w = Math.max(260, cap);
+  if (velocityX >= CHAT_STACK_FLING_VX) return { commit: true, targetProgress: 1 };
+  if (velocityX <= -CHAT_STACK_FLING_VX) return { commit: false, targetProgress: 0 };
+  const threshold = Math.max(w * CHAT_STACK_OPEN_FRACTION, 64);
+  if (px >= threshold) return { commit: true, targetProgress: 1 };
+  return { commit: false, targetProgress: 0 };
+}
+const DEFAULT_LAYOUT_WIDTH_PX = 390;
+const MIN_LAYOUT_WIDTH_PX = 260;
+function readSafeViewportWidth() {
+  try {
+    if (typeof window === "undefined") return DEFAULT_LAYOUT_WIDTH_PX;
+    const vv = window.visualViewport?.width;
+    const raw = Number(vv ?? window.innerWidth);
+    if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_LAYOUT_WIDTH_PX;
+    return Math.min(Math.max(Math.round(raw), MIN_LAYOUT_WIDTH_PX), APP_COLUMN_MAX_PX);
+  } catch {
+    return DEFAULT_LAYOUT_WIDTH_PX;
+  }
+}
+function readSafeContainerRect(el) {
+  try {
+    if (!el || typeof el.getBoundingClientRect !== "function") return null;
+    const r2 = el.getBoundingClientRect();
+    if (!Number.isFinite(r2.width) || r2.width <= 0) return null;
+    return {
+      left: Number.isFinite(r2.left) ? r2.left : 0,
+      top: Number.isFinite(r2.top) ? r2.top : 0,
+      width: r2.width,
+      height: Number.isFinite(r2.height) && r2.height > 0 ? r2.height : 0
+    };
+  } catch {
+    return null;
+  }
+}
+function readSafeStackCapPx(containerEl, fallbackCapRef) {
+  try {
+    const rect = readSafeContainerRect(containerEl);
+    const fromRect = rect?.width;
+    const fromRef = fallbackCapRef?.current && Number.isFinite(fallbackCapRef.current) ? fallbackCapRef.current : 0;
+    const base = fromRect && fromRect > 0 ? fromRect : fromRef > 0 ? fromRef : readSafeViewportWidth();
+    return Math.max(MIN_LAYOUT_WIDTH_PX, Math.min(Math.round(base), APP_COLUMN_MAX_PX));
+  } catch {
+    return readSafeViewportWidth();
+  }
+}
+const noopGesture = {
+  onPointerDownCapture: () => {
+  },
+  onPointerMoveCapture: () => {
+  },
+  onPointerUpCapture: () => {
+  },
+  onPointerCancelCapture: () => {
+  }
+};
+function ChatStackRoomGestureShell({
+  roomRef,
+  widthCapRef,
+  edgeGesture = noopGesture,
+  children,
+  interactive = true
+}) {
+  reactExports.useEffect(() => {
+    try {
+      if (widthCapRef.current <= 0) widthCapRef.current = readSafeViewportWidth();
+    } catch {
+      widthCapRef.current = readSafeViewportWidth();
+    }
+  }, [widthCapRef]);
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(AppErrorBoundary, { label: "غرفة المحادثة", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "div",
+    {
+      ref: roomRef,
+      "data-chat-stack-room": true,
+      "data-chat-dismiss-rtl": "1",
+      className: "chat-no-select chat-room-stack absolute inset-0 z-[2] flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-background [transform:translateZ(0)] " + (interactive ? "pointer-events-auto touch-manipulation" : "pointer-events-none"),
+      children
+    }
+  ) });
+}
+const NATIVE_LONG_PRESS_ATTR = "data-native-long-press";
+const ALLOW_SELECT_SELECTOR = 'input, textarea, select, [contenteditable="true"], .chat-allow-select, .native-allow-select';
+const NO_SELECT_STYLE_ID = "retweet-ios-no-select";
+const NO_SELECT_SHELL_CLASS = "retweet-native-shell";
+const NO_SELECT_GLOBAL_CSS = `
+html.${NO_SELECT_SHELL_CLASS},
+html.${NO_SELECT_SHELL_CLASS} *,
+#root,
+#root * {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+  -webkit-user-modify: read-only !important;
+}
+html.${NO_SELECT_SHELL_CLASS} input,
+html.${NO_SELECT_SHELL_CLASS} textarea,
+html.${NO_SELECT_SHELL_CLASS} select,
+html.${NO_SELECT_SHELL_CLASS} [contenteditable="true"],
+html.${NO_SELECT_SHELL_CLASS} .chat-allow-select,
+html.${NO_SELECT_SHELL_CLASS} .chat-allow-select *,
+#root input,
+#root textarea,
+#root select,
+#root [contenteditable="true"],
+#root .chat-allow-select,
+#root .chat-allow-select * {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+  -webkit-touch-callout: auto !important;
+  -webkit-user-modify: read-write !important;
+}
+html.${NO_SELECT_SHELL_CLASS} ::selection,
+#root ::selection {
+  background: transparent !important;
+  color: inherit !important;
+}
+html.${NO_SELECT_SHELL_CLASS} img,
+html.${NO_SELECT_SHELL_CLASS} video,
+html.${NO_SELECT_SHELL_CLASS} canvas,
+html.${NO_SELECT_SHELL_CLASS} svg,
+#root img,
+#root video,
+#root canvas,
+#root svg {
+  -webkit-user-drag: none !important;
+  user-drag: none !important;
+  -webkit-touch-callout: none !important;
+  pointer-events: auto;
+}
+html.${NO_SELECT_SHELL_CLASS} [${NATIVE_LONG_PRESS_ATTR}],
+#root [${NATIVE_LONG_PRESS_ATTR}] {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
+  touch-action: none !important;
+}
+.retweet-no-select-pane,
+.retweet-no-select-pane *:not(.chat-allow-select):not(.chat-allow-select *) {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
+}
+`.trim();
+function isIosWebKitTouchDevice() {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent;
+  return /iPad|iPhone|iPod/.test(ua) || navigator.maxTouchPoints > 1 && /Mac/.test(navigator.platform);
+}
+function isNoSelectShellActive() {
+  if (typeof window === "undefined") return false;
+  const w = window;
+  if (w.__RETWEET_NO_SELECT_BOOT__ === true) return true;
+  if (w.__RETWEET_NATIVE_SHELL__ === true) return true;
+  if (isNativeCapacitorShell()) return true;
+  if (isIosWebKitTouchDevice()) return true;
+  try {
+    return window.location.pathname.includes("/app");
+  } catch {
+    return true;
+  }
+}
+function isNativeAllowSelectTarget(target) {
+  if (!(target instanceof Element)) return false;
+  return !!target.closest(ALLOW_SELECT_SELECTOR);
+}
+function isNativeLongPressTarget(target) {
+  if (!(target instanceof Element)) return false;
+  return !!target.closest(`[${NATIVE_LONG_PRESS_ATTR}]`);
+}
+function clearNativeSelection() {
+  try {
+    const sel = window.getSelection();
+    if (sel && !sel.isCollapsed) sel.removeAllRanges();
+  } catch {
+  }
+  try {
+    const doc = document;
+    doc.selection?.empty?.();
+  } catch {
+  }
+}
+function blockNativeTextMenu(e) {
+  if (!isNoSelectShellActive()) return;
+  if (isNativeAllowSelectTarget(e.target)) return;
+  if (isNativeLongPressTarget(e.target)) return;
+  e.preventDefault();
+  e.stopPropagation();
+  clearNativeSelection();
+}
+function onSelectionChange() {
+  if (!isNoSelectShellActive()) return;
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed) return;
+  const node = sel.anchorNode;
+  if (!node) return;
+  const el = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+  if (el && isNativeAllowSelectTarget(el)) return;
+  sel.removeAllRanges();
+}
+function injectNoSelectStyles() {
+  if (typeof document === "undefined") return;
+  document.documentElement.classList.add(NO_SELECT_SHELL_CLASS);
+  const root = document.getElementById("root");
+  root?.classList.add("retweet-no-select-pane");
+  document.documentElement.style.setProperty("-webkit-user-select", "none");
+  document.documentElement.style.setProperty("-webkit-touch-callout", "none");
+  if (document.body) {
+    document.body.style.setProperty("-webkit-user-select", "none");
+    document.body.style.setProperty("-webkit-touch-callout", "none");
+  }
+  if (document.getElementById(NO_SELECT_STYLE_ID)) return;
+  const style = document.createElement("style");
+  style.id = NO_SELECT_STYLE_ID;
+  style.textContent = NO_SELECT_GLOBAL_CSS;
+  (document.head || document.documentElement).appendChild(style);
+}
+function isAndroidTouchDevice() {
+  if (typeof navigator === "undefined") return false;
+  return /Android/i.test(navigator.userAgent);
+}
+function installTouchSelectionBlocker() {
+  let startX = 0;
+  let startY = 0;
+  let touchMoved = false;
+  let rafId = 0;
+  const stopRaf = () => {
+    if (rafId) {
+      cancelAnimationFrame(rafId);
+      rafId = 0;
+    }
+  };
+  const loopClearSelection = () => {
+    clearNativeSelection();
+    rafId = requestAnimationFrame(loopClearSelection);
+  };
+  document.addEventListener(
+    "touchstart",
+    (e) => {
+      stopRaf();
+      if (e.touches.length !== 1) return;
+      if (isNativeAllowSelectTarget(e.target)) return;
+      if (isNativeLongPressTarget(e.target)) return;
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+      touchMoved = false;
+      clearNativeSelection();
+      rafId = requestAnimationFrame(loopClearSelection);
+    },
+    { capture: true, passive: true }
+  );
+  document.addEventListener(
+    "touchmove",
+    (e) => {
+      if (!e.touches[0]) return;
+      if (isNativeAllowSelectTarget(e.target)) return;
+      if (isNativeLongPressTarget(e.target)) return;
+      const dx = Math.abs(e.touches[0].clientX - startX);
+      const dy = Math.abs(e.touches[0].clientY - startY);
+      if (dy > dx && dy > 4) {
+        touchMoved = true;
+        stopRaf();
+        return;
+      }
+      if (dx > 12 || dy > 12) {
+        touchMoved = true;
+        stopRaf();
+        return;
+      }
+      if (!touchMoved && !isAndroidTouchDevice()) {
+        e.preventDefault();
+        clearNativeSelection();
+      }
+    },
+    { capture: true, passive: false }
+  );
+  const endTouch = () => {
+    stopRaf();
+    touchMoved = false;
+    clearNativeSelection();
+  };
+  document.addEventListener("touchend", endTouch, { capture: true, passive: true });
+  document.addEventListener("touchcancel", endTouch, { capture: true, passive: true });
+}
+const nativeNoSelectCaptureHandlers = {
+  onSelectStartCapture: blockNativeTextMenu,
+  onContextMenuCapture: blockNativeTextMenu,
+  onDragStartCapture: blockNativeTextMenu,
+  onCopyCapture: blockNativeTextMenu,
+  onCutCapture: blockNativeTextMenu,
+  onPointerDownCapture: (e) => {
+    if (!isNoSelectShellActive()) return;
+    if (isNativeAllowSelectTarget(e.target)) return;
+    if (isNativeLongPressTarget(e.target)) return;
+    clearNativeSelection();
+  }
+};
+let installed = false;
+function installNativeTextSelectionGuard() {
+  if (typeof document === "undefined" || installed) return;
+  installed = true;
+  const w = window;
+  w.__RETWEET_NO_SELECT_BOOT__ = true;
+  injectNoSelectStyles();
+  const opts = { capture: true, passive: false };
+  for (const ev of ["selectstart", "contextmenu", "dragstart", "copy", "cut"]) {
+    document.addEventListener(ev, blockNativeTextMenu, opts);
+  }
+  document.addEventListener("selectionchange", onSelectionChange, { capture: true });
+  document.addEventListener(
+    "mousedown",
+    (e) => {
+      if (isNativeAllowSelectTarget(e.target)) return;
+      if (isNativeLongPressTarget(e.target)) return;
+      clearNativeSelection();
+    },
+    { capture: true, passive: true }
+  );
+  installTouchSelectionBlocker();
+  document.addEventListener(
+    "gesturestart",
+    (e) => {
+      if (!isNativeAllowSelectTarget(e.target)) e.preventDefault();
+    },
+    { capture: true, passive: false }
+  );
+}
+const chatNoSelectCaptureHandlers = nativeNoSelectCaptureHandlers;
+function formatCompactCount(n) {
+  if (!Number.isFinite(n) || n < 0) return "0";
+  if (n < 1e3) return String(Math.floor(n));
+  if (n < 1e6) {
+    const k = n / 1e3;
+    const s2 = (Number.isInteger(k) ? k : Math.round(k * 10) / 10).toString();
+    return s2.replace(/\.0$/, "") + "k";
+  }
+  if (n < 1e9) {
+    const m = n / 1e6;
+    const s2 = (Number.isInteger(m) ? m : Math.round(m * 10) / 10).toString();
+    return s2.replace(/\.0$/, "") + "M";
+  }
+  const b = n / 1e9;
+  const s = (Number.isInteger(b) ? b : Math.round(b * 10) / 10).toString();
+  return s.replace(/\.0$/, "") + "B";
+}
+function mutualConnectionIds(state2, meId, otherId) {
+  const me = state2.users.find((u) => u.id === meId);
+  const other = state2.users.find((u) => u.id === otherId);
+  if (!me || !other) return [];
+  const myFollowing = new Set(me.following);
+  return other.following.filter((fid) => fid !== meId && fid !== otherId && myFollowing.has(fid));
+}
+function ChatDmIntroCard({ other, meId, state: state2, onOpenProfile, isQuran, hasMessages, hideStartConversationHint }) {
+  const postCount = reactExports.useMemo(
+    () => state2.posts.filter((p) => p.userId === other.id).length,
+    [state2.posts, other.id]
+  );
+  const followerCount = other.displayFollowerCount ?? other.followers.length;
+  const hideFollowStats = other.hideFollowListsFromOthers && other.id !== meId;
+  const mutualIds = reactExports.useMemo(() => mutualConnectionIds(state2, meId, other.id), [state2, meId, other.id]);
+  const mutualUsers = reactExports.useMemo(
+    () => mutualIds.map((id) => state2.users.find((u) => u.id === id)).filter((u) => !!u),
+    [mutualIds, state2.users]
+  );
+  const followingEachOther = isMutual(state2, meId, other.id);
+  const muted = isQuran ? "text-zinc-400" : "text-muted-foreground";
+  const title = isQuran ? "text-zinc-50" : "text-foreground";
+  const shell = "shrink-0 w-full flex flex-col items-center px-4 py-3 text-center";
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: shell, children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "button",
+      {
+        type: "button",
+        onClick: onOpenProfile,
+        className: "rounded-full transition active:scale-[0.98]",
+        "aria-label": `عرض ملف @${other.username}`,
+        children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: other.username, src: other.avatar, size: 72 })
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", onClick: onOpenProfile, className: "mt-3 flex max-w-full items-center justify-center gap-1", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "truncate text-lg font-semibold " + title, children: [
+        "@",
+        other.username
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(VerifiedMarkForUser, { user: other, size: 16 })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4 grid w-full max-w-[280px] grid-cols-3 gap-3", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-base font-bold tabular-nums " + title, children: formatCompactCount(postCount) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-xs " + muted, children: "منشورات" })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-base font-bold tabular-nums " + title, children: hideFollowStats ? "—" : formatCompactCount(followerCount) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-xs " + muted, children: "متابعون" })
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-base font-bold tabular-nums " + title, children: hideFollowStats ? "—" : formatCompactCount(other.following.length) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-xs " + muted, children: "يتابع" })
+      ] })
+    ] }),
+    mutualUsers.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4 flex max-w-full flex-col items-center gap-2", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex items-center justify-center -space-x-2 rtl:space-x-reverse", children: mutualUsers.slice(0, 3).map((u) => /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u.username, src: u.avatar, size: 28 }, u.id)) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm " + muted, children: mutualUsers.length === 1 ? `صديق مشترك · @${mutualUsers[0].username}` : `${formatCompactCount(mutualUsers.length)} أصدقاء مشتركون` })
+    ] }) : followingEachOther ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-4 text-sm " + muted, children: "أنتم تتابعان بعضكم" }) : userIsFollowing(state2, meId, other.id) ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-4 text-sm " + muted, children: "أنت تتابعه" }) : theyFollowViewer(state2, meId, other.id) ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-4 text-sm " + muted, children: "يتابعك" }) : null,
+    other.bio?.trim() ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-3 max-w-sm text-sm leading-relaxed line-clamp-2 " + muted, children: other.bio.trim() }) : null,
+    !hideStartConversationHint && !hasMessages ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-3 text-xs " + muted, children: "أرسل رسالة لبدء المحادثة" }) : null
+  ] });
+}
+const files = ["8689614319 (2).png", "8689614319 (2).webm", "8689614319 (3).png", "8689614319 (3).webm", "8689614319 (4).webm", "8689614319 (5).webm", "8689614319 (6).webm", "8689614319.mp4", "8689614319.png", "8689614319.webm", "d836dde24beb44299e2058beb754927f~tplv-jj85edgx6n-image-medium.jpeg", "photo_2026-05-12_02-16-24.jpg", "photo_2026-05-12_02-16-28.jpg", "sticker.webp", "sticker1.jpg", "sticker2.jpg", "sticker3.jpg", "WhatsApp Image 2026-05-12 at 2.29.36 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.29.37 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.29.37 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.29.37 AM (3).jpeg", "WhatsApp Image 2026-05-12 at 2.29.37 AM (4).jpeg", "WhatsApp Image 2026-05-12 at 2.29.37 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.29.38 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.29.38 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.29.39 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.29.45 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.29.49 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.29.49 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.29.49 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.29.50 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.29.53 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.30.03 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.30.03 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.30.03 AM (3).jpeg", "WhatsApp Image 2026-05-12 at 2.30.03 AM (4).jpeg", "WhatsApp Image 2026-05-12 at 2.30.03 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.30.04 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.30.06 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.30.06 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.30.06 AM (3).jpeg", "WhatsApp Image 2026-05-12 at 2.30.06 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.30.07 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.30.07 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.30.07 AM (3).jpeg", "WhatsApp Image 2026-05-12 at 2.30.07 AM (4).jpeg", "WhatsApp Image 2026-05-12 at 2.30.07 AM (5).jpeg", "WhatsApp Image 2026-05-12 at 2.30.07 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.30.08 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.30.08 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.30.08 AM (3).jpeg", "WhatsApp Image 2026-05-12 at 2.30.08 AM (4).jpeg", "WhatsApp Image 2026-05-12 at 2.30.08 AM (5).jpeg", "WhatsApp Image 2026-05-12 at 2.30.08 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.30.09 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.30.09 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.30.09 AM (3).jpeg", "WhatsApp Image 2026-05-12 at 2.30.09 AM (4).jpeg", "WhatsApp Image 2026-05-12 at 2.30.09 AM (5).jpeg", "WhatsApp Image 2026-05-12 at 2.30.09 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.30.10 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.30.10 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.30.10 AM (3).jpeg", "WhatsApp Image 2026-05-12 at 2.30.10 AM (4).jpeg", "WhatsApp Image 2026-05-12 at 2.30.10 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.30.11 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.30.11 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.30.11 AM (3).jpeg", "WhatsApp Image 2026-05-12 at 2.30.11 AM (4).jpeg", "WhatsApp Image 2026-05-12 at 2.30.11 AM (5).jpeg", "WhatsApp Image 2026-05-12 at 2.30.11 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.30.12 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.30.12 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.30.12 AM (3).jpeg", "WhatsApp Image 2026-05-12 at 2.30.12 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.30.16 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.30.19 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.30.19 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.30.19 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.30.20 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.30.21 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.30.21 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.31.03 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.31.03 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.31.04 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.31.04 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.31.04 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.31.07 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.31.10 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.31.10 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.31.10 AM (3).jpeg", "WhatsApp Image 2026-05-12 at 2.31.10 AM (4).jpeg", "WhatsApp Image 2026-05-12 at 2.31.10 AM (5).jpeg", "WhatsApp Image 2026-05-12 at 2.31.10 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.31.11 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.31.11 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.31.11 AM (3).jpeg", "WhatsApp Image 2026-05-12 at 2.31.11 AM (4).jpeg", "WhatsApp Image 2026-05-12 at 2.31.11 AM (5).jpeg", "WhatsApp Image 2026-05-12 at 2.31.11 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.31.12 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.31.12 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.31.12 AM (3).jpeg", "WhatsApp Image 2026-05-12 at 2.31.12 AM (4).jpeg", "WhatsApp Image 2026-05-12 at 2.31.12 AM (5).jpeg", "WhatsApp Image 2026-05-12 at 2.31.12 AM (6).jpeg", "WhatsApp Image 2026-05-12 at 2.31.12 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.31.13 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.31.13 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.31.13 AM (3).jpeg", "WhatsApp Image 2026-05-12 at 2.31.13 AM (4).jpeg", "WhatsApp Image 2026-05-12 at 2.31.13 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.31.14 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.31.14 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.31.14 AM (3).jpeg", "WhatsApp Image 2026-05-12 at 2.31.14 AM (4).jpeg", "WhatsApp Image 2026-05-12 at 2.31.14 AM (5).jpeg", "WhatsApp Image 2026-05-12 at 2.31.14 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.31.15 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.31.15 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.31.15 AM (3).jpeg", "WhatsApp Image 2026-05-12 at 2.31.15 AM (4).jpeg", "WhatsApp Image 2026-05-12 at 2.31.15 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.31.16 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.31.16 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.31.16 AM (3).jpeg", "WhatsApp Image 2026-05-12 at 2.31.16 AM (4).jpeg", "WhatsApp Image 2026-05-12 at 2.31.16 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.31.17 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.31.17 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.31.17 AM (3).jpeg", "WhatsApp Image 2026-05-12 at 2.31.17 AM (4).jpeg", "WhatsApp Image 2026-05-12 at 2.31.17 AM (5).jpeg", "WhatsApp Image 2026-05-12 at 2.31.17 AM.jpeg", "WhatsApp Image 2026-05-12 at 2.31.18 AM (1).jpeg", "WhatsApp Image 2026-05-12 at 2.31.18 AM (2).jpeg", "WhatsApp Image 2026-05-12 at 2.31.18 AM (3).jpeg", "WhatsApp Image 2026-05-12 at 2.31.18 AM (4).jpeg", "WhatsApp Image 2026-05-12 at 2.31.18 AM.jpeg", "WhatsApp Video 2026-05-12 at 2.29.38 AM.mp4", "WhatsApp Video 2026-05-12 at 2.29.39 AM.mp4", "WhatsApp Video 2026-05-12 at 2.29.41 AM.mp4", "WhatsApp Video 2026-05-12 at 2.29.42 AM.mp4", "WhatsApp Video 2026-05-12 at 2.29.44 AM.mp4", "WhatsApp Video 2026-05-12 at 2.29.45 AM.mp4", "WhatsApp Video 2026-05-12 at 2.29.46 AM.mp4", "WhatsApp Video 2026-05-12 at 2.29.47 AM.mp4", "WhatsApp Video 2026-05-12 at 2.29.48 AM.mp4", "WhatsApp Video 2026-05-12 at 2.29.51 AM.mp4", "WhatsApp Video 2026-05-12 at 2.29.52 AM (1).mp4", "WhatsApp Video 2026-05-12 at 2.29.52 AM.mp4", "WhatsApp Video 2026-05-12 at 2.29.54 AM.mp4", "WhatsApp Video 2026-05-12 at 2.29.55 AM.mp4", "WhatsApp Video 2026-05-12 at 2.29.56 AM.mp4", "WhatsApp Video 2026-05-12 at 2.29.57 AM.mp4", "WhatsApp Video 2026-05-12 at 2.29.58 AM.mp4", "WhatsApp Video 2026-05-12 at 2.29.59 AM.mp4", "WhatsApp Video 2026-05-12 at 2.30.00 AM.mp4", "WhatsApp Video 2026-05-12 at 2.30.01 AM.mp4", "WhatsApp Video 2026-05-12 at 2.30.02 AM.mp4", "WhatsApp Video 2026-05-12 at 2.30.03 AM.mp4", "WhatsApp Video 2026-05-12 at 2.30.05 AM.mp4", "WhatsApp Video 2026-05-12 at 2.30.12 AM (1).mp4", "WhatsApp Video 2026-05-12 at 2.30.12 AM.mp4", "WhatsApp Video 2026-05-12 at 2.30.13 AM (1).mp4", "WhatsApp Video 2026-05-12 at 2.30.13 AM (2).mp4", "WhatsApp Video 2026-05-12 at 2.30.13 AM.mp4", "WhatsApp Video 2026-05-12 at 2.30.14 AM.mp4", "WhatsApp Video 2026-05-12 at 2.30.15 AM (1).mp4", "WhatsApp Video 2026-05-12 at 2.30.15 AM.mp4", "WhatsApp Video 2026-05-12 at 2.30.17 AM.mp4", "WhatsApp Video 2026-05-12 at 2.30.18 AM (1).mp4", "WhatsApp Video 2026-05-12 at 2.30.18 AM.mp4", "WhatsApp Video 2026-05-12 at 2.30.20 AM.mp4", "WhatsApp Video 2026-05-12 at 2.31.01 AM.mp4", "WhatsApp Video 2026-05-12 at 2.31.02 AM.mp4", "WhatsApp Video 2026-05-12 at 2.31.03 AM.mp4", "WhatsApp Video 2026-05-12 at 2.31.04 AM.mp4", "WhatsApp Video 2026-05-12 at 2.31.05 AM.mp4", "WhatsApp Video 2026-05-12 at 2.31.06 AM.mp4", "WhatsApp Video 2026-05-12 at 2.31.09 AM.mp4"];
+const manifest = {
+  files
+};
+const VIDEO_STICKER_RE = /\.(mp4|webm|mov|m4v|ogg)(\?.*)?$/i;
+function stickerPublicUrl(fileName) {
+  const base = "/".replace(/\/?$/, "/");
+  const name = fileName.replace(/^\/+/, "").replace(/^stickers\/custom\//i, "");
+  return `${base}stickers/custom/${name.split("/").map(encodeURIComponent).join("/")}`;
+}
+let cached = null;
+function getCustomStickerLibrary() {
+  if (cached) return cached;
+  const files2 = Array.isArray(manifest.files) ? manifest.files : [];
+  cached = files2.map((name, i) => ({
+    id: `custom_${i}_${name}`,
+    src: stickerPublicUrl(name)
+  }));
+  return cached;
+}
+function isVideoStickerSrc(src) {
+  const value2 = src.trim().toLowerCase();
+  return value2.startsWith("data:video") || VIDEO_STICKER_RE.test(value2);
+}
+const TAB_LABELS = {
+  favorite: "مفضلة",
+  from_image: "من صورتي",
+  custom: "مخصص"
+};
+const BASE_TABS = ["custom", "favorite", "from_image"];
+const GRID_COLS = 5;
+const ROW_PX = 76;
+const GRID_PAD_PX = 16;
+function stickerGridPanelHeight(itemCount) {
+  if (itemCount === 0) return 120;
+  const rows = Math.ceil(itemCount / GRID_COLS);
+  const content = rows * ROW_PX + GRID_PAD_PX;
+  const cap = typeof window !== "undefined" ? Math.min(Math.round(window.innerHeight * 0.58), 520) : 480;
+  return Math.min(Math.max(content, 108), cap);
+}
+function StickerMediaGrid({
+  items,
+  onPick,
+  emptyText
+}) {
+  const panelHeight = stickerGridPanelHeight(items.length);
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "div",
+    {
+      className: "min-h-0 shrink-0 overflow-y-auto overflow-x-hidden overscroll-y-contain touch-pan-y",
+      style: { maxHeight: panelHeight, WebkitOverflowScrolling: "touch" },
+      children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "p-1.5 grid grid-cols-5 gap-1.5 content-start pb-2 w-full", children: items.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "col-span-5 py-10 text-center text-sm text-muted-foreground", children: emptyText }) : items.map((item) => {
+        const isVid = isVideoStickerSrc(item.src);
+        return /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            type: "button",
+            onClick: () => onPick(item.src),
+            className: "aspect-square w-full min-h-[64px] overflow-hidden rounded-md p-0 border-0 bg-transparent hover:bg-secondary/30 active:scale-[0.97] transition",
+            children: isVid ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "video",
+              {
+                src: item.src,
+                className: "w-full h-full object-contain block bg-transparent",
+                muted: true,
+                playsInline: true,
+                loop: true,
+                autoPlay: true,
+                preload: "metadata"
+              }
+            ) : /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "img",
+              {
+                src: item.src,
+                alt: "",
+                className: "w-full h-full object-contain block bg-transparent",
+                loading: "lazy",
+                decoding: "async",
+                draggable: false
+              }
+            )
+          },
+          item.id
+        );
+      }) })
+    }
+  );
+}
+const ChatStickerPicker = reactExports.memo(function ChatStickerPicker2({
+  isQuranChannel,
+  userStickers: _userStickers,
+  favoriteStickerContents = [],
+  createdStickerContents: _createdStickerContents,
+  onPick,
+  onClose,
+  isTyping = false
+}) {
+  const [tab, setTab] = reactExports.useState("custom");
+  const fileRef = reactExports.useRef(null);
+  const fileStickers = reactExports.useMemo(() => getCustomStickerLibrary(), []);
+  const favoriteItems = reactExports.useMemo(
+    () => (favoriteStickerContents || []).map((src, i) => ({
+      id: `fav_${i}_${String(src).slice(0, 48)}`,
+      src
+    })),
+    [favoriteStickerContents]
+  );
+  const shell = "border-t border-border flex flex-col min-h-0 max-h-[72vh] " + (isQuranChannel ? "bg-zinc-900 border-zinc-700" : "bg-background");
+  const onFileChange = (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f || !f.type.startsWith("image/")) return;
+    const r2 = new FileReader();
+    r2.onload = () => {
+      const data = String(r2.result || "");
+      if (data.startsWith("data:image")) onPick(data, { createdFromImage: true });
+    };
+    r2.readAsDataURL(f);
+  };
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: shell, children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("input", { ref: fileRef, type: "file", accept: "image/*", className: "hidden", onChange: onFileChange }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-1 p-2 border-b border-border overflow-x-auto no-scrollbar shrink-0", children: [
+      BASE_TABS.map((id) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "button",
+        {
+          type: "button",
+          onClick: () => setTab(id),
+          className: "shrink-0 px-2.5 py-1.5 rounded-full text-[11px] font-semibold whitespace-nowrap " + (tab === id ? "bg-primary text-primary-foreground" : "bg-secondary"),
+          children: [
+            TAB_LABELS[id],
+            id === "custom" && fileStickers.length > 0 ? ` (${fileStickers.length})` : ""
+          ]
+        },
+        id
+      )),
+      isTyping && /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          type: "button",
+          className: "shrink-0 px-2.5 py-1.5 rounded-full text-[11px] font-semibold whitespace-nowrap bg-green-500 text-white",
+          children: "يكتب الان"
+        },
+        "typing"
+      )
+    ] }),
+    tab === "from_image" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col items-center justify-center gap-3 px-4 py-10 min-h-[200px] shrink-0", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-full bg-secondary p-4", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Image$1, { size: 40, className: "text-muted-foreground" }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-center text-muted-foreground max-w-xs", children: "اختر صورة من معرضك لتحويلها إلى ملصق وإرسالها فوراً في المحادثة." }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          type: "button",
+          className: "bg-primary text-primary-foreground px-6 py-3 rounded-2xl text-sm font-semibold",
+          onClick: () => fileRef.current?.click(),
+          children: "اختيار صورة"
+        }
+      )
+    ] }),
+    tab === "favorite" && /* @__PURE__ */ jsxRuntimeExports.jsx(
+      StickerMediaGrid,
+      {
+        items: favoriteItems,
+        onPick: (src) => onPick(src),
+        emptyText: "لا ملصقات في المفضلة بعد — اضغط مطولاً على ملصق في الشات واختر «إضافة للمفضلة»"
+      }
+    ),
+    tab === "custom" && /* @__PURE__ */ jsxRuntimeExports.jsx(
+      StickerMediaGrid,
+      {
+        items: fileStickers,
+        onPick: (src) => onPick(src),
+        emptyText: "ضع الصور في public/stickers/custom ثم npm run stickers:manifest"
+      }
+    )
+  ] });
+});
+const CHAT_DRAWING_BG_TRANSPARENT = -1;
+const GRADIENT_FILLS = [
+  (ctx, w, h) => {
+    const g = ctx.createLinearGradient(0, 0, w, h);
+    g.addColorStop(0, "#833ab4");
+    g.addColorStop(0.45, "#fd1d1d");
+    g.addColorStop(1, "#fcb045");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+  },
+  (ctx, w, h) => {
+    const g = ctx.createLinearGradient(0, 0, w, h);
+    g.addColorStop(0, "#00c6ff");
+    g.addColorStop(1, "#0072ff");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+  },
+  (ctx, w, h) => {
+    const g = ctx.createLinearGradient(0, 0, w, h);
+    g.addColorStop(0, "#11998e");
+    g.addColorStop(1, "#38ef7d");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+  },
+  (ctx, w, h) => {
+    const g = ctx.createLinearGradient(w, 0, 0, h);
+    g.addColorStop(0, "#fc466b");
+    g.addColorStop(1, "#3f5efb");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+  },
+  (ctx, w, h) => {
+    const g = ctx.createLinearGradient(0, h, w, 0);
+    g.addColorStop(0, "#0f0c29");
+    g.addColorStop(0.5, "#302b63");
+    g.addColorStop(1, "#24243e");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+  },
+  (ctx, w, h) => {
+    const g = ctx.createLinearGradient(0, 0, w, 0);
+    g.addColorStop(0, "#ffe259");
+    g.addColorStop(1, "#ffa751");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, w, h);
+  }
+];
+const DRAW_GRADIENT_COUNT = GRADIENT_FILLS.length;
+function scaleLayers(layers2, ow, oh, nw, nh) {
+  if (ow <= 0 || oh <= 0 || nw <= 0 || nh <= 0) return layers2;
+  const sx = nw / ow;
+  const sy = nh / oh;
+  const scalePt = Math.sqrt(sx * sy);
+  return layers2.map((L) => {
+    if (L.kind === "stroke") {
+      return {
+        kind: "stroke",
+        color: L.color,
+        width: Math.max(1, L.width * scalePt),
+        points: L.points.map(([x, y]) => [x * sx, y * sy])
+      };
+    }
+    return {
+      kind: "text",
+      x: L.x * sx,
+      y: L.y * sy,
+      text: L.text,
+      color: L.color,
+      fontSize: Math.max(12, L.fontSize * scalePt)
+    };
+  });
+}
+function drawStroke(ctx, color, lineW, points) {
+  if (points.length === 0) return;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = color;
+  ctx.lineWidth = lineW;
+  if (points.length === 1) {
+    ctx.beginPath();
+    ctx.fillStyle = color;
+    ctx.arc(points[0][0], points[0][1], Math.max(lineW / 2, 1.5), 0, Math.PI * 2);
+    ctx.fill();
+    return;
+  }
+  ctx.beginPath();
+  ctx.moveTo(points[0][0], points[0][1]);
+  for (let i = 1; i < points.length; i++) ctx.lineTo(points[i][0], points[i][1]);
+  ctx.stroke();
+}
+function paintDrawingToContext(ctx, cw, ch, bgIndex, layers2, draft, opts) {
+  if (bgIndex >= 0) {
+    GRADIENT_FILLS[bgIndex % GRADIENT_FILLS.length](ctx, cw, ch);
+  } else if (opts?.neutralFillWhenTransparent) {
+    ctx.fillStyle = "rgba(244, 244, 245, 0.96)";
+    try {
+      if (typeof document !== "undefined" && document.documentElement.classList.contains("dark")) {
+        ctx.fillStyle = "rgba(24, 24, 27, 0.92)";
+      }
+    } catch {
+    }
+    ctx.fillRect(0, 0, cw, ch);
+  } else {
+    ctx.clearRect(0, 0, cw, ch);
+  }
+  for (const L of layers2) {
+    if (L.kind === "stroke") drawStroke(ctx, L.color, L.width, L.points);
+    else {
+      ctx.font = `bold ${L.fontSize}px system-ui, -apple-system, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.strokeStyle = "rgba(0,0,0,0.6)";
+      ctx.lineWidth = Math.max(3, L.fontSize / 10);
+      ctx.fillStyle = L.color;
+      ctx.strokeText(L.text, L.x, L.y);
+      ctx.fillText(L.text, L.x, L.y);
+    }
+  }
+  if (draft && draft.points.length) drawStroke(ctx, draft.color, draft.width, draft.points);
+}
+function parseDrawingPayload(raw) {
+  try {
+    const p = JSON.parse(raw);
+    if (p?.v !== 1 || typeof p.w !== "number" || typeof p.h !== "number" || !Array.isArray(p.layers)) return null;
+    if (typeof p.bgIndex !== "number") return null;
+    return p;
+  } catch {
+    return null;
+  }
+}
+function ChatDrawingCanvas({
+  payload,
+  className,
+  maxHeightPx = 280,
+  /** في الفقاعة: خلفية خفيفة تحت الرسم الشفاف حتى تظهر الخطوط البيضاء */
+  forChatDisplay
+}) {
+  const wrapRef = reactExports.useRef(null);
+  const canvasRef = reactExports.useRef(null);
+  reactExports.useLayoutEffect(() => {
+    const wrap = wrapRef.current;
+    const canvas2 = canvasRef.current;
+    if (!wrap || !canvas2 || payload.w < 2 || payload.h < 2) return;
+    const paint = () => {
+      let wBox = Math.max(1, Math.floor(wrap.clientWidth));
+      if (wBox < 8) {
+        const dprGuess = typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 1, 2) : 1;
+        wBox = Math.min(360, Math.max(160, Math.round(payload.w / dprGuess)));
+      }
+      const ratio = payload.h / payload.w;
+      let hBox = Math.round(wBox * ratio);
+      hBox = Math.min(maxHeightPx, Math.max(48, hBox));
+      wBox = Math.max(8, Math.round(hBox / ratio));
+      const dpr = typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 1, 2) : 1;
+      const cw = Math.floor(wBox * dpr);
+      const ch = Math.floor(hBox * dpr);
+      if (cw < 2 || ch < 2) return;
+      canvas2.style.width = `${wBox}px`;
+      canvas2.style.height = `${hBox}px`;
+      canvas2.width = cw;
+      canvas2.height = ch;
+      const ctx = canvas2.getContext("2d");
+      if (!ctx) return;
+      const neutralFill = !!forChatDisplay && payload.bgIndex < 0;
+      paintDrawingToContext(ctx, cw, ch, payload.bgIndex, payload.layers, null, {
+        neutralFillWhenTransparent: neutralFill
+      });
+    };
+    paint();
+    const ro = new ResizeObserver(() => paint());
+    ro.observe(wrap);
+    return () => ro.disconnect();
+  }, [payload, maxHeightPx, forChatDisplay]);
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "div",
+    {
+      ref: wrapRef,
+      className: (className ?? "w-full") + " min-w-0",
+      style: {
+        width: "100%",
+        maxHeight: maxHeightPx,
+        aspectRatio: `${payload.w} / ${payload.h}`
+      },
+      children: /* @__PURE__ */ jsxRuntimeExports.jsx("canvas", { ref: canvasRef, className: "block h-auto w-full rounded-lg", "aria-hidden": true })
+    }
+  );
+}
+function ViewOnceMediaOverlay({
+  media,
+  src,
+  onClose
+}) {
+  if (typeof document === "undefined") return null;
+  const drawPayload = media === "drawing" ? parseDrawingPayload(src) : null;
+  return reactDomExports.createPortal(
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "fixed inset-0 z-[370] flex flex-col bg-black", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex shrink-0 justify-end p-3", children: /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onClose, className: "rounded-full bg-white/10 p-2.5 text-white hover:bg-white/20", "aria-label": "إغلاق", children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 22 }) }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex min-h-0 flex-1 items-center justify-center p-2", children: media === "drawing" ? drawPayload ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-full w-full max-w-lg flex-col items-center justify-center", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChatDrawingCanvas, { payload: drawPayload, className: "w-full", maxHeightPx: 620 }) }) : /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-center text-sm text-white/80", children: "تعذر عرض الرسمة" }) : media === "image" ? /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src, alt: "", className: "max-h-full max-w-full object-contain" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("video", { src, controls: true, autoPlay: true, className: "max-h-full max-w-full object-contain", playsInline: true }) })
+    ] }),
+    document.body
+  );
+}
+function clientToCanvas(e, canvas2) {
+  const rect = canvas2.getBoundingClientRect();
+  const scaleX = canvas2.width / rect.width;
+  const scaleY = canvas2.height / rect.height;
+  return [(e.clientX - rect.left) * scaleX, (e.clientY - rect.top) * scaleY];
+}
+function ChatDrawComposeModal({
+  onClose,
+  onSend,
+  senderName,
+  senderAvatar,
+  isQuranChannel,
+  /** طبقة فوق منطقة الرسائل (ترى المحادثة تحتها) بدل شاشة كاملة منفصلة */
+  overMessages
+}) {
+  const wrapRef = reactExports.useRef(null);
+  const canvasRef = reactExports.useRef(null);
+  const [layers2, setLayers] = reactExports.useState([]);
+  const [bgIndex, setBgIndex] = reactExports.useState(CHAT_DRAWING_BG_TRANSPARENT);
+  const [penColor, setPenColor] = reactExports.useState("#ffffff");
+  const [penWidth, setPenWidth] = reactExports.useState(5);
+  const [viewOnce, setViewOnce] = reactExports.useState(false);
+  const draftRef = reactExports.useRef(null);
+  const PEN_COLORS = ["#ffffff", "#000000", "#ff3040", "#fcb045", "#833ab4", "#4fce5d", "#00c9ff", "#ffe500"];
+  const redraw = reactExports.useCallback(() => {
+    const canvas2 = canvasRef.current;
+    if (!canvas2) return;
+    const ctx = canvas2.getContext("2d");
+    if (!ctx) return;
+    paintDrawingToContext(ctx, canvas2.width, canvas2.height, bgIndex, layers2, draftRef.current);
+  }, [bgIndex, layers2]);
+  const resizeCanvas = reactExports.useCallback(() => {
+    const wrap = wrapRef.current;
+    const canvas2 = canvasRef.current;
+    if (!wrap || !canvas2) return;
+    const dpr = typeof window !== "undefined" ? Math.min(window.devicePixelRatio || 1, 2) : 1;
+    const w = Math.floor(wrap.clientWidth * dpr);
+    const h = Math.floor(wrap.clientHeight * dpr);
+    if (w < 1 || h < 1) return;
+    const ow = canvas2.width;
+    const oh = canvas2.height;
+    if (ow === w && oh === h) {
+      const ctx2 = canvas2.getContext("2d");
+      if (ctx2) paintDrawingToContext(ctx2, w, h, bgIndex, layers2, draftRef.current);
+      return;
+    }
+    draftRef.current = null;
+    let nextLayers = layers2;
+    if (ow > 0 && oh > 0 && (ow !== w || oh !== h)) {
+      nextLayers = scaleLayers(layers2, ow, oh, w, h);
+      setLayers(nextLayers);
+    }
+    canvas2.width = w;
+    canvas2.height = h;
+    const ctx = canvas2.getContext("2d");
+    if (ctx) paintDrawingToContext(ctx, w, h, bgIndex, nextLayers, null);
+  }, [bgIndex, layers2]);
+  reactExports.useEffect(() => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    resizeCanvas();
+    const ro = new ResizeObserver(() => resizeCanvas());
+    ro.observe(wrap);
+    return () => ro.disconnect();
+  }, [resizeCanvas]);
+  reactExports.useEffect(() => {
+    redraw();
+  }, [redraw]);
+  reactExports.useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  const addTextCenter = reactExports.useCallback(() => {
+    const canvas2 = canvasRef.current;
+    if (!canvas2) return;
+    const raw = window.prompt("اكتب على الشاشة", "");
+    if (raw == null || !raw.trim()) return;
+    const fontSize = Math.max(22, Math.round(canvas2.width / 14));
+    setLayers((prev) => [
+      ...prev,
+      {
+        kind: "text",
+        x: canvas2.width / 2,
+        y: canvas2.height / 2,
+        text: raw.trim(),
+        color: penColor,
+        fontSize
+      }
+    ]);
+  }, [penColor]);
+  const onPointerDown = (e) => {
+    if (!canvasRef.current) return;
+    e.preventDefault();
+    e.target.setPointerCapture(e.pointerId);
+    const p = clientToCanvas(e, canvasRef.current);
+    draftRef.current = { color: penColor, width: penWidth, points: [p] };
+    redraw();
+  };
+  const onPointerMove = (e) => {
+    if (!draftRef.current || !canvasRef.current) return;
+    e.preventDefault();
+    const p = clientToCanvas(e, canvasRef.current);
+    draftRef.current.points.push(p);
+    const canvas2 = canvasRef.current;
+    const ctx = canvas2.getContext("2d");
+    if (!ctx) return;
+    paintDrawingToContext(ctx, canvas2.width, canvas2.height, bgIndex, layers2, draftRef.current);
+  };
+  const onPointerUp = (e) => {
+    if (!draftRef.current || !canvasRef.current) return;
+    try {
+      e.target.releasePointerCapture(e.pointerId);
+    } catch {
+    }
+    const d = draftRef.current;
+    draftRef.current = null;
+    if (d.points.length === 0) return;
+    setLayers((prev) => [...prev, { kind: "stroke", color: d.color, width: d.width, points: d.points }]);
+  };
+  const undo = () => setLayers((prev) => prev.slice(0, -1));
+  const buildPayload = reactExports.useCallback(() => {
+    const canvas2 = canvasRef.current;
+    if (!canvas2 || canvas2.width < 2 || canvas2.height < 2 || layers2.length === 0) return null;
+    return {
+      v: 1,
+      w: canvas2.width,
+      h: canvas2.height,
+      bgIndex,
+      layers: layers2
+    };
+  }, [bgIndex, layers2]);
+  const handleSend = () => {
+    const payload = buildPayload();
+    if (!payload) return;
+    onSend({ type: "drawing", content: JSON.stringify(payload), viewOnce });
+    onClose();
+  };
+  const toolBtn = "flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white backdrop-blur-sm transition hover:bg-white/20 active:scale-95";
+  const cycleBg = (delta) => {
+    setBgIndex((prev) => {
+      if (prev === CHAT_DRAWING_BG_TRANSPARENT) {
+        return delta > 0 ? 0 : DRAW_GRADIENT_COUNT - 1;
+      }
+      const g = prev + delta;
+      if (g < 0) return DRAW_GRADIENT_COUNT - 1;
+      if (g >= DRAW_GRADIENT_COUNT) return CHAT_DRAWING_BG_TRANSPARENT;
+      return g;
+    });
+  };
+  const bgLabel = bgIndex === CHAT_DRAWING_BG_TRANSPARENT ? "خلفية: المحادثة" : `خلفية: ${bgIndex + 1}/${DRAW_GRADIENT_COUNT}`;
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "div",
+    {
+      className: (overMessages ? "absolute inset-0 z-[85] flex min-h-0 flex-col bg-black/25 " : "fixed inset-0 z-[365] mx-auto flex min-h-0 max-w-md flex-col bg-black/30 backdrop-blur-md ") + "pointer-events-auto",
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex shrink-0 items-center justify-between gap-2 px-3 pb-2 pt-[max(0.75rem,var(--sat))]", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onClose, className: toolBtn, "aria-label": "إغلاق", children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 20 }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "min-w-0 flex-1 text-center text-xs font-medium text-white/95 sm:text-sm", children: "رسم وكتابة" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => cycleBg(-1), className: toolBtn, "aria-label": "خلفية سابقة", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronRight, { size: 20, className: "rtl:rotate-180" }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => cycleBg(1), className: toolBtn, "aria-label": "خلفية تالية", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronLeft, { size: 20, className: "rtl:rotate-180" }) })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "px-3 pb-1 text-center text-[10px] text-white/70", children: bgLabel }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { ref: wrapRef, className: "relative min-h-0 flex-1 touch-none px-2 pb-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "canvas",
+          {
+            ref: canvasRef,
+            className: "h-full w-full touch-none rounded-2xl bg-transparent",
+            style: { touchAction: "none" },
+            onPointerDown,
+            onPointerMove,
+            onPointerUp,
+            onPointerCancel: onPointerUp
+          }
+        ) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "shrink-0 space-y-3 border-t border-white/10 bg-zinc-950/90 px-3 pb-[max(1rem,var(--sab))] pt-3 backdrop-blur-md", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex flex-wrap items-center gap-2", children: PEN_COLORS.map((c) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "button",
+            {
+              type: "button",
+              "aria-label": `لون ${c}`,
+              className: "h-9 w-9 shrink-0 rounded-full border-2 transition active:scale-95 " + (penColor === c ? "border-white scale-110" : "border-white/25"),
+              style: { backgroundColor: c },
+              onClick: () => setPenColor(c)
+            },
+            c
+          )) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-wrap items-center gap-2", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs text-zinc-500", children: "سمك الخط" }),
+            [3, 6, 12].map((w) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                type: "button",
+                onClick: () => setPenWidth(w),
+                className: "rounded-full px-3 py-1.5 text-xs font-semibold transition " + (penWidth === w ? "bg-white text-black" : "bg-white/10 text-white hover:bg-white/20"),
+                children: w === 3 ? "رفيع" : w === 6 ? "متوسط" : "عريض"
+              },
+              w
+            )),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: undo, className: toolBtn + " ms-auto", "aria-label": "تراجع", disabled: !layers2.length, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Undo2, { size: 18, className: layers2.length ? "" : "opacity-40" }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: addTextCenter, className: toolBtn, "aria-label": "نص", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Type, { size: 18 }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                type: "button",
+                onClick: () => setBgIndex(CHAT_DRAWING_BG_TRANSPARENT),
+                className: toolBtn + (bgIndex === CHAT_DRAWING_BG_TRANSPARENT ? " ring-2 ring-white/60" : ""),
+                "aria-label": "إظهار المحادثة خلف الرسم",
+                title: "خلفية شفافة — تظهر المحادثة",
+                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Image$1, { size: 18 })
+              }
+            )
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "label",
+            {
+              className: "flex cursor-pointer items-center justify-between gap-3 text-sm " + (isQuranChannel ? "text-emerald-100" : "text-zinc-200"),
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "flex items-center gap-2", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(Eye, { size: 16, className: "opacity-70" }),
+                  "مشاهدة لمرة واحدة"
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsx("input", { type: "checkbox", checked: viewOnce, onChange: (e) => setViewOnce(e.target.checked), className: "h-4 w-4 accent-violet-500" })
+              ]
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "button",
+            {
+              type: "button",
+              onClick: handleSend,
+              disabled: !layers2.length,
+              className: "flex w-full items-center justify-center gap-2 rounded-full py-3 text-sm font-semibold shadow-lg active:scale-[0.99] disabled:opacity-40 " + (isQuranChannel ? "bg-emerald-500 text-black" : "bg-white text-black"),
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: senderName || "?", src: senderAvatar, size: 28 }),
+                "إرسال الرسمة"
+              ]
+            }
+          )
+        ] })
+      ]
+    }
+  );
+}
+function ChatInlineMediaLightbox({ media, src, sender, senderLabel, onClose }) {
+  const [menuOpen, setMenuOpen] = reactExports.useState(false);
+  const menuRef = reactExports.useRef(null);
+  const download = reactExports.useCallback(() => {
+    const a = document.createElement("a");
+    a.href = src;
+    const ext = media === "video" ? "mp4" : "jpg";
+    a.download = `retweet-chat-${Date.now()}.${ext}`;
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }, [src, media]);
+  reactExports.useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        setMenuOpen(false);
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [onClose]);
+  reactExports.useEffect(() => {
+    if (!menuOpen) return;
+    const onDoc = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false);
+    };
+    document.addEventListener("click", onDoc, true);
+    return () => document.removeEventListener("click", onDoc, true);
+  }, [menuOpen]);
+  if (typeof document === "undefined") return null;
+  const displayName = senderLabel.startsWith("@") ? senderLabel : `@${senderLabel.replace(/^@/, "")}`;
+  const body = /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "fixed inset-0 z-[382] flex flex-col bg-black", role: "dialog", "aria-modal": "true", "aria-label": "عرض الوسائط", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "header",
+      {
+        dir: "ltr",
+        className: "flex shrink-0 items-center gap-2 border-b border-white/10 px-2 pb-2 pt-[max(10px,var(--sat))]",
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onClose, className: "rounded-full p-2.5 text-white transition hover:bg-white/10", "aria-label": "رجوع", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronLeft, { size: 26, strokeWidth: 2.25 }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-w-0 flex-1 items-center justify-center gap-2 px-1", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: displayName.replace(/^@/, ""), src: sender?.avatar, size: 34 }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "truncate text-sm font-semibold text-white", children: displayName })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative flex shrink-0 items-center gap-0.5", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                type: "button",
+                onClick: download,
+                className: "rounded-full p-2.5 text-white transition hover:bg-white/10",
+                "aria-label": "تحميل",
+                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Download, { size: 22, strokeWidth: 2 })
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative", ref: menuRef, children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  type: "button",
+                  onClick: () => setMenuOpen((v) => !v),
+                  className: "rounded-full p-2.5 text-white transition hover:bg-white/10",
+                  "aria-label": "خيارات",
+                  "aria-expanded": menuOpen,
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx(EllipsisVertical, { size: 22, strokeWidth: 2 })
+                }
+              ),
+              menuOpen && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute end-0 top-full z-[2] mt-1 min-w-[11rem] overflow-hidden rounded-xl border border-white/10 bg-zinc-900/95 py-1 shadow-2xl backdrop-blur-md", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                "button",
+                {
+                  type: "button",
+                  className: "flex w-full items-center gap-2 px-4 py-2.5 text-start text-sm text-white hover:bg-white/10",
+                  onClick: () => {
+                    setMenuOpen(false);
+                    download();
+                  },
+                  children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(Download, { size: 18, strokeWidth: 2, className: "opacity-90" }),
+                    "تحميل"
+                  ]
+                }
+              ) })
+            ] })
+          ] })
+        ]
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex min-h-0 flex-1 items-center justify-center overflow-hidden px-1 pb-[var(--sab)]", children: media === "image" ? /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src, alt: "", className: "max-h-full max-w-full object-contain" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("video", { src, controls: true, playsInline: true, autoPlay: true, className: "max-h-full max-w-full object-contain", preload: "metadata" }) })
+  ] });
+  return reactDomExports.createPortal(body, document.body);
+}
+function ShareFeedPostSection({ postId }) {
+  const { state: state2, currentUser } = useApp();
+  const post = state2.posts.find((p) => p.id === postId);
+  const author = post ? userById$1(state2, post.userId) : null;
+  const liked = currentUser && post ? post.likes.includes(currentUser.id) : false;
+  const reposted = currentUser && post ? post.reposts.includes(currentUser.id) : false;
+  if (!post || !author) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "px-4 py-8 text-center text-sm text-muted-foreground", children: "منشور غير متوفر" });
+  }
+  const caption = [post.text?.trim()].filter(Boolean).join(" ") || "";
+  const img = post.image?.trim();
+  const hasImg = isRenderableMediaUrl(img);
+  const emojiOnly = !!(img && !hasImg && img.length <= 6);
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-h-0 flex-1 flex-col bg-background", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3 px-4 pt-4", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: author.username, src: author.avatar, size: 44 }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1 text-start", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1 truncate text-base font-semibold", children: [
+          "@",
+          author.username,
+          /* @__PURE__ */ jsxRuntimeExports.jsx(VerifiedMarkForUser, { user: author, size: 16 })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-xs text-muted-foreground", children: post.type === "tweet" ? "تغريدة" : post.type === "reel" ? "ريلز" : "منشور" })
+      ] })
+    ] }),
+    caption && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { dir: "auto", className: "mt-3 whitespace-pre-wrap px-4 text-start text-sm leading-relaxed [overflow-wrap:anywhere]", children: caption }),
+    hasImg && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-3 flex w-full justify-center bg-muted/20 px-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: resolveMediaUrl(img), alt: "", className: "max-h-[min(58vh,520px)] w-full max-w-lg object-contain" }) }),
+    emojiOnly && !post.video && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-3 flex min-h-[12rem] items-center justify-center bg-muted/20 text-5xl", children: img }),
+    post.video && isRenderableMediaUrl(post.video) && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-3 flex w-full justify-center bg-muted/30 px-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx("video", { src: resolveMediaUrl(post.video), controls: true, className: "max-h-[min(58vh,520px)] w-full max-w-lg object-contain", playsInline: true, preload: "metadata" }) }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4 flex items-center gap-6 px-4 text-sm text-muted-foreground", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "inline-flex items-center gap-1.5", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Heart, { size: 18, className: liked ? "fill-red-500 text-red-500" : "" }),
+        post.likes.length
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "inline-flex items-center gap-1.5", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(MessageCircle, { size: 18 }),
+        post.comments.length
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "inline-flex items-center gap-1.5", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Repeat2, { size: 18, className: reposted ? "text-emerald-500" : "" }),
+        post.reposts.length
+      ] }),
+      post.type === "reel" && /* @__PURE__ */ jsxRuntimeExports.jsx(Film, { size: 18, className: "ms-auto opacity-70" })
+    ] })
+  ] });
+}
+function ShareFeedStorySection({ storyId }) {
+  const { state: state2 } = useApp();
+  const story = state2.stories.find((s) => s.id === storyId);
+  const author = story ? userById$1(state2, story.userId) : null;
+  if (!story || !author) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "px-4 py-8 text-center text-sm text-muted-foreground", children: "ستوري غير متوفر" });
+  }
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-h-0 flex-1 flex-col bg-background", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3 px-4 pt-4", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: author.username, src: author.avatar, size: 44 }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1 text-start", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1 truncate text-base font-semibold", children: [
+          "@",
+          author.username,
+          /* @__PURE__ */ jsxRuntimeExports.jsx(VerifiedMarkForUser, { user: author, size: 16 })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-xs text-muted-foreground", children: "ستوري" })
+      ] })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-4 flex min-h-0 flex-1 items-center justify-center bg-muted/20 px-2 pb-8", children: (() => {
+      const sm = normalizeStoryMedia(story);
+      if (sm.hasVideo) {
+        return /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "video",
+          {
+            src: sm.videoUrl,
+            controls: true,
+            className: "max-h-[min(62vh,560px)] w-full max-w-lg object-contain",
+            playsInline: true,
+            preload: "metadata"
+          }
+        );
+      }
+      if (sm.hasImage) {
+        return /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "img",
+          {
+            src: sm.imageUrl,
+            alt: "",
+            className: "max-h-[min(62vh,560px)] w-full max-w-lg object-contain"
+          }
+        );
+      }
+      return /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-6xl", children: sm.emojiFallback || "📷" });
+    })() })
+  ] });
+}
+function ChatSharedFeedOverlay({
+  items,
+  initialIndex,
+  onClose
+}) {
+  const scrollKeyRef = reactExports.useRef("");
+  const key2 = reactExports.useMemo(() => items.map((i) => i.messageId).join("|") + "#" + initialIndex, [items, initialIndex]);
+  reactExports.useLayoutEffect(() => {
+    if (items.length === 0) return;
+    if (scrollKeyRef.current === key2) return;
+    scrollKeyRef.current = key2;
+    const safe = Math.min(Math.max(0, initialIndex), items.length - 1);
+    const id = items[safe]?.messageId;
+    if (!id) return;
+    requestAnimationFrame(() => {
+      document.getElementById(`chat-share-section-${id}`)?.scrollIntoView({ block: "start", behavior: "auto" });
+    });
+  }, [items, initialIndex, key2]);
+  reactExports.useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = prev;
+      scrollKeyRef.current = "";
+    };
+  }, []);
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-[380] flex justify-center bg-background", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex h-[100dvh] w-full max-w-md flex-col overflow-hidden", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("header", { className: "flex shrink-0 items-center gap-3 px-3 py-2.5", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onClose, className: "shrink-0 rounded-full p-2 hover:bg-secondary", "aria-label": "إغلاق", children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 22 }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "truncate text-sm font-semibold", children: "مشاركات المحادثة" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "truncate text-[11px] text-muted-foreground", children: "مرّر لأعلى أو لأسفل بين المنشورات والستوريات المشتركة" })
+      ] })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "min-h-0 flex-1 overflow-y-auto overscroll-y-none [scrollbar-gutter:stable]", children: items.map((item) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "section",
+      {
+        id: `chat-share-section-${item.messageId}`,
+        className: "flex min-h-[100dvh] flex-col bg-background",
+        children: [
+          item.shareText && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "shrink-0 px-4 pb-2 pt-3 text-sm text-muted-foreground", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-foreground/90", children: [
+            '"',
+            item.shareText,
+            '"'
+          ] }) }),
+          item.kind === "post" ? /* @__PURE__ */ jsxRuntimeExports.jsx(ShareFeedPostSection, { postId: item.targetId }) : /* @__PURE__ */ jsxRuntimeExports.jsx(ShareFeedStorySection, { storyId: item.targetId })
+        ]
+      },
+      item.messageId
+    )) })
+  ] }) });
+}
+function SharedPostPreview({ postId, comment, compact = false, variant = "default" }) {
+  const { state: state2, currentUser } = useApp();
+  const post = state2.posts.find((p) => p.id === postId);
+  const author = post ? userById$1(state2, post.userId) : null;
+  if (!post || !author) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-2xl bg-muted/40 p-3 dark:bg-zinc-900/60", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-center text-xs text-muted-foreground", children: "منشور غير متوفر" }) });
+  }
+  const liked = currentUser ? post.likes.includes(currentUser.id) : false;
+  const reposted = currentUser ? post.reposts.includes(currentUser.id) : false;
+  if (variant === "chat") {
+    const caption = [post.text?.trim()].filter(Boolean).join(" ") || (post.image && !isRenderableMediaUrl(post.image) ? post.image : "") || "…";
+    const img = post.image?.trim();
+    const resolvedImg = img ? resolveMediaUrl(img) : "";
+    const hasImg = !!(resolvedImg && isRenderableMediaUrl(resolvedImg));
+    const emojiOnly = img && !hasImg && img.length <= 6;
+    const mediaFrame = "relative w-full overflow-hidden rounded-none bg-transparent";
+    return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "w-full max-w-[min(96vw,360px)] overflow-hidden rounded-none border-0 bg-transparent shadow-none ring-0", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 px-1 py-1.5", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: author.username, src: author.avatar, size: 22 }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1 text-start", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1 truncate", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "truncate text-xs font-semibold", children: userDisplayName(author) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(VerifiedMarkForUser, { user: author, size: 12 })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[10px] text-muted-foreground", children: post.type === "tweet" ? "تغريدة" : post.type === "reel" ? "ريلز" : "منشور" })
+        ] })
+      ] }),
+      comment && /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "px-1 pb-1.5 text-[11px] italic text-muted-foreground", children: [
+        '"',
+        comment,
+        '"'
+      ] }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2 px-0 pb-1", children: [
+        hasImg && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: mediaFrame, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "img",
+          {
+            src: resolvedImg,
+            alt: "",
+            className: "block max-h-[min(52vh,400px)] min-h-[220px] w-full object-cover object-center"
+          }
+        ) }),
+        emojiOnly && !post.video && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex min-h-[5rem] items-center justify-center rounded-none bg-transparent text-5xl", children: img }),
+        post.video && isRenderableMediaUrl(post.video) && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: mediaFrame, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "video",
+          {
+            src: resolveMediaUrl(post.video),
+            controls: true,
+            className: "block max-h-[min(52vh,400px)] min-h-[220px] w-full object-cover object-center",
+            playsInline: true,
+            preload: "metadata"
+          }
+        ) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "line-clamp-2 px-0.5 text-start text-[11px] leading-snug text-foreground/90", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "font-semibold", children: [
+            "@",
+            author.username
+          ] }),
+          " ",
+          caption
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3 pt-1 text-[10px] text-muted-foreground", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "inline-flex items-center gap-0.5", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Heart, { size: 12, className: liked ? "fill-red-500 text-red-500" : "" }),
+            post.likes.length
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "inline-flex items-center gap-0.5", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(MessageCircle, { size: 12 }),
+            post.comments.length
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "inline-flex items-center gap-0.5", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Repeat2, { size: 12, className: reposted ? "text-emerald-500" : "" }),
+            post.reposts.length
+          ] }),
+          post.type === "reel" && /* @__PURE__ */ jsxRuntimeExports.jsx(Film, { size: 12, className: "ms-auto opacity-70" })
+        ] })
+      ] })
+    ] });
+  }
+  if (compact) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-xl bg-muted/40 p-3 dark:bg-zinc-900/60", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-2 flex items-center gap-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: author.username, src: author.avatar, size: 20 }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-xs font-medium", children: [
+          "@",
+          author.username
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs text-muted-foreground", children: "• منشور" })
+      ] }),
+      post.text && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mb-2 line-clamp-2 text-sm", children: post.text }),
+      post.image && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mb-2 aspect-video overflow-hidden rounded-lg bg-muted/50", children: isRenderableMediaUrl(post.image) ? /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: resolveMediaUrl(post.image), className: "h-full w-full object-cover", alt: "" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-full items-center justify-center text-3xl", children: post.image }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3 text-xs text-muted-foreground", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+          "❤️ ",
+          post.likes.length
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+          "💬 ",
+          post.comments.length
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
+          "🔄 ",
+          post.reposts.length
+        ] })
+      ] })
+    ] });
+  }
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "overflow-hidden rounded-xl bg-muted/30 dark:bg-zinc-900/70", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 p-3", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: author.username, src: author.avatar, size: 24 }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-sm font-medium", children: [
+            "@",
+            author.username
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(VerifiedMarkForUser, { user: author, size: 12 })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-xs text-muted-foreground", children: post.type === "tweet" ? "تغريدة" : post.type === "reel" ? "ريلز" : "منشور" })
+      ] })
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-3 p-3 pt-0", children: [
+      comment && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-sm italic text-muted-foreground", children: [
+        '"',
+        comment,
+        '"'
+      ] }),
+      post.text && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "whitespace-pre-wrap text-sm", children: post.text }),
+      post.image && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "aspect-square overflow-hidden rounded-lg bg-muted/40 dark:bg-zinc-800/50", children: isRenderableMediaUrl(post.image) ? /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: resolveMediaUrl(post.image), className: "h-full w-full object-cover", alt: "" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-full items-center justify-center text-5xl", children: post.image }) }),
+      post.video && isRenderableMediaUrl(post.video) && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "overflow-hidden rounded-lg bg-muted/50 dark:bg-zinc-800/60", children: /* @__PURE__ */ jsxRuntimeExports.jsx("video", { src: resolveMediaUrl(post.video), controls: true, className: "w-full", playsInline: true, preload: "metadata" }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between pt-2 text-xs text-muted-foreground", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-4", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Heart, { size: 14, className: liked ? "fill-current text-red-500" : "" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: post.likes.length })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(MessageCircle, { size: 14 }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: post.comments.length })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Repeat2, { size: 14, className: reposted ? "text-emerald-500" : "" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: post.reposts.length })
+          ] })
+        ] }),
+        post.type === "reel" && /* @__PURE__ */ jsxRuntimeExports.jsx(Film, { size: 14 })
+      ] })
+    ] })
+  ] });
+}
+function SharedStoryChatPreview({ storyId, comment }) {
+  const { state: state2 } = useApp();
+  const story = state2.stories.find((s) => s.id === storyId);
+  const author = story ? userById$1(state2, story.userId) : null;
+  if (!story || !author) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-2xl bg-muted/40 p-3 dark:bg-zinc-900/60", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-center text-xs text-muted-foreground", children: "ستوري غير متوفر" }) });
+  }
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "w-full max-w-[min(96vw,360px)] overflow-hidden rounded-none border-0 bg-transparent shadow-none ring-0", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 px-1 py-1.5", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: author.username, src: author.avatar, size: 22 }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1 text-start", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1 truncate", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "truncate text-xs font-semibold", children: [
+            "@",
+            author.username
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(VerifiedMarkForUser, { user: author, size: 12 })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-[10px] text-muted-foreground", children: "ستوري" })
+      ] })
+    ] }),
+    comment && /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "px-1 pb-1.5 text-[11px] italic text-muted-foreground", children: [
+      '"',
+      comment,
+      '"'
+    ] }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "px-0 pb-1", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "relative w-full overflow-hidden rounded-none bg-transparent", children: (() => {
+      const sm = normalizeStoryMedia(story);
+      if (sm.hasVideo) {
+        return /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "video",
+          {
+            src: sm.videoUrl,
+            className: "block max-h-[min(52vh,400px)] min-h-[220px] w-full object-cover object-center",
+            muted: true,
+            playsInline: true,
+            preload: "metadata"
+          }
+        );
+      }
+      if (sm.hasImage) {
+        return /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "img",
+          {
+            src: sm.imageUrl,
+            alt: "",
+            className: "block max-h-[min(52vh,400px)] min-h-[220px] w-full object-cover object-center"
+          }
+        );
+      }
+      return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex min-h-[220px] items-center justify-center text-5xl", children: sm.emojiFallback || "📷" });
+    })() }) })
+  ] });
+}
+function SharedGroupInvitePreview({
+  inviteCode,
+  onJoined
+}) {
+  const { joinGroupByInviteCode } = useApp();
+  const [busy, setBusy] = reactExports.useState(false);
+  const [info, setInfo] = reactExports.useState(null);
+  const [err, setErr] = reactExports.useState("");
+  reactExports.useEffect(() => {
+    const token = getApiToken();
+    if (!token || !apiBackendEnabled()) {
+      setErr("الخادم غير متصل");
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      const row = await apiFetchGroupInvitePreview(token, inviteCode);
+      if (cancelled) return;
+      if (row) {
+        setInfo({
+          name: row.name,
+          avatar: row.avatar,
+          memberCount: row.memberCount,
+          isPublicGroup: row.isPublicGroup,
+          alreadyMember: row.alreadyMember
+        });
+        setErr("");
+      } else {
+        setErr("رابط مجموعة غير صالح");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [inviteCode]);
+  const join = async () => {
+    setBusy(true);
+    setErr("");
+    const res = await joinGroupByInviteCode(inviteCode);
+    setBusy(false);
+    if (!res.ok) {
+      setErr(res.error);
+      return;
+    }
+    onJoined?.(res.chatId);
+  };
+  if (err && !info) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-2xl bg-muted/40 p-3 text-center text-xs text-muted-foreground", children: err });
+  }
+  if (!info) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-2xl bg-muted/40 p-3 text-center text-xs text-muted-foreground", children: "…" });
+  }
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "w-full max-w-[min(96vw,340px)] overflow-hidden rounded-2xl border border-border bg-card p-3 shadow-sm", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: info.name, src: info.avatar, size: 52 }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1 text-start", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "truncate font-semibold", children: info.name }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-0.5 flex items-center gap-1 text-xs text-muted-foreground", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Users, { size: 14 }),
+          info.memberCount,
+          " عضو"
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[10px] text-muted-foreground mt-0.5", children: info.isPublicGroup ? "مجموعة عامة" : "مجموعة خاصة — طلب انضمام" })
+      ] })
+    ] }),
+    !info.alreadyMember && /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "button",
+      {
+        type: "button",
+        disabled: busy,
+        onClick: () => void join(),
+        className: "mt-3 w-full rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-50",
+        children: busy ? "…" : info.isPublicGroup ? "انضمام للمجموعة" : "طلب انضمام"
+      }
+    ),
+    info.alreadyMember && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-3 text-center text-xs text-primary font-medium", children: "أنت عضو في هذه المجموعة" }),
+    err && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-center text-xs text-destructive", children: err })
+  ] });
+}
+function parseLegacyNoteReply(content) {
+  const m = content.match(/^↩️ رد على نوتك:\n«([\s\S]*?)»\n—\n([\s\S]*)$/);
+  if (!m) return null;
+  return { noteText: m[1], reply: m[2] };
+}
+function ChatNoteReplyBubble({ message, mine }) {
+  const ctx = message.replyContext?.kind === "note" ? message.replyContext : null;
+  const legacy = !ctx ? parseLegacyNoteReply(message.content) : null;
+  const noteText = ctx?.noteText ?? legacy?.noteText;
+  const replyText = ctx ? message.content : legacy?.reply ?? message.content;
+  if (!noteText) return null;
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex w-fit max-w-[75%] min-w-0 flex-col gap-2", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "div",
+      {
+        className: "rounded-2xl border px-3 py-2 text-start text-xs " + (mine ? "border-white/20 bg-white/10" : "border-border bg-muted/50"),
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mb-1 font-semibold opacity-80", children: "نوتك" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "whitespace-pre-wrap leading-relaxed", children: noteText })
+        ]
+      }
+    ),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { dir: "auto", className: "select-none whitespace-pre-wrap break-words text-[15px] leading-relaxed", children: replyText })
+  ] });
+}
+function ChatStoryReplyStack({
+  message,
+  shareText
+}) {
+  const { state: state2 } = useApp();
+  const storyId = message.replyContext?.kind === "story" ? message.replyContext.storyId : message.content;
+  const story = state2.stories.find((s) => s.id === storyId);
+  const author = story ? userById$1(state2, story.userId) : null;
+  if (!story || !author) {
+    return shareText ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "select-none text-sm", children: shareText }) : null;
+  }
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex w-full max-w-[min(96vw,360px)] flex-col gap-2", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "button",
+      {
+        type: "button",
+        className: "overflow-hidden rounded-2xl border border-border/80 bg-muted/40 text-start shadow-sm active:scale-[0.99]",
+        onClick: (e) => {
+          e.stopPropagation();
+          openStoryViewer(story.userId, story.id);
+        },
+        children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 border-b border-border/60 px-2.5 py-1.5", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: author.username, src: author.avatar, size: 24 }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "text-xs font-semibold", children: [
+              "@",
+              author.username
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "ms-auto text-[10px] text-muted-foreground", children: "ستوري · اضغط للفتح" })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "relative aspect-[9/14] max-h-44 w-full bg-black", children: (() => {
+            const sm = normalizeStoryMedia(story);
+            if (sm.hasVideo) {
+              return /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "video",
+                {
+                  src: sm.videoUrl,
+                  className: "h-full w-full object-cover",
+                  muted: true,
+                  playsInline: true,
+                  preload: "metadata"
+                }
+              );
+            }
+            if (sm.hasImage) {
+              return /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: sm.imageUrl, alt: "", className: "h-full w-full object-cover" });
+            }
+            return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-full w-full items-center justify-center text-4xl", children: sm.emojiFallback || "📷" });
+          })() })
+        ]
+      }
+    ),
+    shareText && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { dir: "auto", className: "whitespace-pre-wrap px-0.5 text-sm leading-relaxed", children: shareText })
+  ] });
+}
+const SWIPE_THRESHOLD = 48;
+const SWIPE_MAX = 76;
+function ChatSwipeMessageRowInner({
+  message,
+  mine,
+  avatarName,
+  avatarSrc,
+  reservePeerAvatarSlot,
+  isQuran,
+  children,
+  onSwipeReply,
+  onAvatarClick,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp
+}) {
+  const [dragX, setDragX] = reactExports.useState(0);
+  const dragXRef = reactExports.useRef(0);
+  const swipeRef = reactExports.useRef(null);
+  const handleDown = reactExports.useCallback(
+    (e) => {
+      swipeRef.current = { x: e.clientX, y: e.clientY, active: true };
+      dragXRef.current = 0;
+      setDragX(0);
+      onPointerDown(e, message);
+    },
+    [message, onPointerDown]
+  );
+  const handleMove = reactExports.useCallback(
+    (e) => {
+      const s = swipeRef.current;
+      if (s?.active) {
+        const dx = e.clientX - s.x;
+        const dy = e.clientY - s.y;
+        if (dx > 6 && Math.abs(dx) > Math.abs(dy) * 1.1) {
+          if (dragXRef.current === 0) {
+            try {
+              e.currentTarget.setPointerCapture(e.pointerId);
+            } catch {
+            }
+          }
+          e.stopPropagation();
+          const next = Math.min(SWIPE_MAX, dx * 0.92);
+          dragXRef.current = next;
+          setDragX(next);
+          return;
+        }
+        if (Math.abs(dy) > 18) {
+          swipeRef.current = { ...s, active: false };
+          dragXRef.current = 0;
+          setDragX(0);
+        }
+      }
+      onPointerMove(e);
+    },
+    [onPointerMove]
+  );
+  const handleUp = reactExports.useCallback(
+    (e) => {
+      const dx = dragXRef.current;
+      if (dx >= SWIPE_THRESHOLD) onSwipeReply();
+      dragXRef.current = 0;
+      setDragX(0);
+      swipeRef.current = null;
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId);
+      } catch {
+      }
+      onPointerUp(e, message);
+    },
+    [message, onPointerUp, onSwipeReply]
+  );
+  const replyOpacity = dragX > 0 ? Math.min(1, dragX / SWIPE_THRESHOLD) : 0;
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "div",
+    {
+      "data-mine": mine ? "1" : "0",
+      className: "chat-msg-row chat-msg-enter w-full touch-manipulation select-none",
+      style: {
+        direction: "ltr",
+        display: "flex",
+        justifyContent: mine ? "flex-end" : "flex-start"
+      },
+      children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "div",
+        {
+          className: "flex w-max max-w-[min(75vw,280px)] items-end gap-2 " + (mine ? "" : "flex-row"),
+          onPointerDown: handleDown,
+          onPointerMove: handleMove,
+          onPointerUp: handleUp,
+          onPointerCancel: handleUp,
+          onContextMenu: (e) => e.preventDefault(),
+          onSelectStart: (e) => e.preventDefault(),
+          onDragStart: (e) => e.preventDefault(),
+          children: [
+            !mine && reservePeerAvatarSlot && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "mb-0.5 h-7 w-7 shrink-0 self-end", "aria-hidden": true }),
+            !mine && !reservePeerAvatarSlot && avatarName != null && avatarName !== "" && (onAvatarClick ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                type: "button",
+                className: "mb-0.5 shrink-0 self-end touch-manipulation rounded-full transition active:scale-95 hover:opacity-90",
+                "aria-label": `@${avatarName}`,
+                onPointerDown: (e) => e.stopPropagation(),
+                onClick: (e) => {
+                  e.stopPropagation();
+                  onAvatarClick();
+                },
+                children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: avatarName, src: avatarSrc, size: 28 })
+              }
+            ) : /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: avatarName, src: avatarSrc, size: 28, className: "mb-0.5 shrink-0 self-end" })),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative w-max max-w-full", children: [
+              dragX > 6 && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "span",
+                {
+                  className: "pointer-events-none absolute top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full " + (mine ? "right-full mr-2" : "left-0 -translate-x-[calc(100%+6px)]") + " " + (isQuran ? "bg-zinc-800 text-zinc-300" : "bg-zinc-200 text-zinc-600 dark:bg-zinc-700 dark:text-zinc-200"),
+                  style: { opacity: replyOpacity },
+                  "aria-hidden": true,
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx(Reply, { size: 16, strokeWidth: 2.25 })
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "div",
+                {
+                  className: "relative w-max max-w-full will-change-transform",
+                  style: {
+                    transform: dragX > 0 ? `translateX(${dragX}px)` : void 0,
+                    transition: dragX > 0 ? "none" : "transform 0.22s cubic-bezier(0.32, 0.72, 0, 1)"
+                  },
+                  children
+                }
+              )
+            ] })
+          ]
+        }
+      )
+    }
+  );
+}
+function messageChanged(a, b) {
+  return a.id !== b.id || a.status !== b.status || a.content !== b.content || a.type !== b.type || JSON.stringify(a.reactions) !== JSON.stringify(b.reactions);
+}
+const ChatSwipeMessageRow = reactExports.memo(ChatSwipeMessageRowInner, (prev, next) => {
+  if (messageChanged(prev.message, next.message)) return false;
+  if (prev.mine !== next.mine) return false;
+  if (prev.avatarName !== next.avatarName) return false;
+  if (prev.avatarSrc !== next.avatarSrc) return false;
+  if (prev.reservePeerAvatarSlot !== next.reservePeerAvatarSlot) return false;
+  if (prev.isQuran !== next.isQuran) return false;
+  if (prev.onPointerDown !== next.onPointerDown) return false;
+  if (prev.onPointerMove !== next.onPointerMove) return false;
+  if (prev.onPointerUp !== next.onPointerUp) return false;
+  return true;
+});
+function ChatMessageStatus({
+  status,
+  mine,
+  compact = false
+}) {
+  if (!mine || !status) return null;
+  const size = compact ? 13 : 14;
+  const readClass = "text-[#53bdeb]";
+  const mutedClass = mine ? "text-white/75" : "text-muted-foreground";
+  if (status === "failed") {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(
+      CircleAlert,
+      {
+        size,
+        className: "text-red-400",
+        strokeWidth: 2.25,
+        "aria-label": "فشل الإرسال",
+        title: "فشل الإرسال — تحقق من اتصالك"
+      }
+    );
+  }
+  if (status === "read") {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(CheckCheck, { size, className: readClass, strokeWidth: 2.25, "aria-label": "مقروء" });
+  }
+  if (status === "delivered") {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(CheckCheck, { size, className: mutedClass, strokeWidth: 2.25, "aria-label": "تم التسليم" });
+  }
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(Check, { size, className: mutedClass, strokeWidth: 2.25, "aria-label": "مرسل" });
+}
+function ChatListOutgoingStatusIcon({ status }) {
+  if (status === "failed") {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(CircleAlert, { size: 12, className: "shrink-0 text-red-400", strokeWidth: 2.25, "aria-hidden": true });
+  }
+  if (!status || status === "sent") {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(Check, { size: 12, className: "shrink-0 text-muted-foreground/70", strokeWidth: 2.25, "aria-hidden": true });
+  }
+  if (status === "read") {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(CheckCheck, { size: 12, className: "shrink-0 text-[#53bdeb]", strokeWidth: 2.25, "aria-hidden": true });
+  }
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(CheckCheck, { size: 12, className: "shrink-0 text-muted-foreground/70", strokeWidth: 2.25, "aria-hidden": true });
+}
 function cleanPath(content) {
   return content.toLowerCase().split("?")[0].split("#")[0];
 }
@@ -29493,14 +30454,14 @@ async function ensureNativeKeyboardBridge() {
   nativeListenersReady = true;
   try {
     const [{ Keyboard }, { Capacitor: Capacitor2 }] = await Promise.all([
-      import("./index-BYVvGNCg.js"),
+      import("./index-Dg8TbtSm.js"),
       Promise.resolve().then(() => index$1)
     ]);
     if (!Capacitor2.isNativePlatform()) return;
     useNativeKeyboardHeight = true;
     document.documentElement.classList.add("retweet-kb-body-resize");
     try {
-      const { KeyboardResize } = await import("./index-BYVvGNCg.js");
+      const { KeyboardResize } = await import("./index-Dg8TbtSm.js");
       await Keyboard.setResizeMode({ mode: KeyboardResize.Body });
     } catch {
     }
@@ -29716,8 +30677,8 @@ async function compressChatMediaFile(file) {
   if (file.type.startsWith("video/")) return compressChatVideoFile(file);
   return file;
 }
-function isOwnChatMessage(senderId, state, _options) {
-  const viewerId = resolveActiveViewerId(state);
+function isOwnChatMessage(senderId, state2, _options) {
+  const viewerId = resolveActiveViewerId(state2);
   if (!viewerId || isGuestUserId(viewerId)) return false;
   return senderId === viewerId;
 }
@@ -29735,14 +30696,14 @@ function ChatInlineReplyQuote({
   replyTo,
   messages,
   meId,
-  state,
+  state: state2,
   mine,
   isQuran,
   onJumpToOriginal
 }) {
   const t = useT();
   const orig = messages.find((m) => m.id === replyTo.id);
-  const origSender = orig ? userById(state, orig.senderId) : null;
+  const origSender = orig ? userById$1(state2, orig.senderId) : null;
   const repliedToMe = orig?.senderId === meId;
   const label = repliedToMe ? t("chatRepliedToYou") : origSender ? `${t("chatRepliedTo")} @${origSender.username}` : t("chatReply");
   const canJump = !!orig && !!onJumpToOriginal;
@@ -29931,7 +30892,7 @@ function GroupRolesSheet({
   onClose,
   onChatUpdated
 }) {
-  const { state, currentUser, setState } = useApp();
+  const { state: state2, currentUser, setState } = useApp();
   const me = currentUser;
   const [busy, setBusy] = reactExports.useState(null);
   const [err, setErr] = reactExports.useState("");
@@ -29987,7 +30948,7 @@ function GroupRolesSheet({
         ] }),
         err && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "px-4 py-2 text-center text-sm text-destructive", children: err }),
         /* @__PURE__ */ jsxRuntimeExports.jsx("ul", { className: "flex-1 overflow-y-auto no-scrollbar px-2 py-2", children: chat.members.map((id) => {
-          const u = userById(state, id);
+          const u = userById$1(state2, id);
           if (!u) return null;
           const role = resolveGroupRole(chat, id) || "member";
           const Icon2 = ROLE_ICON[role];
@@ -30981,7 +31942,7 @@ function GroupDetailsScreen({
   embeddedInChatStack = false
 }) {
   const {
-    state,
+    state: state2,
     setState,
     currentUser,
     renameGroup,
@@ -31025,16 +31986,16 @@ function GroupDetailsScreen({
   const isMuted = !!(me.mutedChatIds || []).includes(chat.id);
   const inviteUrl = typeof window !== "undefined" && chat.inviteCode ? `${window.location.origin}/app/?group=${encodeURIComponent(chat.inviteCode)}` : "";
   const memberSet = new Set(chat.members);
-  const addCandidates = state.users.filter(
+  const addCandidates = state2.users.filter(
     (u) => u.id !== me.id && !memberSet.has(u.id) && !me.blocked.includes(u.id) && !u.blocked.includes(me.id)
   );
-  const memberUsers = chat.members.map((id) => userById(state, id)).filter((u) => !!u);
+  const memberUsers = chat.members.map((id) => userById$1(state2, id)).filter((u) => !!u);
   const displayTitle = groupIgTitle(chat, memberUsers);
   const peopleSubtitle = memberUsers.map((u) => u.username).join(", ");
   const reportPeer = memberUsers.find((u) => u.id !== me.id);
   const otherMembers = memberUsers.filter((u) => u.id !== me.id);
   chat.isPublicGroup !== true;
-  const meRow = userById(state, me.id) || me;
+  const meRow = userById$1(state2, me.id) || me;
   const meDisplayName = chat.groupNicknames?.[me.id]?.trim() || meRow.displayName?.trim() || meRow.username || "?";
   const isFollowingUser = (userId) => (me.following || []).includes(userId);
   memberUsers.filter(
@@ -31047,12 +32008,12 @@ function GroupDetailsScreen({
     const q = memberSearch.trim().toLowerCase();
     if (!q) return [];
     return messages.filter((m) => {
-      const sender = userById(state, m.senderId);
+      const sender = userById$1(state2, m.senderId);
       const body = m.type === "text" ? m.content : m.shareText || m.content || "";
       const nick = chat.groupNicknames?.[m.senderId] || sender?.username || "";
       return body.toLowerCase().includes(q) || nick.toLowerCase().includes(q) || (sender?.username || "").toLowerCase().includes(q);
     }).slice(-40).reverse();
-  }, [messages, memberSearch, state, chat.groupNicknames]);
+  }, [messages, memberSearch, state2, chat.groupNicknames]);
   const uploadAvatar = (f) => {
     void (async () => {
       const token = getApiToken();
@@ -31073,7 +32034,7 @@ function GroupDetailsScreen({
   const closeSub = () => setSubView(null);
   const themeSubtitle = chatWallpaperLabel(
     getChatWallpaperTheme(loadChatWallpaperForChat(chat, currentUser?.id ?? "")),
-    state.language
+    state2.language
   );
   const actionBtn = (icon, label, onClick) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "button",
@@ -31263,7 +32224,7 @@ function GroupDetailsScreen({
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-1", children: [
               memberSearch.trim() && messageSearchHits.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "py-8 text-center text-sm text-muted-foreground", children: "لا نتائج" }),
               messageSearchHits.map((m) => {
-                const sender = userById(state, m.senderId);
+                const sender = userById$1(state2, m.senderId);
                 const label = chat.groupNicknames?.[m.senderId] || sender?.username || "?";
                 const preview = m.type === "text" ? m.content : m.shareText || `[${m.type}]`;
                 return /* @__PURE__ */ jsxRuntimeExports.jsxs(
@@ -31391,7 +32352,7 @@ function GroupDetailsScreen({
               ")"
             ] }),
             (chat.joinRequests || []).map((req) => {
-              const u = userById(state, req.userId);
+              const u = userById$1(state2, req.userId);
               if (!u) return null;
               return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3 px-4 py-2.5", children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u.username, src: u.avatar, size: 56 }),
@@ -31596,7 +32557,7 @@ function GroupDetailsScreen({
           ] })
         ] });
       case "requests": {
-        const requests = (chat.joinRequests || []).map((req) => ({ ...req, user: userById(state, req.userId) })).filter((row) => !!row.user);
+        const requests = (chat.joinRequests || []).map((req) => ({ ...req, user: userById$1(state2, req.userId) })).filter((row) => !!row.user);
         const selectedCount = selectedJoinRequestIds.length;
         const allSelected = requests.length > 0 && selectedCount === requests.length;
         return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
@@ -31725,13 +32686,13 @@ function GroupDetailsScreen({
         return null;
     }
   };
-  const themeScopeStyle = appThemeScopeStyle(state.theme);
+  const themeScopeStyle = appThemeScopeStyle(state2.theme);
   const panel = /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "div",
     {
       className: "group-details-screen-root flex min-h-0 flex-1 flex-col",
       style: themeScopeStyle,
-      "data-app-theme": state.theme,
+      "data-app-theme": state2.theme,
       children: [
         subView == null ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "shrink-0 px-3 pt-[max(0.5rem,var(--sat))]", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
           SlideDismissBackButton,
@@ -32812,7 +33773,7 @@ function SideBallRack({ ballIds, label }) {
   ] });
 }
 function PoolGame({ roomId, onClose, onGameEnd }) {
-  const { state, currentUser } = useApp();
+  const { state: state2, currentUser } = useApp();
   const me = currentUser;
   const canvasRef = reactExports.useRef(null);
   const containerRef = reactExports.useRef(null);
@@ -32833,7 +33794,7 @@ function PoolGame({ roomId, onClose, onGameEnd }) {
   const myType = room ? room.player1Id === me.id ? room.player1Type : room.player2Type : null;
   const opType = room ? room.player1Id === me.id ? room.player2Type : room.player1Type : null;
   const opponentId = room ? room.player1Id === me.id ? room.player2Id : room.player1Id : null;
-  const opponent = opponentId ? state.users.find((u) => u.id === opponentId) : null;
+  const opponent = opponentId ? state2.users.find((u) => u.id === opponentId) : null;
   const myPocketed = room ? room.player1Id === me.id ? room.player1Pocketed : room.player2Pocketed : [];
   const opPocketed = room ? room.player1Id === me.id ? room.player2Pocketed : room.player1Pocketed : [];
   const myRemaining = reactExports.useMemo(
@@ -32971,7 +33932,7 @@ function PoolGame({ roomId, onClose, onGameEnd }) {
         if (data.room.status === "finished") {
           const won = data.room.winnerId === me.id;
           setResult({ won, shown: false });
-          const winnerUser = state.users.find((u) => u.id === data.room.winnerId);
+          const winnerUser = state2.users.find((u) => u.id === data.room.winnerId);
           onGameEnd(data.room.winnerId, winnerUser?.username);
         }
       }
@@ -32981,7 +33942,7 @@ function PoolGame({ roomId, onClose, onGameEnd }) {
       setAnimating(false);
       setPower(0);
     }
-  }, [roomId, me.id, state.users, onGameEnd]);
+  }, [roomId, me.id, state2.users, onGameEnd]);
   const animateShot = reactExports.useCallback((balls) => {
     let current = balls.map((b) => ({ ...b }));
     const pocketedBefore = new Set(localBalls.filter((b) => b.pocketed).map((b) => b.id));
@@ -33321,11 +34282,11 @@ function CallScreen({
   onClose,
   calleePeerId
 }) {
-  const { state, currentUser } = useApp();
+  const { state: state2, currentUser } = useApp();
   const me = currentUser;
-  const chat = state.chats.find((c) => c.id === chatId);
+  const chat = state2.chats.find((c) => c.id === chatId);
   const otherId = calleePeerId || chat?.members.find((id) => id !== me.id);
-  const other = otherId ? userById(state, otherId) : null;
+  const other = otherId ? userById$1(state2, otherId) : null;
   const [muted, setMuted] = reactExports.useState(false);
   const [status, setStatus] = reactExports.useState("جاري الاتصال...");
   const localVideoRef = reactExports.useRef(null);
@@ -33505,10 +34466,10 @@ function aggregateReactions(reactions) {
   }
   return Array.from(map.entries());
 }
-function chatForwardLabel(state, c, meId) {
+function chatForwardLabel(users, c, meId) {
   if (c.isGroup || c.isChannel) return c.name || (c.isChannel ? "قناة" : "مجموعة");
   const oid = c.members.find((x) => x !== meId);
-  const u = oid ? userById(state, oid) : null;
+  const u = oid ? users.find((x) => x.id === oid) : null;
   return u ? "@" + u.username : "?";
 }
 function parseGroupSystemEvent(raw) {
@@ -33529,14 +34490,17 @@ function ForwardChatSheet({
   me,
   onClose
 }) {
-  const { state, forwardMessage, currentUser } = useApp();
+  const { forwardMessage } = useAppActions();
+  const chats = useChats();
+  const users = useAppSelector((s) => s.users);
+  const currentUser = useCurrentUser();
   const t = useT();
   const [q, setQ] = reactExports.useState("");
   const rows = reactExports.useMemo(() => {
     const qq = q.trim().toLowerCase();
-    const filtered = state.chats.filter((c) => c.id !== currentChat.id).filter((c) => c.members.includes(me.id)).filter((c) => !c.request).filter((c) => {
+    const filtered = chats.filter((c) => c.id !== currentChat.id).filter((c) => c.members.includes(me.id)).filter((c) => !c.request).filter((c) => {
       if (!qq) return true;
-      return chatForwardLabel(state, c, me.id).toLowerCase().includes(qq);
+      return chatForwardLabel(users, c, me.id).toLowerCase().includes(qq);
     });
     const meFull = currentUser;
     if (!meFull || meFull.id !== me.id) return filtered;
@@ -33561,7 +34525,7 @@ function ForwardChatSheet({
       if (aPin && bPin) return ia - ib;
       return lastActivityAt(b) - lastActivityAt(a);
     });
-  }, [state.chats, state.users, currentChat.id, me.id, q, currentUser]);
+  }, [chats, users, currentChat.id, me.id, q, currentUser]);
   return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-[400] flex justify-center bg-black/50", role: "presentation", onClick: onClose, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "div",
     {
@@ -33581,8 +34545,9 @@ function ForwardChatSheet({
           }
         ),
         /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "max-h-[50vh] space-y-1 overflow-y-auto", children: rows.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "py-6 text-center text-sm text-muted-foreground", children: t("forwardEmpty") }) : rows.map((c) => {
-          const label = chatForwardLabel(state, c, me.id);
-          const av = c.isGroup || c.isChannel ? c.avatar : userById(state, c.members.find((x) => x !== me.id) || "")?.avatar;
+          const label = chatForwardLabel(users, c, me.id);
+          const peerId = c.members.find((x) => x !== me.id) || "";
+          const av = c.isGroup || c.isChannel ? c.avatar : users.find((u) => u.id === peerId)?.avatar;
           return /* @__PURE__ */ jsxRuntimeExports.jsxs(
             "button",
             {
@@ -34129,7 +35094,6 @@ function ChatListRowWithPeek({
   onStackGestureArm
 }) {
   const {
-    state,
     openOrCreateChat,
     sendMessage,
     toggleChatListPin,
@@ -34137,9 +35101,10 @@ function ChatListRowWithPeek({
     deleteChat,
     markChatRead,
     markChatUnread,
-    isGuest,
     joinChannel
-  } = useApp();
+  } = useAppActions();
+  const lang = useAppLanguage();
+  const users = useAppSelector((s) => s.users);
   const typingUserByChatId = useTypingUsers();
   const t = useT();
   const [peekPx, setPeekPx] = reactExports.useState(0);
@@ -34149,8 +35114,8 @@ function ChatListRowWithPeek({
   const cameraInputRef = reactExports.useRef(null);
   const capWidth = () => typeof window !== "undefined" ? Math.min(window.innerWidth, APP_COLUMN_MAX_PX) : APP_COLUMN_MAX_PX;
   const otherId = c.isGroup || c.isChannel ? null : c.members.find((id) => id !== me.id);
-  const other = otherId ? userById(state, otherId) : null;
-  const meUser = userById(state, me.id);
+  const other = otherId ? users.find((u) => u.id === otherId) : null;
+  const meUser = users.find((u) => u.id === me.id);
   const isListPinned = !!(meUser?.pinnedChatIds || []).includes(c.id);
   const isMuted = !!(meUser?.mutedChatIds || []).includes(c.id);
   const peekMessages = reactExports.useMemo(() => visibleChatMessages(c, me.id), [c.messages, c.hiddenMessageIdsByUser, me.id]);
@@ -34627,7 +35592,7 @@ function ChatListRowWithPeek({
                     {
                       className: "absolute rounded-full bg-emerald-500 ring-2 ring-background",
                       style: { width: 14, height: 14, bottom: 8, insetInlineEnd: 8 },
-                      "aria-label": state.language === "ar" ? "متصل" : "Online"
+                      "aria-label": lang === "ar" ? "متصل" : "Online"
                     }
                   ),
                   hasUnread && unreadCount > 1 && /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -34680,7 +35645,7 @@ function ChatListRowWithPeek({
                       {
                         className: "min-w-0 flex-1 truncate text-[14px] leading-snug select-text " + (peerTypingInList ? "font-medium text-[#0095F6]" : hasUnread ? "font-medium text-foreground/80" : "text-muted-foreground"),
                         onPointerDown: (e) => e.stopPropagation(),
-                        children: peerTypingInList ? listTypingPreview(state.language) : last ? lastMessagePreview(last) : state.language === "ar" ? "لا رسائل بعد" : "No messages yet"
+                        children: peerTypingInList ? listTypingPreview(lang) : last ? lastMessagePreview(last) : lang === "ar" ? "لا رسائل بعد" : "No messages yet"
                       }
                     )
                   ] })
@@ -34699,7 +35664,7 @@ function ChatListRowWithPeek({
                     {
                       type: "button",
                       ref: cameraBtnRef,
-                      "aria-label": state.language === "ar" ? "كاميرا" : "Camera",
+                      "aria-label": lang === "ar" ? "كاميرا" : "Camera",
                       className: "flex h-10 w-10 shrink-0 touch-manipulation items-center justify-center rounded-full text-muted-foreground transition active:scale-90 hover:bg-secondary",
                       style: { touchAction: "none" },
                       onPointerDown: (e) => {
@@ -34741,7 +35706,7 @@ function ChatListRowWithPeek({
         {
           "data-chat-row-menu": true,
           role: "menu",
-          dir: state.language === "ar" ? "rtl" : "ltr",
+          dir: lang === "ar" ? "rtl" : "ltr",
           className: "fixed z-[85] w-[min(calc(100vw-32px),252px)] overflow-hidden rounded-2xl bg-card shadow-2xl ring-1 ring-black/8 dark:ring-white/8",
           style: { left: rowMenu.x, top: rowMenu.y, transform: "translate(-50%, 8px)" },
           children: [
@@ -34752,7 +35717,7 @@ function ChatListRowWithPeek({
             [
               {
                 icon: /* @__PURE__ */ jsxRuntimeExports.jsx(Check, { size: 15, className: "text-blue-500" }),
-                label: state.language === "ar" ? hasUnread ? "تعيين كمقروء" : "تعيين كغير مقروء" : hasUnread ? "Mark as read" : "Mark as unread",
+                label: lang === "ar" ? hasUnread ? "تعيين كمقروء" : "تعيين كغير مقروء" : hasUnread ? "Mark as read" : "Mark as unread",
                 onClick: () => {
                   if (hasUnread) markChatRead(c.id);
                   else markChatUnread(c.id);
@@ -34778,7 +35743,7 @@ function ChatListRowWithPeek({
               },
               ...!c.isGroup && !c.isChannel ? [{
                 icon: /* @__PURE__ */ jsxRuntimeExports.jsx(PenLine, { size: 15, className: "text-orange-500" }),
-                label: state.language === "ar" ? "فتح بالوضع المخفي" : "Open in vanish mode",
+                label: lang === "ar" ? "فتح بالوضع المخفي" : "Open in vanish mode",
                 onClick: () => {
                   setRowMenu(null);
                   openChatFromRowTap();
@@ -34818,7 +35783,7 @@ function ChatListRowWithPeek({
                 },
                 children: [
                   /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15, className: "shrink-0" }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "font-medium", children: state.language === "ar" ? "مسح المحادثة" : "Delete conversation" })
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "font-medium", children: lang === "ar" ? "مسح المحادثة" : "Delete conversation" })
                 ]
               }
             )
@@ -34830,7 +35795,7 @@ function ChatListRowWithPeek({
       InstagramCamera,
       {
         open: instagramCameraOpen,
-        language: state.language,
+        language: lang,
         onClose: () => setInstagramCameraOpen(false),
         onCapture: (cap) => setCameraDraft({ kind: cap.kind, dataUrl: cap.dataUrl }),
         onFallback: () => cameraInputRef.current?.click()
@@ -34840,7 +35805,7 @@ function ChatListRowWithPeek({
       CameraCaptureShareScreen,
       {
         draft: cameraDraft,
-        language: state.language,
+        language: lang,
         mode: "chat",
         onSendToChat: (payload) => {
           sendMessage(c.id, {
@@ -34865,7 +35830,17 @@ function ChatScreen({
   resumeThreadToProfileUserId,
   onExitThreadToProfile
 }) {
-  const { state, currentUser, accountSessionKey, openOrCreateChat, setNote, sendMessage, isGuest, replyToProfileNoteAsDm } = useApp();
+  useProfiledRender("ChatScreen");
+  const chats = useChats();
+  const currentUser = useCurrentUser();
+  const isGuest = useIsGuestSelector();
+  const accountSessionKey = useAccountSessionKey();
+  const { openOrCreateChat, setNote, sendMessage, replyToProfileNoteAsDm } = useAppActions();
+  const lang = useAppLanguage();
+  useAppTheme();
+  const users = useAppSelector((s) => s.users);
+  currentUser?.id ?? null;
+  useAppSelector((s) => s.stickers);
   const [profileNoteReply, setProfileNoteReply] = reactExports.useState(null);
   const [profileNoteReplyDraft, setProfileNoteReplyDraft] = reactExports.useState("");
   const t = useT();
@@ -35125,10 +36100,10 @@ function ChatScreen({
   }, [openChat, stackDragChatId, stackClosingId, releaseChatChromeAfterGesture]);
   const resolveOpenChatId = reactExports.useCallback(
     (id) => {
-      const found = findChatByOpenId(state.chats, id, me.id);
+      const found = findChatByOpenId(chats, id, me.id);
       return found ? openChatIdFor(found, me.id) : id;
     },
-    [state.chats, me.id]
+    [chats, me.id]
   );
   const flushPendingStackDrag = reactExports.useCallback(() => {
     if (stackDragFrameRef.current) {
@@ -35577,7 +36552,7 @@ function ChatScreen({
   const [gameType, setGameType] = reactExports.useState("billiards");
   reactExports.useEffect(() => {
     if (!initialChatId) return;
-    const found = findChatByOpenId(state.chats, initialChatId, me.id);
+    const found = findChatByOpenId(chats, initialChatId, me.id);
     const id = found ? openChatIdFor(found, me.id) : initialChatId;
     if (openChat === id) {
       if (!stackTapTransitionRef.current) syncStackProgress(1);
@@ -35585,16 +36560,16 @@ function ChatScreen({
       return;
     }
     openChatDirect(id);
-  }, [initialChatId, onConsumedInitialChat, state.chats, me.id, openChatDirect, openChat, syncStackProgress]);
+  }, [initialChatId, onConsumedInitialChat, chats, me.id, openChatDirect, openChat, syncStackProgress]);
   reactExports.useEffect(() => {
     if (!openChat || stackTapTransitionRef.current || stackGestureLocked || stackTransitionLockRef.current) {
       return;
     }
-    const found = findChatByOpenId(state.chats, openChat, me.id);
+    const found = findChatByOpenId(chats, openChat, me.id);
     if (!found) return;
     const canonical = openChatIdFor(found, me.id);
     if (canonical !== openChat) setOpenChat(canonical);
-  }, [state.chats, openChat, me.id, stackGestureLocked]);
+  }, [chats, openChat, me.id, stackGestureLocked]);
   const prevAccountIdRef = reactExports.useRef(me.id);
   reactExports.useEffect(() => {
     if (prevAccountIdRef.current === me.id) return;
@@ -35617,13 +36592,13 @@ function ChatScreen({
     const onOpen = (e) => {
       const id = e.detail?.chatId;
       if (id) {
-        const found = findChatByOpenId(state.chats, id, me.id);
+        const found = findChatByOpenId(chats, id, me.id);
         openChatDirect(found ? openChatIdFor(found, me.id) : id);
       }
     };
     window.addEventListener("retweet-open-chat", onOpen);
     return () => window.removeEventListener("retweet-open-chat", onOpen);
-  }, [state.chats, me.id, openChatDirect]);
+  }, [chats, me.id, openChatDirect]);
   reactExports.useEffect(() => {
     const exitingChatBySwipe2 = stackRoomDismissDragging || !!stackClosingId;
     const fullyOpen = !!openChat && !stackDragChatId && !stackClosingId && stackProgressRef.current >= 0.98;
@@ -35869,7 +36844,7 @@ function ChatScreen({
     releaseChatChromeAfterGesture
   ]);
   const activeStackChatId = openChat ?? stackDragChatId ?? stackClosingId ?? null;
-  const stackChatRaw = activeStackChatId ? findChatByOpenId(state.chats, activeStackChatId, me.id) : null;
+  const stackChatRaw = activeStackChatId ? findChatByOpenId(chats, activeStackChatId, me.id) : null;
   const stackChat = reactExports.useMemo(
     () => stackChatRaw ? normalizeChatRecord(stackChatRaw) : null,
     [stackChatRaw]
@@ -35935,7 +36910,7 @@ function ChatScreen({
     const orphanId = activeStackChatId;
     const t2 = window.setTimeout(() => {
       if (stackTapTransitionRef.current) return;
-      const found = findChatByOpenId(state.chats, orphanId, me.id);
+      const found = findChatByOpenId(chats, orphanId, me.id);
       if (found) return;
       setOpenChat((prev) => prev === orphanId ? null : prev);
       setStackDragChatId(null);
@@ -35943,7 +36918,7 @@ function ChatScreen({
       syncStackProgress(0);
     }, 0);
     return () => window.clearTimeout(t2);
-  }, [activeStackChatId, stackChat, state.chats, me.id, syncStackProgress]);
+  }, [activeStackChatId, stackChat, chats, me.id, syncStackProgress]);
   reactExports.useEffect(() => {
     onActiveChatChange?.(openChat);
   }, [openChat, onActiveChatChange]);
@@ -35968,12 +36943,12 @@ function ChatScreen({
     setProfileNoteReplyDraft("");
   }, [profileNoteReply?.userId, profileNoteReply?.note]);
   const myChats = reactExports.useMemo(
-    () => state.chats.filter((c) => c.members.includes(me.id) && !c.request),
-    [state.chats, me.id]
+    () => chats.filter((c) => c.members.includes(me.id) && !c.request),
+    [chats, me.id]
   );
   const requests = reactExports.useMemo(
-    () => state.chats.filter((c) => c.members.includes(me.id) && c.request),
-    [state.chats, me.id]
+    () => chats.filter((c) => c.members.includes(me.id) && c.request),
+    [chats, me.id]
   );
   const messageRequests = reactExports.useMemo(
     () => requests.filter(
@@ -35983,7 +36958,7 @@ function ChatScreen({
   );
   const noteUsers = [
     me,
-    ...state.users.filter(
+    ...users.filter(
       (u) => u.id !== me.id && isProfileNoteActive(u) && me.following.includes(u.id) && !me.blocked.includes(u.id) && !u.blocked.includes(me.id)
     )
   ];
@@ -35993,13 +36968,13 @@ function ChatScreen({
     return myChats.filter((c) => {
       if (c.isGroup || c.isChannel) return (c.name || "").toLowerCase().includes(q);
       const otherId = c.members.find((id) => id !== me.id);
-      const other = otherId ? userById(state, otherId) : null;
+      const other = otherId ? userById$1(state, otherId) : null;
       const uname = (other?.username ?? "").toLowerCase();
       const dname = (other?.displayName ?? "").toLowerCase();
       const preview = lastMessagePreview((c.messages || [])[(c.messages || []).length - 1]).toLowerCase();
       return uname.includes(q) || dname.includes(q) || preview.includes(q);
     });
-  }, [myChats, debouncedSearch, state.users]);
+  }, [myChats, debouncedSearch, users]);
   const sortedFilteredChats = reactExports.useMemo(() => {
     const pins = me.pinnedChatIds || [];
     const lastActivityAt = (c) => {
@@ -36084,7 +37059,7 @@ function ChatScreen({
   const hideInboxChrome = hideInboxTopChrome && !showInboxNotesStrip;
   const stackDragProgress = stackChatOpenKey && (openChat === stackChatOpenKey || stackDragChatId === stackChatOpenKey || stackClosingId === stackChatOpenKey) ? stackProgress : 0;
   const stackInboxPointerEvents = (stackClosingId === stackChatOpenKey || stackDragChatId === stackChatOpenKey || stackDragProgress < 0.98) && showInboxStackActive ? "auto" : activeStackChatId && showInboxStackActive ? "none" : void 0;
-  const isRtl = state.language === "ar";
+  const isRtl = lang === "ar";
   const chatInbox = /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "div",
     {
@@ -36212,7 +37187,7 @@ function ChatScreen({
                     isRtl ? "ردّ على نوت " : "Reply to note — ",
                     /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "font-semibold text-foreground", children: [
                       "@",
-                      userById(state, profileNoteReply.userId)?.username ?? "…"
+                      userById$1(state, profileNoteReply.userId)?.username ?? "…"
                     ] }),
                     isRtl && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-muted-foreground", children: " — يُرسل في الخاص" })
                   ] }),
@@ -36516,7 +37491,7 @@ function ChatScreen({
         }
       }
     );
-  const caller = incomingCall ? userById(state, incomingCall.fromUserId) : null;
+  const caller = incomingCall ? userById$1(state, incomingCall.fromUserId) : null;
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
     incomingCall && !showCall && /* @__PURE__ */ jsxRuntimeExports.jsx(
       "div",
@@ -36628,19 +37603,21 @@ function RequestsList({
   onOpen,
   onOpenProfile
 }) {
-  const { state, currentUser, acceptRequest, deleteChat } = useApp();
+  const { acceptRequest, deleteChat } = useAppActions();
+  const allChats = useChats();
+  const currentUser = useCurrentUser();
   const t = useT();
   const me = currentUser;
   const [detail, setDetail] = reactExports.useState(null);
   const resolvedDetail = reactExports.useMemo(() => {
     if (!detail) return null;
-    const c = state.chats.find((x) => x.id === detail.chatId);
+    const c = allChats.find((x) => x.id === detail.chatId);
     if (!c) return null;
     const vis = visibleChatMessages(c, me.id);
     const msg = vis.find((m) => m.id === detail.messageId);
     if (!msg) return null;
     return { chat: c, msg };
-  }, [detail, state.chats, me.id]);
+  }, [detail, allChats, me.id]);
   reactExports.useEffect(() => {
     if (detail && !resolvedDetail) setDetail(null);
   }, [detail, resolvedDetail]);
@@ -36652,7 +37629,7 @@ function RequestsList({
     chats.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "py-8 text-center text-sm text-muted-foreground", children: t("noChats") }),
     /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "space-y-1", children: chats.map((c) => {
       const otherId = c.members.find((id) => id !== me.id);
-      const other = userById(state, otherId);
+      const other = userById$1(state, otherId);
       const vis = visibleChatMessages(c, me.id);
       const last = vis[vis.length - 1];
       return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-2xl border border-border bg-card/40 p-3", children: [
@@ -36782,7 +37759,9 @@ function RequestsList({
   ] }) });
 }
 function CreateGroup({ mode: mode2, onBack, onCreated }) {
-  const { state, currentUser, createGroup, createChannel } = useApp();
+  const { createGroup, createChannel } = useAppActions();
+  const currentUser = useCurrentUser();
+  const users = useAppSelector((s) => s.users);
   const t = useT();
   const me = currentUser;
   const [step, setStep] = reactExports.useState(1);
@@ -36791,7 +37770,7 @@ function CreateGroup({ mode: mode2, onBack, onCreated }) {
   const [avatarBusy, setAvatarBusy] = reactExports.useState(false);
   const [selected, setSelected] = reactExports.useState([]);
   const [memberSearch, setMemberSearch] = reactExports.useState("");
-  const others = state.users.filter((u) => u.id !== me.id && !me.blocked.includes(u.id));
+  const others = users.filter((u) => u.id !== me.id && !me.blocked.includes(u.id));
   const onAvatarFile = (e) => {
     const f = e.target.files?.[0];
     if (!f || !f.type.startsWith("image/")) return;
@@ -36996,9 +37975,8 @@ function ChatRoom({
   onStackProgress,
   onAnimatedBack
 }) {
+  useProfiledRender("ChatRoom");
   const {
-    state,
-    currentUser,
     sendMessage,
     loadChatMessages,
     markViewOnceOpened,
@@ -37011,13 +37989,18 @@ function ChatRoom({
     unpinChatMessage,
     addFavoriteStickerContent,
     addCreatedStickerContent,
-    mergeDiscoveredUsers,
-    isGuest
-  } = useApp();
+    mergeDiscoveredUsers
+  } = useAppActions();
+  const currentUser = useCurrentUser();
+  const isGuest = useIsGuestSelector();
+  const lang = useAppLanguage();
+  const appTheme = useAppTheme();
+  const users = useAppSelector((s) => s.users);
+  const stickers = useAppSelector((s) => s.stickers);
   const typingUserByChatId = useTypingUsers();
   const t = useT();
   const chat = reactExports.useMemo(() => normalizeChatRecord(chatInput), [chatInput]);
-  const viewerId = resolveActiveViewerId(state) ?? currentUser?.id ?? "";
+  const viewerId = useAppSelector((s) => resolveActiveViewerId(s) ?? "") || currentUser?.id || "";
   const meId = currentUser?.id ?? "";
   const [text, setText] = reactExports.useState("");
   const [mentionPick, setMentionPick] = reactExports.useState(null);
@@ -37078,7 +38061,7 @@ function ChatRoom({
     if (text.trim()) setPlusAttachOpen(false);
   }, [text]);
   const otherId = chat.isGroup || chat.isChannel ? null : chat.members.find((id) => id !== viewerId) ?? null;
-  const other = otherId ? userById(state, otherId) : null;
+  const other = otherId ? userById$1(state, otherId) : null;
   const title = chat.isGroup || chat.isChannel ? chat.name : "@" + (other?.username || "");
   const isMember = meId ? chat.members.includes(meId) : false;
   const memberRole = chat.memberRoles?.[meId] || (chat.ownerId === meId ? "owner" : (chat.admins || []).includes(meId) ? "admin" : "member");
@@ -37100,10 +38083,10 @@ function ChatRoom({
   const groupMentionOptions = reactExports.useMemo(() => {
     if (chat.isChannel || !mentionPick) return [];
     const q = mentionPick.query;
-    const members = chat.members.map((id) => userById(state, id)).filter((u) => !!u && u.id !== meId);
+    const members = chat.members.map((id) => userById$1(state, id)).filter((u) => !!u && u.id !== meId);
     const filtered = q ? members.filter((u) => (u.username ?? "").toLowerCase().includes(q)) : members;
     return filtered.slice(0, 10);
-  }, [chat.isChannel, mentionPick, chat.members, state.users, meId]);
+  }, [chat.isChannel, mentionPick, chat.members, users, meId]);
   const syncComposerHeight = reactExports.useCallback(() => {
     const el = composerInputRef.current;
     if (!el) return;
@@ -37592,11 +38575,11 @@ function ChatRoom({
   const isQuranChannel = chat.id === QURAN_CHANNEL_ID;
   const useIgDm = isIgDmChat(isDmRoom, isQuranChannel);
   const dmPalette = reactExports.useMemo(
-    () => useIgDm ? getChatDmPalette(state.theme) : null,
-    [useIgDm, state.theme]
+    () => useIgDm ? getChatDmPalette(appTheme) : null,
+    [useIgDm, appTheme]
   );
-  const dmDir = chatDmLayoutDir(state.language);
-  const dmRtl = chatDmIsRtl(state.language);
+  const dmDir = chatDmLayoutDir(lang);
+  const dmRtl = chatDmIsRtl(lang);
   const activeWallpaper = reactExports.useMemo(() => getChatWallpaperTheme(wallpaperId), [wallpaperId]);
   const chatWallpaperUrl = activeWallpaper.imagePath ? chatWallpaperAssetUrl(activeWallpaper.imagePath) : null;
   const chromeOnWallpaper = !!chatWallpaperUrl && !isQuranChannel;
@@ -37611,8 +38594,8 @@ function ChatRoom({
     return Date.now() - last < 5 * 6e4;
   }, [useIgDm, otherId, chat.lastOpenAtByUser]);
   const chatTimelineRows = reactExports.useMemo(
-    () => useIgDm ? buildChatTimelineRows(windowedMessages, meId, state.language) : null,
-    [useIgDm, windowedMessages, meId, state.language]
+    () => useIgDm ? buildChatTimelineRows(windowedMessages, meId, lang) : null,
+    [useIgDm, windowedMessages, meId, lang]
   );
   const rowsToRender = reactExports.useMemo(() => {
     if (chatTimelineRows) return chatTimelineRows;
@@ -37878,7 +38861,7 @@ function ChatRoom({
   };
   const openMentionProfile = reactExports.useCallback(
     (uname) => {
-      const local = state.users.find((x) => x.username.toLowerCase() === uname.toLowerCase());
+      const local = users.find((x) => x.username.toLowerCase() === uname.toLowerCase());
       if (local) {
         reactExports.startTransition(() => onOpenProfile(local.id));
         return;
@@ -37892,7 +38875,7 @@ function ChatRoom({
         reactExports.startTransition(() => onOpenProfile(user.id));
       })();
     },
-    [state.users, onOpenProfile, mergeDiscoveredUsers]
+    [users, onOpenProfile, mergeDiscoveredUsers]
   );
   const renderText = (txt, mineBubble) => {
     const capped = txt.length > 8e3 ? txt.slice(0, 8e3) + "…" : txt;
@@ -37900,7 +38883,7 @@ function ChatRoom({
     return renderMentionHashtagNodes(capped, {
       renderMention: createMentionRenderer({
         variant: glassLinks ? "mine" : "default",
-        users: state.users,
+        users,
         onUsernameClick: openMentionProfile
       }),
       renderHashtag: (h, key2) => /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: glassLinks ? "text-zinc-700 dark:text-zinc-300" : "text-primary", children: h }, key2)
@@ -37908,7 +38891,7 @@ function ChatRoom({
   };
   const renderBubbleContent = (m, mine) => {
     const mc = messageContent(m);
-    userById(state, m.senderId);
+    userById$1(state, m.senderId);
     return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
       m.forwardedFrom && /* @__PURE__ */ jsxRuntimeExports.jsxs(
         "div",
@@ -38213,14 +39196,14 @@ function ChatRoom({
     const lastMine = myOutgoing[myOutgoing.length - 1];
     if (!lastMine || otherLastOpen < lastMine.createdAt) return null;
     const otherRepliedAfter = visibleMessages.some((m) => m.senderId === otherId && m.createdAt >= lastMine.createdAt);
-    const lang = state.language;
+    const lang2 = lang2;
     if (!otherRepliedAfter) {
       const mins = Math.max(0, Math.floor((Date.now() - otherLastOpen) / 6e4));
-      return mins === 0 ? lang === "en" ? "Seen" : "تمت القراءة" : lang === "en" ? `Seen · ${mins}m` : `تمت القراءة · منذ ${mins} د`;
+      return mins === 0 ? lang2 === "en" ? "Seen" : "تمت القراءة" : lang2 === "en" ? `Seen · ${mins}m` : `تمت القراءة · منذ ${mins} د`;
     }
-    return lang === "en" ? "Seen" : "تمت القراءة";
-  }, [chat.isGroup, chat.isChannel, otherId, chat.lastOpenAtByUser, myOutgoing, visibleMessages, state.language]);
-  const inlineMediaLightboxUser = inlineMediaViewer && !inlineMediaViewer.viewOnce && (inlineMediaViewer.type === "image" || inlineMediaViewer.type === "video") ? userById(state, inlineMediaViewer.senderId) ?? null : null;
+    return lang2 === "en" ? "Seen" : "تمت القراءة";
+  }, [chat.isGroup, chat.isChannel, otherId, chat.lastOpenAtByUser, myOutgoing, visibleMessages, lang]);
+  const inlineMediaLightboxUser = inlineMediaViewer && !inlineMediaViewer.viewOnce && (inlineMediaViewer.type === "image" || inlineMediaViewer.type === "video") ? userById$1(state, inlineMediaViewer.senderId) ?? null : null;
   const inlineMediaLightboxLabel = inlineMediaLightboxUser != null ? `@${inlineMediaLightboxUser.username}` : inlineMediaViewer?.senderId === meId ? `@${currentUser?.username ?? "?"}` : "?";
   const composerHasText = text.trim().length > 0;
   const readComposerBody = reactExports.useCallback(() => {
@@ -38506,13 +39489,13 @@ function ChatRoom({
                                     {
                                       className: "font-medium animate-pulse",
                                       style: { color: CHAT_DM_ACCENT },
-                                      children: state.language === "en" ? "Typing…" : "جاري الكتابة…"
+                                      children: lang === "en" ? "Typing…" : "جاري الكتابة…"
                                     }
                                   ) : peerOnline ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
                                     /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "h-2 w-2 shrink-0 rounded-full bg-[#3dd961]", "aria-hidden": true }),
-                                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[#3dd961]", children: state.language === "en" ? "Active now" : "متصل الآن" })
+                                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[#3dd961]", children: lang === "en" ? "Active now" : "متصل الآن" })
                                   ] }) : null }),
-                                  !useIgDm && peerIsTyping && !hideTypingStatus && !chat.isGroup && !chat.isChannel && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-xs font-medium text-blue-500 animate-pulse", children: state.language === "en" ? "Typing…" : "جاري الكتابة…" }),
+                                  !useIgDm && peerIsTyping && !hideTypingStatus && !chat.isGroup && !chat.isChannel && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-xs font-medium text-blue-500 animate-pulse", children: lang === "en" ? "Typing…" : "جاري الكتابة…" }),
                                   (chat.isGroup || chat.isChannel) && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "text-xs " + (isQuranChannel ? "text-zinc-400" : "text-muted-foreground"), children: [
                                     chat.members.length,
                                     " ",
@@ -38553,7 +39536,7 @@ function ChatRoom({
                                 type: "button",
                                 "data-no-dismiss-drag": true,
                                 "data-chat-privacy-menu-btn": true,
-                                "aria-label": state.language === "ar" ? "خيارات المحادثة" : "Chat options",
+                                "aria-label": lang === "ar" ? "خيارات المحادثة" : "Chat options",
                                 "aria-expanded": showPrivacyMenu,
                                 className: "touch-manipulation rounded-full p-2 " + (useIgDm && dmPalette ? dmPalette.iconBtnClass : "hover:bg-secondary active:bg-secondary/90"),
                                 onPointerDownCapture: (e) => e.stopPropagation(),
@@ -38608,7 +39591,7 @@ function ChatRoom({
                             "button",
                             {
                               type: "button",
-                              "aria-label": state.language === "en" ? "Chat theme" : "سمة المحادثة",
+                              "aria-label": lang === "en" ? "Chat theme" : "سمة المحادثة",
                               className: "flex h-10 w-10 shrink-0 touch-manipulation items-center justify-center rounded-full " + (chromeOnWallpaper ? wallpaperIconClass : useIgDm && dmPalette ? dmPalette.iconBtnClass : "text-foreground hover:bg-secondary active:bg-secondary/90"),
                               onClick: () => setShowChatThemePicker(true),
                               children: /* @__PURE__ */ jsxRuntimeExports.jsx(Palette, { size: 20, strokeWidth: 1.75 })
@@ -38707,7 +39690,7 @@ function ChatRoom({
                                     /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "h-2 w-2 animate-pulse rounded-full bg-muted-foreground/50" }),
                                     /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "h-2 w-2 animate-pulse rounded-full bg-muted-foreground/40 [animation-delay:120ms]" }),
                                     /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "h-2 w-2 animate-pulse rounded-full bg-muted-foreground/30 [animation-delay:240ms]" })
-                                  ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[11px] text-muted-foreground opacity-60", children: state.language === "ar" ? "↑ رسائل أقدم" : "↑ Older messages" }) }),
+                                  ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[11px] text-muted-foreground opacity-60", children: lang === "ar" ? "↑ رسائل أقدم" : "↑ Older messages" }) }),
                                   rowsToRender.map((row) => {
                                     if (row.kind === "day") {
                                       return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "data-chat-day": row.key, className: "flex w-full justify-center py-2", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -38762,7 +39745,7 @@ function ChatRoom({
                                     }
                                     const showPeerAvatar = row.showPeerAvatar;
                                     const mine = isOwnChatMessage(m.senderId, state);
-                                    const senderProfile = userById(state, m.senderId);
+                                    const senderProfile = userById$1(state, m.senderId);
                                     const mc = messageContent(m);
                                     const bareSticker = m.type === "sticker" && (isStickerImageContent(mc) || isStickerVideoContent(mc));
                                     const bareImage = m.type === "image" && mc.startsWith("data:") && !m.viewOnce;
@@ -38811,7 +39794,7 @@ function ChatRoom({
                                                     className: "mt-0.5 flex items-center justify-end gap-0.5",
                                                     style: useIgDm && dmPalette ? { color: mine ? dmPalette.mineTime : dmPalette.peerTime } : void 0,
                                                     children: [
-                                                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[11px] tabular-nums leading-none", children: formatChatBubbleTime(m.createdAt, state.language) }),
+                                                      /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[11px] tabular-nums leading-none", children: formatChatBubbleTime(m.createdAt, lang) }),
                                                       mine && !vanishMode && /* @__PURE__ */ jsxRuntimeExports.jsx(ChatMessageStatus, { status: m.status, mine: true, compact: true })
                                                     ]
                                                   }
@@ -38994,7 +39977,7 @@ function ChatRoom({
                             mine && !vanishMode && /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "mt-1 flex justify-end", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChatMessageStatus, { status: m.status, mine: true, compact: true }) })
                           ] }) }),
                           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "overflow-hidden rounded-2xl border border-white/10 bg-zinc-900/95 text-zinc-50 shadow-2xl backdrop-blur-md", children: [
-                            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "border-b border-white/10 px-4 pb-2 pt-3 text-xs text-zinc-400", children: formatMsgContextTime(m.createdAt, state.language) }),
+                            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "border-b border-white/10 px-4 pb-2 pt-3 text-xs text-zinc-400", children: formatMsgContextTime(m.createdAt, lang) }),
                             /* @__PURE__ */ jsxRuntimeExports.jsxs(
                               "button",
                               {
@@ -39175,7 +40158,7 @@ function ChatRoom({
                         ChatStickerPicker,
                         {
                           isQuranChannel,
-                          userStickers: state.stickers.filter((s) => s.userId === me.id),
+                          userStickers: stickers.filter((s) => s.userId === me.id),
                           favoriteStickerContents: me.favoriteStickerContents || [],
                           createdStickerContents: me.createdStickerContents || [],
                           onPick: pickSticker,
@@ -39211,7 +40194,7 @@ function ChatRoom({
                                 ChatComposerReplyBar,
                                 {
                                   isQuran: isQuranChannel,
-                                  authorLabel: replyingTo.senderId === me.id ? `${t("chatReplyingTo")} · رسالتك` : `${t("chatReplyingTo")} @${userById(state, replyingTo.senderId)?.username || "?"}`,
+                                  authorLabel: replyingTo.senderId === me.id ? `${t("chatReplyingTo")} · رسالتك` : `${t("chatReplyingTo")} @${userById$1(state, replyingTo.senderId)?.username || "?"}`,
                                   preview: chatReplyPreview(replyingTo),
                                   onClose: () => setReplyingTo(null)
                                 }
@@ -39418,7 +40401,7 @@ function ChatRoom({
                                                   },
                                                   children: [
                                                     /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex h-7 w-7 items-center justify-center rounded-full bg-white/15", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Camera, { size: 15, strokeWidth: 2 }) }),
-                                                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: state.language === "ar" ? "كاميرا" : "Camera" })
+                                                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: lang === "ar" ? "كاميرا" : "Camera" })
                                                   ]
                                                 }
                                               ),
@@ -39433,7 +40416,7 @@ function ChatRoom({
                                                   },
                                                   children: [
                                                     /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex h-7 w-7 items-center justify-center rounded-full bg-white/15", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Image$1, { size: 15, strokeWidth: 2 }) }),
-                                                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: state.language === "ar" ? "الصور" : "Photos" })
+                                                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: lang === "ar" ? "الصور" : "Photos" })
                                                   ]
                                                 }
                                               ),
@@ -39446,7 +40429,7 @@ function ChatRoom({
                                                   onClick: openGalleryVideoVoiceStudio,
                                                   children: [
                                                     /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex h-7 w-7 items-center justify-center rounded-full bg-white/15", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Video, { size: 15, strokeWidth: 2 }) }),
-                                                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: state.language === "ar" ? "استديو — مقطع كصوت" : "Studio — voice clip" })
+                                                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: lang === "ar" ? "استديو — مقطع كصوت" : "Studio — voice clip" })
                                                   ]
                                                 }
                                               ),
@@ -39466,7 +40449,7 @@ function ChatRoom({
                                                   },
                                                   children: [
                                                     /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex h-7 w-7 items-center justify-center rounded-full bg-white/15", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Sticker, { size: 15, strokeWidth: 2 }) }),
-                                                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: state.language === "ar" ? "ملصقات" : "Stickers" })
+                                                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: lang === "ar" ? "ملصقات" : "Stickers" })
                                                   ]
                                                 }
                                               ),
@@ -39486,7 +40469,7 @@ function ChatRoom({
                                                   },
                                                   children: [
                                                     /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex h-7 w-7 items-center justify-center rounded-full bg-white/15", children: /* @__PURE__ */ jsxRuntimeExports.jsx(PenLine, { size: 15, strokeWidth: 2 }) }),
-                                                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: state.language === "ar" ? "رسم وكتابة" : "Draw" })
+                                                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: lang === "ar" ? "رسم وكتابة" : "Draw" })
                                                   ]
                                                 }
                                               ),
@@ -39506,7 +40489,7 @@ function ChatRoom({
                                                   },
                                                   children: [
                                                     /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex h-7 w-7 items-center justify-center rounded-full bg-white/15 text-[13px]", children: "🎱" }),
-                                                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: state.language === "ar" ? "إنشاء لعبة" : "Game" })
+                                                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: lang === "ar" ? "إنشاء لعبة" : "Game" })
                                                   ]
                                                 }
                                               )
@@ -39667,7 +40650,7 @@ function ChatRoom({
                                                   children: [
                                                     /* @__PURE__ */ jsxRuntimeExports.jsx(Camera, { size: 18 }),
                                                     " ",
-                                                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: state.language === "ar" ? "كاميرا" : "Camera" })
+                                                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: lang === "ar" ? "كاميرا" : "Camera" })
                                                   ]
                                                 }
                                               ),
@@ -39784,7 +40767,7 @@ function ChatRoom({
                     InstagramCamera,
                     {
                       open: instagramCameraOpen,
-                      language: state.language,
+                      language: lang,
                       onClose: () => setInstagramCameraOpen(false),
                       onCapture: (cap) => setCameraCompose({ kind: cap.kind, dataUrl: cap.dataUrl }),
                       onFallback: () => cameraCaptureRef.current?.click()
@@ -39794,7 +40777,7 @@ function ChatRoom({
                     CameraCaptureShareScreen,
                     {
                       draft: cameraCompose,
-                      language: state.language,
+                      language: lang,
                       mode: "chat",
                       onSendToChat: (payload) => {
                         dispatchSend({
@@ -39841,7 +40824,7 @@ function ChatRoom({
                     {
                       open: showChatThemePicker,
                       selectedId: wallpaperId,
-                      language: state.language,
+                      language: lang,
                       onClose: () => setShowChatThemePicker(false),
                       onSelect: (id) => {
                         setWallpaperId(id);
@@ -40465,10 +41448,10 @@ function ProfileTweetCard({
   commentsAnchorId
 }) {
   const t = useT();
-  const { state, currentUser, deleteComment } = useApp();
+  const { state: state2, currentUser, deleteComment } = useApp();
   const livePost = reactExports.useMemo(
-    () => state.posts.find((p) => p.id === post.id) ?? post,
-    [state.posts, post]
+    () => state2.posts.find((p) => p.id === post.id) ?? post,
+    [state2.posts, post]
   );
   const safeLikes = Array.isArray(livePost.likes) ? livePost.likes : [];
   const safeReposts = Array.isArray(livePost.reposts) ? livePost.reposts : [];
@@ -40629,20 +41612,20 @@ const ProfileFeedItem = reactExports.memo(
     onOpenChat,
     showRepostBadge = false
   }) {
-    const { state, currentUser, toggleLike, toggleRepost, addComment, deleteComment } = useApp();
+    const { state: state2, currentUser, toggleLike, toggleRepost, addComment, deleteComment } = useApp();
     const livePost = reactExports.useMemo(
-      () => state.posts.find((p) => p.id === post.id) ?? post,
-      [state.posts, post]
+      () => state2.posts.find((p) => p.id === post.id) ?? post,
+      [state2.posts, post]
     );
     const [noteToReply, setNoteToReply] = reactExports.useState(null);
     const [comment, setComment] = reactExports.useState("");
     const [shareOpen, setShareOpen] = reactExports.useState(false);
     const [commentsOpen, setCommentsOpen] = reactExports.useState(false);
     const [menuOpen, setMenuOpen] = reactExports.useState(false);
-    const lang = state.language;
+    const lang = state2.language;
     const t = useT();
     const me = currentUser;
-    const author = userById(state, post.userId);
+    const author = userById$1(state2, post.userId);
     const safeLikes = Array.isArray(livePost.likes) ? livePost.likes : [];
     const safeReposts = Array.isArray(livePost.reposts) ? livePost.reposts : [];
     const safeComments = (Array.isArray(livePost.comments) ? livePost.comments : []).filter(
@@ -40673,12 +41656,12 @@ const ProfileFeedItem = reactExports.memo(
       if (!post.text) return null;
       return renderMentionHashtagNodes(post.text, {
         renderMention: createMentionRenderer({
-          users: state.users,
+          users: state2.users,
           onUserClick: (userId) => reactExports.startTransition(() => onOpenProfile(userId, returnCtx(false)))
         }),
         renderHashtag: (h, key2) => /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-primary", children: h }, key2)
       });
-    }, [post.text, state.users, onOpenProfile]);
+    }, [post.text, state2.users, onOpenProfile]);
     if (!author) return null;
     if (isTweet) {
       return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
@@ -40692,7 +41675,7 @@ const ProfileFeedItem = reactExports.memo(
               lang,
               liked,
               reposted,
-              users: state.users,
+              users: state2.users,
               onOpenAuthor: () => reactExports.startTransition(() => onOpenProfile(author.id, returnCtx(false))),
               onOpenProfile: (id) => reactExports.startTransition(() => onOpenProfile(id, returnCtx(false))),
               onLike: () => reactExports.startTransition(() => toggleLike(post.id)),
@@ -40706,15 +41689,15 @@ const ProfileFeedItem = reactExports.memo(
         ] })
       ] });
     }
-    const detailNotes = visibleMediaNotes(state, "post", post.id, me.id).slice(0, 8).filter((n) => {
-      const nu = userById(state, n.authorId);
-      return nu && (n.authorId === me.id || isMutual(state, me.id, n.authorId));
+    const detailNotes = visibleMediaNotes(state2, "post", post.id, me.id).slice(0, 8).filter((n) => {
+      const nu = userById$1(state2, n.authorId);
+      return nu && (n.authorId === me.id || isMutual(state2, me.id, n.authorId));
     });
     const notesOverlay = detailNotes.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(
       PostMediaNotesOverlay,
       {
         notes: detailNotes,
-        noteUsers: detailNotes.map((n) => userById(state, n.authorId)).filter(Boolean),
+        noteUsers: detailNotes.map((n) => userById$1(state2, n.authorId)).filter(Boolean),
         canReply: (n) => n.authorId !== me.id,
         onReply: (n) => setNoteToReply(n),
         onOpenAuthor: (id) => reactExports.startTransition(() => onOpenProfile(id, returnCtx(false)))
@@ -40775,7 +41758,7 @@ const ProfileFeedItem = reactExports.memo(
           children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-sm font-semibold", children: t("comments") }),
             safeComments.map((c) => {
-              const u = userById(state, c.userId);
+              const u = userById$1(state2, c.userId);
               return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-2 text-sm", dir: "ltr", children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsx(
                   "button",
@@ -40868,10 +41851,10 @@ function ProfilePostsFeedOverlay({
   onOpenProfile,
   onOpenChat
 }) {
-  const { state } = useApp();
+  const { state: state2 } = useApp();
   const posts = reactExports.useMemo(
-    () => postIds.map((id) => state.posts.find((p) => p.id === id)).filter((p) => !!p),
-    [state.posts, postIds]
+    () => postIds.map((id) => state2.posts.find((p) => p.id === id)).filter((p) => !!p),
+    [state2.posts, postIds]
   );
   const scrollKeyRef = reactExports.useRef("");
   const scrollTargetKey = `${postIds.join(",")}|${initialIndex}|${initialCommentsOpen ? "c" : "p"}`;
@@ -40969,13 +41952,13 @@ function FollowersFollowingScreen({
   onBack,
   onOpenProfile
 }) {
-  const { state } = useApp();
+  const { state: state2 } = useApp();
   const t = useT();
-  const u = userById(state, userId);
+  const u = userById$1(state2, userId);
   const [tab, setTab] = reactExports.useState(initialTab);
   if (!u) return null;
   const ids = tab === "followers" ? u.followers : u.following;
-  const users = ids.map((id) => userById(state, id)).filter((x) => !!x);
+  const users = ids.map((id) => userById$1(state2, id)).filter((x) => !!x);
   return /* @__PURE__ */ jsxRuntimeExports.jsx(SlideDismissShell, { onDismiss: onBack, overlayZIndex: 210, children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex h-full flex-col bg-background shadow-2xl", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx(RtlScreenHeader, { onBack, title: `@${u.username}` }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex shrink-0 border-b border-border", children: [
@@ -46076,14 +47059,14 @@ function requireLib() {
 var libExports = requireLib();
 const QRCode = /* @__PURE__ */ getDefaultExportFromCjs(libExports);
 function ProfileShareModal({ userId, onClose }) {
-  const { state, currentUser, openOrCreateChat, sendMessage, isGuest } = useApp();
+  const { state: state2, currentUser, openOrCreateChat, sendMessage, isGuest } = useApp();
   const [qrCodeUrl, setQrCodeUrl] = reactExports.useState("");
   const [profileUrl, setProfileUrl] = reactExports.useState("");
   const [shareComment, setShareComment] = reactExports.useState("");
   const [showFriendList, setShowFriendList] = reactExports.useState(false);
-  const user = userById(state, userId);
+  const user = userById$1(state2, userId);
   const me = currentUser;
-  const friends = me.following.map((id) => userById(state, id)).filter(Boolean);
+  const friends = me.following.map((id) => userById$1(state2, id)).filter(Boolean);
   reactExports.useEffect(() => {
     const baseUrl = typeof window !== "undefined" ? `${window.location.origin}${window.location.pathname}` : "";
     const url2 = `${baseUrl}?profile=${encodeURIComponent(userId)}`;
@@ -46198,9 +47181,9 @@ ${profileUrl}`;
     ] })
   ] }) });
 }
-function computeProfileSuggestions(state, viewerId, profileUserId, max = 16) {
-  const me = userById(state, viewerId);
-  const prof = userById(state, profileUserId);
+function computeProfileSuggestions(state2, viewerId, profileUserId, max = 16) {
+  const me = userById$1(state2, viewerId);
+  const prof = userById$1(state2, profileUserId);
   if (!me || !prof || viewerId === profileUserId) return [];
   const exclude = /* @__PURE__ */ new Set([viewerId, profileUserId]);
   for (const bid of me.blocked) exclude.add(bid);
@@ -46209,19 +47192,19 @@ function computeProfileSuggestions(state, viewerId, profileUserId, max = 16) {
   const mutual = [];
   for (const id of prof.following) {
     if (exclude.has(id) || !myFollowing.has(id)) continue;
-    const x = userById(state, id);
+    const x = userById$1(state2, id);
     if (!x || x.blocked.includes(viewerId) || me.blocked.includes(id)) continue;
     mutual.push(x);
   }
   const fromTheirNetwork = [];
   for (const id of prof.following) {
     if (exclude.has(id) || myFollowing.has(id)) continue;
-    const x = userById(state, id);
+    const x = userById$1(state2, id);
     if (!x || x.blocked.includes(viewerId) || me.blocked.includes(id)) continue;
     fromTheirNetwork.push(x);
   }
   const discoverMore = [];
-  for (const x of state.users) {
+  for (const x of state2.users) {
     if (exclude.has(x.id) || x.id === viewerId || myFollowing.has(x.id)) continue;
     if (x.blocked.includes(viewerId) || me.blocked.includes(x.id)) continue;
     discoverMore.push(x);
@@ -46259,7 +47242,7 @@ function ProfileScreen({
   suppressChrome = false
 }) {
   const {
-    state,
+    state: state2,
     currentUser,
     toggleFollow,
     toggleBlockWithSync,
@@ -46273,7 +47256,7 @@ function ProfileScreen({
     refreshProfilePostsFromServer
   } = useApp();
   const t = useT();
-  const rawU = userById(state, userId);
+  const rawU = userById$1(state2, userId);
   const u = rawU ? withFounderProfileFields(rawU) : null;
   const profileAuthorIds = reactExports.useMemo(
     () => new Set(profilePostAuthorIds(userId, rawU ?? u)),
@@ -46337,17 +47320,17 @@ function ProfileScreen({
     const h = (e) => {
       const d = e.detail;
       if (d.profileUserId !== userId || !d.profileGridTab) return;
-      const uu = userById(state, userId);
+      const uu = userById$1(state2, userId);
       if (!uu) return;
       let list;
       const gridTab = d.profileGridTab === "posts" ? "all" : d.profileGridTab;
       if (gridTab === "all")
-        list = sortProfilePostsNewestFirst(state.posts.filter(postByProfileAuthor));
+        list = sortProfilePostsNewestFirst(state2.posts.filter(postByProfileAuthor));
       else if (gridTab === "tweets")
-        list = sortProfilePostsNewestFirst(state.posts.filter((p) => postByProfileAuthor(p) && isDisplayTweet(p)));
+        list = sortProfilePostsNewestFirst(state2.posts.filter((p) => postByProfileAuthor(p) && isDisplayTweet(p)));
       else if (gridTab === "reposts")
-        list = sortProfilePostsNewestFirst(state.posts.filter((p) => p.reposts.some((id) => profileAuthorIds.has(id))));
-      else list = sortProfilePostsNewestFirst(state.posts.filter((p) => postByProfileAuthor(p) && isReelFeedPost(p)));
+        list = sortProfilePostsNewestFirst(state2.posts.filter((p) => p.reposts.some((id) => profileAuthorIds.has(id))));
+      else list = sortProfilePostsNewestFirst(state2.posts.filter((p) => postByProfileAuthor(p) && isReelFeedPost(p)));
       const orderedIds = list.map((p) => p.id);
       const idx = orderedIds.indexOf(d.postId);
       setTab(gridTab);
@@ -46362,39 +47345,39 @@ function ProfileScreen({
     };
     window.addEventListener("retweet-restore-profile-feed", h);
     return () => window.removeEventListener("retweet-restore-profile-feed", h);
-  }, [userId, state.posts, state.users, postByProfileAuthor, profileAuthorIds]);
+  }, [userId, state2.posts, state2.users, postByProfileAuthor, profileAuthorIds]);
   const myStoriesSorted = reactExports.useMemo(() => {
     if (!currentUser) return [];
-    return state.stories.filter((st) => st.userId === currentUser.id).slice().sort((a, b) => b.createdAt - a.createdAt);
-  }, [state.stories, currentUser]);
+    return state2.stories.filter((st) => st.userId === currentUser.id).slice().sort((a, b) => b.createdAt - a.createdAt);
+  }, [state2.stories, currentUser]);
   const followerCountFormatted = reactExports.useMemo(() => {
-    const usr = userById(state, userId);
+    const usr = userById$1(state2, userId);
     if (!usr) return "0";
     return formatCompactCount(resolveDisplayFollowerCount(usr));
-  }, [state.users, userId, socialHydratedAt]);
+  }, [state2.users, userId, socialHydratedAt]);
   const myAllFeed = reactExports.useMemo(
-    () => sortProfilePostsNewestFirst(state.posts.filter(postByProfileAuthor)),
-    [state.posts, postByProfileAuthor]
+    () => sortProfilePostsNewestFirst(state2.posts.filter(postByProfileAuthor)),
+    [state2.posts, postByProfileAuthor]
   );
   const myTweets = reactExports.useMemo(
-    () => sortProfilePostsNewestFirst(state.posts.filter((p) => postByProfileAuthor(p) && isDisplayTweet(p))),
-    [state.posts, postByProfileAuthor]
+    () => sortProfilePostsNewestFirst(state2.posts.filter((p) => postByProfileAuthor(p) && isDisplayTweet(p))),
+    [state2.posts, postByProfileAuthor]
   );
   const myReposts = reactExports.useMemo(
-    () => sortProfilePostsNewestFirst(state.posts.filter((p) => p.reposts.some((id) => profileAuthorIds.has(id)))),
-    [state.posts, profileAuthorIds]
+    () => sortProfilePostsNewestFirst(state2.posts.filter((p) => p.reposts.some((id) => profileAuthorIds.has(id)))),
+    [state2.posts, profileAuthorIds]
   );
   const myReels = reactExports.useMemo(
-    () => sortProfilePostsNewestFirst(state.posts.filter((p) => postByProfileAuthor(p) && isReelFeedPost(p))),
-    [state.posts, postByProfileAuthor]
+    () => sortProfilePostsNewestFirst(state2.posts.filter((p) => postByProfileAuthor(p) && isReelFeedPost(p))),
+    [state2.posts, postByProfileAuthor]
   );
   const tabPosts = tab === "all" ? myAllFeed : tab === "tweets" ? myTweets : tab === "reposts" ? myReposts : myReels;
   const publicChannels = reactExports.useMemo(() => {
-    const usr = userById(state, userId);
+    const usr = userById$1(state2, userId);
     if (!usr) return [];
     const ids = usr.publicChannelIds || [];
-    return ids.map((id) => state.chats.find((c) => c.id === id && c.isChannel)).filter(Boolean);
-  }, [userId, state.chats, state.users]);
+    return ids.map((id) => state2.chats.find((c) => c.id === id && c.isChannel)).filter(Boolean);
+  }, [userId, state2.chats, state2.users]);
   reactExports.useEffect(() => {
     visitRecordedFor.current = null;
     setTab("all");
@@ -46404,12 +47387,12 @@ function ProfileScreen({
     void refreshProfilePostsFromServer(userId);
   }, [userId, refreshProfilePostsFromServer]);
   reactExports.useEffect(() => {
-    const usr = userById(state, userId);
+    const usr = userById$1(state2, userId);
     if (!currentUser || !usr || currentUser.id === usr.id) return;
     if (visitRecordedFor.current === usr.id) return;
     visitRecordedFor.current = usr.id;
     recordProfileVisit(usr.id);
-  }, [currentUser, userId, state.users, recordProfileVisit]);
+  }, [currentUser, userId, state2.users, recordProfileVisit]);
   reactExports.useEffect(() => {
     if (!hlView) return;
     const slides = hlView.slides?.length ? hlView.slides : [];
@@ -46417,34 +47400,20 @@ function ProfileScreen({
   }, [hlView, hlSlide]);
   const profileSuggestions = reactExports.useMemo(() => {
     if (!currentUser || currentUser.id === userId) return [];
-    if (!canViewProfile(state, currentUser.id, userId)) return [];
+    if (!canViewProfile(state2, currentUser.id, userId)) return [];
     if (currentUser.blocked.includes(userId)) return [];
-    return computeProfileSuggestions(state, currentUser.id, userId, 14);
-  }, [state, currentUser, userId]);
+    return computeProfileSuggestions(state2, currentUser.id, userId, 14);
+  }, [state2, currentUser, userId]);
   const profileHasStories = reactExports.useMemo(() => {
     if (!u || !currentUser) return false;
-    if (!canViewProfile(state, currentUser.id, u.id)) return false;
-    return userHasVisibleStories(state, currentUser.id, u.id);
-  }, [state.stories, state.users, currentUser, u, userId]);
+    if (!canViewProfile(state2, currentUser.id, u.id)) return false;
+    return userHasVisibleStories(state2, currentUser.id, u.id);
+  }, [state2.stories, state2.users, currentUser, u, userId]);
   reactExports.useEffect(() => {
     if (!currentUser || currentUser.id === userId) return;
     refreshSocialRelation(userId);
+    setSocialHydratedAt(Date.now());
   }, [userId, currentUser?.id, refreshSocialRelation]);
-  reactExports.useEffect(() => {
-    if (!currentUser || currentUser.id === userId || isGuest) return;
-    if (!apiBackendEnabled() || !getApiToken()) return;
-    let cancelled = false;
-    void (async () => {
-      await ensureApiRuntimeConfig();
-      const row = await apiFetchUserById(userId);
-      if (cancelled || !row || row.id !== userId) return;
-      mergeDiscoveredUsers([userFromSearchResult(row)]);
-      setSocialHydratedAt(Date.now());
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [userId, currentUser?.id, mergeDiscoveredUsers, isGuest]);
   if (!u) {
     return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex min-h-full h-full items-center justify-center bg-background p-6 text-muted-foreground text-sm", children: "جاري تحميل الملف الشخصي…" });
   }
@@ -46455,11 +47424,11 @@ function ProfileScreen({
       /* @__PURE__ */ jsxRuntimeExports.jsx(BannedProfileView, { username: u.username })
     ] });
   }
-  const canView = canViewProfile(state, currentUser?.id || null, u.id);
-  const canSeePrivateContent = canViewPrivatePosts(state, currentUser?.id || null, u.id);
-  const isFollowing = !!(currentUser && userIsFollowing(state, currentUser.id, u.id));
-  const theyFollowMe = !!(currentUser && theyFollowViewer(state, currentUser.id, u.id));
-  const isMutualFollow = !!(currentUser && isMutual(state, currentUser.id, u.id));
+  const canView = canViewProfile(state2, currentUser?.id || null, u.id);
+  const canSeePrivateContent = canViewPrivatePosts(state2, currentUser?.id || null, u.id);
+  const isFollowing = !!(currentUser && userIsFollowing(state2, currentUser.id, u.id));
+  const theyFollowMe = !!(currentUser && theyFollowViewer(state2, currentUser.id, u.id));
+  const isMutualFollow = !!(currentUser && isMutual(state2, currentUser.id, u.id));
   const pendingFollowOut = !!(currentUser?.followRequestOut || []).includes(u.id);
   const showFollowBack = !isMe && theyFollowMe && !isFollowing && !pendingFollowOut;
   const isBlocked = currentUser?.blocked.includes(u.id);
@@ -46546,7 +47515,7 @@ function ProfileScreen({
   const openHighlight = (h) => {
     let slides = h.slides?.length ? [...h.slides] : [];
     if (slides.length === 0 && (h.storyIds || []).length > 0) {
-      slides = (h.storyIds || []).map((id) => state.stories.find((s) => s.id === id)).filter((st) => !!st).map((st) => st.video ? { image: st.image, video: st.video } : { image: st.image });
+      slides = (h.storyIds || []).map((id) => state2.stories.find((s) => s.id === id)).filter((st) => !!st).map((st) => st.video ? { image: st.image, video: st.video } : { image: st.image });
     }
     if (slides.length === 0) return;
     setHlSlide(0);
@@ -46763,7 +47732,7 @@ function ProfileScreen({
             /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-2 flex items-start gap-2", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1 min-w-0", children: [
               u.bio?.trim() ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-sm whitespace-pre-wrap mt-0", children: renderMentionHashtagNodes(u.bio, {
                 renderMention: createMentionRenderer({
-                  users: state.users,
+                  users: state2.users,
                   onUserClick: (uid2) => onOpenProfile?.(uid2),
                   onUsernameClick: (uname) => {
                     void (async () => {
@@ -46785,7 +47754,7 @@ function ProfileScreen({
             isMe && (u.followRequestIn || []).length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4 rounded-2xl border border-border bg-card p-3 space-y-2", children: [
               /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-sm font-semibold", children: "طلبات متابعة" }),
               (u.followRequestIn || []).map((id) => {
-                const req = userById(state, id);
+                const req = userById$1(state2, id);
                 if (!req) return null;
                 return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2 flex-wrap", children: [
                   /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: req.username, src: req.avatar, size: 36 }),
@@ -47001,7 +47970,7 @@ function ProfileScreen({
         children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "font-bold text-center mb-3", children: showFollowers === "followers" ? t("followers") : t("followsCount") }),
           showFollowers === "followers" && u.displayFollowerCount != null && u.followers.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "px-3 py-8 text-center text-sm text-muted-foreground leading-relaxed", children: "يُعرض هنا العدد الإجمالي للمتابعين فقط؛ قائمة الأسماء غير متوفرة في النسخة التجريبية." }) : (showFollowers === "followers" ? u.followers : u.following).map((id) => {
-            const x = userById(state, id);
+            const x = userById$1(state2, id);
             return x ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3 p-2", children: [
               /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: x.username, src: x.avatar }),
               /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1 min-w-0 text-start", children: [
@@ -47122,7 +48091,7 @@ function ProfileScreen({
       StoryViewer,
       {
         userId: storyViewerUserId,
-        trayRing: storyViewerTrayRing(state, currentUser.id),
+        trayRing: storyViewerTrayRing(state2, currentUser.id),
         onClose: () => setStoryViewerUserId(null),
         onRequestAuthor: (id) => setStoryViewerUserId(id),
         onOpenProfile: (pid) => {
@@ -49162,14 +50131,14 @@ function StoriesArchiveViewer({
   initialIndex,
   onClose
 }) {
-  const { state, currentUser, deleteStory, addHighlight } = useApp();
+  const { state: state2, currentUser, deleteStory, addHighlight } = useApp();
   const [index2, setIndex] = reactExports.useState(() => Math.min(Math.max(0, initialIndex), Math.max(0, stories.length - 1)));
   const [shareOpen, setShareOpen] = reactExports.useState(false);
   const [highlightOpen, setHighlightOpen] = reactExports.useState(false);
   const [highlightTitle, setHighlightTitle] = reactExports.useState("");
   const videoRef = reactExports.useRef(null);
   const timerRef = reactExports.useRef(null);
-  const lang = state.language;
+  const lang = state2.language;
   const safeIndex = stories.length > 0 ? Math.min(Math.max(0, index2), stories.length - 1) : 0;
   const cur = stories[safeIndex];
   reactExports.useEffect(() => {
@@ -49400,14 +50369,14 @@ function ArchiveHeader({ title, onBack }) {
   );
 }
 function StoriesArchiveScreen({ onBack }) {
-  const { state, currentUser } = useApp();
+  const { state: state2, currentUser } = useApp();
   const t = useT();
   const [viewerIndex, setViewerIndex] = reactExports.useState(null);
   const stories = reactExports.useMemo(() => {
     if (!currentUser) return [];
-    return archivedStoriesForUser(state, currentUser.id);
-  }, [state.storyArchive, state.stories, currentUser?.id]);
-  const lang = state.language;
+    return archivedStoriesForUser(state2, currentUser.id);
+  }, [state2.storyArchive, state2.stories, currentUser?.id]);
+  const lang = state2.language;
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "settings-screen-root min-h-full w-full overflow-x-hidden bg-background pb-10", dir: "rtl", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx(ArchiveHeader, { title: t("storiesArchive"), onBack }),
     /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "px-4 pt-3 text-center text-sm leading-relaxed text-muted-foreground", children: t("archiveHint") }),
@@ -49841,7 +50810,7 @@ function SettingsScreen({
   onOpenAccounts
 }) {
   const {
-    state,
+    state: state2,
     setState,
     currentUser,
     logout,
@@ -49866,7 +50835,7 @@ function SettingsScreen({
   const [newP, setNewP] = reactExports.useState("");
   const [isAdmin, setIsAdmin] = reactExports.useState(false);
   const [isModerator, setIsModerator] = reactExports.useState(false);
-  const blockedUsers = state.users.filter((u) => (me.blocked ?? []).includes(u.id));
+  const blockedUsers = state2.users.filter((u) => (me.blocked ?? []).includes(u.id));
   const [unblockTarget, setUnblockTarget] = reactExports.useState(null);
   reactExports.useEffect(() => {
     void (async () => {
@@ -49882,8 +50851,8 @@ function SettingsScreen({
     })();
   }, [me.id]);
   const followingUsers = reactExports.useMemo(
-    () => (me.following ?? []).map((id) => userById(state, id)).filter((u) => !!u && u.id !== me.id),
-    [me.following, state.users, me.id]
+    () => (me.following ?? []).map((id) => userById$1(state2, id)).filter((u) => !!u && u.id !== me.id),
+    [me.following, state2.users, me.id]
   );
   const setTheme = (th) => {
     writeDeviceTheme(th);
@@ -50211,9 +51180,9 @@ function SettingsScreen({
       /* @__PURE__ */ jsxRuntimeExports.jsx(
         SettingsRow,
         {
-          icon: state.theme === "dark" ? Moon : Sun,
+          icon: state2.theme === "dark" ? Moon : Sun,
           label: t("darkMode"),
-          right: /* @__PURE__ */ jsxRuntimeExports.jsx(IgToggle, { on: state.theme === "dark", onToggle: () => setTheme(state.theme === "dark" ? "light" : "dark") })
+          right: /* @__PURE__ */ jsxRuntimeExports.jsx(IgToggle, { on: state2.theme === "dark", onToggle: () => setTheme(state2.theme === "dark" ? "light" : "dark") })
         }
       ),
       /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -50224,7 +51193,7 @@ function SettingsScreen({
           right: /* @__PURE__ */ jsxRuntimeExports.jsxs(
             "select",
             {
-              value: state.language,
+              value: state2.language,
               onChange: (e) => setLang(e.target.value),
               className: "bg-transparent text-sm text-muted-foreground outline-none",
               children: [
@@ -50402,7 +51371,7 @@ function StoryCreationStickers({
   stickers,
   setStickers
 }) {
-  const { state, currentUser } = useApp();
+  const { state: state2, currentUser } = useApp();
   const me = currentUser;
   const [sheet, setSheet] = reactExports.useState(null);
   const push = (st) => {
@@ -50419,7 +51388,7 @@ function StoryCreationStickers({
   const [hashtag, setHashtag] = reactExports.useState({ tag: "ستوري" });
   const [quiz, setQuiz] = reactExports.useState({ question: "", o0: "", o1: "", o2: "", o3: "", correct: 0 });
   const [slider, setSlider] = reactExports.useState({ emoji: "❤️", label: "مودك؟" });
-  const mentionChoices = state.users.filter((u) => u.id !== me.id).slice(0, 40);
+  const mentionChoices = state2.users.filter((u) => u.id !== me.id).slice(0, 40);
   let sheetBody = null;
   if (sheet === "poll") {
     sheetBody = /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
@@ -50490,7 +51459,7 @@ function StoryCreationStickers({
           type: "button",
           className: "w-full bg-[#0095F6] text-white rounded-xl py-2.5 font-semibold text-sm",
           onClick: () => {
-            const u = state.users.find((x) => x.id === mention.userId);
+            const u = state2.users.find((x) => x.id === mention.userId);
             if (!u) return;
             push({ id: nid(), kind: "mention", ...p, userId: u.id, username: u.username });
           },
@@ -50680,7 +51649,7 @@ function CreateScreen({
   onBack,
   initial: initial2
 }) {
-  const { state, currentUser, createPost, addStory } = useApp();
+  const { state: state2, currentUser, createPost, addStory } = useApp();
   const t = useT();
   const me = currentUser;
   const [type, setType] = reactExports.useState(initial2?.type ?? "tweet");
@@ -50992,7 +51961,7 @@ function CreateScreen({
     }
     onBack();
   };
-  const mutuals = me.following.filter((id) => isMutual(state, me.id, id));
+  const mutuals = me.following.filter((id) => isMutual(state2, me.id, id));
   return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "min-h-dvh bg-black text-white", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mx-auto max-w-md space-y-4 px-4 pb-[max(2rem,var(--sab))] pt-[max(1rem,var(--sat))]", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(SlideDismissBackButton, { onDismiss: onBack, disabled: publishing, children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowRight, {}) }),
@@ -51268,7 +52237,7 @@ function CreateScreen({
           /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground mb-2", children: "اختر الأصدقاء المقربين (يُحفظون لاحقاً)" }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-1 max-h-40 overflow-y-auto", children: [
             mutuals.map((id) => {
-              const u = state.users.find((x) => x.id === id);
+              const u = state2.users.find((x) => x.id === id);
               const sel = closeOnly.includes(id) || me.closeFriends.includes(id);
               return /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "flex items-center gap-2 text-sm", children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -52028,9 +52997,9 @@ var Portal$2 = reactExports.forwardRef((props, forwardedRef) => {
 });
 Portal$2.displayName = PORTAL_NAME$1;
 function useStateMachine(initialState, machine) {
-  return reactExports.useReducer((state, event) => {
-    const nextState = machine[state][event];
-    return nextState ?? state;
+  return reactExports.useReducer((state2, event) => {
+    const nextState = machine[state2][event];
+    return nextState ?? state2;
   }, initialState);
 }
 var Presence = (props) => {
@@ -52048,7 +53017,7 @@ function usePresence(present) {
   const prevPresentRef = reactExports.useRef(present);
   const prevAnimationNameRef = reactExports.useRef("none");
   const initialState = present ? "mounted" : "unmounted";
-  const [state, send] = useStateMachine(initialState, {
+  const [state2, send] = useStateMachine(initialState, {
     mounted: {
       UNMOUNT: "unmounted",
       ANIMATION_OUT: "unmountSuspended"
@@ -52063,8 +53032,8 @@ function usePresence(present) {
   });
   reactExports.useEffect(() => {
     const currentAnimationName = getAnimationName(stylesRef.current);
-    prevAnimationNameRef.current = state === "mounted" ? currentAnimationName : "none";
-  }, [state]);
+    prevAnimationNameRef.current = state2 === "mounted" ? currentAnimationName : "none";
+  }, [state2]);
   useLayoutEffect2(() => {
     const styles = stylesRef.current;
     const wasPresent = prevPresentRef.current;
@@ -52126,7 +53095,7 @@ function usePresence(present) {
     }
   }, [node, send]);
   return {
-    isPresent: ["mounted", "unmountSuspended"].includes(state),
+    isPresent: ["mounted", "unmountSuspended"].includes(state2),
     ref: reactExports.useCallback((node2) => {
       stylesRef.current = node2 ? getComputedStyle(node2) : null;
       setNode(node2);
@@ -54967,7 +55936,7 @@ async function uploadAvatarDataUrl(token, dataUrl) {
   return uploadAvatarFile(token, file);
 }
 function EditProfileScreen({ onBack }) {
-  const { currentUser, updateProfile, setNote, state } = useApp();
+  const { currentUser, updateProfile, setNote, state: state2 } = useApp();
   const u = currentUser;
   const [username, setUsername] = reactExports.useState(u.username);
   const [displayName, setDisplayName] = reactExports.useState(u.displayName || "");
@@ -54991,7 +55960,7 @@ function EditProfileScreen({ onBack }) {
         alert(nameErr);
         return;
       }
-      if (isUsernameTaken(trimmed, state.users, u.id)) {
+      if (isUsernameTaken(trimmed, state2.users, u.id)) {
         alert("اسم المستخدم مستخدم من قبل — اختر اسماً آخر");
         return;
       }
@@ -55236,7 +56205,7 @@ function AuthScreen(props) {
     requestPasswordResetRemote,
     completePasswordResetRemote,
     completePasswordResetLink,
-    state,
+    state: state2,
     enterGuestBrowseMode
   } = useApp();
   const [mode2, setMode] = reactExports.useState("login");
@@ -55784,10 +56753,10 @@ function NotificationsPanel({
   onOpenChat,
   onOpenReportStatus
 }) {
-  const { state, currentUser, acceptFollowRequest, declineFollowRequest, markNotificationRead } = useApp();
+  const { state: state2, currentUser, acceptFollowRequest, declineFollowRequest, markNotificationRead } = useApp();
   const t = useT();
   const me = currentUser;
-  const list = state.notifications.filter((n) => n.userId === me.id && n.type !== "message");
+  const list = state2.notifications.filter((n) => n.userId === me.id && n.type !== "message");
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(
     AppDismissSheet,
     {
@@ -55799,7 +56768,7 @@ function NotificationsPanel({
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "notifications-panel-scroll no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-y-contain pb-8", children: [
           list.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "py-12 text-center text-muted-foreground", children: "—" }),
           list.map((n) => {
-            const from = n.type === "report_update" ? userById(state, SUPPORT_OFFICIAL_ACCOUNT_ID) ?? userById(state, n.fromId) : userById(state, n.fromId);
+            const from = n.type === "report_update" ? userById$1(state2, SUPPORT_OFFICIAL_ACCOUNT_ID) ?? userById$1(state2, n.fromId) : userById$1(state2, n.fromId);
             const Icon2 = n.type === "report_update" ? n.reportStatus === "approved" ? Shield : n.reportStatus === "rejected" ? Flag : Shield : n.type === "like" ? Heart : n.type === "comment" ? MessageCircle : n.type === "repost" ? Repeat2 : n.type === "mention" ? AtSign : n.type === "message" ? MessageCircle : n.type === "friend_request" ? Heart : UserPlus;
             const iconClass = n.type === "report_update" ? n.reportStatus === "approved" ? "shrink-0 text-emerald-500" : n.reportStatus === "pending" ? "shrink-0 text-primary" : "shrink-0 text-muted-foreground" : n.type === "friend_request" && n.followRequestStatus !== "accepted" && n.followRequestStatus !== "declined" ? "shrink-0 fill-red-500 text-red-500" : n.type === "like" ? "shrink-0 fill-red-500/90 text-red-500" : "shrink-0 text-primary";
             const friendReqResolved = n.type === "friend_request" && (n.followRequestStatus === "accepted" || n.followRequestStatus === "declined");
@@ -55894,7 +56863,7 @@ function ReportStatusScreen({
   initialStatus,
   onClose
 }) {
-  const { state, markNotificationRead } = useApp();
+  const { state: state2, markNotificationRead } = useApp();
   const [report, setReport] = reactExports.useState(null);
   const [loading, setLoading] = reactExports.useState(true);
   const [err, setErr] = reactExports.useState("");
@@ -55918,15 +56887,15 @@ function ReportStatusScreen({
     };
   }, [reportId]);
   reactExports.useEffect(() => {
-    for (const n of state.notifications) {
+    for (const n of state2.notifications) {
       if (n.type === "report_update" && n.reportId === reportId && !n.read) {
         markNotificationRead(n.id);
       }
     }
-  }, [reportId, state.notifications, markNotificationRead]);
+  }, [reportId, state2.notifications, markNotificationRead]);
   const uiStatus = report ? resolveUiStatus(report) : initialStatus || "pending";
-  const reportedUser = report ? userById(state, report.reportedUserId) : void 0;
-  const supportUser = userById(state, SUPPORT_OFFICIAL_ACCOUNT_ID);
+  const reportedUser = report ? userById$1(state2, report.reportedUserId) : void 0;
+  const supportUser = userById$1(state2, SUPPORT_OFFICIAL_ACCOUNT_ID);
   const body = reactExports.useMemo(() => {
     const uname = report?.reportedUsername || reportedUser?.username || "…";
     const cat = report ? categoryLabel(report) : "—";
@@ -56069,14 +57038,14 @@ function ReportStatusScreen({
 }
 const DM_TOAST_MS = 2e3;
 function NotificationBanner() {
-  const { state, currentUser, markNotificationRead } = useApp();
+  const { state: state2, currentUser, markNotificationRead } = useApp();
   const [visible, setVisible] = reactExports.useState(false);
   const [active2, setActive] = reactExports.useState(null);
   const timerRef = reactExports.useRef(null);
   const me = currentUser?.id;
   const topDm = (() => {
     if (!me) return void 0;
-    const list = state.notifications.filter((n) => n.userId === me && !n.read && n.type === "message" && n.chatId);
+    const list = state2.notifications.filter((n) => n.userId === me && !n.read && n.type === "message" && n.chatId);
     list.sort((a, b) => b.createdAt - a.createdAt);
     return list[0];
   })();
@@ -56124,9 +57093,9 @@ function NotificationBanner() {
     setActive(null);
   };
   if (!visible || !active2 || active2.type !== "message") return null;
-  const from = userById(state, active2.fromId);
+  const from = userById$1(state2, active2.fromId);
   const preview = (active2.text || "").trim() || "رسالة جديدة";
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "fixed top-0 left-0 right-0 z-[100] max-w-md mx-auto w-full bg-card/95 backdrop-blur-md border-b border-border shadow-lg px-2 py-2 flex items-start gap-1 supports-[padding:max(0px)]:pt-[max(0.25rem,var(--sat))]", children: [
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "fixed left-0 right-0 z-[100] max-w-md mx-auto w-full bg-card/95 backdrop-blur-md border-b border-border shadow-lg px-2 py-2 flex items-start gap-1 top-[var(--sat,env(safe-area-inset-top,0px))]", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs(
       "button",
       {
@@ -56158,8 +57127,80 @@ function NotificationBanner() {
     )
   ] });
 }
+function PerfHUD() {
+  const [visible, setVisible] = reactExports.useState(false);
+  const [frame, setFrame] = reactExports.useState({ fps: 0, droppedFrames: 0, ts: 0 });
+  const [mem, setMem] = reactExports.useState(null);
+  const [topRenders, setTopRenders] = reactExports.useState([]);
+  reactExports.useEffect(() => {
+    if (!perfEnabled()) return;
+    setVisible(true);
+    const stopSession = startPerfSession();
+    const stopFrame = startFrameMonitor(setFrame);
+    const id = window.setInterval(() => {
+      setTopRenders(
+        [...getRenderCounts().entries()].sort((a, b) => b[1] - a[1]).slice(0, 8)
+      );
+      setMem(getMemoryMb());
+    }, 2e3);
+    return () => {
+      stopSession();
+      stopFrame();
+      window.clearInterval(id);
+    };
+  }, []);
+  if (!visible) return null;
+  const avgFps = getFrameHistory().reduce((a, s) => a + s.fps, 0) / Math.max(1, getFrameHistory().length);
+  const leaks = getLeakRegistry().length;
+  const longTasks2 = getLongTasks().length;
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "div",
+    {
+      className: "pointer-events-auto fixed bottom-20 start-2 z-[99999] max-w-[12rem] rounded-lg border border-border/80 bg-black/90 px-2 py-1.5 font-mono text-[9px] leading-snug text-green-400 shadow-lg",
+      "aria-hidden": true,
+      children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+          "FPS ",
+          frame.fps,
+          " ~",
+          avgFps.toFixed(0)
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+          "drops ",
+          frame.droppedFrames,
+          "/s · long ",
+          longTasks2
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+          "heap ",
+          mem ?? "?",
+          "MB · leaks ",
+          leaks
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-1 border-t border-white/20 pt-1 text-[8px] text-zinc-400", children: topRenders.map(([name, n]) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "truncate", children: [
+          name,
+          ":",
+          n
+        ] }, name)) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            type: "button",
+            className: "mt-1 w-full rounded bg-white/10 py-0.5 text-[8px] text-white",
+            onClick: () => {
+              const r2 = emitPerfReport("manual");
+              console.table(r2.topRenderCounts);
+              console.table(r2.topSlowRenders);
+            },
+            children: "Report"
+          }
+        )
+      ]
+    }
+  );
+}
 function AccountSwitcherSheet({ switchingAccountId, onSwitching, onClose, onAddAccount }) {
-  const { state, currentUser, switchAccount } = useApp();
+  const { state: state2, currentUser, switchAccount } = useApp();
   const t = useT();
   return /* @__PURE__ */ jsxRuntimeExports.jsx(AppDismissSheet, { onClose, overlayZIndex: 200, contentClassName: "bg-zinc-100 dark:bg-zinc-950", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "div",
@@ -56287,6 +57328,15 @@ function useNavDoubleTap(onSingle, onDouble) {
       onSingle();
     }, DOUBLE_TAP_MS);
   }, [onSingle, onDouble]);
+}
+function SafeAreaTop() {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "div",
+    {
+      className: "safe-area-top shrink-0 w-full bg-background",
+      "aria-hidden": true
+    }
+  );
 }
 const SEVERE_BAN_CATEGORY_IDS = /* @__PURE__ */ new Set([
   "nudity",
@@ -56773,21 +57823,26 @@ function ModerationGateShell({
 const NAV_ICON = "pointer-events-none h-6 w-6 shrink-0 text-white";
 const NAV_MSG_ICON = "pointer-events-none h-[26px] w-[26px] shrink-0 text-white";
 function App() {
+  useProfiledRender("App");
+  const currentUser = useCurrentUser();
+  const currentUserId = useCurrentUserId();
+  const accountSwitching = useAccountSwitching();
+  const accountSessionKey = useAccountSessionKey();
+  const isGuest = useIsGuestSelector();
+  const unreadMessageCount = useUnreadMessageCount();
+  const theme = useAppTheme();
+  const language = useAppLanguage();
+  const unreadNotifs = useUnreadNotificationCount(currentUser?.id);
   const {
-    state,
-    currentUser,
-    accountSwitching,
-    accountSessionKey,
     switchAccount,
     createSticker,
     openOrCreateChat,
     updateProfile,
-    isGuest,
     exitGuestBrowseMode,
     joinGroupByInviteCode,
-    logout,
-    unreadMessageCount
-  } = useApp();
+    logout
+  } = useAppActions();
+  reactExports.useEffect(() => startPerfSession(), []);
   const t = useT();
   const [banInfo, setBanInfo] = reactExports.useState(null);
   const [banPresentation, setBanPresentation] = reactExports.useState(null);
@@ -56815,6 +57870,8 @@ function App() {
   const [chatHideBottomNav, setChatHideBottomNav] = reactExports.useState(false);
   const [chatExitNavActive, setChatExitNavActive] = reactExports.useState(false);
   const chatExitNavActiveRef = reactExports.useRef(false);
+  const guestToastTimerRef = reactExports.useRef(null);
+  const switchFailToastTimerRef = reactExports.useRef(null);
   const [postDetailOpen, setPostDetailOpen] = reactExports.useState(false);
   const [reportSheetOpen, setReportSheetOpen2] = reactExports.useState(false);
   const [reelsCommentsOpen, setReelsCommentsOpen] = reactExports.useState(false);
@@ -57137,7 +58194,7 @@ function App() {
       }
     };
     void tick();
-    const id = window.setInterval(() => void tick(), 12e3);
+    const id = window.setInterval(() => void tick(), 6e4);
     const onVis = () => {
       if (document.visibilityState === "visible") void tick();
     };
@@ -57152,10 +58209,17 @@ function App() {
     const onSwitchFail = (e) => {
       const msg = e.detail?.message?.trim();
       setSwitchFailToast(msg || "تعذّر تبديل الحساب");
-      window.setTimeout(() => setSwitchFailToast(null), 4200);
+      if (switchFailToastTimerRef.current != null) window.clearTimeout(switchFailToastTimerRef.current);
+      switchFailToastTimerRef.current = window.setTimeout(() => {
+        switchFailToastTimerRef.current = null;
+        setSwitchFailToast(null);
+      }, 4200);
     };
     window.addEventListener(ACCOUNT_SWITCH_FAILED_EVENT, onSwitchFail);
-    return () => window.removeEventListener(ACCOUNT_SWITCH_FAILED_EVENT, onSwitchFail);
+    return () => {
+      window.removeEventListener(ACCOUNT_SWITCH_FAILED_EVENT, onSwitchFail);
+      if (switchFailToastTimerRef.current != null) window.clearTimeout(switchFailToastTimerRef.current);
+    };
   }, []);
   reactExports.useEffect(() => {
     const handler = (e) => createSticker(e.detail.emoji, e.detail.label);
@@ -57236,10 +58300,17 @@ function App() {
   reactExports.useEffect(() => {
     const onGuestBlock = () => {
       setGuestToast(true);
-      window.setTimeout(() => setGuestToast(false), 2400);
+      if (guestToastTimerRef.current != null) window.clearTimeout(guestToastTimerRef.current);
+      guestToastTimerRef.current = window.setTimeout(() => {
+        guestToastTimerRef.current = null;
+        setGuestToast(false);
+      }, 2400);
     };
     window.addEventListener("retweet-guest-blocked", onGuestBlock);
-    return () => window.removeEventListener("retweet-guest-blocked", onGuestBlock);
+    return () => {
+      window.removeEventListener("retweet-guest-blocked", onGuestBlock);
+      if (guestToastTimerRef.current != null) window.clearTimeout(guestToastTimerRef.current);
+    };
   }, []);
   reactExports.useEffect(() => {
     const onAccountSwitch = () => {
@@ -57411,12 +58482,12 @@ function App() {
   reactExports.useEffect(() => {
     logAuthRoute("app-render", {
       screen: currentUser ? "main" : getApiToken() ? "session-repair" : "auth",
-      currentUserId: state.currentUserId,
+      currentUserId,
       username: currentUser?.username,
       tab,
       hasToken: !!getApiToken()
     });
-  }, [currentUser, state.currentUserId, tab]);
+  }, [currentUser, currentUserId, tab]);
   reactExports.useEffect(() => {
     if (tab === "chat") return;
     try {
@@ -57659,9 +58730,6 @@ function App() {
       }
     );
   }
-  const unreadNotifs = (state.notifications ?? []).filter(
-    (n) => n.userId === currentUser.id && !n.read && n.type !== "message"
-  ).length;
   const showChatThreadChrome = tab === "chat" && chatThreadOpen;
   const chatImmersiveMode = tab === "chat" && chatThreadOpen && !chatExitNavActive;
   const postImmersiveMode = postDetailOpen;
@@ -57679,16 +58747,18 @@ function App() {
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "div",
     {
-      className: "retweet-no-select-pane select-none relative mx-auto flex w-full max-w-md flex-col overflow-x-hidden overscroll-none bg-background " + (nativeShell ? "" : "supports-[height:100dvh] ") + (banOverlayActive ? "pointer-events-none " : "") + appShellHeight + " overflow-hidden " + (immersiveOverlay || settingsImmersive ? "pt-0" : "pt-[var(--sat,0px)]"),
+      className: "retweet-no-select-pane select-none relative mx-auto flex w-full max-w-md flex-col overflow-x-hidden overscroll-none bg-background " + (nativeShell ? "" : "supports-[height:100dvh] ") + (banOverlayActive ? "pointer-events-none " : "") + appShellHeight + " overflow-hidden",
       style: {
         [NAV_FLOAT_INSET_CSS_VAR]: NAV_FLOAT_INSET_DEFAULT,
         [NAV_SCROLL_PADDING_CSS_VAR]: NAV_SCROLL_PADDING_DEFAULT
       },
       ...nativeNoSelectCaptureHandlers,
       children: [
+        !immersiveOverlay && !settingsImmersive && !storyFullscreen && /* @__PURE__ */ jsxRuntimeExports.jsx(SafeAreaTop, {}),
         guestToast && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed left-3 right-3 top-[max(0.75rem,var(--sat,0px))] z-[500] mx-auto max-w-md rounded-2xl border border-border bg-card px-4 py-3 text-start text-sm shadow-lg", children: "سجّل الدخول أو أنشئ حساباً لاستخدام هذه الميزة (إعجاب، رسائل، متابعة…)." }),
         switchFailToast && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed left-3 right-3 top-[max(0.75rem,var(--sat,0px))] z-[501] mx-auto max-w-md rounded-2xl border border-destructive/40 bg-card px-4 py-3 text-start text-sm text-destructive shadow-lg", children: switchFailToast }),
         !storyFullscreen && !immersiveOverlay && !settingsImmersive && /* @__PURE__ */ jsxRuntimeExports.jsx(NotificationBanner, {}),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(PerfHUD, {}),
         !hideAppHeader && /* @__PURE__ */ jsxRuntimeExports.jsx(
           "header",
           {
@@ -57875,7 +58945,7 @@ function App() {
             },
             overlayZIndex: 120,
             dismissPullCssVar: SETTINGS_DISMISS_PULL_CSS_VAR,
-            darkPanelChrome: state.theme === "dark",
+            darkPanelChrome: theme === "dark",
             contentClassName: "min-h-dvh bg-background text-foreground",
             children: /* @__PURE__ */ jsxRuntimeExports.jsx(AppErrorBoundary, { label: "settings-screen", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
               SettingsScreen,
@@ -58035,7 +59105,7 @@ function App() {
           StoryGalleryPicker,
           {
             open: storyGalleryOpen,
-            language: state.language,
+            language,
             onClose: closeStoryGallery,
             onOpenCamera: () => {
               closeStoryGallery();
@@ -58051,7 +59121,7 @@ function App() {
           InstagramCamera,
           {
             open: storyInstagramCameraOpen,
-            language: state.language,
+            language,
             onClose: () => setStoryInstagramCameraOpen(false),
             onCapture: (cap) => {
               setStoryInstagramCameraOpen(false);
@@ -58063,7 +59133,7 @@ function App() {
           CameraCaptureShareScreen,
           {
             draft: storyCameraDraft,
-            language: state.language,
+            language,
             onClose: () => setStoryCameraDraft(null)
           }
         ),
@@ -58157,6 +59227,73 @@ const ProfileNavBtn = reactExports.memo(function ProfileNavBtn2({
     }
   );
 });
+function parsePx(raw) {
+  const n = parseFloat(raw);
+  return Number.isFinite(n) ? Math.max(0, n) : 0;
+}
+function readCssVar(name) {
+  if (typeof document === "undefined") return 0;
+  return parsePx(getComputedStyle(document.documentElement).getPropertyValue(name));
+}
+function probeEnvInset(edge) {
+  if (typeof document === "undefined" || !document.body) return 0;
+  const el = document.createElement("div");
+  el.style.cssText = "position:fixed;visibility:hidden;pointer-events:none;padding:0;" + (edge === "top" ? "padding-top:env(safe-area-inset-top)" : edge === "bottom" ? "padding-bottom:env(safe-area-inset-bottom)" : edge === "left" ? "padding-left:env(safe-area-inset-left)" : "padding-right:env(safe-area-inset-right)");
+  document.body.appendChild(el);
+  const style = getComputedStyle(el);
+  const v = edge === "top" ? style.paddingTop : edge === "bottom" ? style.paddingBottom : edge === "left" ? style.paddingLeft : style.paddingRight;
+  el.remove();
+  return parsePx(v);
+}
+function iosStatusBarFallback() {
+  if (typeof window === "undefined") return 0;
+  const ua = navigator.userAgent || "";
+  if (!/iPhone|iPad|iPod/i.test(ua)) return 0;
+  const longSide = Math.max(window.screen.width, window.screen.height);
+  if (longSide >= 812) return 47;
+  return 20;
+}
+function syncSafeAreaCssVars() {
+  if (typeof document === "undefined") return;
+  const root = document.documentElement;
+  const envTop = probeEnvInset("top");
+  const envBottom = probeEnvInset("bottom");
+  const envLeft = probeEnvInset("left");
+  const envRight = probeEnvInset("right");
+  const swiftTop = readCssVar("--retweet-safe-top");
+  const swiftBottom = readCssVar("--retweet-safe-bottom");
+  const swiftLeft = readCssVar("--retweet-safe-left");
+  const swiftRight = readCssVar("--retweet-safe-right");
+  let top = Math.max(envTop, swiftTop);
+  let bottom = Math.max(envBottom, swiftBottom);
+  let left = Math.max(envLeft, swiftLeft);
+  let right = Math.max(envRight, swiftRight);
+  const nativeOrIos = isNativeCapacitorShell() || root.classList.contains("retweet-native-shell") || /iPhone|iPad|iPod/i.test(navigator.userAgent || "");
+  if (nativeOrIos && top < 20) {
+    top = Math.max(top, iosStatusBarFallback());
+  }
+  root.style.setProperty("--sat", `${top}px`);
+  root.style.setProperty("--sab", `${bottom}px`);
+  root.style.setProperty("--sal", `${left}px`);
+  root.style.setProperty("--sar", `${right}px`);
+}
+let booted = false;
+function initSafeAreaBootstrap() {
+  if (typeof window === "undefined" || booted) return;
+  booted = true;
+  const tick = () => syncSafeAreaCssVars();
+  tick();
+  requestAnimationFrame(tick);
+  window.setTimeout(tick, 0);
+  window.setTimeout(tick, 120);
+  window.setTimeout(tick, 400);
+  window.addEventListener("retweet-safe-area-change", tick, { passive: true });
+  window.addEventListener("resize", tick, { passive: true });
+  window.visualViewport?.addEventListener("resize", tick, { passive: true });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") tick();
+  });
+}
 function WebAppRoot() {
   const [ready, setReady] = reactExports.useState(false);
   const [bootState, setBootState] = reactExports.useState(null);
@@ -58175,6 +59312,7 @@ function WebAppRoot() {
     }
     installNativeTextSelectionGuard();
     warmGlobalPointerBackRouter();
+    initSafeAreaBootstrap();
     clearStaleApiConfig();
     if (isNativeCapacitorShell()) {
       void initNativeKeyboardLayout();
