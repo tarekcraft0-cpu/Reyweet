@@ -106,7 +106,9 @@ export function applyCloseStackTransforms(
   }
   const w = Math.max(260, Math.round(Number.isFinite(cap) ? cap : 390));
   const pullPx = dismissPull * w;
-  publishChatDismissRoomTx(Math.round(w - pullPx) - w);
+  const inboxTx = Math.round(w - pullPx);
+  /** نفس إزاحة القائمة — يظهر الشريط من اليمين مع الصفحة المكشوفة وليس فوق المحادثة */
+  publishChatDismissRoomTx(inboxTx);
   return { progress, dismissPull, roomRadius };
 }
 

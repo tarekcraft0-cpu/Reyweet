@@ -40,6 +40,7 @@ export function BottomNavSheet({
     <BottomNavDragContext.Provider value={{ shouldSuppressTap: combinedSuppress }}>
       <div
         data-floating-nav-host
+        data-chat-exit-nav-drive={externalHideDrive ? "true" : undefined}
         dir="ltr"
         role="navigation"
         aria-label="شريط التنقل"

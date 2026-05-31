@@ -34,6 +34,11 @@
   height: auto;
 }
 
+/** أثناء سحب خروج المحادثة — الشريط يظهر فقط في الشريط المكشوف من القائمة (يمين) */
+[data-floating-nav-host][data-chat-exit-nav-drive="true"] {
+  clip-path: inset(0 0 0 calc(var(--retweet-chat-dismiss-pull, 0) * 100%));
+}
+
 /* إخفاء شريط التمرير في جميع المتصفحات */
 .hide-scrollbar {
   -ms-overflow-style: none;  /* Internet Explorer 10+ */

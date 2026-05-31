@@ -6,7 +6,7 @@ import {
   type CSSProperties,
 } from "react";
 export const NAV_HIDE_PROGRESS_CSS_VAR = "--retweet-nav-hide-progress";
-/** إزاحة أفقية لغرفة المحادثة — يُطبَّق على الشريط السفلي أثناء سحب الخروج */
+/** إزاحة أفقية لقائمة المحادثات — يُطبَّق على الشريط السفلي أثناء سحب الخروج (من اليمين مع القائمة) */
 export const CHAT_DISMISS_ROOM_TX_VAR = "--retweet-chat-dismiss-room-tx";
 export const REELS_NAV_COLLAPSE_PROGRESS_VAR = "--retweet-reels-nav-collapse-progress";
 
