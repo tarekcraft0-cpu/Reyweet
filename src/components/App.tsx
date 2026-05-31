@@ -14,7 +14,7 @@ import { useGlobalOverlayBack } from "@/hooks/useGlobalOverlayBack";
 import { type PagerTab } from "./MainTabPager";
 import { MainTabStack } from "./MainTabStack";
 // import { StoryViewer } from "./StoryViewer";
-import { QURAN_CHANNEL_ID, useAppActions, useAppLanguage, useAppTheme, useCurrentUser, useCurrentUserId, useIsGuestSelector, useAccountSessionKey, useAccountSwitching, useUnreadMessageCount, useUnreadNotificationCount } from "@/lib/store";
+import { QURAN_CHANNEL_ID, useAppActions, useAppLanguage, useAppTheme, useAppState, useCurrentUser, useCurrentUserId, useIsGuestSelector, useAccountSessionKey, useAccountSwitching, useUnreadMessageCount, useUnreadNotificationCount, userById } from "@/lib/store";
 import { useProfiledRender, startPerfSession, markPerfUserAction } from "@/lib/renderProfiler";
 import { STORY_FULLSCREEN_EVENT } from "@/lib/storyChrome";
 import {
@@ -112,6 +112,7 @@ export function App() {
   useProfiledRender("App");
   const currentUser = useCurrentUser();
   const currentUserId = useCurrentUserId();
+  const state = useAppState();
   const accountSwitching = useAccountSwitching();
   const accountSessionKey = useAccountSessionKey();
   const isGuest = useIsGuestSelector();

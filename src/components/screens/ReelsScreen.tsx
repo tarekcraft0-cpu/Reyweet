@@ -13,12 +13,12 @@ import { useIsTabActive } from "@/lib/tabActiveContext";
 import { useScreenPerf } from "@/lib/useScreenPerf";
 import {
   useAppActions,
-  useAppLanguage,
   useCurrentUser,
   useIsGuestSelector,
   usePosts,
   useReelsPosts,
   useAppSelector,
+  useAppState,
   userById,
   visibleMediaNotes,
   isMutual,
@@ -299,28 +299,12 @@ export const ReelsScreen = memo(function ReelsScreen({
   const currentUser = useCurrentUser();
   const isGuest = useIsGuestSelector();
   const posts = usePosts();
-  const lang = useAppLanguage();
   const users = useAppSelector(s => s.users);
-  const mediaNotes = useAppSelector(s => s.mediaNotes);
+  const state = useAppState();
   const isTabActive = useIsTabActive("reels");
   useScreenPerf("ReelsScreen", { active: isTabActive });
   const t = useT();
   const me = currentUser!;
-  const notesState = useMemo(
-    () =>
-      ({
-        users,
-        mediaNotes,
-        currentUserId: me.id,
-        posts: [],
-        stories: [],
-        chats: [],
-        notifications: [],
-        language: lang,
-        theme: "light",
-      }) as import("@/lib/types").AppState,
-    [users, mediaNotes, me.id, lang],
-  );
   const allReels = useReelsPosts(me.id, me.blocked ?? []);
 
   const guestBlock = () => {
@@ -674,7 +658,7 @@ export const ReelsScreen = memo(function ReelsScreen({
           const media = normalizePostMedia(r);
           const liked = r.likes.includes(me.id);
           const reposted = r.reposts.includes(me.id);
-          const notes = visibleMediaNotes(notesState, "post", r.id, me.id).slice(0, 8);
+          const notes = visibleMediaNotes(state, "post", r.id, me.id).slice(0, 8);
           const isActive = isTabActive && activeReelId === r.id;
 
           return (
