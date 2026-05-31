@@ -21,9 +21,14 @@ function viewerCanSeePost(viewerId: string, post: Post, usersById: Map<string, U
 }
 
 /** خلاصة الرئيسية من posts.json + المتابعات الحية — لا تعتمد على لقطة العميل القديمة */
-export async function buildHomeFeedForViewer(viewerId: string): Promise<{
+export async function buildHomeFeedForViewer(
+  viewerId: string,
+  opts?: { limit?: number; before?: number },
+): Promise<{
   posts: Post[];
   users: User[];
+  hasMore: boolean;
+  nextCursor?: number;
 }> {
   let state = (await getSnapshot(viewerId)) as AppState | null;
   if (!state) state = await buildMinimalAppState(viewerId);
@@ -33,14 +38,30 @@ export async function buildHomeFeedForViewer(viewerId: string): Promise<{
   state = coerceAppStateForClient(state);
 
   const usersById = new Map((state.users || []).map(u => [u.id, u]));
-  const posts = (state.posts || [])
+  let posts = (state.posts || [])
     .filter(p => viewerCanSeePost(viewerId, p, usersById))
     .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+
+  if (opts?.before && Number.isFinite(opts.before)) {
+    posts = posts.filter(p => (p.createdAt ?? 0) < opts.before!);
+  }
+
+  const limit = opts?.limit && opts.limit > 0 ? Math.min(50, opts.limit) : 0;
+  let hasMore = false;
+  if (limit > 0) {
+    hasMore = posts.length > limit;
+    posts = posts.slice(0, limit);
+  }
 
   const authorIds = new Set<string>([viewerId]);
   for (const p of posts) authorIds.add(p.userId);
 
   const users = (state.users || []).filter(u => authorIds.has(u.id));
 
-  return { posts, users };
+  return {
+    posts,
+    users,
+    hasMore,
+    nextCursor: posts.length ? posts[posts.length - 1]!.createdAt : undefined,
+  };
 }

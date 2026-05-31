@@ -68,7 +68,8 @@ async function flushSnapshotPostsToDb(authorIds: string[]): Promise<void> {
 export async function buildUserPostsForViewer(
   profileUserId: string,
   viewerId: string,
-): Promise<{ posts: Post[]; users: User[] }> {
+  opts?: { limit?: number; before?: number },
+): Promise<{ posts: Post[]; users: User[]; hasMore: boolean; nextCursor?: number }> {
   const authorIds = authorIdsForFounderProfile(profileUserId) ?? [profileUserId];
   const authorSet = new Set(authorIds);
 
@@ -120,7 +121,17 @@ export async function buildUserPostsForViewer(
     }
   }
 
-  const posts = [...byId.values()].sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+  let posts = [...byId.values()].sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+
+  if (opts?.before && Number.isFinite(opts.before)) {
+    posts = posts.filter(p => (p.createdAt ?? 0) < opts.before!);
+  }
+  const limit = opts?.limit && opts.limit > 0 ? Math.min(50, opts.limit) : 0;
+  let hasMore = false;
+  if (limit > 0) {
+    hasMore = posts.length > limit;
+    posts = posts.slice(0, limit);
+  }
 
   const needIds = new Set<string>(authorIds);
   for (const p of posts) needIds.add(p.userId);
@@ -161,5 +172,5 @@ export async function buildUserPostsForViewer(
     } as User);
   }
 
-  return { posts, users };
+  return { posts, users, hasMore, nextCursor: posts.length ? posts[posts.length - 1]!.createdAt : undefined };
 }

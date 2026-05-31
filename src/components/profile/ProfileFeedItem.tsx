@@ -1,4 +1,4 @@
-import { useMemo, useState, startTransition } from "react";
+import { memo, useMemo, useState, startTransition } from "react";
 import { PostOptionsMenu } from "../PostOptionsMenu";
 import { useApp, userById, visibleMediaNotes, isMutual } from "@/lib/store";
 import { formatRelativeTime } from "@/lib/formatRelativeTime";
@@ -19,6 +19,8 @@ import type { MediaNote, Post, ProfileGridTab, ProfileReturnContext } from "@/li
 import { NoteReplySheet } from "../NoteReplySheet";
 import { isDisplayTweet, normalizePostMedia, resolvePostDisplayType } from "@/lib/postMedia";
 import { renderMentionHashtagNodes, createMentionRenderer } from "@/lib/renderMentionHashtagText";
+import { LazyInView } from "../LazyInView";
+import { postFeedSignature } from "@/lib/postFeedSignature";
 
 export function sortProfilePostsNewestFirst(posts: Post[]): Post[] {
   return posts.slice().sort((a, b) => b.createdAt - a.createdAt);
@@ -33,7 +35,8 @@ function ProfileRepostBadge() {
   );
 }
 
-export function ProfileFeedItem({
+export const ProfileFeedItem = memo(
+  function ProfileFeedItem({
   post,
   profileOwnerId,
   gridTab,
@@ -174,12 +177,14 @@ export function ProfileFeedItem({
 
         {renderedPostText && <PostFeedCaption profileInset>{renderedPostText}</PostFeedCaption>}
 
-        <PostFeedMediaBlock
-          post={{ ...post, type: displayType }}
-          postMedia={postMedia}
-          notesOverlay={notesOverlay}
-          profileInset
-        />
+        <LazyInView minHeight="min-h-[10rem]" rootMargin="240px 0px">
+          <PostFeedMediaBlock
+            post={{ ...post, type: displayType }}
+            postMedia={postMedia}
+            notesOverlay={notesOverlay}
+            profileInset
+          />
+        </LazyInView>
 
         <PostFeedActions
           liked={liked}
@@ -270,4 +275,10 @@ export function ProfileFeedItem({
       <NoteReplySheet note={noteToReply} contentLabelAr={postKindAr} onClose={() => setNoteToReply(null)} onSent={onOpenChat} />
     </article>
   );
-}
+  },
+  (prev, next) =>
+    postFeedSignature(prev.post) === postFeedSignature(next.post) &&
+    prev.profileOwnerId === next.profileOwnerId &&
+    prev.gridTab === next.gridTab &&
+    prev.showRepostBadge === next.showRepostBadge,
+);

@@ -1,10 +1,10 @@
-import { r as reactExports, a2 as getAugmentedNamespace, S as getDefaultExportFromCjs, W as jsxRuntimeExports, V as React__default, a3 as React } from "./server-CWcbcS94.js";
+import { r as reactExports, a2 as getAugmentedNamespace, S as getDefaultExportFromCjs, W as jsxRuntimeExports, V as React__default, a3 as React } from "./server-Bhfd37SK.js";
 import require$$0 from "fs";
 import require$$1 from "url";
-import { n as notImplementedClass, a as notImplemented } from "./worker-entry-Ca-BElUX.js";
+import { n as notImplementedClass, a as notImplemented } from "./worker-entry-Cq0OxDtg.js";
 import require$$3 from "http";
 import require$$4 from "https";
-import { r as reactDomExports, R as ReactDOM } from "./router-DaRxnuN8.js";
+import { r as reactDomExports, R as ReactDOM } from "./router-B0dd4zyw.js";
 import require$$0$1 from "util";
 import require$$1$1 from "stream";
 import require$$1$2 from "zlib";
@@ -1616,10 +1616,10 @@ function readSessions() {
     return { order: [], sessions: {} };
   }
 }
-function writeSessions(store) {
+function writeSessions(store2) {
   if (typeof window === "undefined") return;
   try {
-    localStorage.setItem(SESSIONS_KEY, JSON.stringify(store));
+    localStorage.setItem(SESSIONS_KEY, JSON.stringify(store2));
   } catch {
   }
 }
@@ -1631,16 +1631,16 @@ function getAccountSession(userId) {
   return readSessions().sessions[userId] ?? null;
 }
 function upsertAccountSession(meta) {
-  const store = readSessions();
-  store.sessions[meta.userId] = meta;
-  if (!store.order.includes(meta.userId)) store.order.push(meta.userId);
-  writeSessions(store);
+  const store2 = readSessions();
+  store2.sessions[meta.userId] = meta;
+  if (!store2.order.includes(meta.userId)) store2.order.push(meta.userId);
+  writeSessions(store2);
 }
 function removeAccountSession(userId) {
-  const store = readSessions();
-  delete store.sessions[userId];
-  store.order = store.order.filter((id) => id !== userId);
-  writeSessions(store);
+  const store2 = readSessions();
+  delete store2.sessions[userId];
+  store2.order = store2.order.filter((id) => id !== userId);
+  writeSessions(store2);
   try {
     localStorage.removeItem(`${CACHE_PREFIX}${userId}`);
   } catch {
@@ -1705,12 +1705,12 @@ function resolveProfileTogglePeer(currentUserId) {
 function pruneStaleAccountSessions() {
   if (typeof window === "undefined") return;
   for (const id of REMOVED_ACCOUNT_IDS) removeAccountSession(id);
-  const store = readSessions();
+  const store2 = readSessions();
   let changed = false;
-  for (const id of [...store.order]) {
-    if (!store.sessions[id]?.token) {
-      delete store.sessions[id];
-      store.order = store.order.filter((x) => x !== id);
+  for (const id of [...store2.order]) {
+    if (!store2.sessions[id]?.token) {
+      delete store2.sessions[id];
+      store2.order = store2.order.filter((x) => x !== id);
       changed = true;
       try {
         localStorage.removeItem(`${CACHE_PREFIX}${id}`);
@@ -1719,13 +1719,13 @@ function pruneStaleAccountSessions() {
     }
   }
   const seenUsernames = /* @__PURE__ */ new Set();
-  for (const id of [...store.order].reverse()) {
-    const sess = store.sessions[id];
+  for (const id of [...store2.order].reverse()) {
+    const sess = store2.sessions[id];
     if (!sess) continue;
     const uname = sess.username.toLowerCase();
     if (seenUsernames.has(uname)) {
-      delete store.sessions[id];
-      store.order = store.order.filter((x) => x !== id);
+      delete store2.sessions[id];
+      store2.order = store2.order.filter((x) => x !== id);
       changed = true;
       try {
         localStorage.removeItem(`${CACHE_PREFIX}${id}`);
@@ -1735,7 +1735,7 @@ function pruneStaleAccountSessions() {
       seenUsernames.add(uname);
     }
   }
-  if (changed) writeSessions(store);
+  if (changed) writeSessions(store2);
   try {
     const raw = localStorage.getItem(PROFILE_TOGGLE_PEER_KEY);
     if (!raw) return;
@@ -2013,7 +2013,33 @@ function setPersistedAppStateNormalizer(fn) {
 function normalizeRemoteAppState(state) {
   return normalizer ? normalizer(state) : state;
 }
+const store = /* @__PURE__ */ new Map();
+function apiCacheGet(key2) {
+  const e = store.get(key2);
+  if (!e) return null;
+  const now = Date.now();
+  if (now > e.expiresAt) {
+    store.delete(key2);
+    return null;
+  }
+  return { hit: e.data, stale: now > e.staleAt };
+}
+function apiCacheSet(key2, data, ttlMs, staleMs) {
+  const now = Date.now();
+  store.set(key2, {
+    data,
+    expiresAt: now + ttlMs,
+    staleAt: now + (staleMs ?? Math.floor(ttlMs * 0.7))
+  });
+}
+function apiCacheInvalidate(prefix) {
+  for (const k of store.keys()) {
+    if (k.startsWith(prefix)) store.delete(k);
+  }
+}
 const TOKEN_KEY = "retweet_api_token";
+const API_RETRY_STATUSES = /* @__PURE__ */ new Set([502, 503, 504]);
+const API_MAX_RETRIES = 2;
 function getApiBaseUrl() {
   const fromPeek = peekApiBaseUrl();
   let raw = "";
@@ -2129,16 +2155,31 @@ async function apiFetch$1(path, init = {}) {
   const ctl = new AbortController();
   const { timeoutMs: fetchTimeoutMs, ...fetchInit } = init;
   const timer = setTimeout(() => ctl.abort(), fetchTimeoutMs ?? API_FETCH_TIMEOUT_MS);
-  try {
-    const res = await fetch(url2, { ...fetchInit, headers, signal: ctl.signal, cache: "no-store" });
-    if (shouldLogApi()) {
-      const preview = await res.clone().text().then((t2) => t2.length > 400 ? `${t2.slice(0, 400)}…` : t2).catch(() => "");
-      logApi("response", { method, url: url2, status: res.status, ok: res.ok, preview });
+  const doFetch = async (attempt) => {
+    try {
+      const res = await fetch(url2, { ...fetchInit, headers, signal: ctl.signal, cache: "no-store" });
+      if (shouldLogApi()) {
+        const preview = await res.clone().text().then((t2) => t2.length > 400 ? `${t2.slice(0, 400)}…` : t2).catch(() => "");
+        logApi("response", { method, url: url2, status: res.status, ok: res.ok, preview, attempt });
+      }
+      if (API_RETRY_STATUSES.has(res.status) && attempt < API_MAX_RETRIES) {
+        await new Promise((r2) => setTimeout(r2, 400 * (attempt + 1)));
+        return doFetch(attempt + 1);
+      }
+      void Promise.resolve().then(() => accountModerationBridge).then(
+        ({ notifyAccountBannedFromResponse: notifyAccountBannedFromResponse2 }) => notifyAccountBannedFromResponse2(res)
+      );
+      return res;
+    } catch (e) {
+      if (attempt < API_MAX_RETRIES) {
+        await new Promise((r2) => setTimeout(r2, 400 * (attempt + 1)));
+        return doFetch(attempt + 1);
+      }
+      throw e;
     }
-    void Promise.resolve().then(() => accountModerationBridge).then(
-      ({ notifyAccountBannedFromResponse: notifyAccountBannedFromResponse2 }) => notifyAccountBannedFromResponse2(res)
-    );
-    return res;
+  };
+  try {
+    return await doFetch(0);
   } catch (e) {
     const aborted = e instanceof Error && e.name === "AbortError";
     const networkMsg = formatFetchError(e, url2);
@@ -2195,7 +2236,7 @@ async function apiLogin(identifier, password) {
   if (!res.ok) {
     logApi("login-failed", { status: res.status, error: data.error });
     if (res.status === 403 && data.error === "account_banned" && data.banInfo) {
-      return { ok: false, banned: true, banInfo: data.banInfo, error: data.error };
+      return { ok: false, banned: true, banInfo: data.banInfo, error: "account_banned" };
     }
     return { ok: false, error: data.error || `فشل تسجيل الدخول (${res.status})` };
   }
@@ -2208,6 +2249,16 @@ async function apiLogin(identifier, password) {
     };
   }
   if (!data.token || !data.user?.id) return { ok: false, error: "استجابة غير صالحة" };
+  if (data.banned && data.banInfo) {
+    return {
+      ok: true,
+      token: data.token,
+      userId: data.user.id,
+      user: data.user,
+      banned: true,
+      banInfo: data.banInfo
+    };
+  }
   return { ok: true, token: data.token, userId: data.user.id, user: data.user };
 }
 async function apiVerifyLogin(identifier, code) {
@@ -2225,6 +2276,16 @@ async function apiVerifyLogin(identifier, code) {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) return { ok: false, error: data.error || "فشل التحقق" };
   if (!data.token || !data.user?.id) return { ok: false, error: "استجابة غير صالحة" };
+  if (data.banned && data.banInfo) {
+    return {
+      ok: true,
+      token: data.token,
+      userId: data.user.id,
+      user: data.user,
+      banned: true,
+      banInfo: data.banInfo
+    };
+  }
   return { ok: true, token: data.token, userId: data.user.id, user: data.user };
 }
 async function apiGetAuthConfig() {
@@ -2365,17 +2426,33 @@ async function apiSearchUsers(query) {
   const data = await res.json().catch(() => null);
   return data?.users ?? [];
 }
-async function apiFetchUserDirectory() {
+async function apiFetchUserDirectory(opts) {
   const token = getApiToken();
   if (!token) return [];
-  const res = await apiFetch$1(`/v1/users/directory?_=${Date.now()}`, {
+  const cacheKey2 = "dir:all";
+  if (!opts?.force) {
+    const cached2 = apiCacheGet(cacheKey2);
+    if (cached2 && !cached2.stale) return cached2.hit;
+    if (cached2?.stale) {
+      void (async () => {
+        const fresh = await apiFetchUserDirectory({ force: true });
+        if (fresh.length) apiCacheSet(cacheKey2, fresh, 5 * 6e4);
+      })();
+      return cached2.hit;
+    }
+  }
+  const res = await apiFetch$1("/v1/users/directory", {
     method: "GET",
-    token,
-    headers: { "Cache-Control": "no-cache", Pragma: "no-cache" }
+    token
   });
   if (!res.ok) return [];
   const data = await res.json().catch(() => null);
-  return data?.users ?? [];
+  const users = data?.users ?? [];
+  if (users.length) apiCacheSet(cacheKey2, users, 5 * 6e4);
+  return users;
+}
+function invalidateUserDirectoryCache() {
+  apiCacheInvalidate("dir:");
 }
 async function apiIsUsernameAvailable(username, exceptUserId) {
   const u = username.trim().toLowerCase();
@@ -2410,32 +2487,50 @@ async function apiListRecentUsers(limit = 30) {
   const data = await res.json().catch(() => null);
   return data?.users ?? [];
 }
-async function apiFetchHomeFeed(token) {
-  const res = await apiFetch$1("/v1/feed/posts", {
+async function apiFetchHomeFeed(token, opts) {
+  const limit = opts?.limit ?? 30;
+  const qs = new URLSearchParams();
+  qs.set("limit", String(limit));
+  if (opts?.before) qs.set("before", String(opts.before));
+  const path = `/v1/feed/posts?${qs}`;
+  const cacheKey2 = opts?.before ? "" : `feed:home:${limit}`;
+  if (cacheKey2 && !opts?.force) {
+    const cached2 = apiCacheGet(cacheKey2);
+    if (cached2 && cached2.hit.ok && !cached2.stale) return cached2.hit;
+  }
+  const res = await apiFetch$1(path, {
     method: "GET",
-    token,
-    headers: { "Cache-Control": "no-cache", Pragma: "no-cache" }
+    token
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) return { ok: false, error: data.error || "فشل تحميل الفيد" };
-  return {
+  const out = {
     ok: true,
     posts: Array.isArray(data.posts) ? data.posts : [],
-    users: Array.isArray(data.users) ? data.users : []
+    users: Array.isArray(data.users) ? data.users : [],
+    hasMore: !!data.hasMore,
+    nextCursor: data.nextCursor
   };
+  if (cacheKey2 && out.ok) apiCacheSet(cacheKey2, out, 25e3, 15e3);
+  return out;
 }
-async function apiFetchUserPosts(token, userId) {
-  const res = await apiFetch$1(`/v1/users/${encodeURIComponent(userId)}/posts`, {
+async function apiFetchUserPosts(token, userId, opts) {
+  const limit = opts?.limit ?? 40;
+  const qs = new URLSearchParams();
+  qs.set("limit", String(limit));
+  if (opts?.before) qs.set("before", String(opts.before));
+  const res = await apiFetch$1(`/v1/users/${encodeURIComponent(userId)}/posts?${qs}`, {
     method: "GET",
-    token,
-    headers: { "Cache-Control": "no-cache", Pragma: "no-cache" }
+    token
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) return { ok: false, error: data.error || "فشل تحميل المنشورات" };
   return {
     ok: true,
     posts: Array.isArray(data.posts) ? data.posts : [],
-    users: Array.isArray(data.users) ? data.users : []
+    users: Array.isArray(data.users) ? data.users : [],
+    hasMore: !!data.hasMore,
+    nextCursor: data.nextCursor
   };
 }
 async function pullRemoteAppState(token) {
@@ -2754,8 +2849,12 @@ async function apiUploadMedia(token, file, opts) {
   }
   return { ok: true, url: data.url, posterUrl: data.posterUrl };
 }
-async function apiFetchChatMessages(token, chatId) {
-  const res = await apiFetch$1(`/v1/chats/${encodeURIComponent(chatId)}/messages`, {
+async function apiFetchChatMessages(token, chatId, opts) {
+  const qs = new URLSearchParams();
+  if (opts?.limit) qs.set("limit", String(opts.limit));
+  if (opts?.before) qs.set("before", String(opts.before));
+  const suffix = qs.toString() ? `?${qs}` : "";
+  const res = await apiFetch$1(`/v1/chats/${encodeURIComponent(chatId)}/messages${suffix}`, {
     method: "GET",
     token
   });
@@ -2903,6 +3002,7 @@ const apiBackend = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePr
   getApiBaseUrl,
   getApiToken,
   hasApiBackendConnection,
+  invalidateUserDirectoryCache,
   mergeChatMessages,
   mergeChatRecord,
   pullRemoteAppState,
@@ -7267,8 +7367,8 @@ async function readCachedChatMessages(userId, chatId) {
     const db = await openDb$1();
     return await new Promise((resolve, reject) => {
       const tx = db.transaction(STORE, "readonly");
-      const store = tx.objectStore(STORE);
-      const req = store.get(cacheKey(userId, chatId));
+      const store2 = tx.objectStore(STORE);
+      const req = store2.get(cacheKey(userId, chatId));
       req.onsuccess = () => {
         const row = req.result;
         resolve(row?.messages?.length ? row.messages : null);
@@ -7293,8 +7393,8 @@ async function writeCachedChatMessages(userId, chatId, messages) {
     };
     await new Promise((resolve, reject) => {
       const tx = db.transaction(STORE, "readwrite");
-      const store = tx.objectStore(STORE);
-      const req = store.put(row);
+      const store2 = tx.objectStore(STORE);
+      const req = store2.put(row);
       req.onsuccess = () => resolve();
       req.onerror = () => reject(req.error);
       tx.oncomplete = () => db.close();
@@ -7302,6 +7402,72 @@ async function writeCachedChatMessages(userId, chatId, messages) {
   } catch {
   }
 }
+const ACCOUNT_MODERATION_EVENT = "retweet-account-moderation";
+function isBannedAccountStatus(status) {
+  return status === "BANNED" || status === "TEMP_BANNED" || status === "PERMANENTLY_BANNED";
+}
+function moderationNoticeShownKey(userId, noticeId) {
+  return `retweet_mod_notice_shown_${userId}_${noticeId}`;
+}
+function restoredAppealShownKey(userId, appealId) {
+  return moderationNoticeShownKey(userId, appealId);
+}
+function hasModerationNoticeBeenShown(userId, noticeId) {
+  if (!userId || !noticeId || typeof localStorage === "undefined") return false;
+  try {
+    return localStorage.getItem(moderationNoticeShownKey(userId, noticeId)) === "1";
+  } catch {
+    return false;
+  }
+}
+function hasRestoredAppealBeenShown(userId, appealId) {
+  return hasModerationNoticeBeenShown(userId, appealId);
+}
+function markModerationNoticeShown(userId, noticeId) {
+  if (!userId || !noticeId || typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(moderationNoticeShownKey(userId, noticeId), "1");
+  } catch {
+  }
+}
+function markRestoredAppealShown(userId, appealId) {
+  markModerationNoticeShown(userId, appealId);
+}
+function dispatchAccountModeration(detail) {
+  if (typeof window === "undefined") return;
+  try {
+    window.dispatchEvent(
+      new CustomEvent(ACCOUNT_MODERATION_EVENT, { detail })
+    );
+  } catch {
+  }
+}
+async function notifyAccountBannedFromResponse(res) {
+  if (res.status !== 403) return;
+  try {
+    const data = await res.clone().json();
+    if (data.error === "account_banned" && data.banInfo) {
+      dispatchAccountModeration({
+        banInfo: data.banInfo,
+        accountStatus: data.banInfo.accountStatus
+      });
+    }
+  } catch {
+  }
+}
+const accountModerationBridge = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+  __proto__: null,
+  ACCOUNT_MODERATION_EVENT,
+  dispatchAccountModeration,
+  hasModerationNoticeBeenShown,
+  hasRestoredAppealBeenShown,
+  isBannedAccountStatus,
+  markModerationNoticeShown,
+  markRestoredAppealShown,
+  moderationNoticeShownKey,
+  notifyAccountBannedFromResponse,
+  restoredAppealShownKey
+}, Symbol.toStringTag, { value: "Module" }));
 const overlayById = /* @__PURE__ */ new Map();
 function getPublicProfileOverlay(userId) {
   return overlayById.get(userId);
@@ -7831,6 +7997,18 @@ function mergePostsServerAuthoritative(localPosts, remotePosts) {
 }
 function mergeHomeFeedIntoState(state, feed) {
   const posts = mergePostsServerAuthoritative(state.posts || [], feed.posts || []);
+  const usersById = new Map(state.users.map((u) => [u.id, u]));
+  for (const u of feed.users || []) {
+    const prev = usersById.get(u.id);
+    usersById.set(u.id, prev ? mergeUserFromServer(prev, u) : { ...u, password: "" });
+  }
+  return { ...state, posts, users: [...usersById.values()] };
+}
+function mergeHomeFeedAppendIntoState(state, feed) {
+  const ids = new Set((state.posts || []).map((p) => p.id));
+  const newPosts = (feed.posts || []).filter((p) => p?.id && !ids.has(p.id) && !locallyRemovedPostIds.has(p.id));
+  if (!newPosts.length && !(feed.users || []).length) return state;
+  const posts = [...state.posts || [], ...newPosts].sort((a, b) => b.createdAt - a.createdAt);
   const usersById = new Map(state.users.map((u) => [u.id, u]));
   for (const u of feed.users || []) {
     const prev = usersById.get(u.id);
@@ -8664,7 +8842,7 @@ function buildMultiAccountState(activeUserId, primary, previous, apiUser, opts) 
     }
   );
 }
-async function applyApiAuthSuccess(token, user, previous, addAccount) {
+async function applyApiAuthSuccess(token, user, previous, addAccount, opts) {
   if (addAccount && previous.currentUserId && !isGuestUserId(previous.currentUserId)) {
     await flushCurrentAccountToServer(previous);
   }
@@ -8677,6 +8855,17 @@ async function applyApiAuthSuccess(token, user, previous, addAccount) {
   });
   setLastActiveUserId(user.id);
   setApiToken(token);
+  if (opts?.skipRemotePull) {
+    const fallback = ensureAuthUserInState(
+      scopeAppStateToAccount(user.id, { ...previous, currentUserId: user.id }),
+      user.id,
+      user
+    );
+    saveAccountStateCache(user.id, fallback);
+    const { markServerHydrated: markServerHydrated2 } = await import("./remotePushGate-DaTPuI7n.js");
+    markServerHydrated2(user.id, fallback);
+    return { ok: true, state: fallback };
+  }
   const remote = await Promise.race([
     pullRemoteAppState(token),
     new Promise((resolve) => {
@@ -8938,6 +9127,8 @@ function AppProvider({
   const stateRef = reactExports.useRef(state);
   stateRef.current = state;
   const [accountSwitching, setAccountSwitching] = reactExports.useState(false);
+  const [feedHasMore, setFeedHasMore] = reactExports.useState(true);
+  const feedLoadMoreBusyRef = reactExports.useRef(false);
   const [accountSessionKey, setAccountSessionKey] = reactExports.useState(
     () => `sess-${state.currentUserId || "guest"}-0`
   );
@@ -9335,7 +9526,12 @@ function AppProvider({
     const q = username.trim();
     if (apiBackendEnabled()) {
       const r2 = await apiLogin(q, password);
-      if (!r2.ok) return { ok: false, error: r2.error };
+      if (!r2.ok) {
+        if (r2.banned && r2.banInfo) {
+          return { ok: false, error: "حسابك موقوف — سجّل الدخول مجدداً بعد تحديث التطبيق" };
+        }
+        return { ok: false, error: r2.error };
+      }
       if ("requiresOtp" in r2 && r2.requiresOtp) {
         return {
           ok: true,
@@ -9345,9 +9541,23 @@ function AppProvider({
         };
       }
       const adding = !!(stateRef.current.currentUserId && !isGuestUserId(stateRef.current.currentUserId));
-      const applied = await applyApiAuthSuccess(r2.token, r2.user, stateRef.current, adding);
+      const isBannedLogin = "banned" in r2 && r2.banned && r2.banInfo;
+      const applied = await applyApiAuthSuccess(
+        r2.token,
+        r2.user,
+        stateRef.current,
+        adding,
+        isBannedLogin ? { skipRemotePull: true } : void 0
+      );
       if (!applied.ok) return { ok: false, error: applied.error };
       setStateRaw(applied.state);
+      if (isBannedLogin && r2.banInfo) {
+        dispatchAccountModeration({
+          banInfo: r2.banInfo,
+          accountStatus: r2.banInfo.accountStatus
+        });
+        return { ok: true };
+      }
       void Promise.resolve().then(() => feedVisibility).then(({ requestAuthFeedRefresh: requestAuthFeedRefresh2 }) => requestAuthFeedRefresh2());
       return { ok: true };
     }
@@ -9382,9 +9592,23 @@ function AppProvider({
     const r2 = await apiVerifyLogin(q, code);
     if (!r2.ok) return { ok: false, error: r2.error };
     const adding = !!(stateRef.current.currentUserId && !isGuestUserId(stateRef.current.currentUserId));
-    const applied = await applyApiAuthSuccess(r2.token, r2.user, stateRef.current, adding);
+    const isBannedLogin = "banned" in r2 && r2.banned && r2.banInfo;
+    const applied = await applyApiAuthSuccess(
+      r2.token,
+      r2.user,
+      stateRef.current,
+      adding,
+      isBannedLogin ? { skipRemotePull: true } : void 0
+    );
     if (!applied.ok) return { ok: false, error: applied.error };
     setStateRaw(applied.state);
+    if (isBannedLogin && r2.banInfo) {
+      dispatchAccountModeration({
+        banInfo: r2.banInfo,
+        accountStatus: r2.banInfo.accountStatus
+      });
+      return { ok: true };
+    }
     void Promise.resolve().then(() => feedVisibility).then(({ requestAuthFeedRefresh: requestAuthFeedRefresh2 }) => requestAuthFeedRefresh2());
     return { ok: true };
   };
@@ -9588,6 +9812,8 @@ function AppProvider({
     }
   };
   const logout = () => {
+    for (const t of typingIndicatorTimersRef.values()) clearTimeout(t);
+    typingIndicatorTimersRef.clear();
     disconnectRealtimeSocketHard();
     const leaving = stateRef.current.currentUserId;
     if (leaving && !isGuestUserId(leaving)) {
@@ -10861,7 +11087,7 @@ function AppProvider({
       });
     }
     const fetchId = stateKey;
-    const remote = await apiFetchChatMessages(token, fetchId);
+    const remote = await apiFetchChatMessages(token, fetchId, { limit: 80 });
     if (remote.length === 0) return;
     void writeCachedChatMessages(uid2, stateKey, remote);
     setState((s) => {
@@ -11950,18 +12176,41 @@ function AppProvider({
   const refreshFeedFromServer = reactExports.useCallback(async () => {
     if (!apiBackendEnabled() || !getApiToken() || isGuestUserId(stateRef.current.currentUserId)) return;
     const token = getApiToken();
-    const feed = await apiFetchHomeFeed(token);
+    const feed = await apiFetchHomeFeed(token, { limit: 30 });
     if (!feed.ok) return;
+    setFeedHasMore(!!feed.hasMore);
     reactExports.startTransition(() => {
       setStateRaw((s) => mergeHomeFeedIntoState(s, feed));
     });
-    void refreshUserDirectory();
-  }, [setStateRaw, refreshUserDirectory]);
+  }, [setStateRaw]);
+  const loadMoreFeedFromServer = reactExports.useCallback(async () => {
+    if (!feedHasMore || feedLoadMoreBusyRef.current) return;
+    if (!apiBackendEnabled() || !getApiToken() || isGuestUserId(stateRef.current.currentUserId)) return;
+    const posts = stateRef.current.posts || [];
+    const oldest = posts.length ? Math.min(...posts.map((p) => p.createdAt ?? 0)) : void 0;
+    if (!oldest) return;
+    feedLoadMoreBusyRef.current = true;
+    try {
+      const token = getApiToken();
+      const feed = await apiFetchHomeFeed(token, { limit: 30, before: oldest });
+      if (!feed.ok) return;
+      setFeedHasMore(!!feed.hasMore);
+      if (!feed.posts.length) {
+        setFeedHasMore(false);
+        return;
+      }
+      reactExports.startTransition(() => {
+        setStateRaw((s) => mergeHomeFeedAppendIntoState(s, feed));
+      });
+    } finally {
+      feedLoadMoreBusyRef.current = false;
+    }
+  }, [feedHasMore, setStateRaw]);
   const refreshProfilePostsFromServer = reactExports.useCallback(
     async (profileUserId) => {
       if (!apiBackendEnabled() || !getApiToken() || isGuestUserId(stateRef.current.currentUserId)) return;
       const token = getApiToken();
-      const res = await apiFetchUserPosts(token, profileUserId);
+      const res = await apiFetchUserPosts(token, profileUserId, { limit: 40 });
       if (!res.ok) return;
       reactExports.startTransition(() => {
         setStateRaw((s) => {
@@ -12467,7 +12716,7 @@ function AppProvider({
       if (document.visibilityState !== "visible") return;
       scheduleFeedPull();
       scheduleRemoteSync();
-    }, 45e3);
+    }, 6e4);
     return () => window.clearInterval(id);
   }, [state.currentUserId, scheduleRemoteSync, scheduleFeedPull]);
   reactExports.useEffect(() => {
@@ -12475,7 +12724,7 @@ function AppProvider({
     void refreshUserDirectory();
     const id = window.setInterval(() => {
       if (document.visibilityState === "visible") void refreshUserDirectory();
-    }, 9e4);
+    }, 12e4);
     return () => window.clearInterval(id);
   }, [state.currentUserId, refreshUserDirectory]);
   const ctxActionsRef = reactExports.useRef({});
@@ -12487,6 +12736,7 @@ function AppProvider({
     refreshUserDirectory,
     refreshFromServer,
     refreshFeedFromServer,
+    loadMoreFeedFromServer,
     refreshProfilePostsFromServer,
     hardResyncFromServer,
     refreshSocialRelation,
@@ -12566,6 +12816,18 @@ function AppProvider({
     answerStoryQuiz,
     rateStorySlider
   };
+  const unreadMessageCount = reactExports.useMemo(() => {
+    const meId = state.currentUserId;
+    if (!meId || isGuestUserId(meId)) return 0;
+    let count2 = 0;
+    for (const chat of state.chats ?? []) {
+      if (!Array.isArray(chat.members) || !chat.members.includes(meId)) continue;
+      for (const m of chat.messages ?? []) {
+        if (m.senderId !== meId && m.status !== "read") count2++;
+      }
+    }
+    return Math.min(count2, 99);
+  }, [state.chats, state.currentUserId]);
   const value2 = reactExports.useMemo(
     () => ({
       state,
@@ -12574,9 +12836,11 @@ function AppProvider({
       accountSwitching,
       accountSessionKey,
       typingUserByChatId: {},
+      unreadMessageCount,
+      feedHasMore,
       ...ctxActionsRef.current
     }),
-    [state, currentUser, isGuest, accountSwitching, accountSessionKey]
+    [state, currentUser, isGuest, accountSwitching, accountSessionKey, unreadMessageCount, feedHasMore]
   );
   const uiLang = state.language === "en" && typeof localStorage !== "undefined" && localStorage.getItem("retweet_lang_en") === "1" ? "en" : "ar";
   return /* @__PURE__ */ jsxRuntimeExports.jsx(AppLanguageCtx.Provider, { value: uiLang, children: /* @__PURE__ */ jsxRuntimeExports.jsx(TypingCtx.Provider, { value: typingUserByChatId, children: /* @__PURE__ */ jsxRuntimeExports.jsx(AppCtx.Provider, { value: value2, children }) }) });
@@ -18439,20 +18703,20 @@ function txDone(tx) {
     tx.onabort = () => reject(tx.error);
   });
 }
-async function idbGet(store, key2) {
+async function idbGet(store2, key2) {
   const db = await openDb();
   return new Promise((resolve, reject) => {
-    const tx = db.transaction(store, "readonly");
-    const req = tx.objectStore(store).get(key2);
+    const tx = db.transaction(store2, "readonly");
+    const req = tx.objectStore(store2).get(key2);
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
 }
-async function idbPut(store, key2, value2) {
+async function idbPut(store2, key2, value2) {
   const db = await openDb();
-  const tx = db.transaction(store, "readwrite");
-  const os = tx.objectStore(store);
-  if (store === META) os.put(value2);
+  const tx = db.transaction(store2, "readwrite");
+  const os = tx.objectStore(store2);
+  if (store2 === META) os.put(value2);
   else os.put(value2, key2);
   await txDone(tx);
 }
@@ -24211,7 +24475,8 @@ function HomeScreen({
     isGuest,
     refreshFromServer,
     refreshFeedFromServer,
-    refreshUserDirectory
+    loadMoreFeedFromServer,
+    feedHasMore
   } = useApp();
   const isHomeTabActive = useIsTabActive("home");
   const t = useT();
@@ -24222,6 +24487,8 @@ function HomeScreen({
   const [commentsSheetPostId, setCommentsSheetPostId] = reactExports.useState(null);
   const [sheetCommentDraft, setSheetCommentDraft] = reactExports.useState("");
   const [feedTick, setFeedTick] = reactExports.useState(0);
+  const [visibleCount, setVisibleCount] = reactExports.useState(25);
+  const loadMoreSentinelRef = reactExports.useRef(null);
   const [pullHint, setPullHint] = reactExports.useState(false);
   const touchRef = reactExports.useRef({ y0: 0, active: false });
   const me = currentUser;
@@ -24338,21 +24605,8 @@ function HomeScreen({
     refreshFromServer({ urgent: true });
   }, [isHomeTabActive, isGuest, refreshFromServer, refreshFeedFromServer]);
   reactExports.useEffect(() => {
-    if (!isHomeTabActive || isGuest) return;
-    const tick = () => {
-      if (document.visibilityState !== "visible") return;
-      void refreshFeedFromServer();
-    };
-    const id = window.setInterval(tick, 2e4);
-    const onVis = () => {
-      if (document.visibilityState === "visible") void refreshFeedFromServer();
-    };
-    document.addEventListener("visibilitychange", onVis);
-    return () => {
-      window.clearInterval(id);
-      document.removeEventListener("visibilitychange", onVis);
-    };
-  }, [isHomeTabActive, isGuest, refreshFeedFromServer]);
+    setVisibleCount(25);
+  }, [feedTick, isHomeTabActive]);
   const feed = reactExports.useMemo(() => {
     const seen = /* @__PURE__ */ new Set();
     return (state.posts ?? []).filter((p) => {
@@ -24361,6 +24615,20 @@ function HomeScreen({
       return canViewPostInHomeFeed(state, me.id, p, me);
     }).sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
   }, [state.posts, state.users, me, feedTick]);
+  reactExports.useEffect(() => {
+    const el = loadMoreSentinelRef.current;
+    if (!el || !isHomeTabActive) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((e) => e.isIntersecting)) return;
+        setVisibleCount((c) => c + 20);
+        if (feedHasMore) void loadMoreFeedFromServer();
+      },
+      { root: null, rootMargin: "400px 0px", threshold: 0 }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [isHomeTabActive, feedHasMore, loadMoreFeedFromServer, feed.length]);
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative flex min-h-0 flex-1 flex-col bg-background", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs(
       "div",
@@ -24402,7 +24670,9 @@ function HomeScreen({
             )
           ] }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { "aria-label": "الخلاصة", className: "relative z-0 flex flex-col bg-background", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(HomeFeedActionsProvider, { value: feedActions, children: feed.map((p) => /* @__PURE__ */ jsxRuntimeExports.jsx(HomeFeedPostItem, { post: p }, p.id)) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(HomeFeedActionsProvider, { value: feedActions, children: feed.slice(0, visibleCount).map((p) => /* @__PURE__ */ jsxRuntimeExports.jsx(HomeFeedPostItem, { post: p }, p.id)) }),
+            feed.length > visibleCount && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "py-4 text-center text-xs text-muted-foreground", children: "جاري تحميل المزيد…" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { ref: loadMoreSentinelRef, className: "h-1 w-full shrink-0", "aria-hidden": true }),
             feed.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-center text-muted-foreground py-12", children: t("noPosts") })
           ] }),
           shareTarget && /* @__PURE__ */ jsxRuntimeExports.jsx(ShareSheet, { target: { kind: "post", post: shareTarget }, onClose: () => setShareTarget(null) }),
@@ -29223,14 +29493,14 @@ async function ensureNativeKeyboardBridge() {
   nativeListenersReady = true;
   try {
     const [{ Keyboard }, { Capacitor: Capacitor2 }] = await Promise.all([
-      import("./index-Di2JAumm.js"),
+      import("./index-BYVvGNCg.js"),
       Promise.resolve().then(() => index$1)
     ]);
     if (!Capacitor2.isNativePlatform()) return;
     useNativeKeyboardHeight = true;
     document.documentElement.classList.add("retweet-kb-body-resize");
     try {
-      const { KeyboardResize } = await import("./index-Di2JAumm.js");
+      const { KeyboardResize } = await import("./index-BYVvGNCg.js");
       await Keyboard.setResizeMode({ mode: KeyboardResize.Body });
     } catch {
     }
@@ -40350,235 +40620,238 @@ function ProfileRepostBadge() {
     /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "إعادة نشر" })
   ] });
 }
-function ProfileFeedItem({
-  post,
-  profileOwnerId,
-  gridTab,
-  onOpenProfile,
-  onOpenChat,
-  showRepostBadge = false
-}) {
-  const { state, currentUser, toggleLike, toggleRepost, addComment, deleteComment } = useApp();
-  const livePost = reactExports.useMemo(
-    () => state.posts.find((p) => p.id === post.id) ?? post,
-    [state.posts, post]
-  );
-  const [noteToReply, setNoteToReply] = reactExports.useState(null);
-  const [comment, setComment] = reactExports.useState("");
-  const [shareOpen, setShareOpen] = reactExports.useState(false);
-  const [commentsOpen, setCommentsOpen] = reactExports.useState(false);
-  const [menuOpen, setMenuOpen] = reactExports.useState(false);
-  const lang = state.language;
-  const t = useT();
-  const me = currentUser;
-  const author = userById(state, post.userId);
-  const safeLikes = Array.isArray(livePost.likes) ? livePost.likes : [];
-  const safeReposts = Array.isArray(livePost.reposts) ? livePost.reposts : [];
-  const safeComments = (Array.isArray(livePost.comments) ? livePost.comments : []).filter(
-    (c) => !!c && typeof c === "object" && typeof c.id === "string" && typeof c.userId === "string" && typeof c.text === "string"
-  ).map((c) => ({
-    id: c.id,
-    userId: c.userId,
-    text: c.text,
-    createdAt: typeof c.createdAt === "number" ? c.createdAt : Date.now()
-  }));
-  const liked = safeLikes.includes(me.id);
-  const reposted = safeReposts.includes(me.id);
-  const postKindAr = post.type === "tweet" ? "التغريدة" : post.type === "reel" ? "الريلز" : "المنشور";
-  const displayType = reactExports.useMemo(
-    () => resolvePostDisplayType(post),
-    [post.type, post.image, post.video, post.text]
-  );
-  const isTweet = isDisplayTweet(post);
-  const postMedia = reactExports.useMemo(() => normalizePostMedia(post), [post.image, post.video, post.type]);
-  const returnCtx = (commentsOpenCtx) => ({
-    postId: post.id,
-    tab: "profile",
-    commentsOpen: !!commentsOpenCtx,
-    profileUserId: profileOwnerId,
-    profileGridTab: gridTab
-  });
-  const renderedPostText = reactExports.useMemo(() => {
-    if (!post.text) return null;
-    return renderMentionHashtagNodes(post.text, {
-      renderMention: createMentionRenderer({
-        users: state.users,
-        onUserClick: (userId) => reactExports.startTransition(() => onOpenProfile(userId, returnCtx(false)))
-      }),
-      renderHashtag: (h, key2) => /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-primary", children: h }, key2)
+const ProfileFeedItem = reactExports.memo(
+  function ProfileFeedItem2({
+    post,
+    profileOwnerId,
+    gridTab,
+    onOpenProfile,
+    onOpenChat,
+    showRepostBadge = false
+  }) {
+    const { state, currentUser, toggleLike, toggleRepost, addComment, deleteComment } = useApp();
+    const livePost = reactExports.useMemo(
+      () => state.posts.find((p) => p.id === post.id) ?? post,
+      [state.posts, post]
+    );
+    const [noteToReply, setNoteToReply] = reactExports.useState(null);
+    const [comment, setComment] = reactExports.useState("");
+    const [shareOpen, setShareOpen] = reactExports.useState(false);
+    const [commentsOpen, setCommentsOpen] = reactExports.useState(false);
+    const [menuOpen, setMenuOpen] = reactExports.useState(false);
+    const lang = state.language;
+    const t = useT();
+    const me = currentUser;
+    const author = userById(state, post.userId);
+    const safeLikes = Array.isArray(livePost.likes) ? livePost.likes : [];
+    const safeReposts = Array.isArray(livePost.reposts) ? livePost.reposts : [];
+    const safeComments = (Array.isArray(livePost.comments) ? livePost.comments : []).filter(
+      (c) => !!c && typeof c === "object" && typeof c.id === "string" && typeof c.userId === "string" && typeof c.text === "string"
+    ).map((c) => ({
+      id: c.id,
+      userId: c.userId,
+      text: c.text,
+      createdAt: typeof c.createdAt === "number" ? c.createdAt : Date.now()
+    }));
+    const liked = safeLikes.includes(me.id);
+    const reposted = safeReposts.includes(me.id);
+    const postKindAr = post.type === "tweet" ? "التغريدة" : post.type === "reel" ? "الريلز" : "المنشور";
+    const displayType = reactExports.useMemo(
+      () => resolvePostDisplayType(post),
+      [post.type, post.image, post.video, post.text]
+    );
+    const isTweet = isDisplayTweet(post);
+    const postMedia = reactExports.useMemo(() => normalizePostMedia(post), [post.image, post.video, post.type]);
+    const returnCtx = (commentsOpenCtx) => ({
+      postId: post.id,
+      tab: "profile",
+      commentsOpen: !!commentsOpenCtx,
+      profileUserId: profileOwnerId,
+      profileGridTab: gridTab
     });
-  }, [post.text, state.users, onOpenProfile]);
-  if (!author) return null;
-  if (isTweet) {
-    return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-      showRepostBadge && /* @__PURE__ */ jsxRuntimeExports.jsx(ProfileRepostBadge, {}),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(
-          ProfileTweetCard,
-          {
-            post,
-            author,
-            lang,
-            liked,
-            reposted,
-            users: state.users,
-            onOpenAuthor: () => reactExports.startTransition(() => onOpenProfile(author.id, returnCtx(false))),
-            onOpenProfile: (id) => reactExports.startTransition(() => onOpenProfile(id, returnCtx(false))),
-            onLike: () => reactExports.startTransition(() => toggleLike(post.id)),
-            onRepost: () => reactExports.startTransition(() => toggleRepost(post.id)),
-            onAddComment: (text) => addComment(post.id, text),
-            onMenu: me.id === post.userId ? () => setMenuOpen((v) => !v) : void 0,
-            commentsAnchorId: `profile-feed-comments-${post.id}`
-          }
-        ),
-        menuOpen && /* @__PURE__ */ jsxRuntimeExports.jsx(PostOptionsMenu, { post, onClose: () => setMenuOpen(false) })
-      ] })
-    ] });
-  }
-  const detailNotes = visibleMediaNotes(state, "post", post.id, me.id).slice(0, 8).filter((n) => {
-    const nu = userById(state, n.authorId);
-    return nu && (n.authorId === me.id || isMutual(state, me.id, n.authorId));
-  });
-  const notesOverlay = detailNotes.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(
-    PostMediaNotesOverlay,
-    {
-      notes: detailNotes,
-      noteUsers: detailNotes.map((n) => userById(state, n.authorId)).filter(Boolean),
-      canReply: (n) => n.authorId !== me.id,
-      onReply: (n) => setNoteToReply(n),
-      onOpenAuthor: (id) => reactExports.startTransition(() => onOpenProfile(id, returnCtx(false)))
-    }
-  ) : null;
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("article", { className: "border-b border-border/80", children: [
-    showRepostBadge && /* @__PURE__ */ jsxRuntimeExports.jsx(ProfileRepostBadge, {}),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs(
-      FeedPostColumnShell,
-      {
-        author,
-        onOpenAuthor: () => reactExports.startTransition(() => onOpenProfile(author.id, returnCtx(false))),
-        children: [
+    const renderedPostText = reactExports.useMemo(() => {
+      if (!post.text) return null;
+      return renderMentionHashtagNodes(post.text, {
+        renderMention: createMentionRenderer({
+          users: state.users,
+          onUserClick: (userId) => reactExports.startTransition(() => onOpenProfile(userId, returnCtx(false)))
+        }),
+        renderHashtag: (h, key2) => /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-primary", children: h }, key2)
+      });
+    }, [post.text, state.users, onOpenProfile]);
+    if (!author) return null;
+    if (isTweet) {
+      return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+        showRepostBadge && /* @__PURE__ */ jsxRuntimeExports.jsx(ProfileRepostBadge, {}),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(
-            ProfilePostMetaRow,
+            ProfileTweetCard,
             {
+              post,
               author,
-              timeLabel: formatRelativeTime(post.createdAt, lang),
-              onOpenAuthor: () => reactExports.startTransition(() => onOpenProfile(author.id, returnCtx(false))),
-              onMenu: me.id === post.userId ? () => setMenuOpen((v) => !v) : void 0
-            }
-          ),
-          menuOpen && /* @__PURE__ */ jsxRuntimeExports.jsx(PostOptionsMenu, { post, onClose: () => setMenuOpen(false) }),
-          renderedPostText && /* @__PURE__ */ jsxRuntimeExports.jsx(PostFeedCaption, { profileInset: true, children: renderedPostText }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            PostFeedMediaBlock,
-            {
-              post: { ...post, type: displayType },
-              postMedia,
-              notesOverlay,
-              profileInset: true
-            }
-          ),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            PostFeedActions,
-            {
+              lang,
               liked,
               reposted,
-              likeCount: safeLikes.length,
-              commentCount: safeComments.length,
-              repostCount: safeReposts.length,
+              users: state.users,
+              onOpenAuthor: () => reactExports.startTransition(() => onOpenProfile(author.id, returnCtx(false))),
+              onOpenProfile: (id) => reactExports.startTransition(() => onOpenProfile(id, returnCtx(false))),
               onLike: () => reactExports.startTransition(() => toggleLike(post.id)),
-              onComment: () => setCommentsOpen((o) => !o),
               onRepost: () => reactExports.startTransition(() => toggleRepost(post.id)),
-              onShare: () => setShareOpen(true),
-              profileInset: true
+              onAddComment: (text) => addComment(post.id, text),
+              onMenu: me.id === post.userId ? () => setMenuOpen((v) => !v) : void 0,
+              commentsAnchorId: `profile-feed-comments-${post.id}`
             }
-          )
-        ]
-      }
-    ),
-    commentsOpen && /* @__PURE__ */ jsxRuntimeExports.jsxs(
-      "div",
+          ),
+          menuOpen && /* @__PURE__ */ jsxRuntimeExports.jsx(PostOptionsMenu, { post, onClose: () => setMenuOpen(false) })
+        ] })
+      ] });
+    }
+    const detailNotes = visibleMediaNotes(state, "post", post.id, me.id).slice(0, 8).filter((n) => {
+      const nu = userById(state, n.authorId);
+      return nu && (n.authorId === me.id || isMutual(state, me.id, n.authorId));
+    });
+    const notesOverlay = detailNotes.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+      PostMediaNotesOverlay,
       {
-        id: `profile-feed-comments-${post.id}`,
-        dir: "rtl",
-        className: "space-y-2 border-t border-border/60 px-3 pb-4 pt-3 scroll-mt-24 ms-[3.25rem] me-3",
-        children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-sm font-semibold", children: t("comments") }),
-          safeComments.map((c) => {
-            const u = userById(state, c.userId);
-            return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-2 text-sm", dir: "ltr", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx(
-                "button",
-                {
-                  type: "button",
-                  className: "shrink-0 rounded-full",
-                  onClick: () => reactExports.startTransition(() => u && onOpenProfile(u.id, returnCtx(true))),
-                  children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u?.username || "?", src: u?.avatar, size: 28 })
-                }
-              ),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1", dir: "rtl", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        notes: detailNotes,
+        noteUsers: detailNotes.map((n) => userById(state, n.authorId)).filter(Boolean),
+        canReply: (n) => n.authorId !== me.id,
+        onReply: (n) => setNoteToReply(n),
+        onOpenAuthor: (id) => reactExports.startTransition(() => onOpenProfile(id, returnCtx(false)))
+      }
+    ) : null;
+    return /* @__PURE__ */ jsxRuntimeExports.jsxs("article", { className: "border-b border-border/80", children: [
+      showRepostBadge && /* @__PURE__ */ jsxRuntimeExports.jsx(ProfileRepostBadge, {}),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        FeedPostColumnShell,
+        {
+          author,
+          onOpenAuthor: () => reactExports.startTransition(() => onOpenProfile(author.id, returnCtx(false))),
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              ProfilePostMetaRow,
+              {
+                author,
+                timeLabel: formatRelativeTime(post.createdAt, lang),
+                onOpenAuthor: () => reactExports.startTransition(() => onOpenProfile(author.id, returnCtx(false))),
+                onMenu: me.id === post.userId ? () => setMenuOpen((v) => !v) : void 0
+              }
+            ),
+            menuOpen && /* @__PURE__ */ jsxRuntimeExports.jsx(PostOptionsMenu, { post, onClose: () => setMenuOpen(false) }),
+            renderedPostText && /* @__PURE__ */ jsxRuntimeExports.jsx(PostFeedCaption, { profileInset: true, children: renderedPostText }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(LazyInView, { minHeight: "min-h-[10rem]", rootMargin: "240px 0px", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+              PostFeedMediaBlock,
+              {
+                post: { ...post, type: displayType },
+                postMedia,
+                notesOverlay,
+                profileInset: true
+              }
+            ) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              PostFeedActions,
+              {
+                liked,
+                reposted,
+                likeCount: safeLikes.length,
+                commentCount: safeComments.length,
+                repostCount: safeReposts.length,
+                onLike: () => reactExports.startTransition(() => toggleLike(post.id)),
+                onComment: () => setCommentsOpen((o) => !o),
+                onRepost: () => reactExports.startTransition(() => toggleRepost(post.id)),
+                onShare: () => setShareOpen(true),
+                profileInset: true
+              }
+            )
+          ]
+        }
+      ),
+      commentsOpen && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "div",
+        {
+          id: `profile-feed-comments-${post.id}`,
+          dir: "rtl",
+          className: "space-y-2 border-t border-border/60 px-3 pb-4 pt-3 scroll-mt-24 ms-[3.25rem] me-3",
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-sm font-semibold", children: t("comments") }),
+            safeComments.map((c) => {
+              const u = userById(state, c.userId);
+              return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-2 text-sm", dir: "ltr", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(
                   "button",
                   {
                     type: "button",
-                    className: "font-semibold",
+                    className: "shrink-0 rounded-full",
                     onClick: () => reactExports.startTransition(() => u && onOpenProfile(u.id, returnCtx(true))),
-                    children: [
-                      "@",
-                      u?.username
-                    ]
+                    children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u?.username || "?", src: u?.avatar, size: 28 })
                   }
                 ),
-                " ",
-                /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "[overflow-wrap:break-word]", children: c.text })
-              ] }),
-              c.userId === me.id && /* @__PURE__ */ jsxRuntimeExports.jsx(
-                "button",
-                {
-                  type: "button",
-                  onClick: () => {
-                    if (!window.confirm("حذف هذا التعليق؟")) return;
-                    deleteComment(livePost.id, c.id);
-                  },
-                  className: "shrink-0 rounded-full p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive",
-                  "aria-label": "حذف التعليق",
-                  children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15 })
-                }
-              )
-            ] }, c.id);
-          }),
-          safeComments.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground", children: "—" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs(
-            "form",
-            {
-              onSubmit: (e) => {
-                e.preventDefault();
-                if (comment.trim()) {
-                  addComment(livePost.id, comment);
-                  setComment("");
-                }
-              },
-              className: "flex gap-2 pt-1",
-              children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "input",
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1", dir: "rtl", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                    "button",
+                    {
+                      type: "button",
+                      className: "font-semibold",
+                      onClick: () => reactExports.startTransition(() => u && onOpenProfile(u.id, returnCtx(true))),
+                      children: [
+                        "@",
+                        u?.username
+                      ]
+                    }
+                  ),
+                  " ",
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "[overflow-wrap:break-word]", children: c.text })
+                ] }),
+                c.userId === me.id && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  "button",
                   {
-                    value: comment,
-                    onChange: (e) => setComment(e.target.value),
-                    placeholder: t("send"),
-                    className: "flex-1 rounded-full bg-input px-4 py-2 text-sm outline-none"
+                    type: "button",
+                    onClick: () => {
+                      if (!window.confirm("حذف هذا التعليق؟")) return;
+                      deleteComment(livePost.id, c.id);
+                    },
+                    className: "shrink-0 rounded-full p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive",
+                    "aria-label": "حذف التعليق",
+                    children: /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 15 })
                   }
-                ),
-                comment.trim() && /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "submit", className: "shrink-0 text-sm font-semibold text-primary", children: t("send") })
-              ]
-            }
-          )
-        ]
-      }
-    ),
-    shareOpen && /* @__PURE__ */ jsxRuntimeExports.jsx(ShareSheet, { target: { kind: "post", post }, onClose: () => setShareOpen(false) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(NoteReplySheet, { note: noteToReply, contentLabelAr: postKindAr, onClose: () => setNoteToReply(null), onSent: onOpenChat })
-  ] });
-}
+                )
+              ] }, c.id);
+            }),
+            safeComments.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground", children: "—" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "form",
+              {
+                onSubmit: (e) => {
+                  e.preventDefault();
+                  if (comment.trim()) {
+                    addComment(livePost.id, comment);
+                    setComment("");
+                  }
+                },
+                className: "flex gap-2 pt-1",
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "input",
+                    {
+                      value: comment,
+                      onChange: (e) => setComment(e.target.value),
+                      placeholder: t("send"),
+                      className: "flex-1 rounded-full bg-input px-4 py-2 text-sm outline-none"
+                    }
+                  ),
+                  comment.trim() && /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "submit", className: "shrink-0 text-sm font-semibold text-primary", children: t("send") })
+                ]
+              }
+            )
+          ]
+        }
+      ),
+      shareOpen && /* @__PURE__ */ jsxRuntimeExports.jsx(ShareSheet, { target: { kind: "post", post }, onClose: () => setShareOpen(false) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(NoteReplySheet, { note: noteToReply, contentLabelAr: postKindAr, onClose: () => setNoteToReply(null), onSent: onOpenChat })
+    ] });
+  },
+  (prev, next) => postFeedSignature(prev.post) === postFeedSignature(next.post) && prev.profileOwnerId === next.profileOwnerId && prev.gridTab === next.gridTab && prev.showRepostBadge === next.showRepostBadge
+);
 const TAB_TITLE_AR = {
   all: "الخلاصة الشاملة",
   tweets: "التغريدات",
@@ -56497,72 +56770,6 @@ function ModerationGateShell({
   if (typeof document === "undefined") return shell;
   return reactDomExports.createPortal(shell, document.body);
 }
-const ACCOUNT_MODERATION_EVENT = "retweet-account-moderation";
-function isBannedAccountStatus(status) {
-  return status === "BANNED" || status === "TEMP_BANNED" || status === "PERMANENTLY_BANNED";
-}
-function moderationNoticeShownKey(userId, noticeId) {
-  return `retweet_mod_notice_shown_${userId}_${noticeId}`;
-}
-function restoredAppealShownKey(userId, appealId) {
-  return moderationNoticeShownKey(userId, appealId);
-}
-function hasModerationNoticeBeenShown(userId, noticeId) {
-  if (!userId || !noticeId || typeof localStorage === "undefined") return false;
-  try {
-    return localStorage.getItem(moderationNoticeShownKey(userId, noticeId)) === "1";
-  } catch {
-    return false;
-  }
-}
-function hasRestoredAppealBeenShown(userId, appealId) {
-  return hasModerationNoticeBeenShown(userId, appealId);
-}
-function markModerationNoticeShown(userId, noticeId) {
-  if (!userId || !noticeId || typeof localStorage === "undefined") return;
-  try {
-    localStorage.setItem(moderationNoticeShownKey(userId, noticeId), "1");
-  } catch {
-  }
-}
-function markRestoredAppealShown(userId, appealId) {
-  markModerationNoticeShown(userId, appealId);
-}
-function dispatchAccountModeration(detail) {
-  if (typeof window === "undefined") return;
-  try {
-    window.dispatchEvent(
-      new CustomEvent(ACCOUNT_MODERATION_EVENT, { detail })
-    );
-  } catch {
-  }
-}
-async function notifyAccountBannedFromResponse(res) {
-  if (res.status !== 403) return;
-  try {
-    const data = await res.clone().json();
-    if (data.error === "account_banned" && data.banInfo) {
-      dispatchAccountModeration({
-        banInfo: data.banInfo,
-        accountStatus: data.banInfo.accountStatus
-      });
-    }
-  } catch {
-  }
-}
-const accountModerationBridge = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
-  __proto__: null,
-  ACCOUNT_MODERATION_EVENT,
-  dispatchAccountModeration,
-  hasModerationNoticeBeenShown,
-  hasRestoredAppealBeenShown,
-  isBannedAccountStatus,
-  markModerationNoticeShown,
-  markRestoredAppealShown,
-  moderationNoticeShownKey,
-  notifyAccountBannedFromResponse,
-  restoredAppealShownKey
-}, Symbol.toStringTag, { value: "Module" }));
 const NAV_ICON = "pointer-events-none h-6 w-6 shrink-0 text-white";
 const NAV_MSG_ICON = "pointer-events-none h-[26px] w-[26px] shrink-0 text-white";
 function App() {
@@ -56578,7 +56785,8 @@ function App() {
     isGuest,
     exitGuestBrowseMode,
     joinGroupByInviteCode,
-    logout
+    logout,
+    unreadMessageCount
   } = useApp();
   const t = useT();
   const [banInfo, setBanInfo] = reactExports.useState(null);
@@ -57387,17 +57595,6 @@ function App() {
     profilePanel,
     viewProfileId
   ]);
-  const unreadMessages = reactExports.useMemo(() => {
-    const meId = state.currentUserId;
-    if (!meId || isGuestUserId(meId)) return 0;
-    let count2 = 0;
-    for (const chat of state.chats ?? []) {
-      if (!Array.isArray(chat.members) || !chat.members.includes(meId)) continue;
-      const msgs = chat.messages ?? [];
-      count2 += msgs.filter((m) => m.senderId !== meId && m.status !== "read").length;
-    }
-    return Math.min(count2, 99);
-  }, [state.chats, state.currentUserId]);
   if (!currentUser) {
     if (getApiToken() && apiBackendEnabled()) {
       return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-h-dvh flex-col items-center justify-center gap-4 bg-background px-6 text-center text-sm text-muted-foreground", children: [
@@ -57482,7 +57679,7 @@ function App() {
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "div",
     {
-      className: "retweet-no-select-pane select-none relative mx-auto flex w-full max-w-md flex-col overflow-x-hidden overscroll-none bg-background " + (nativeShell ? "" : "supports-[height:100dvh] ") + (banOverlayActive ? "pointer-events-none " : "") + appShellHeight + " overflow-hidden " + (immersiveOverlay || settingsImmersive || nativeShell ? "pt-0" : "pt-[var(--sat,0px)]"),
+      className: "retweet-no-select-pane select-none relative mx-auto flex w-full max-w-md flex-col overflow-x-hidden overscroll-none bg-background " + (nativeShell ? "" : "supports-[height:100dvh] ") + (banOverlayActive ? "pointer-events-none " : "") + appShellHeight + " overflow-hidden " + (immersiveOverlay || settingsImmersive ? "pt-0" : "pt-[var(--sat,0px)]"),
       style: {
         [NAV_FLOAT_INSET_CSS_VAR]: NAV_FLOAT_INSET_DEFAULT,
         [NAV_SCROLL_PADDING_CSS_VAR]: NAV_SCROLL_PADDING_DEFAULT
@@ -57495,7 +57692,7 @@ function App() {
         !hideAppHeader && /* @__PURE__ */ jsxRuntimeExports.jsx(
           "header",
           {
-            className: "sticky top-0 bg-background/90 backdrop-blur border-b border-border px-4 py-3 " + (showChatThreadChrome ? "z-[195] pointer-events-none" : "z-30"),
+            className: "sticky top-0 z-30 bg-background/90 backdrop-blur border-b border-border px-4 py-3 [padding-inline-start:max(1rem,var(--sal,0px))] [padding-inline-end:max(1rem,var(--sar,0px))] " + (showChatThreadChrome ? "z-[195] pointer-events-none" : ""),
             style: showChatThreadChrome ? {
               opacity: `calc(1 - var(${CHAT_STACK_PROGRESS_VAR}, 0) * 0.4)`,
               transform: `translate3d(calc(var(${CHAT_STACK_PROGRESS_VAR}, 0) * 18%), 0, 0)`
@@ -57522,7 +57719,16 @@ function App() {
                 /* @__PURE__ */ jsxRuntimeExports.jsx(VerifiedMarkForUser, { user: currentUser, size: 18 }),
                 /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronDown, { size: 16, className: "shrink-0" })
               ] }) }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex items-center gap-2", children: !isGuest && /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => setModal("create"), "aria-label": t("create"), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 24 }) }) })
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex items-center gap-2 min-w-[2.5rem] justify-end", children: !isGuest && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "button",
+                {
+                  type: "button",
+                  onClick: () => setModal("create"),
+                  "aria-label": t("create"),
+                  className: "flex h-10 w-10 items-center justify-center rounded-full hover:bg-secondary active:scale-95",
+                  children: /* @__PURE__ */ jsxRuntimeExports.jsx(Plus, { size: 24 })
+                }
+              ) })
             ] })
           }
         ),
@@ -57562,12 +57768,12 @@ function App() {
                 ),
                 /* @__PURE__ */ jsxRuntimeExports.jsx(NavBtn, { tabIndex: 3, onClick: () => onNavSelectIndex(3), children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative", children: [
                   /* @__PURE__ */ jsxRuntimeExports.jsx(DirectMessagesNavIcon, { className: NAV_MSG_ICON, strokeWidth: 2 }),
-                  unreadMessages > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  unreadMessageCount > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(
                     "span",
                     {
                       className: "pointer-events-none absolute -top-1.5 -right-1.5 flex min-w-[16px] h-4 items-center justify-center rounded-full px-[3px] text-[10px] font-bold leading-none text-white",
                       style: { backgroundColor: "#FF3B30" },
-                      children: unreadMessages > 9 ? "9+" : unreadMessages
+                      children: unreadMessageCount > 9 ? "9+" : unreadMessageCount
                     }
                   )
                 ] }) }),

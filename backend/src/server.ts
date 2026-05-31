@@ -71,8 +71,7 @@ import type { Chat } from "../../src/lib/types.js";
 import { attachRealtimeSocket } from "./lib/realtimeSocket.js";
 import { clearUserTyping, setUserTyping } from "./lib/chatPresence.js";
 import {
-  hydrateChatsFromUserMessages,
-  hydrateStateWithMessages,
+  hydrateAppStateMessages,
   messageRowToClient,
 } from "./lib/chatMessages.js";
 import { mergeDbUsersIntoAppState } from "./lib/mergeDbUsers.js";
@@ -337,10 +336,19 @@ async function finishAuthLogin(
   deviceFingerprint: string,
   deviceLabel: string,
 ): Promise<Response> {
-  const bannedRes = await loginBanResponse(user, res);
-  if (bannedRes) return bannedRes;
   await trustDeviceForUser(user.id, deviceFingerprint, deviceLabel, req);
   const token = signAccessToken(user.id);
+  const status = await resolveEffectiveStatus(user.id);
+  if (isBannedStatus(status)) {
+    const banInfo = await getBanInfoForUser(user);
+    return res.json({
+      token,
+      user: authUserPayload(user),
+      banned: true,
+      banInfo,
+      accountStatus: status,
+    });
+  }
   return res.json({ token, user: authUserPayload(user) });
 }
 
@@ -787,8 +795,7 @@ app.get("/v1/app-state", authMiddleware, async (req, res) => {
   state = await mergeDbUsersIntoAppState(state);
   state = await mergeDbPostsIntoAppState(state);
   state = await mergeSocialGraphIntoAppState(state);
-  state = await hydrateChatsFromUserMessages(state, userId);
-  state = await hydrateStateWithMessages(state, userId);
+  state = await hydrateAppStateMessages(state, userId);
   const feedStories = storiesVisibleToViewer(state as AppState, userId);
   state = scopeAppStateToOwner(userId, state as AppState);
   state = { ...(state as AppState), stories: feedStories };
@@ -800,9 +807,15 @@ app.get("/v1/app-state", authMiddleware, async (req, res) => {
 app.get("/v1/feed/posts", authMiddleware, async (req, res) => {
   setNoStoreApi(res);
   const viewerId = (req as Request & { userId: string }).userId;
+  const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 30));
+  const beforeRaw = Number(req.query.before);
+  const before = Number.isFinite(beforeRaw) && beforeRaw > 0 ? beforeRaw : undefined;
   const { buildHomeFeedForViewer } = await import("./lib/homeFeed.js");
-  const { posts, users } = await buildHomeFeedForViewer(viewerId);
-  return res.json({ posts, users, fetchedAt: Date.now() });
+  const { posts, users, hasMore, nextCursor } = await buildHomeFeedForViewer(viewerId, {
+    limit,
+    before,
+  });
+  return res.json({ posts, users, hasMore, nextCursor, fetchedAt: Date.now() });
 });
 
 app.get("/v1/users/search", authMiddleware, async (req, res) => {
@@ -872,8 +885,15 @@ app.get("/v1/users/:userId/posts", authMiddleware, async (req, res) => {
     return res.status(404).json({ error: "not found" });
   }
   const { buildUserPostsForViewer } = await import("./lib/userPosts.js");
-  const { posts, users } = await buildUserPostsForViewer(profileUserId, viewerId);
-  return res.json({ posts, users, fetchedAt: Date.now() });
+  const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 40));
+  const beforeRaw = Number(req.query.before);
+  const before = Number.isFinite(beforeRaw) && beforeRaw > 0 ? beforeRaw : undefined;
+  const { posts, users, hasMore, nextCursor } = await buildUserPostsForViewer(
+    profileUserId,
+    viewerId,
+    { limit, before },
+  );
+  return res.json({ posts, users, hasMore, nextCursor, fetchedAt: Date.now() });
 });
 
 app.get("/v1/users/:userId", authMiddleware, async (req, res) => {
@@ -1000,8 +1020,7 @@ app.put("/v1/app-state", authMiddleware, async (req, res) => {
     /** لقطة العميل قد تكون أقدم من posts.json — ندمج المنشورات من القرص قبل الحفظ */
     let snapshotReady = await mergeDbPostsIntoAppState(cleanWithProfiles);
     snapshotReady = await mergeSocialGraphIntoAppState(snapshotReady);
-    snapshotReady = await hydrateChatsFromUserMessages(snapshotReady, userId);
-    snapshotReady = await hydrateStateWithMessages(snapshotReady, userId);
+    snapshotReady = await hydrateAppStateMessages(snapshotReady, userId);
     const { sanitizeCorruptHiddenMessages } = await import("./lib/sanitizeHiddenMessages.js");
     snapshotReady = sanitizeCorruptHiddenMessages(snapshotReady, userId);
     await setSnapshot(userId, snapshotReady);
@@ -1255,7 +1274,22 @@ app.get("/v1/chats/:chatId/messages", authMiddleware, async (req, res) => {
       }
     }
     const visible = filterMessagesForParticipant(userId, chat, rows);
-    return res.json({ messages: visible.map(messageRowToClient) });
+    let sorted = visible.sort(
+      (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+    );
+    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 60));
+    const beforeRaw = Number(req.query.before);
+    if (Number.isFinite(beforeRaw) && beforeRaw > 0) {
+      sorted = sorted.filter(r => new Date(r.createdAt).getTime() < beforeRaw);
+    }
+    const hasMore = sorted.length > limit;
+    const page = sorted.slice(Math.max(0, sorted.length - limit));
+    const nextCursor = page.length ? new Date(page[0]!.createdAt).getTime() : undefined;
+    return res.json({
+      messages: page.map(messageRowToClient),
+      hasMore,
+      nextCursor,
+    });
   } catch (e) {
     if (e instanceof ChatAccessError) return res.status(403).json({ error: e.message });
     const msg = e instanceof Error ? e.message : "فشل تحميل الرسائل";

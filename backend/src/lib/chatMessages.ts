@@ -125,9 +125,10 @@ function mergeChatIntoMap(chatsById: Map<string, Chat>, chat: Chat, userId: stri
 export async function hydrateChatsFromUserMessages(
   state: AppState,
   userId: string,
+  prefetchedRows?: Awaited<ReturnType<typeof import("../db/engine.js").listMessagesForUser>>,
 ): Promise<AppState> {
   const { listMessagesForUser } = await import("../db/engine.js");
-  const rows = await listMessagesForUser(userId);
+  const rows = prefetchedRows ?? (await listMessagesForUser(userId));
   if (rows.length === 0) return state;
 
   /** تجميع حسب الزوج (dm:A:B) وليس chatId القديم — يمنع اختفاء محادثات بعد دمج معرّفات legacy */
@@ -229,12 +230,13 @@ export async function hydrateChatsFromUserMessages(
 export async function hydrateStateWithMessages(
   state: AppState,
   userId?: string,
+  prefetchedRows?: Awaited<ReturnType<typeof import("../db/engine.js").listMessagesForUser>>,
 ): Promise<AppState> {
   const { listMessagesForUser } = await import("../db/engine.js");
   const ownerId = userId || state.currentUserId;
   if (!ownerId || state.chats.length === 0) return state;
 
-  const allRows = await listMessagesForUser(ownerId);
+  const allRows = prefetchedRows ?? (await listMessagesForUser(ownerId));
   const rowsByBucket = new Map<string, typeof allRows>();
   for (const row of allRows) {
     const bucket = dmBucketKeyForRow(ownerId, row);
@@ -257,6 +259,15 @@ export async function hydrateStateWithMessages(
       return { ...c, messages: mergeMessageLists(c.messages, remote) };
     }),
   };
+}
+
+/** قراءة messages.json مرة واحدة — يمنع التكرار في GET/PUT app-state */
+export async function hydrateAppStateMessages(state: AppState, userId: string): Promise<AppState> {
+  const { listMessagesForUser } = await import("../db/engine.js");
+  const rows = await listMessagesForUser(userId);
+  let next = await hydrateChatsFromUserMessages(state, userId, rows);
+  next = await hydrateStateWithMessages(next, userId, rows);
+  return next;
 }
 
 export function extractMessagesFromChats(chats: Chat[]): MessageRow[] {

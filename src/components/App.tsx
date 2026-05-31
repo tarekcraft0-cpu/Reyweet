@@ -119,6 +119,7 @@ export function App() {
     exitGuestBrowseMode,
     joinGroupByInviteCode,
     logout,
+    unreadMessageCount,
   } = useApp();
   const t = useT();
   const [banInfo, setBanInfo] = useState<BanInfo | null>(null);
@@ -1023,20 +1024,6 @@ export function App() {
     viewProfileId,
   ]);
 
-  /** رسائل غير مقروءة — يُحدَّث لحظياً عند وصول رسالة أو فتح محادثة
-   *  يجب أن يكون هنا (قبل أي return مشروط) حتى لا ينتهك قاعدة hooks */
-  const unreadMessages = useMemo(() => {
-    const meId = state.currentUserId;
-    if (!meId || isGuestUserId(meId)) return 0;
-    let count = 0;
-    for (const chat of state.chats ?? []) {
-      if (!Array.isArray(chat.members) || !chat.members.includes(meId)) continue;
-      const msgs = chat.messages ?? [];
-      count += msgs.filter(m => m.senderId !== meId && m.status !== "read").length;
-    }
-    return Math.min(count, 99);
-  }, [state.chats, state.currentUserId]);
-
   if (!currentUser) {
     if (getApiToken() && apiBackendEnabled()) {
       return (
@@ -1167,9 +1154,7 @@ export function App() {
         (banOverlayActive ? "pointer-events-none " : "") +
         appShellHeight +
         " overflow-hidden " +
-        (immersiveOverlay || settingsImmersive || nativeShell
-          ? "pt-0"
-          : "pt-[var(--sat,0px)]")
+        (immersiveOverlay || settingsImmersive ? "pt-0" : "pt-[var(--sat,0px)]")
       }
       style={
         {
@@ -1193,8 +1178,9 @@ export function App() {
       {!hideAppHeader && (
       <header
         className={
-          "sticky top-0 bg-background/90 backdrop-blur border-b border-border px-4 py-3 " +
-          (showChatThreadChrome ? "z-[195] pointer-events-none" : "z-30")
+          "sticky top-0 z-30 bg-background/90 backdrop-blur border-b border-border px-4 py-3 " +
+          "[padding-inline-start:max(1rem,var(--sal,0px))] [padding-inline-end:max(1rem,var(--sar,0px))] " +
+          (showChatThreadChrome ? "z-[195] pointer-events-none" : "")
         }
         style={
           showChatThreadChrome
@@ -1243,8 +1229,17 @@ export function App() {
           </div>
           
           {/* Right side - Plus button */}
-          <div className="flex items-center gap-2">
-            {!isGuest && <button onClick={() => setModal("create")} aria-label={t("create")}><Plus size={24} /></button>}
+          <div className="flex items-center gap-2 min-w-[2.5rem] justify-end">
+            {!isGuest && (
+              <button
+                type="button"
+                onClick={() => setModal("create")}
+                aria-label={t("create")}
+                className="flex h-10 w-10 items-center justify-center rounded-full hover:bg-secondary active:scale-95"
+              >
+                <Plus size={24} />
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -1289,12 +1284,12 @@ export function App() {
             <NavBtn tabIndex={3} onClick={() => onNavSelectIndex(3)}>
               <div className="relative">
                 <DirectMessagesNavIcon className={NAV_MSG_ICON} strokeWidth={2} />
-                {unreadMessages > 0 && (
+                {unreadMessageCount > 0 && (
                   <span
                     className="pointer-events-none absolute -top-1.5 -right-1.5 flex min-w-[16px] h-4 items-center justify-center rounded-full px-[3px] text-[10px] font-bold leading-none text-white"
                     style={{ backgroundColor: "#FF3B30" }}
                   >
-                    {unreadMessages > 9 ? "9+" : unreadMessages}
+                    {unreadMessageCount > 9 ? "9+" : unreadMessageCount}
                   </span>
                 )}
               </div>

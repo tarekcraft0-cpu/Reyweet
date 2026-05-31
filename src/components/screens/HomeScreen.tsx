@@ -40,7 +40,8 @@ export function HomeScreen({
     isGuest,
     refreshFromServer,
     refreshFeedFromServer,
-    refreshUserDirectory,
+    loadMoreFeedFromServer,
+    feedHasMore,
   } = useApp();
   const isHomeTabActive = useIsTabActive("home");
   const t = useT();
@@ -51,6 +52,8 @@ export function HomeScreen({
   const [commentsSheetPostId, setCommentsSheetPostId] = useState<string | null>(null);
   const [sheetCommentDraft, setSheetCommentDraft] = useState("");
   const [feedTick, setFeedTick] = useState(0);
+  const [visibleCount, setVisibleCount] = useState(25);
+  const loadMoreSentinelRef = useRef<HTMLDivElement>(null);
   const [pullHint, setPullHint] = useState(false);
   const touchRef = useRef({ y0: 0, active: false });
   const me = currentUser!;
@@ -179,21 +182,8 @@ export function HomeScreen({
   }, [isHomeTabActive, isGuest, refreshFromServer, refreshFeedFromServer]);
 
   useEffect(() => {
-    if (!isHomeTabActive || isGuest) return;
-    const tick = () => {
-      if (document.visibilityState !== "visible") return;
-      void refreshFeedFromServer();
-    };
-    const id = window.setInterval(tick, 20_000);
-    const onVis = () => {
-      if (document.visibilityState === "visible") void refreshFeedFromServer();
-    };
-    document.addEventListener("visibilitychange", onVis);
-    return () => {
-      window.clearInterval(id);
-      document.removeEventListener("visibilitychange", onVis);
-    };
-  }, [isHomeTabActive, isGuest, refreshFeedFromServer]);
+    setVisibleCount(25);
+  }, [feedTick, isHomeTabActive]);
 
   const feed = useMemo(() => {
     const seen = new Set<string>();
@@ -205,6 +195,21 @@ export function HomeScreen({
       })
       .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
   }, [state.posts, state.users, me, feedTick]);
+
+  useEffect(() => {
+    const el = loadMoreSentinelRef.current;
+    if (!el || !isHomeTabActive) return;
+    const io = new IntersectionObserver(
+      entries => {
+        if (!entries.some(e => e.isIntersecting)) return;
+        setVisibleCount(c => c + 20);
+        if (feedHasMore) void loadMoreFeedFromServer();
+      },
+      { root: null, rootMargin: "400px 0px", threshold: 0 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [isHomeTabActive, feedHasMore, loadMoreFeedFromServer, feed.length]);
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col bg-background">
@@ -250,10 +255,14 @@ export function HomeScreen({
 
       <section aria-label="الخلاصة" className="relative z-0 flex flex-col bg-background">
         <HomeFeedActionsProvider value={feedActions}>
-          {feed.map(p => (
+          {feed.slice(0, visibleCount).map(p => (
             <HomeFeedPostItem key={p.id} post={p} />
           ))}
         </HomeFeedActionsProvider>
+        {feed.length > visibleCount && (
+          <p className="py-4 text-center text-xs text-muted-foreground">جاري تحميل المزيد…</p>
+        )}
+        <div ref={loadMoreSentinelRef} className="h-1 w-full shrink-0" aria-hidden />
         {feed.length === 0 && (
           <p className="text-center text-muted-foreground py-12">{t("noPosts")}</p>
         )}

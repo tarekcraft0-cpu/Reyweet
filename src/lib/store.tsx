@@ -101,6 +101,23 @@ function mergeHomeFeedIntoState(
   return { ...state, posts, users: [...usersById.values()] };
 }
 
+/** دمج صفحة إضافية من الفيد (pagination) دون استبدال المنشورات الحالية */
+function mergeHomeFeedAppendIntoState(
+  state: AppState,
+  feed: { posts: Post[]; users: User[] },
+): AppState {
+  const ids = new Set((state.posts || []).map(p => p.id));
+  const newPosts = (feed.posts || []).filter(p => p?.id && !ids.has(p.id) && !locallyRemovedPostIds.has(p.id));
+  if (!newPosts.length && !(feed.users || []).length) return state;
+  const posts = [...(state.posts || []), ...newPosts].sort((a, b) => b.createdAt - a.createdAt);
+  const usersById = new Map(state.users.map(u => [u.id, u]));
+  for (const u of feed.users || []) {
+    const prev = usersById.get(u.id);
+    usersById.set(u.id, prev ? mergeUserFromServer(prev, u) : { ...u, password: "" });
+  }
+  return { ...state, posts, users: [...usersById.values()] };
+}
+
 function mergePostsPreservingLocalDeletes(localPosts: Post[], remotePosts: Post[]): Post[] {
   const now = Date.now();
   pruneLocalRemoveMaps(now);
@@ -233,6 +250,7 @@ import {
   mergeUserFromServer,
   mergeUserProfilePatch,
 } from "./mergeUserSocial";
+import { dispatchAccountModeration } from "./accountModerationBridge";
 import {
   cachePublicProfileFromApi,
   cachePublicProfileFromUser,
@@ -1210,6 +1228,7 @@ async function applyApiAuthSuccess(
   user: ApiAuthUser,
   previous: AppState,
   addAccount: boolean,
+  opts?: { skipRemotePull?: boolean },
 ): Promise<{ ok: true; state: AppState } | { ok: false; error: string }> {
   if (addAccount && previous.currentUserId && !isGuestUserId(previous.currentUserId)) {
     await flushCurrentAccountToServer(previous);
@@ -1224,6 +1243,18 @@ async function applyApiAuthSuccess(
   });
   setLastActiveUserId(user.id);
   setApiToken(token);
+
+  if (opts?.skipRemotePull) {
+    const fallback = ensureAuthUserInState(
+      scopeAppStateToAccount(user.id, { ...previous, currentUserId: user.id }),
+      user.id,
+      user,
+    );
+    saveAccountStateCache(user.id, fallback);
+    const { markServerHydrated } = await import("./remotePushGate");
+    markServerHydrated(user.id, fallback);
+    return { ok: true, state: fallback };
+  }
 
   const remote = await Promise.race([
     pullRemoteAppState(token),
@@ -1454,6 +1485,9 @@ interface Ctx {
   /** جلب الحالة من الخادم فوراً (متابعات، ستوريات، رسائل) */
   refreshFromServer: (opts?: { urgent?: boolean }) => void;
   refreshFeedFromServer: () => Promise<void>;
+  loadMoreFeedFromServer: () => Promise<void>;
+  feedHasMore: boolean;
+  unreadMessageCount: number;
   /** منشورات بروفايل مستخدم آخر (أو ذاتك) من posts.json على الخادم */
   refreshProfilePostsFromServer: (profileUserId: ID) => Promise<void>;
   /** مسح الكاش المحلي للحساب ثم جلب أحدث نسخة من الخادم */
@@ -1733,6 +1767,8 @@ export function AppProvider({
   stateRef.current = state;
 
   const [accountSwitching, setAccountSwitching] = useState(false);
+  const [feedHasMore, setFeedHasMore] = useState(true);
+  const feedLoadMoreBusyRef = useRef(false);
   const [accountSessionKey, setAccountSessionKey] = useState(
     () => `sess-${state.currentUserId || "guest"}-0`,
   );
@@ -2179,7 +2215,12 @@ export function AppProvider({
     const q = username.trim();
     if (apiBackendEnabled()) {
       const r = await apiLogin(q, password);
-      if (!r.ok) return { ok: false, error: r.error };
+      if (!r.ok) {
+        if (r.banned && r.banInfo) {
+          return { ok: false, error: "حسابك موقوف — سجّل الدخول مجدداً بعد تحديث التطبيق" };
+        }
+        return { ok: false, error: r.error };
+      }
       if ("requiresOtp" in r && r.requiresOtp) {
         return {
           ok: true,
@@ -2190,9 +2231,23 @@ export function AppProvider({
       }
       const adding =
         !!(stateRef.current.currentUserId && !isGuestUserId(stateRef.current.currentUserId));
-      const applied = await applyApiAuthSuccess(r.token, r.user, stateRef.current, adding);
+      const isBannedLogin = "banned" in r && r.banned && r.banInfo;
+      const applied = await applyApiAuthSuccess(
+        r.token,
+        r.user,
+        stateRef.current,
+        adding,
+        isBannedLogin ? { skipRemotePull: true } : undefined,
+      );
       if (!applied.ok) return { ok: false, error: applied.error };
       setStateRaw(applied.state);
+      if (isBannedLogin && r.banInfo) {
+        dispatchAccountModeration({
+          banInfo: r.banInfo,
+          accountStatus: r.banInfo.accountStatus,
+        });
+        return { ok: true };
+      }
       void import("./feedVisibility").then(({ requestAuthFeedRefresh }) => requestAuthFeedRefresh());
       return { ok: true };
     }
@@ -2231,9 +2286,23 @@ export function AppProvider({
     if (!r.ok) return { ok: false, error: r.error };
     const adding =
       !!(stateRef.current.currentUserId && !isGuestUserId(stateRef.current.currentUserId));
-    const applied = await applyApiAuthSuccess(r.token, r.user, stateRef.current, adding);
+    const isBannedLogin = "banned" in r && r.banned && r.banInfo;
+    const applied = await applyApiAuthSuccess(
+      r.token,
+      r.user,
+      stateRef.current,
+      adding,
+      isBannedLogin ? { skipRemotePull: true } : undefined,
+    );
     if (!applied.ok) return { ok: false, error: applied.error };
     setStateRaw(applied.state);
+    if (isBannedLogin && r.banInfo) {
+      dispatchAccountModeration({
+        banInfo: r.banInfo,
+        accountStatus: r.banInfo.accountStatus,
+      });
+      return { ok: true };
+    }
     void import("./feedVisibility").then(({ requestAuthFeedRefresh }) => requestAuthFeedRefresh());
     return { ok: true };
   };
@@ -2469,6 +2538,8 @@ export function AppProvider({
   };
 
   const logout = () => {
+    for (const t of typingIndicatorTimersRef.values()) clearTimeout(t);
+    typingIndicatorTimersRef.clear();
     disconnectRealtimeSocketHard();
     const leaving = stateRef.current.currentUserId;
     if (leaving && !isGuestUserId(leaving)) {
@@ -3858,7 +3929,7 @@ export function AppProvider({
     }
 
     const fetchId = stateKey;
-    const remote = await apiFetchChatMessages(token, fetchId);
+    const remote = await apiFetchChatMessages(token, fetchId, { limit: 80 });
     if (remote.length === 0) return;
     void writeCachedChatMessages(uid, stateKey, remote);
     setState(s => {
@@ -5090,19 +5161,43 @@ export function AppProvider({
   const refreshFeedFromServer = useCallback(async () => {
     if (!apiBackendEnabled() || !getApiToken() || isGuestUserId(stateRef.current.currentUserId)) return;
     const token = getApiToken()!;
-    const feed = await apiFetchHomeFeed(token);
+    const feed = await apiFetchHomeFeed(token, { limit: 30 });
     if (!feed.ok) return;
+    setFeedHasMore(!!feed.hasMore);
     startTransition(() => {
       setStateRaw(s => mergeHomeFeedIntoState(s, feed));
     });
-    void refreshUserDirectory();
-  }, [setStateRaw, refreshUserDirectory]);
+  }, [setStateRaw]);
+
+  const loadMoreFeedFromServer = useCallback(async () => {
+    if (!feedHasMore || feedLoadMoreBusyRef.current) return;
+    if (!apiBackendEnabled() || !getApiToken() || isGuestUserId(stateRef.current.currentUserId)) return;
+    const posts = stateRef.current.posts || [];
+    const oldest = posts.length ? Math.min(...posts.map(p => p.createdAt ?? 0)) : undefined;
+    if (!oldest) return;
+    feedLoadMoreBusyRef.current = true;
+    try {
+      const token = getApiToken()!;
+      const feed = await apiFetchHomeFeed(token, { limit: 30, before: oldest });
+      if (!feed.ok) return;
+      setFeedHasMore(!!feed.hasMore);
+      if (!feed.posts.length) {
+        setFeedHasMore(false);
+        return;
+      }
+      startTransition(() => {
+        setStateRaw(s => mergeHomeFeedAppendIntoState(s, feed));
+      });
+    } finally {
+      feedLoadMoreBusyRef.current = false;
+    }
+  }, [feedHasMore, setStateRaw]);
 
   const refreshProfilePostsFromServer = useCallback(
     async (profileUserId: ID) => {
       if (!apiBackendEnabled() || !getApiToken() || isGuestUserId(stateRef.current.currentUserId)) return;
       const token = getApiToken()!;
-      const res = await apiFetchUserPosts(token, profileUserId);
+      const res = await apiFetchUserPosts(token, profileUserId, { limit: 40 });
       if (!res.ok) return;
       startTransition(() => {
         setStateRaw(s => {
@@ -5669,7 +5764,7 @@ export function AppProvider({
       if (document.visibilityState !== "visible") return;
       scheduleFeedPull();
       scheduleRemoteSync();
-    }, 45_000);
+    }, 60_000);
     return () => window.clearInterval(id);
   }, [state.currentUserId, scheduleRemoteSync, scheduleFeedPull]);
 
@@ -5678,13 +5773,20 @@ export function AppProvider({
     void refreshUserDirectory();
     const id = window.setInterval(() => {
       if (document.visibilityState === "visible") void refreshUserDirectory();
-    }, 90_000);
+    }, 120_000);
     return () => window.clearInterval(id);
   }, [state.currentUserId, refreshUserDirectory]);
 
   const ctxActionsRef = useRef({} as Omit<
     Ctx,
-    "state" | "currentUser" | "isGuest" | "accountSwitching" | "accountSessionKey" | "typingUserByChatId"
+    | "state"
+    | "currentUser"
+    | "isGuest"
+    | "accountSwitching"
+    | "accountSessionKey"
+    | "typingUserByChatId"
+    | "unreadMessageCount"
+    | "feedHasMore"
   >);
   ctxActionsRef.current = {
     setState,
@@ -5694,6 +5796,7 @@ export function AppProvider({
     refreshUserDirectory,
     refreshFromServer,
     refreshFeedFromServer,
+    loadMoreFeedFromServer,
     refreshProfilePostsFromServer,
     hardResyncFromServer,
     refreshSocialRelation,
@@ -5774,6 +5877,19 @@ export function AppProvider({
     rateStorySlider,
   };
 
+  const unreadMessageCount = useMemo(() => {
+    const meId = state.currentUserId;
+    if (!meId || isGuestUserId(meId)) return 0;
+    let count = 0;
+    for (const chat of state.chats ?? []) {
+      if (!Array.isArray(chat.members) || !chat.members.includes(meId)) continue;
+      for (const m of chat.messages ?? []) {
+        if (m.senderId !== meId && m.status !== "read") count++;
+      }
+    }
+    return Math.min(count, 99);
+  }, [state.chats, state.currentUserId]);
+
   const value = useMemo<Ctx>(
     () => ({
       state,
@@ -5782,9 +5898,11 @@ export function AppProvider({
       accountSwitching,
       accountSessionKey,
       typingUserByChatId: {} as Record<ID, ID>,
+      unreadMessageCount,
+      feedHasMore,
       ...ctxActionsRef.current,
     }),
-    [state, currentUser, isGuest, accountSwitching, accountSessionKey],
+    [state, currentUser, isGuest, accountSwitching, accountSessionKey, unreadMessageCount, feedHasMore],
   );
 
   const uiLang: "ar" | "en" =

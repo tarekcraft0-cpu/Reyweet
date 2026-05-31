@@ -25,8 +25,12 @@ import { isGroupMembershipSystemContent } from "./groupSystemMessages";
 import { DEFAULT_AVATAR_DATA_URI } from "./defaultAvatar";
 import { getDeviceLabel, getOrCreateDeviceFingerprint } from "./deviceFingerprint";
 import { normalizeRemoteAppState } from "./stateNormalizeBridge";
+import { apiCacheGet, apiCacheInvalidate, apiCacheSet } from "./apiCache";
 
 const TOKEN_KEY = "retweet_api_token";
+
+const API_RETRY_STATUSES = new Set([502, 503, 504]);
+const API_MAX_RETRIES = 2;
 
 /** عنوان الخادم: عيّن VITE_API_URL و VITE_API_URL_MOBILE إلى http://<IPv4-الكمبيوتر>:8788 لنفس شبكة الـ Wi‑Fi (الآيفون لا يصل إلى localhost للكمبيوتر). */
 export function getApiBaseUrl(): string {
@@ -186,20 +190,35 @@ export async function apiFetch(
   const ctl = new AbortController();
   const { timeoutMs: fetchTimeoutMs, ...fetchInit } = init;
   const timer = setTimeout(() => ctl.abort(), fetchTimeoutMs ?? API_FETCH_TIMEOUT_MS);
-  try {
-    const res = await fetch(url, { ...fetchInit, headers, signal: ctl.signal, cache: "no-store" });
-    if (shouldLogApi()) {
-      const preview = await res
-        .clone()
-        .text()
-        .then(t => (t.length > 400 ? `${t.slice(0, 400)}…` : t))
-        .catch(() => "");
-      logApi("response", { method, url, status: res.status, ok: res.ok, preview });
+  const doFetch = async (attempt: number): Promise<Response> => {
+    try {
+      const res = await fetch(url, { ...fetchInit, headers, signal: ctl.signal, cache: "no-store" });
+      if (shouldLogApi()) {
+        const preview = await res
+          .clone()
+          .text()
+          .then(t => (t.length > 400 ? `${t.slice(0, 400)}…` : t))
+          .catch(() => "");
+        logApi("response", { method, url, status: res.status, ok: res.ok, preview, attempt });
+      }
+      if (API_RETRY_STATUSES.has(res.status) && attempt < API_MAX_RETRIES) {
+        await new Promise(r => setTimeout(r, 400 * (attempt + 1)));
+        return doFetch(attempt + 1);
+      }
+      void import("./accountModerationBridge").then(({ notifyAccountBannedFromResponse }) =>
+        notifyAccountBannedFromResponse(res),
+      );
+      return res;
+    } catch (e) {
+      if (attempt < API_MAX_RETRIES) {
+        await new Promise(r => setTimeout(r, 400 * (attempt + 1)));
+        return doFetch(attempt + 1);
+      }
+      throw e;
     }
-    void import("./accountModerationBridge").then(({ notifyAccountBannedFromResponse }) =>
-      notifyAccountBannedFromResponse(res),
-    );
-    return res;
+  };
+  try {
+    return await doFetch(0);
   } catch (e) {
     const aborted = e instanceof Error && e.name === "AbortError";
     const networkMsg = formatFetchError(e, url);
@@ -245,8 +264,9 @@ export async function apiLogin(
   password: string,
 ): Promise<
   | { ok: true; token: string; userId: string; user: ApiAuthUser }
+  | { ok: true; token: string; userId: string; user: ApiAuthUser; banned: true; banInfo: import("./moderationBanTypes").BanInfo }
   | { ok: true; requiresOtp: true; emailHint?: string; otpReason?: string }
-  | { ok: false; error: string }
+  | { ok: false; error: string; banned?: boolean; banInfo?: import("./moderationBanTypes").BanInfo }
 > {
   await ensureApiRuntimeConfig();
   const base = getApiBaseUrl();
@@ -276,6 +296,7 @@ export async function apiLogin(
     otpReason?: string;
     banInfo?: import("./moderationBanTypes").BanInfo;
     banned?: boolean;
+    accountStatus?: string;
     detail?: { url?: string; cause?: string };
   };
   if (res.status === 503 || res.status === 504) {
@@ -295,7 +316,7 @@ export async function apiLogin(
   if (!res.ok) {
     logApi("login-failed", { status: res.status, error: data.error });
     if (res.status === 403 && data.error === "account_banned" && data.banInfo) {
-      return { ok: false, banned: true, banInfo: data.banInfo, error: data.error };
+      return { ok: false, banned: true, banInfo: data.banInfo, error: "account_banned" };
     }
     return { ok: false, error: data.error || `فشل تسجيل الدخول (${res.status})` };
   }
@@ -308,6 +329,16 @@ export async function apiLogin(
     };
   }
   if (!data.token || !data.user?.id) return { ok: false, error: "استجابة غير صالحة" };
+  if (data.banned && data.banInfo) {
+    return {
+      ok: true,
+      token: data.token,
+      userId: data.user.id,
+      user: data.user,
+      banned: true,
+      banInfo: data.banInfo,
+    };
+  }
   return { ok: true, token: data.token, userId: data.user.id, user: data.user };
 }
 
@@ -316,6 +347,7 @@ export async function apiVerifyLogin(
   code: string,
 ): Promise<
   | { ok: true; token: string; userId: string; user: ApiAuthUser }
+  | { ok: true; token: string; userId: string; user: ApiAuthUser; banned: true; banInfo: import("./moderationBanTypes").BanInfo }
   | { ok: false; error: string }
 > {
   const deviceFingerprint = await getOrCreateDeviceFingerprint();
@@ -333,9 +365,21 @@ export async function apiVerifyLogin(
     token?: string;
     error?: string;
     user?: ApiAuthUser;
+    banned?: boolean;
+    banInfo?: import("./moderationBanTypes").BanInfo;
   };
   if (!res.ok) return { ok: false, error: data.error || "فشل التحقق" };
   if (!data.token || !data.user?.id) return { ok: false, error: "استجابة غير صالحة" };
+  if (data.banned && data.banInfo) {
+    return {
+      ok: true,
+      token: data.token,
+      userId: data.user.id,
+      user: data.user,
+      banned: true,
+      banInfo: data.banInfo,
+    };
+  }
   return { ok: true, token: data.token, userId: data.user.id, user: data.user };
 }
 
@@ -545,17 +589,34 @@ export async function apiSearchUsers(query: string): Promise<ApiSearchUser[]> {
 }
 
 /** كل المستخدمين المسجّلين على الخادم (مصدر البحث والمنشن) */
-export async function apiFetchUserDirectory(): Promise<ApiSearchUser[]> {
+export async function apiFetchUserDirectory(opts?: { force?: boolean }): Promise<ApiSearchUser[]> {
   const token = getApiToken();
   if (!token) return [];
-  const res = await apiFetch(`/v1/users/directory?_=${Date.now()}`, {
+  const cacheKey = "dir:all";
+  if (!opts?.force) {
+    const cached = apiCacheGet<ApiSearchUser[]>(cacheKey);
+    if (cached && !cached.stale) return cached.hit;
+    if (cached?.stale) {
+      void (async () => {
+        const fresh = await apiFetchUserDirectory({ force: true });
+        if (fresh.length) apiCacheSet(cacheKey, fresh, 5 * 60_000);
+      })();
+      return cached.hit;
+    }
+  }
+  const res = await apiFetch("/v1/users/directory", {
     method: "GET",
     token,
-    headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
   });
   if (!res.ok) return [];
   const data = (await res.json().catch(() => null)) as { users?: ApiSearchUser[] } | null;
-  return data?.users ?? [];
+  const users = data?.users ?? [];
+  if (users.length) apiCacheSet(cacheKey, users, 5 * 60_000);
+  return users;
+}
+
+export function invalidateUserDirectoryCache(): void {
+  apiCacheInvalidate("dir:");
 }
 
 export async function apiIsUsernameAvailable(username: string, exceptUserId?: string): Promise<boolean> {
@@ -593,39 +654,71 @@ export async function apiListRecentUsers(limit = 30): Promise<ApiSearchUser[]> {
   return data?.users ?? [];
 }
 
+export type FeedPageResult =
+  | {
+      ok: true;
+      posts: AppState["posts"];
+      users: AppState["users"];
+      hasMore?: boolean;
+      nextCursor?: number;
+    }
+  | { ok: false; error: string };
+
 export async function apiFetchHomeFeed(
   token: string,
-): Promise<{ ok: true; posts: AppState["posts"]; users: AppState["users"] } | { ok: false; error: string }> {
-  const res = await apiFetch("/v1/feed/posts", {
+  opts?: { limit?: number; before?: number; force?: boolean },
+): Promise<FeedPageResult> {
+  const limit = opts?.limit ?? 30;
+  const qs = new URLSearchParams();
+  qs.set("limit", String(limit));
+  if (opts?.before) qs.set("before", String(opts.before));
+  const path = `/v1/feed/posts?${qs}`;
+  const cacheKey = opts?.before ? "" : `feed:home:${limit}`;
+  if (cacheKey && !opts?.force) {
+    const cached = apiCacheGet<FeedPageResult>(cacheKey);
+    if (cached && cached.hit.ok && !cached.stale) return cached.hit;
+  }
+  const res = await apiFetch(path, {
     method: "GET",
     token,
-    headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
   });
   const data = (await res.json().catch(() => ({}))) as {
     posts?: AppState["posts"];
     users?: AppState["users"];
+    hasMore?: boolean;
+    nextCursor?: number;
     error?: string;
   };
   if (!res.ok) return { ok: false, error: data.error || "فشل تحميل الفيد" };
-  return {
+  const out: FeedPageResult = {
     ok: true,
     posts: Array.isArray(data.posts) ? data.posts : [],
     users: Array.isArray(data.users) ? data.users : [],
+    hasMore: !!data.hasMore,
+    nextCursor: data.nextCursor,
   };
+  if (cacheKey && out.ok) apiCacheSet(cacheKey, out, 25_000, 15_000);
+  return out;
 }
 
 export async function apiFetchUserPosts(
   token: string,
   userId: string,
-): Promise<{ ok: true; posts: AppState["posts"]; users: AppState["users"] } | { ok: false; error: string }> {
-  const res = await apiFetch(`/v1/users/${encodeURIComponent(userId)}/posts`, {
+  opts?: { limit?: number; before?: number },
+): Promise<FeedPageResult> {
+  const limit = opts?.limit ?? 40;
+  const qs = new URLSearchParams();
+  qs.set("limit", String(limit));
+  if (opts?.before) qs.set("before", String(opts.before));
+  const res = await apiFetch(`/v1/users/${encodeURIComponent(userId)}/posts?${qs}`, {
     method: "GET",
     token,
-    headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
   });
   const data = (await res.json().catch(() => ({}))) as {
     posts?: AppState["posts"];
     users?: AppState["users"];
+    hasMore?: boolean;
+    nextCursor?: number;
     error?: string;
   };
   if (!res.ok) return { ok: false, error: data.error || "فشل تحميل المنشورات" };
@@ -633,6 +726,8 @@ export async function apiFetchUserPosts(
     ok: true,
     posts: Array.isArray(data.posts) ? data.posts : [],
     users: Array.isArray(data.users) ? data.users : [],
+    hasMore: !!data.hasMore,
+    nextCursor: data.nextCursor,
   };
 }
 
@@ -1144,8 +1239,16 @@ export async function apiUploadMedia(
   return { ok: true, url: data.url, posterUrl: data.posterUrl };
 }
 
-export async function apiFetchChatMessages(token: string, chatId: ID): Promise<Message[]> {
-  const res = await apiFetch(`/v1/chats/${encodeURIComponent(chatId)}/messages`, {
+export async function apiFetchChatMessages(
+  token: string,
+  chatId: ID,
+  opts?: { limit?: number; before?: number },
+): Promise<Message[]> {
+  const qs = new URLSearchParams();
+  if (opts?.limit) qs.set("limit", String(opts.limit));
+  if (opts?.before) qs.set("before", String(opts.before));
+  const suffix = qs.toString() ? `?${qs}` : "";
+  const res = await apiFetch(`/v1/chats/${encodeURIComponent(chatId)}/messages${suffix}`, {
     method: "GET",
     token,
   });

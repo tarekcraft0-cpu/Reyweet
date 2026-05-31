@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { DB_DIR, SNAPSHOTS_DIR } from "../config.js";
+import { invalidateCollectionCache, readCached } from "./collectionCache.js";
 
 /** مستخدم في قاعدة البيانات المحلية */
 export type UserRow = {
@@ -181,14 +182,21 @@ async function readJson<T>(file: string, fallback: T): Promise<T> {
   }
 }
 
+function invalidateCacheForFile(file: string): void {
+  if (file === filePaths.users) invalidateCollectionCache(["users"]);
+  else if (file === filePaths.posts) invalidateCollectionCache(["posts"]);
+  else if (file === filePaths.messages) invalidateCollectionCache(["messages"]);
+}
+
 async function writeJsonAtomic(file: string, data: unknown): Promise<void> {
   await fs.mkdir(path.dirname(file), { recursive: true });
-  const payload = JSON.stringify(data, null, 2);
+  const payload = JSON.stringify(data);
   const tmp = `${file}.${randomUUID()}.tmp`;
   await fs.writeFile(tmp, payload, "utf8");
   for (let attempt = 0; attempt < 6; attempt++) {
     try {
       await fs.rename(tmp, file);
+      invalidateCacheForFile(file);
       return;
     } catch (e) {
       const code = (e as NodeJS.ErrnoException)?.code;
@@ -199,6 +207,7 @@ async function writeJsonAtomic(file: string, data: unknown): Promise<void> {
       try {
         await fs.copyFile(tmp, file);
         await fs.unlink(tmp).catch(() => undefined);
+        invalidateCacheForFile(file);
         return;
       } catch {
         throw e;
@@ -237,8 +246,10 @@ export async function initDatabase(): Promise<void> {
 // ——— Users ———
 
 export async function listUsers(): Promise<UserRow[]> {
-  const map = await readJson<Record<string, UserRow>>(filePaths.users, {});
-  return Object.values(map);
+  return readCached("users", async () => {
+    const map = await readJson<Record<string, UserRow>>(filePaths.users, {});
+    return Object.values(map);
+  });
 }
 
 export async function getUserById(id: string): Promise<UserRow | null> {
@@ -399,8 +410,10 @@ export async function listRecentUsers(limit = 30): Promise<UserRow[]> {
 // ——— Posts ———
 
 export async function listPosts(): Promise<PostRow[]> {
-  const map = await readJson<Record<string, PostRow>>(filePaths.posts, {});
-  return Object.values(map);
+  return readCached("posts", async () => {
+    const map = await readJson<Record<string, PostRow>>(filePaths.posts, {});
+    return Object.values(map);
+  });
 }
 
 export async function upsertPost(row: PostRow): Promise<void> {
@@ -549,7 +562,7 @@ export async function setSnapshot(userId: string, state: unknown): Promise<void>
 // ——— Chat messages (messages.json) ———
 
 async function readMessagesMap(): Promise<Record<string, MessageRow>> {
-  return readJson<Record<string, MessageRow>>(filePaths.messages, {});
+  return readCached("messages", () => readJson<Record<string, MessageRow>>(filePaths.messages, {}));
 }
 
 export async function upsertMessage(row: MessageRow): Promise<MessageRow> {
