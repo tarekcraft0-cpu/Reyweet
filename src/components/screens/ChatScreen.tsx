@@ -2496,9 +2496,13 @@ export function ChatScreen({
     } catch {
       stackCapRef.current = DEFAULT_LAYOUT_WIDTH_PX;
     }
-    snapChatNavInboxRest(stackLayers());
+    if (!openChat && !stackClosingId) {
+      applyStackLayerTransforms(0, false);
+    } else {
+      snapChatNavInboxRest(stackLayers(), stackCapRef.current);
+    }
     clearChatStackCssProgress();
-  }, [stackLayers]);
+  }, [stackLayers, applyStackLayerTransforms, openChat, stackClosingId]);
 
   useLayoutEffect(() => {
     const el = stackInboxRef.current;

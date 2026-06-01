@@ -53,6 +53,9 @@ export function snapStackLayersToInboxRest(layers: StackLayerRefs): void {
     layers.inboxEl.style.willChange = "auto";
   }
   if (layers.roomEl) {
+    layers.roomEl.style.visibility = "";
+    layers.roomEl.style.opacity = "";
+    layers.roomEl.style.pointerEvents = "";
     layers.roomEl.style.transition = "none";
     layers.roomEl.style.willChange = "auto";
     layers.roomEl.style.removeProperty("--retweet-chat-room-radius");

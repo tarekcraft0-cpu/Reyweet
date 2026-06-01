@@ -17,6 +17,8 @@ export function ChatStackRoomGestureShell({
   children,
   interactive = true,
 }: ChatStackRoomGestureShellProps) {
+  const hasRoomContent = children != null && children !== false;
+
   useEffect(() => {
     try {
       if (widthCapRef.current <= 0) widthCapRef.current = readSafeViewportWidth();
@@ -30,8 +32,10 @@ export function ChatStackRoomGestureShell({
       <div
         ref={roomRef}
         data-chat-stack-room
+        aria-hidden={!hasRoomContent}
         className={
-          "chat-no-select chat-room-stack absolute inset-0 z-[2] flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-background [transform:translateZ(0)] chat-room-stack-dismiss " +
+          "chat-no-select chat-room-stack absolute inset-0 z-[2] flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden [transform:translateZ(0)] chat-room-stack-dismiss " +
+          (hasRoomContent ? "bg-background " : "pointer-events-none bg-transparent ") +
           (interactive ? "pointer-events-auto touch-manipulation" : "pointer-events-none")
         }
       >
