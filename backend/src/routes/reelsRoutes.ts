@@ -217,5 +217,10 @@ export async function initReelsSubsystem(): Promise<void> {
   await fs.mkdir(REELS_THUMBNAILS_DIR, { recursive: true });
   const { initReelsDatabase } = await import("../db/reels.js");
   await initReelsDatabase();
-  await migratePostsToReelsStore();
+  try {
+    await migratePostsToReelsStore();
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error("[reels] migratePostsToReelsStore failed (server continues):", e);
+  }
 }

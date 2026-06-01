@@ -412,7 +412,7 @@ export async function listRecentUsers(limit = 30): Promise<UserRow[]> {
 export async function listPosts(): Promise<PostRow[]> {
   return readCached("posts", async () => {
     const map = await readJson<Record<string, PostRow>>(filePaths.posts, {});
-    return Object.values(map);
+    return Object.values(map).filter((p): p is PostRow => !!p && typeof p === "object");
   });
 }
 
@@ -423,7 +423,7 @@ export async function listPostsPaginated(opts?: {
 }): Promise<{ rows: PostRow[]; hasMore: boolean }> {
   const limit = Math.min(60, Math.max(1, opts?.limit ?? 40));
   const map = await readJson<Record<string, PostRow>>(filePaths.posts, {});
-  let rows = Object.values(map);
+  let rows = Object.values(map).filter((p): p is PostRow => !!p && typeof p === "object");
   rows.sort((a, b) => (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0));
   if (opts?.before && Number.isFinite(opts.before)) {
     rows = rows.filter(r => (Date.parse(r.createdAt) || 0) < opts.before!);

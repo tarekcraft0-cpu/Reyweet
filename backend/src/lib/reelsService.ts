@@ -73,6 +73,7 @@ export async function migratePostsToReelsStore(): Promise<{ imported: number }> 
   const posts = await listPosts();
   let imported = 0;
   for (const p of posts) {
+    if (!p || typeof p !== "object") continue;
     if (p.type !== "reel" || !p.video) continue;
     const existing = await getReelById(p.id);
     if (existing) continue;
