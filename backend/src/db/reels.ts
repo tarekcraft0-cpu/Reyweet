@@ -33,6 +33,16 @@ export type ReelLikeRow = {
   createdAt: string;
 };
 
+const HIDDEN_REEL_USER_IDS = new Set(["u_omar", "u_lina", "u_sara"]);
+const SAMPLE_REEL_VIDEO_RE =
+  /commondatastorage\.googleapis\.com\/gtv-videos-bucket\/sample/i;
+
+export function isVisibleReelRow(row: ReelRow): boolean {
+  if (HIDDEN_REEL_USER_IDS.has(row.userId)) return false;
+  if (SAMPLE_REEL_VIDEO_RE.test(row.videoUrl || "")) return false;
+  return true;
+}
+
 export type ReelViewRow = {
   reelId: string;
   userId: string;
@@ -232,6 +242,7 @@ export async function listReelsPaginated(opts: {
     if (!Number.isFinite(createdMs)) continue;
     if (Number.isFinite(beforeMs) && createdMs >= beforeMs) continue;
     if (opts.userIds && !opts.userIds.has(row.userId)) continue;
+    if (!isVisibleReelRow(row)) continue;
     filtered.push(row);
     if (filtered.length >= limit + 1) break;
   }

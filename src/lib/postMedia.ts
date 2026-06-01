@@ -44,8 +44,25 @@ export function hasCreateAttachmentMedia(media: string, hasFile?: boolean): bool
   return isRenderableMediaUrl(m);
 }
 
+const HIDDEN_REEL_USER_IDS = new Set(["u_omar", "u_lina", "u_sara"]);
+
+const BLOCKED_REEL_VIDEO_URL_RE =
+  /commondatastorage\.googleapis\.com\/gtv-videos-bucket\/sample/i;
+
+/** ريلز وهمية/عينات Google — لا تُعرض في الفيد */
+export function shouldHideReelPost(
+  post: Pick<Post, "userId" | "type" | "image" | "video">,
+): boolean {
+  if (HIDDEN_REEL_USER_IDS.has(post.userId)) return true;
+  const v = `${post.video || ""} ${post.image || ""}`;
+  return BLOCKED_REEL_VIDEO_URL_RE.test(v);
+}
+
 /** منشور يظهر في تبويب الريلز — مقاطع فيديو فقط (لا تغريدات نصية ولا صور بدون فيديو) */
-export function isReelFeedPost(post: Pick<Post, "type" | "image" | "video" | "audio" | "text">): boolean {
+export function isReelFeedPost(
+  post: Pick<Post, "userId" | "type" | "image" | "video" | "audio" | "text">,
+): boolean {
+  if (shouldHideReelPost(post)) return false;
   if (post.type === "tweet") return false;
   return normalizePostMedia(post).hasVideo;
 }

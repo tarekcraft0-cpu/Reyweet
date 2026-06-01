@@ -1,5 +1,6 @@
 import { useCallback } from "react";
 import { isGuestUserId } from "./guestUser";
+import { isReelFeedPost } from "./postMedia";
 import { useAppSelector } from "./useAppSelector";
 import type { AppState, Chat, ID, Post, User } from "./types";
 
@@ -86,7 +87,7 @@ export function useReelsPosts(meId: ID | null, blocked: ID[]): Post[] {
         const out: Post[] = [];
         for (const p of s.posts ?? []) {
           if (!p?.id || seen.has(p.id)) continue;
-          if (p.type !== "reel" && !p.video) continue;
+          if (!isReelFeedPost(p)) continue;
           const author = s.users.find(u => u.id === p.userId);
           if (author && blockedSet.has(author.id)) continue;
           seen.add(p.id);

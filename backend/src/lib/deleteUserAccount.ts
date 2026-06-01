@@ -52,6 +52,10 @@ export async function deleteUserAccount(userId: string): Promise<DeleteAccountRe
     {},
   );
   for (const [id, p] of Object.entries(postsMap)) {
+    if (!p || typeof p !== "object") {
+      delete postsMap[id];
+      continue;
+    }
     if (p.userId === userId) {
       delete postsMap[id];
       continue;

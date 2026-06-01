@@ -199,3 +199,5 @@ async function resolveFollowingIds(viewerId: string): Promise<string[]> {
 export function postRowLooksLikeReel(p: PostRow): boolean {
   return p.type === "reel" || !!p.video;
 }
+
+export { isVisibleReelRow } from "../db/reels.js";

@@ -223,4 +223,15 @@ export async function initReelsSubsystem(): Promise<void> {
     // eslint-disable-next-line no-console
     console.error("[reels] migratePostsToReelsStore failed (server continues):", e);
   }
+  try {
+    const { cleanupStaleReels } = await import("../lib/seedDemoContent.js");
+    const removed = await cleanupStaleReels();
+    if (removed > 0) {
+      // eslint-disable-next-line no-console
+      console.log(`[reels] removed ${removed} stale/spam reel(s)`);
+    }
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error("[reels] cleanupStaleReels failed:", e);
+  }
 }

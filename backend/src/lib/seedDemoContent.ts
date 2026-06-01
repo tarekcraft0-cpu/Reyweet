@@ -1,4 +1,7 @@
+import fs from "node:fs/promises";
+import path from "node:path";
 import bcrypt from "bcryptjs";
+import { DB_DIR } from "../config.js";
 import {
   createUser,
   getUserById,
@@ -72,11 +75,10 @@ const DEMO_USERS: Array<Omit<UserRow, "createdAt" | "updatedAt" | "passwordHash"
   },
 ];
 
-/** روابط قديمة قد تبدو سوداء — تُحذف عند التنظيف */
-const STALE_REEL_URLS = new Set([
-  "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-  "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4",
-]);
+const SAMPLE_REEL_VIDEO_RE =
+  /commondatastorage\.googleapis\.com\/gtv-videos-bucket\/sample/i;
+
+const DEMO_REEL_USER_IDS = new Set(["u_omar", "u_lina", "u_sara"]);
 
 function isoAgo(ms: number): string {
   return new Date(Date.now() - ms).toISOString();
@@ -154,18 +156,42 @@ async function ensureDemoFollows(): Promise<void> {
   await replaceFollows(rows);
 }
 
-/** يحذف الريلزات القديمة ذات الروابط الخاطئة (شاشة سوداء) ويستبدلها برابط صالح */
+/** يحذف الريلزات القديمة ذات روابط العينة أو حسابات demo (شاشة سوداء) */
 export async function cleanupStaleReels(): Promise<number> {
-  const all = await listPosts();
+  const { deleteReelRow } = await import("../db/reels.js");
+  const { deleteReelFiles } = await import("./reelsService.js");
   let deleted = 0;
-  for (const p of all) {
-    if (p.type !== "reel") continue;
-    const videoUrl = (p.video || p.image || "").trim();
-    if (STALE_REEL_URLS.has(videoUrl)) {
-      await deletePost(p.id);
-      await replaceLikesForPost(p.id, []);
+
+  const reelsPath = path.join(DB_DIR, "reels.json");
+  try {
+    const raw = JSON.parse(await fs.readFile(reelsPath, "utf8"));
+    const map = typeof raw === "object" && raw && !Array.isArray(raw) ? raw : {};
+    for (const row of Object.values(map)) {
+      if (!row || typeof row !== "object") continue;
+      const r = row as { id: string; userId: string; videoUrl?: string; postId?: string };
+      const v = String(r.videoUrl || "");
+      if (!DEMO_REEL_USER_IDS.has(r.userId) && !SAMPLE_REEL_VIDEO_RE.test(v)) continue;
+      await deleteReelFiles(r as import("../db/reels.js").ReelRow);
+      await deleteReelRow(r.id);
+      try {
+        await deletePost(r.postId ?? r.id);
+      } catch {
+        /* ignore */
+      }
       deleted++;
     }
+  } catch {
+    /* no reels store */
+  }
+
+  const all = await listPosts();
+  for (const p of all) {
+    if (!p || p.type !== "reel") continue;
+    const videoUrl = (p.video || p.image || "").trim();
+    if (!DEMO_REEL_USER_IDS.has(p.userId) && !SAMPLE_REEL_VIDEO_RE.test(videoUrl)) continue;
+    await deletePost(p.id);
+    await replaceLikesForPost(p.id, []);
+    deleted++;
   }
   return deleted;
 }
