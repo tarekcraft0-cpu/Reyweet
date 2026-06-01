@@ -58,8 +58,6 @@ export interface User {
   restrictComments?: boolean;
   /** رسائل من غير المتابعين فقط كطلبات (ماكس) */
   restrictDmFromNonFollowers?: boolean;
-  /** حجز اسم المستخدم بعد انتهاء الاشتراك */
-  usernameReservedUntil?: string;
   /** توثيق منشئ التطبيق — شارة مميزة غير التوثيق الأزرق العادي */
   founderVerified?: boolean;
   /** نص الملاحظة الرسمية (تُعرض في إطار خارج البايو) */

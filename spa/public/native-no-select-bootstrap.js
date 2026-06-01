@@ -51,9 +51,11 @@
         var el = nodes[i];
         if (!el) continue;
         el.style.width = "100%";
-        el.style.maxWidth = "none";
+        el.style.maxWidth = "100vw";
         el.style.marginLeft = "0";
         el.style.marginRight = "0";
+        el.style.left = "0";
+        el.style.right = "0";
         el.style.transform = "none";
       }
       var panels = document.querySelectorAll("[data-tab-panel]");
@@ -61,11 +63,16 @@
         var p = panels[j];
         if (p.getAttribute("aria-hidden") === "true") continue;
         p.style.width = "100%";
-        p.style.maxWidth = "none";
+        p.style.maxWidth = "100vw";
         p.style.marginLeft = "0";
         p.style.marginRight = "0";
+        p.style.left = "0";
+        p.style.right = "0";
         p.style.transform = "translate3d(0, 0, 0)";
       }
+      window.scrollTo(0, 0);
+      document.documentElement.scrollLeft = 0;
+      if (document.body) document.body.scrollLeft = 0;
     } catch (e) {
       /* ignore */
     }

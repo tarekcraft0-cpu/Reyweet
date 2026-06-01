@@ -37,6 +37,7 @@ import {
 import {
   DEFAULT_LAYOUT_WIDTH_PX,
   readSafeStackCapPx,
+  readNativeLayoutWidth,
   readSafeViewportWidth,
 } from "@/lib/safeLayoutDimensions";
 import { ChatStackRoomGestureShell } from "../chat/ChatStackRoomGestureShell";
@@ -1094,9 +1095,7 @@ const ChatListRowWithPeek = memo(function ChatListRowWithPeek({
 
   const capWidth = () => {
     if (typeof window === "undefined") return APP_COLUMN_MAX_PX;
-    if (isNativeCapacitorShell()) {
-      return Math.round(window.visualViewport?.width ?? window.innerWidth);
-    }
+    if (isNativeCapacitorShell()) return readNativeLayoutWidth();
     return Math.min(window.innerWidth, APP_COLUMN_MAX_PX);
   };
 

@@ -32,7 +32,6 @@ export type VerificationTier = {
   showPendingReviewBadge: boolean;
   hasVerifiedAvatarFrame: boolean;
   hasExclusiveChatTheme: boolean;
-  usernameReserveDays: number;
   reelsPriorityBoost: boolean;
   hasUnlimitedDrafts: boolean;
 };
@@ -55,7 +54,6 @@ export const VERIFICATION_TIERS: VerificationTier[] = [
       "أولوية خفيفة في نتائج البحث",
       "ستوري حتى 45 ثانية · منشورات 500 حرف · 24 ساعة",
       "مراجعة خلال 72 ساعة · إعادة طلب مجانية عند الرفض",
-      "حجز اسم المستخدم 7 أيام بعد انتهاء الاشتراك",
     ],
     storyMaxDuration: 45,
     postCharacterLimit: 500,
@@ -77,7 +75,6 @@ export const VERIFICATION_TIERS: VerificationTier[] = [
     showPendingReviewBadge: true,
     hasVerifiedAvatarFrame: true,
     hasExclusiveChatTheme: false,
-    usernameReserveDays: 7,
     reelsPriorityBoost: false,
     hasUnlimitedDrafts: false,
   },
@@ -100,7 +97,6 @@ export const VERIFICATION_TIERS: VerificationTier[] = [
       "أولوية أعلى في البحث والريلز",
       "ستوري 60 ث · 48 ساعة · منشورات 750 حرف",
       "مراجعة خلال 48 ساعة",
-      "حجز اسم المستخدم 14 يوماً",
     ],
     storyMaxDuration: 60,
     postCharacterLimit: 750,
@@ -122,7 +118,6 @@ export const VERIFICATION_TIERS: VerificationTier[] = [
     showPendingReviewBadge: true,
     hasVerifiedAvatarFrame: true,
     hasExclusiveChatTheme: true,
-    usernameReserveDays: 14,
     reelsPriorityBoost: true,
     hasUnlimitedDrafts: true,
   },
@@ -141,7 +136,6 @@ export const VERIFICATION_TIERS: VerificationTier[] = [
       "ستوري 60 ث · 72 ساعة · منشورات 1000 حرف",
       "مراجعة خلال 24 ساعة",
       "دعم أسرع من فريق التوثيق",
-      "حجز اسم المستخدم 30 يوماً بعد انتهاء الاشتراك",
     ],
     storyMaxDuration: 60,
     postCharacterLimit: 1000,
@@ -163,7 +157,6 @@ export const VERIFICATION_TIERS: VerificationTier[] = [
     showPendingReviewBadge: true,
     hasVerifiedAvatarFrame: true,
     hasExclusiveChatTheme: true,
-    usernameReserveDays: 30,
     reelsPriorityBoost: true,
     hasUnlimitedDrafts: true,
   },

@@ -22,8 +22,9 @@ class RetweetBridgeViewController: CAPBridgeViewController, WKUIDelegate, WKNavi
         (function(){
           [document.documentElement,document.body,document.getElementById('root')].forEach(function(el){
             if(!el)return;
-            el.style.width='100%';el.style.maxWidth='none';el.style.marginLeft='0';el.style.marginRight='0';el.style.transform='none';
+            el.style.width='100%';el.style.maxWidth='100vw';el.style.marginLeft='0';el.style.marginRight='0';el.style.left='0';el.style.right='0';el.style.transform='none';
           });
+          try{window.scrollTo(0,0);document.documentElement.scrollLeft=0;if(document.body)document.body.scrollLeft=0;}catch(x){}
         })();
         (function(){
           var ua=navigator.userAgent||'';
@@ -110,7 +111,17 @@ class RetweetBridgeViewController: CAPBridgeViewController, WKUIDelegate, WKNavi
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        resetWebViewHorizontalGeometry()
         syncSafeAreaInsetsToWebView()
+    }
+
+    /** يمنع انزياح الواجهة أفقياً (فراغ أبيض على اليمين في WKWebView) */
+    private func resetWebViewHorizontalGeometry() {
+        guard let wv = webView else { return }
+        let sv = wv.scrollView
+        if abs(sv.contentOffset.x) > 0.5 {
+            sv.contentOffset = CGPoint(x: 0, y: sv.contentOffset.y)
+        }
     }
 
     override func viewSafeAreaInsetsDidChange() {

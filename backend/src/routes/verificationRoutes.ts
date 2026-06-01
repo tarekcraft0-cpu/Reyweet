@@ -63,14 +63,7 @@ export function registerVerificationRoutes(
     const exp = user.subscriptionExpiresAt?.trim();
     const expMs = exp ? Date.parse(exp) : NaN;
     if (user.isSubscribed && Number.isFinite(expMs) && expMs < Date.now()) {
-      const tier = getVerificationTier(user.subscriptionPlan);
-      const patch: Partial<UserRow> = { isSubscribed: false };
-      if (tier.usernameReserveDays > 0) {
-        const until = new Date();
-        until.setDate(until.getDate() + tier.usernameReserveDays);
-        patch.usernameReservedUntil = until.toISOString();
-      }
-      user = (await updateUser(userId, patch)) ?? user;
+      user = (await updateUser(userId, { isSubscribed: false })) ?? user;
     }
     return res.json(entitlementsPayload(user));
   });

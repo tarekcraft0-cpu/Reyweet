@@ -47,7 +47,6 @@ export type UserRow = {
   pinnedPostId?: string;
   restrictComments?: boolean;
   restrictDmFromNonFollowers?: boolean;
-  usernameReservedUntil?: string;
   /** مصادقة ثنائية — كود بريد عند كل تسجيل دخول */
   twoFactorEnabled?: boolean;
   /** أجهزة موثوقة بعد التحقق بالبريد */
@@ -360,14 +359,7 @@ export async function usernameExists(username: string, excludeId?: string): Prom
     return true;
   }
   const users = await listUsers();
-  const now = Date.now();
-  return users.some(x => {
-    if (x.id === excludeId) return false;
-    if (x.username.toLowerCase() !== u) return false;
-    const reservedUntil = x.usernameReservedUntil ? Date.parse(x.usernameReservedUntil) : 0;
-    if (Number.isFinite(reservedUntil) && reservedUntil > now) return true;
-    return true;
-  });
+  return users.some(x => x.id !== excludeId && x.username.toLowerCase() === u);
 }
 
 /** بحث جزئي عن حسابات (يوزر، إيميل، جوال) — أحدث التسجيلات أولاً عند التعادل */

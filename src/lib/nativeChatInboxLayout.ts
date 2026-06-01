@@ -2,6 +2,7 @@ import { isNativeCapacitorShell } from "./apiUrlPolicy";
 import { clearChatStackCssProgress } from "./chatStackGestureEngine";
 import { CHAT_DISMISS_ROOM_TX_VAR, NAV_HIDE_PROGRESS_CSS_VAR } from "@/hooks/useBottomNavSheet";
 import { snapChatNavInboxRest, type ChatNavLayerRefs } from "./chatNavStack";
+import { readNativeLayoutWidth } from "./safeLayoutDimensions";
 
 const LAYOUT_SELECTORS =
   '#root, #root > .retweet-no-select-pane, [data-tab-panel="chat"], [data-tab-panel="chat"] .tab-panel-scroll, .chat-stack-scene, .chat-inbox-pane, .chat-inbox-scroll, [data-chat-stack-room]';
@@ -52,10 +53,7 @@ export function resetNativeChatInboxLayout(layers?: ChatNavLayerRefs): void {
     layers?.roomEl ?? document.querySelector<HTMLElement>("[data-chat-stack-room]");
   const inbox = layers?.inboxEl ?? document.querySelector<HTMLElement>(".chat-inbox-pane");
   if (inbox || room) {
-    const cap =
-      typeof window !== "undefined"
-        ? Math.round(window.visualViewport?.width ?? window.innerWidth)
-        : undefined;
+    const cap = typeof window !== "undefined" ? readNativeLayoutWidth() : undefined;
     snapChatNavInboxRest({ inboxEl: inbox, roomEl: room }, cap);
   }
   if (room) {

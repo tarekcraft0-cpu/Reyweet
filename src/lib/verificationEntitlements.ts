@@ -36,7 +36,6 @@ export interface VerificationUserFields {
   pinnedPostId?: string;
   restrictComments?: boolean;
   restrictDmFromNonFollowers?: boolean;
-  usernameReservedUntil?: string;
 }
 
 export interface UserEntitlements {
@@ -64,7 +63,6 @@ export interface UserEntitlements {
   canResubmitOnReject: boolean;
   hasVerifiedAvatarFrame: boolean;
   hasExclusiveChatTheme: boolean;
-  usernameReserveDays: number;
   reelsPriorityBoost: boolean;
   hasUnlimitedDrafts: boolean;
   canPickBadgeColor: boolean;
@@ -165,7 +163,6 @@ export function getUserEntitlements(user: VerificationUserFields, now = Date.now
     hasVerifiedAvatarFrame:
       exempt || isVerified || (premiumActive && tier.hasVerifiedAvatarFrame),
     hasExclusiveChatTheme: premiumActive && tier.hasExclusiveChatTheme,
-    usernameReserveDays: premiumActive ? tier.usernameReserveDays : 0,
     reelsPriorityBoost: premiumActive && tier.reelsPriorityBoost,
     hasUnlimitedDrafts: premiumActive && tier.hasUnlimitedDrafts,
     canPickBadgeColor:
@@ -213,5 +210,4 @@ export const DEFAULT_USER_VERIFICATION_FIELDS = {
   pinnedPostId: "",
   restrictComments: false,
   restrictDmFromNonFollowers: false,
-  usernameReservedUntil: "",
 };

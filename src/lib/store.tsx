@@ -817,8 +817,6 @@ export function normalizePersistedAppState(merged: AppState): AppState {
     pinnedPostId: typeof u.pinnedPostId === "string" ? u.pinnedPostId : undefined,
     restrictComments: u.restrictComments === true,
     restrictDmFromNonFollowers: u.restrictDmFromNonFollowers === true,
-    usernameReservedUntil:
-      typeof u.usernameReservedUntil === "string" ? u.usernameReservedUntil : undefined,
     founderVerified: u.founderVerified === true,
     founderOfficialLabel:
       typeof u.founderOfficialLabel === "string" ? u.founderOfficialLabel : undefined,

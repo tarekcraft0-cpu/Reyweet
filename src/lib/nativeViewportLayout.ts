@@ -3,17 +3,33 @@ import { resetNativeChatInboxLayout } from "./nativeChatInboxLayout";
 
 const NATIVE_APP_ATTR = "data-native-app";
 
+/** يمنع انزياح أفقي من scroll أو visualViewport على WKWebView */
+function resetNativeDocumentScroll(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.scrollTo(0, 0);
+    document.documentElement.scrollLeft = 0;
+    document.body && (document.body.scrollLeft = 0);
+    const se = document.scrollingElement;
+    if (se) se.scrollLeft = 0;
+  } catch {
+    /* ignore */
+  }
+}
+
 function pinElementFullWidth(el: HTMLElement): void {
   el.style.width = "100%";
-  el.style.maxWidth = "none";
+  el.style.maxWidth = "100vw";
   el.style.minWidth = "0";
   el.style.marginLeft = "0";
   el.style.marginRight = "0";
   el.style.marginInline = "0";
   el.style.paddingLeft = "";
   el.style.paddingRight = "";
-  el.style.left = "";
-  el.style.right = "";
+  el.style.left = "0";
+  el.style.right = "0";
+  el.style.insetInlineStart = "0";
+  el.style.insetInlineEnd = "0";
   el.style.transform = "none";
   el.style.translate = "none";
   el.style.boxSizing = "border-box";
@@ -40,12 +56,17 @@ export function applyNativeViewportFullBleed(): void {
     pinElementFullWidth(shell);
   }
 
+  const pinSelectors =
+    ".retweet-no-select-pane, .tab-panel-scroll, .chat-stack-scene, .chat-inbox-pane, [data-floating-nav-host]";
+  document.querySelectorAll<HTMLElement>(pinSelectors).forEach(pinElementFullWidth);
+
   document.querySelectorAll<HTMLElement>("[data-tab-panel]").forEach(panel => {
     if (panel.getAttribute("aria-hidden") === "true") return;
     panel.style.transform = "translate3d(0, 0, 0)";
     pinElementFullWidth(panel);
   });
 
+  resetNativeDocumentScroll();
   resetNativeChatInboxLayout();
 }
 
