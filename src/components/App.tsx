@@ -1242,6 +1242,7 @@ export function App() {
     const root = document.documentElement;
     if (nativeShell && tab === "chat") {
       root.classList.add("retweet-chat-tab-active");
+      void import("@/lib/nativeViewportLayout").then(m => m.applyNativeViewportFullBleed());
     } else {
       root.classList.remove("retweet-chat-tab-active");
     }

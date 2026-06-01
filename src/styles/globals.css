@@ -488,6 +488,31 @@ html.retweet-native-shell #root {
   overscroll-behavior: none;
 }
 
+/** iOS/Android — عرض كامل حتى لو تأخر class retweet-native-shell */
+html[data-native-app="1"],
+html[data-native-app="1"] body,
+html[data-native-app="1"] #root,
+html[data-native-app="1"] #root > * {
+  width: 100% !important;
+  max-width: none !important;
+  min-width: 100% !important;
+  margin: 0 !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  overflow-x: hidden !important;
+  box-sizing: border-box !important;
+}
+
+html[data-native-app="1"] [data-tab-panel] {
+  max-width: none !important;
+}
+
+html[data-native-app="1"] [data-tab-panel][aria-hidden="false"] {
+  transform: translate3d(0, 0, 0) !important;
+  left: 0 !important;
+  right: 0 !important;
+}
+
 /** iOS/Capacitor — عمود التطبيق بعرض الشاشة (بدون max-w-md ولا هوامش جانبية) */
 html.retweet-native-shell .retweet-no-select-pane,
 html.retweet-native-shell #root > *,

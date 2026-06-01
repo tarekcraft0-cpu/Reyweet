@@ -60,8 +60,13 @@ const KeepAlivePanel = memo(function KeepAlivePanel({
   /** عند التوقف: تبويب واحد فقط — يمنع ظهور ريلز الأسود خلف الرئيسية/البحث */
   const showPanel = isDragging ? near : isSettled;
 
+  const native = isNativeCapacitorShell();
   const panelTransform =
-    isSettled && dragIndex == null ? "translate3d(0, 0, 0)" : `translate3d(${offset}%, 0, 0)`;
+    native && dragIndex == null
+      ? "translate3d(0, 0, 0)"
+      : isSettled && dragIndex == null
+        ? "translate3d(0, 0, 0)"
+        : `translate3d(${offset}%, 0, 0)`;
 
   return (
     <div

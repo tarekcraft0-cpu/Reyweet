@@ -41,6 +41,34 @@
 
   window.__RETWEET_NO_SELECT_BOOT__ = true;
   document.documentElement.classList.add("retweet-native-shell");
+  document.documentElement.setAttribute("data-native-app", "1");
+  if (document.body) document.body.setAttribute("data-native-app", "1");
+
+  function pinNativeViewportWidth() {
+    try {
+      var w = Math.round(
+        (window.visualViewport && window.visualViewport.width) || window.innerWidth || 390,
+      );
+      var px = w + "px";
+      var nodes = [document.documentElement, document.body, document.getElementById("root")];
+      for (var i = 0; i < nodes.length; i++) {
+        var el = nodes[i];
+        if (!el) continue;
+        el.style.width = px;
+        el.style.maxWidth = px;
+        el.style.marginLeft = "0";
+        el.style.marginRight = "0";
+        el.style.transform = "none";
+      }
+    } catch (e) {
+      /* ignore */
+    }
+  }
+  pinNativeViewportWidth();
+  window.addEventListener("resize", pinNativeViewportWidth, { passive: true });
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", pinNativeViewportWidth, { passive: true });
+  }
 
   var css =
     "html.retweet-native-shell,html.retweet-native-shell *,#root,#root *{-webkit-user-select:none!important;user-select:none!important;-webkit-touch-callout:none!important;-webkit-tap-highlight-color:transparent!important;-webkit-user-modify:read-only!important;}" +

@@ -5,10 +5,15 @@ import { AppErrorBoundary } from "@/components/AppErrorBoundary";
 import { registerPwa } from "@/lib/registerPwa";
 import { warmGlobalPointerBackRouter } from "@/lib/globalPointerBackRouter";
 import { installNativeTextSelectionGuard } from "@/lib/nativeTextSelectionGuard";
+import { initNativeViewportLayout } from "@/lib/nativeViewportLayout";
+import { isNativeCapacitorShell } from "@/lib/apiUrlPolicy";
 import "@/styles.css";
 
 warmGlobalPointerBackRouter();
 installNativeTextSelectionGuard();
+if (isNativeCapacitorShell()) {
+  initNativeViewportLayout();
+}
 registerPwa();
 applyDeviceThemeToDom(readDeviceTheme());
 
