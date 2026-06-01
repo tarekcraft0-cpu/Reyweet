@@ -10,6 +10,7 @@ import { clearStaleApiConfig, probeHealth } from "@/lib/apiConfig";
 import { isNativeCapacitorShell, isPublicAppHost, isVpsProductionHost } from "@/lib/apiUrlPolicy";
 import { initSafeAreaBootstrap } from "@/lib/safeAreaBootstrap";
 import { initNativeViewportLayout } from "@/lib/nativeViewportLayout";
+import { beginNativePostLoginQuietPeriod, isNativeMobileApp } from "@/lib/nativeStability";
 import { warmGlobalPointerBackRouter } from "@/lib/globalPointerBackRouter";
 import {
   installNativeTextSelectionGuard,
@@ -96,10 +97,11 @@ export function WebAppRoot() {
       .finally(() => {
         if (!cancelled) {
           setReady(true);
-          if (isNativeCapacitorShell()) {
+          if (isNativeMobileApp()) {
+            beginNativePostLoginQuietPeriod();
             window.setTimeout(() => {
               requestAnimationFrame(() => initNativeViewportLayout());
-            }, 1200);
+            }, 4500);
           }
           logAuthRoute("webapp-root-ready", {
             bootUserId: readPersistedAppState().currentUserId,

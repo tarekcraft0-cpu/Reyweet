@@ -1,4 +1,5 @@
 import { isNativeCapacitorShell } from "./apiUrlPolicy";
+import { allowNativeLayoutResizeListeners } from "./nativeStability";
 
 const NATIVE_APP_ATTR = "data-native-app";
 
@@ -130,13 +131,22 @@ export function initNativeViewportLayout(): void {
   scheduleNativeViewportFullBleed(true);
   window.setTimeout(() => scheduleNativeViewportFullBleed(true), 150);
 
-  window.addEventListener("resize", scheduleNativeViewportFromResize, { passive: true });
-  window.visualViewport?.addEventListener("resize", scheduleNativeViewportFromResize, {
-    passive: true,
-  });
+  if (allowNativeLayoutResizeListeners()) {
+    window.addEventListener("resize", scheduleNativeViewportFromResize, { passive: true });
+    window.visualViewport?.addEventListener("resize", scheduleNativeViewportFromResize, {
+      passive: true,
+    });
+  }
   window.addEventListener("retweet-safe-area-change", scheduleNativeViewportFromSafeArea, {
     passive: true,
   });
+  window.setTimeout(() => {
+    if (!allowNativeLayoutResizeListeners()) return;
+    window.addEventListener("resize", scheduleNativeViewportFromResize, { passive: true });
+    window.visualViewport?.addEventListener("resize", scheduleNativeViewportFromResize, {
+      passive: true,
+    });
+  }, 4500);
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") scheduleNativeViewportFullBleed(true);
   });

@@ -206,6 +206,7 @@ import {
 import { apiMuteGroupMember } from "./groupApi";
 import { subscribeRealtimeEvents, USER_REGISTERED_WINDOW_EVENT } from "./realtimeEvents";
 import { isNativeCapacitorShell } from "./apiUrlPolicy";
+import { beginNativePostLoginQuietPeriod } from "./nativeStability";
 import { AUTH_FEED_REFRESH_EVENT } from "./feedVisibility";
 import { perfMark } from "./perfMark";
 import { computeHomeFeedPostIds, homeFeedSignature } from "./homeFeedIndex";
@@ -2283,6 +2284,7 @@ export function AppProvider({
       return;
     }
     let cancelled = false;
+    let debounceTimer = 0;
     const run = () => {
       if (cancelled) return;
       perfMark("homeFeedIndex-start");
@@ -2305,16 +2307,26 @@ export function AppProvider({
         return anyChanged ? next : prev;
       });
     };
-    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
-      const id = window.requestIdleCallback(run, { timeout: 200 });
-      return () => {
-        cancelled = true;
-        window.cancelIdleCallback(id);
-      };
-    }
-    run();
+    const schedule = () => {
+      if (debounceTimer) window.clearTimeout(debounceTimer);
+      const delayMs = isNativeCapacitorShell() ? 400 : 0;
+      if (delayMs) {
+        debounceTimer = window.setTimeout(() => {
+          debounceTimer = 0;
+          run();
+        }, delayMs);
+        return;
+      }
+      if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+        window.requestIdleCallback(run, { timeout: 200 });
+        return;
+      }
+      run();
+    };
+    schedule();
     return () => {
       cancelled = true;
+      if (debounceTimer) window.clearTimeout(debounceTimer);
     };
   }, [homeFeedSig, homeFeedPostsTouchSig, currentUser?.id]);
 
@@ -2345,6 +2357,7 @@ export function AppProvider({
       const applied = await applyApiAuthSuccess(reg.token, reg.user, stateRef.current, adding);
       if (!applied.ok) return { ok: false, error: applied.error };
       setStateRaw(applied.state);
+      beginNativePostLoginQuietPeriod();
       void import("./feedVisibility").then(({ requestAuthFeedRefresh }) => requestAuthFeedRefresh());
       return { ok: true, userId: reg.userId };
     }
@@ -2414,6 +2427,7 @@ export function AppProvider({
       );
       if (!applied.ok) return { ok: false, error: applied.error };
       setStateRaw(applied.state);
+      beginNativePostLoginQuietPeriod();
       if (isBannedLogin && r.banInfo) {
         dispatchAccountModeration({
           banInfo: r.banInfo,
@@ -2469,6 +2483,7 @@ export function AppProvider({
     );
     if (!applied.ok) return { ok: false, error: applied.error };
     setStateRaw(applied.state);
+    beginNativePostLoginQuietPeriod();
     if (isBannedLogin && r.banInfo) {
       dispatchAccountModeration({
         banInfo: r.banInfo,

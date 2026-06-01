@@ -1,4 +1,5 @@
 import { isNativeCapacitorShell } from "./apiUrlPolicy";
+import { allowNativeLayoutResizeListeners } from "./nativeStability";
 
 function parsePx(raw: string): number {
   const n = parseFloat(raw);
@@ -117,8 +118,15 @@ export function initSafeAreaBootstrap(): void {
   window.setTimeout(scheduleSafeAreaSync, 400);
 
   window.addEventListener("retweet-safe-area-change", scheduleSafeAreaFromResize, { passive: true });
-  window.addEventListener("resize", scheduleSafeAreaFromResize, { passive: true });
-  window.visualViewport?.addEventListener("resize", scheduleSafeAreaFromResize, { passive: true });
+  if (allowNativeLayoutResizeListeners()) {
+    window.addEventListener("resize", scheduleSafeAreaFromResize, { passive: true });
+    window.visualViewport?.addEventListener("resize", scheduleSafeAreaFromResize, { passive: true });
+  }
+  window.setTimeout(() => {
+    if (!allowNativeLayoutResizeListeners()) return;
+    window.addEventListener("resize", scheduleSafeAreaFromResize, { passive: true });
+    window.visualViewport?.addEventListener("resize", scheduleSafeAreaFromResize, { passive: true });
+  }, 4500);
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") scheduleSafeAreaSync();
   });

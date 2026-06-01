@@ -116,7 +116,6 @@ class RetweetBridgeViewController: CAPBridgeViewController, WKUIDelegate, WKNavi
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         resetWebViewHorizontalGeometry()
-        syncSafeAreaInsetsToWebView()
     }
 
     /** يمنع انزياح الواجهة أفقياً (فراغ أبيض على اليمين في WKWebView) */

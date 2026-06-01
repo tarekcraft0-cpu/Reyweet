@@ -68,6 +68,11 @@ export function isLanOrLocalHostname(hostname: string): boolean {
 
 /** تطبيق iOS/Android (Capacitor) */
 export function isNativeCapacitorShell(): boolean {
+  try {
+    if (import.meta.env.BASE_URL === "./") return true;
+  } catch {
+    /* ignore */
+  }
   if (typeof window === "undefined") return false;
   const w = window as Window & {
     __RETWEET_NATIVE_SHELL__?: boolean;

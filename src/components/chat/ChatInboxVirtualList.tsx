@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { isNativeMobileApp } from "@/lib/nativeStability";
 import type { Chat } from "@/lib/types";
 import { CHAT_INBOX_ROW_HEIGHT_PX } from "@/lib/chatInboxUtils";
 
@@ -11,11 +12,17 @@ type Props = {
   renderRow: (chat: Chat, index: number) => ReactNode;
 };
 
-/**
- * قائمة محادثات افتراضية — تمرير سلس مع آلاف المحادثات.
- * يتطلب أن يكون `scrollParentRef` على الحاوية ذات overflow-y.
- */
-export function ChatInboxVirtualList({
+function ChatInboxSimpleList({ chats, renderRow }: Pick<Props, "chats" | "renderRow">) {
+  return (
+    <div className="relative w-full">
+      {chats.map((chat, index) => (
+        <div key={chat.id}>{renderRow(chat, index)}</div>
+      ))}
+    </div>
+  );
+}
+
+function ChatInboxVirtualListInner({
   chats,
   scrollParentRef,
   scrollMargin = 0,
@@ -61,4 +68,14 @@ export function ChatInboxVirtualList({
       })}
     </div>
   );
+}
+
+/**
+ * قائمة محادثات — على iOS/Capacitor بدون react-virtual (يمنع #185).
+ */
+export function ChatInboxVirtualList(props: Props) {
+  if (isNativeMobileApp()) {
+    return <ChatInboxSimpleList chats={props.chats} renderRow={props.renderRow} />;
+  }
+  return <ChatInboxVirtualListInner {...props} />;
 }

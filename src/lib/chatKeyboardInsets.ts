@@ -143,7 +143,7 @@ async function ensureNativeKeyboardBridge() {
     document.documentElement.classList.add("retweet-kb-body-resize");
     try {
       const { KeyboardResize } = await import("@capacitor/keyboard");
-      await Keyboard.setResizeMode({ mode: KeyboardResize.Body });
+      await Keyboard.setResizeMode({ mode: KeyboardResize.None });
     } catch {
       /* ignore */
     }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, memo } from "react";
 import { isNativeCapacitorShell } from "@/lib/apiUrlPolicy";
+import { isNativeMobileApp, isNativePostLoginQuietPeriod } from "@/lib/nativeStability";
 import { SimpleHomeFeed } from "../home/SimpleHomeFeed";
 import { VirtualizedHomeFeed } from "../home/VirtualizedHomeFeed";
 import { useTabPanelScrollRef } from "@/lib/tabPanelScrollContext";
@@ -58,7 +59,8 @@ export const HomeScreen = memo(function HomeScreen({
   const users = useAppSelector(s => s.users);
   const { homeFeedPosts: feed, feedHasMore } = useHomeFeed();
   const isHomeTabActive = useIsTabActive("home");
-  const nativeShell = isNativeCapacitorShell();
+  const nativeShell = isNativeMobileApp();
+  const [nativeFeedReady, setNativeFeedReady] = useState(!nativeShell);
   useScreenPerf("HomeScreen", { active: isHomeTabActive });
   const t = useT();
   const [shareTarget, setShareTarget] = useState<Post | null>(null);
@@ -96,8 +98,15 @@ export const HomeScreen = memo(function HomeScreen({
     return () => window.removeEventListener("retweet-open-post-id", onOpenPost);
   }, []);
 
+  const restoreConsumedRef = useRef(false);
+  useEffect(() => {
+    if (!restoreFromProfileContext) restoreConsumedRef.current = false;
+  }, [restoreFromProfileContext]);
+
   useLayoutEffect(() => {
     if (!restoreFromProfileContext || restoreFromProfileContext.tab !== "home") return;
+    if (restoreConsumedRef.current) return;
+    restoreConsumedRef.current = true;
     const d = restoreFromProfileContext;
     onConsumedRestoreFromProfile?.();
     if (!d.postId || !d.homeSurface) return;
@@ -223,6 +232,18 @@ export const HomeScreen = memo(function HomeScreen({
     [onOpenProfile, onOpenChat, openPostById, openCommentsById],
   );
 
+  useEffect(() => {
+    if (!nativeShell) {
+      setNativeFeedReady(true);
+      return;
+    }
+    if (!isHomeTabActive || isGuest) return;
+    setNativeFeedReady(false);
+    const delayMs = isNativePostLoginQuietPeriod() ? 3800 : 1400;
+    const t = window.setTimeout(() => setNativeFeedReady(true), delayMs);
+    return () => window.clearTimeout(t);
+  }, [nativeShell, isHomeTabActive, isGuest, currentUser?.id]);
+
   const handleLoadMore = useCallback(() => {
     if (loadMoreBusyRef.current || !feedHasMore) return;
     loadMoreBusyRef.current = true;
@@ -233,7 +254,7 @@ export const HomeScreen = memo(function HomeScreen({
 
   useEffect(() => {
     if (!isHomeTabActive || isGuest) return;
-    const delayMs = nativeShell ? 900 : 0;
+    const delayMs = nativeShell ? (isNativePostLoginQuietPeriod() ? 3200 : 1200) : 0;
     const t = window.setTimeout(() => void refreshFeedFromServer(), delayMs);
     return () => window.clearTimeout(t);
   }, [isHomeTabActive, isGuest, refreshFeedFromServer, nativeShell]);
@@ -296,7 +317,9 @@ export const HomeScreen = memo(function HomeScreen({
       </div>
 
       <section aria-label="الخلاصة" className="relative z-0 flex flex-col bg-background">
-        {nativeShell ? (
+        {nativeShell && !nativeFeedReady ? (
+          <p className="py-10 text-center text-sm text-muted-foreground">جاري تحميل الخلاصة…</p>
+        ) : nativeShell ? (
           <SimpleHomeFeed posts={feed} feedActions={feedActions} />
         ) : (
           <VirtualizedHomeFeed
