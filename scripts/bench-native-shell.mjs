@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** يحاكي shell Capacitor + resize متكرر — يكتشف React #185 */
+/** يحاكي Capacitor + تحميل فيد بعد تسجيل الدخول — يكتشف React #185 */
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
@@ -11,7 +11,7 @@ const PORT = Number(process.env.BENCH_PORT || 5201);
 const BASE = `http://127.0.0.1:${PORT}/app/`;
 const BENCH_USER_ID = "bench_user_native";
 
-function makeSeedState() {
+function makeSeedState(postCount = 35) {
   const me = {
     id: BENCH_USER_ID,
     username: "bench_user",
@@ -48,14 +48,14 @@ function makeSeedState() {
     followRequestIn: [],
     followRequestOut: [],
   }));
-  const posts = Array.from({ length: 40 }, (_, i) => ({
+  const posts = Array.from({ length: postCount }, (_, i) => ({
     id: `bench_post_${i}`,
     userId: `author_${i % 2}`,
     type: "post",
-    text: `Native bench post #${i}`,
-    likes: [],
+    text: `Native bench post #${i} — enough text to render a card.`,
+    likes: i % 5 === 0 ? [BENCH_USER_ID] : [],
     reposts: [],
-    comments: [],
+    comments: i % 7 === 0 ? [{ id: `c${i}`, userId: BENCH_USER_ID, text: "hi", createdAt: Date.now() }] : [],
     createdAt: Date.now() - i * 60_000,
   }));
   return {
@@ -73,10 +73,25 @@ function makeSeedState() {
   };
 }
 
-function startStaticServer(dir) {
+function makeFeedResponse(seed) {
+  return {
+    ok: true,
+    posts: seed.posts,
+    users: seed.users.filter(u => u.id !== BENCH_USER_ID),
+    hasMore: false,
+  };
+}
+
+function startStaticServer(dir, seed) {
+  const feedJson = JSON.stringify(makeFeedResponse(seed));
   const server = http.createServer((req, res) => {
     let urlPath = decodeURIComponent(req.url?.split("?")[0] || "/");
-    if (urlPath === "/health" || urlPath.startsWith("/v1/")) {
+    if (urlPath.includes("/v1/feed/posts")) {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(feedJson);
+      return;
+    }
+    if (urlPath === "/health" || urlPath.startsWith("/v1/") || urlPath.startsWith("/auth/")) {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end("{}");
       return;
@@ -109,16 +124,19 @@ function startStaticServer(dir) {
   });
 }
 
-const seed = makeSeedState();
+const seed = makeSeedState(40);
 
 const inject = `
 window.__RETWEET_NATIVE_SHELL__ = true;
 window.__RETWEET_NO_SELECT_BOOT__ = true;
+document.documentElement.classList.add('retweet-native-shell');
 for (const k of Object.keys(localStorage)) {
   if (k.startsWith('retweet_')) localStorage.removeItem(k);
 }
 localStorage.setItem('retweet_state_v2', ${JSON.stringify(JSON.stringify(seed))});
 localStorage.setItem('retweet_web_api_config', JSON.stringify({ apiUrl: 'http://127.0.0.1:${PORT}', ts: Date.now() }));
+localStorage.setItem('retweet_api_token', 'bench-token');
+window.__RETWEET_API_URL__ = 'http://127.0.0.1:${PORT}';
 `;
 
 async function main() {
@@ -135,7 +153,7 @@ async function main() {
     });
   }
 
-  const server = await startStaticServer(spaDist);
+  const server = await startStaticServer(spaDist, seed);
   const puppeteer = (await import("puppeteer")).default;
   const browser = await puppeteer.launch({ headless: true, args: ["--no-sandbox"] });
 
@@ -151,7 +169,7 @@ async function main() {
         req.continue();
         return;
       }
-      if (u.includes("/health") || u.includes("/v1/")) {
+      if (u.includes("/health") || u.includes("/v1/") || u.includes("/auth/")) {
         req.respond({ status: 200, contentType: "application/json", body: "{}" });
         return;
       }
@@ -160,25 +178,37 @@ async function main() {
 
     await page.goto(BASE, { waitUntil: "networkidle2", timeout: 120_000 });
 
-    for (let i = 0; i < 30; i++) {
+    await page.waitForFunction(
+      () => {
+        const t = document.body?.innerText || "";
+        if (t.includes("حدث خطأ في الواجهة")) return true;
+        if (t.includes("تعذر الاتصال بالخادم")) return true;
+        return document.querySelectorAll(".feed-post-card").length >= 3;
+      },
+      { timeout: 60_000, polling: 200 },
+    );
+
+    for (let i = 0; i < 40; i++) {
       await page.evaluate(() => {
         window.dispatchEvent(new Event("resize"));
         window.visualViewport?.dispatchEvent(new Event("resize"));
         window.dispatchEvent(new Event("retweet-safe-area-change"));
+        window.dispatchEvent(new Event("retweet-auth-feed-refresh"));
       });
-      await new Promise(r => setTimeout(r, 16));
+      await new Promise(r => setTimeout(r, 20));
     }
 
-    await new Promise(r => setTimeout(r, 3000));
+    await new Promise(r => setTimeout(r, 4000));
 
     const result = await page.evaluate(() => ({
       crashed: document.body.innerText.includes("حدث خطأ في الواجهة"),
       react185: document.body.innerText.includes("Minified React error #185"),
       posts: document.querySelectorAll(".feed-post-card").length,
+      simpleFeed: !document.querySelector("[data-index]"),
     }));
 
     console.log(JSON.stringify(result, null, 2));
-    if (result.crashed || result.react185) {
+    if (result.crashed || result.react185 || result.posts < 3) {
       process.exitCode = 1;
     }
   } finally {

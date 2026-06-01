@@ -205,6 +205,7 @@ import {
 } from "./apiBackend";
 import { apiMuteGroupMember } from "./groupApi";
 import { subscribeRealtimeEvents, USER_REGISTERED_WINDOW_EVENT } from "./realtimeEvents";
+import { isNativeCapacitorShell } from "./apiUrlPolicy";
 import { AUTH_FEED_REFRESH_EVENT } from "./feedVisibility";
 import { perfMark } from "./perfMark";
 import { computeHomeFeedPostIds, homeFeedSignature } from "./homeFeedIndex";
@@ -2285,14 +2286,27 @@ export function AppProvider({
     const run = () => {
       if (cancelled) return;
       perfMark("homeFeedIndex-start");
-      const next = computeHomeFeedPostIds(stateRef.current, me.id, me);
+      const snap = stateRef.current;
+      const computed = computeHomeFeedPostIds(snap, me.id, me);
       perfMark("homeFeedIndex-end");
-      setHomeFeedPosts(prev =>
-        homeFeedSignature(prev) === homeFeedSignature(next) ? prev : next,
-      );
+      setHomeFeedPosts(prev => {
+        const sigPrev = homeFeedSignature(prev);
+        const sigNext = homeFeedSignature(computed);
+        if (sigPrev !== sigNext) return computed;
+        if (!prev.length) return prev;
+        const byId = new Map((snap.posts ?? []).map(p => [p.id, p]));
+        let anyChanged = false;
+        const next = prev.map((p, i) => {
+          const fresh = byId.get(p.id) ?? computed[i];
+          if (!fresh || fresh.id !== p.id) return p;
+          if (fresh !== p) anyChanged = true;
+          return fresh;
+        });
+        return anyChanged ? next : prev;
+      });
     };
     if (typeof window !== "undefined" && "requestIdleCallback" in window) {
-      const id = window.requestIdleCallback(run, { timeout: 150 });
+      const id = window.requestIdleCallback(run, { timeout: 200 });
       return () => {
         cancelled = true;
         window.cancelIdleCallback(id);
@@ -2302,25 +2316,7 @@ export function AppProvider({
     return () => {
       cancelled = true;
     };
-  }, [homeFeedSig, currentUser?.id]);
-
-  /** تحديث منشورات الفيد in-place عند like/comment — بدون إعادة sort كامل */
-  useEffect(() => {
-    setHomeFeedPosts(prev => {
-      if (!prev.length) return prev;
-      const byId = new Map((state.posts ?? []).map(p => [p.id, p]));
-      let changed = false;
-      const next = prev.map(p => {
-        const u = byId.get(p.id);
-        if (u && u !== p) {
-          changed = true;
-          return u;
-        }
-        return p;
-      });
-      return changed ? next : prev;
-    });
-  }, [homeFeedPostsTouchSig]);
+  }, [homeFeedSig, homeFeedPostsTouchSig, currentUser?.id]);
 
   const signup: Ctx["signup"] = async (data) => {
     const pwdErrFirst = validateNewPasswordPlain(data.password);
@@ -5401,13 +5397,22 @@ export function AppProvider({
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    let authFeedTimer = 0;
     const onAuthFeed = () => {
-      void refreshFeedFromServer();
-      refreshFromServer({ urgent: true });
+      if (authFeedTimer) window.clearTimeout(authFeedTimer);
+      const delayMs = isNativeCapacitorShell() ? 1000 : 500;
+      authFeedTimer = window.setTimeout(() => {
+        authFeedTimer = 0;
+        void refreshFeedFromServer();
+        if (!isNativeCapacitorShell()) {
+          refreshFromServer({ urgent: true });
+        }
+      }, delayMs);
     };
     window.addEventListener(AUTH_FEED_REFRESH_EVENT, onAuthFeed);
     return () => {
       window.removeEventListener(AUTH_FEED_REFRESH_EVENT, onAuthFeed);
+      if (authFeedTimer) window.clearTimeout(authFeedTimer);
     };
   }, [refreshFromServer, refreshFeedFromServer]);
 

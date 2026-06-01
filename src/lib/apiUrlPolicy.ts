@@ -71,14 +71,28 @@ export function isNativeCapacitorShell(): boolean {
   if (typeof window === "undefined") return false;
   const w = window as Window & {
     __RETWEET_NATIVE_SHELL__?: boolean;
+    __RETWEET_NO_SELECT_BOOT__?: boolean;
     Capacitor?: { isNativePlatform?: () => boolean };
   };
   if (w.__RETWEET_NATIVE_SHELL__ === true) return true;
+  if (w.__RETWEET_NO_SELECT_BOOT__ === true) return true;
   try {
-    return w.Capacitor?.isNativePlatform?.() === true;
+    if (w.Capacitor?.isNativePlatform?.() === true) return true;
   } catch {
-    return false;
+    /* ignore */
   }
+  try {
+    const html = document.documentElement;
+    if (
+      html.classList.contains("retweet-native-shell") ||
+      html.getAttribute("data-native-app") === "1"
+    ) {
+      return true;
+    }
+  } catch {
+    /* ignore */
+  }
+  return false;
 }
 
 /** نفق Cloudflare مؤقت — يُرفض إلا إذا الصفحة على نفس النفق (تطوير نشط) */

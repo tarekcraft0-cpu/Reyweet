@@ -97,9 +97,9 @@ export function WebAppRoot() {
         if (!cancelled) {
           setReady(true);
           if (isNativeCapacitorShell()) {
-            requestAnimationFrame(() => {
-              initNativeViewportLayout();
-            });
+            window.setTimeout(() => {
+              requestAnimationFrame(() => initNativeViewportLayout());
+            }, 1200);
           }
           logAuthRoute("webapp-root-ready", {
             bootUserId: readPersistedAppState().currentUserId,

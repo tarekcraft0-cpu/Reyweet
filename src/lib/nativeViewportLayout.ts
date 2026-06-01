@@ -125,7 +125,7 @@ function scheduleNativeViewportFromSafeArea(): void {
 export function initNativeViewportLayout(): void {
   if (!isNativeCapacitorShell() || typeof window === "undefined" || booted) return;
   booted = true;
-  bootGraceUntil = performance.now() + 900;
+  bootGraceUntil = performance.now() + 2200;
 
   scheduleNativeViewportFullBleed(true);
   window.setTimeout(() => scheduleNativeViewportFullBleed(true), 150);

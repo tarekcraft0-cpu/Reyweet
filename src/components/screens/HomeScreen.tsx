@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, memo } from "react";
-import { HomeFeedActionsProvider } from "@/lib/homeFeedActionsContext";
+import { isNativeCapacitorShell } from "@/lib/apiUrlPolicy";
+import { SimpleHomeFeed } from "../home/SimpleHomeFeed";
 import { VirtualizedHomeFeed } from "../home/VirtualizedHomeFeed";
 import { useTabPanelScrollRef } from "@/lib/tabPanelScrollContext";
 import { useIsTabActive } from "@/lib/tabActiveContext";
@@ -57,6 +58,7 @@ export const HomeScreen = memo(function HomeScreen({
   const users = useAppSelector(s => s.users);
   const { homeFeedPosts: feed, feedHasMore } = useHomeFeed();
   const isHomeTabActive = useIsTabActive("home");
+  const nativeShell = isNativeCapacitorShell();
   useScreenPerf("HomeScreen", { active: isHomeTabActive });
   const t = useT();
   const [shareTarget, setShareTarget] = useState<Post | null>(null);
@@ -221,11 +223,6 @@ export const HomeScreen = memo(function HomeScreen({
     [onOpenProfile, onOpenChat, openPostById, openCommentsById],
   );
 
-  useEffect(() => {
-    if (!isHomeTabActive || isGuest) return;
-    void refreshFeedFromServer();
-  }, [isHomeTabActive, isGuest, refreshFeedFromServer]);
-
   const handleLoadMore = useCallback(() => {
     if (loadMoreBusyRef.current || !feedHasMore) return;
     loadMoreBusyRef.current = true;
@@ -233,6 +230,26 @@ export const HomeScreen = memo(function HomeScreen({
       loadMoreBusyRef.current = false;
     });
   }, [feedHasMore, loadMoreFeedFromServer]);
+
+  useEffect(() => {
+    if (!isHomeTabActive || isGuest) return;
+    const delayMs = nativeShell ? 900 : 0;
+    const t = window.setTimeout(() => void refreshFeedFromServer(), delayMs);
+    return () => window.clearTimeout(t);
+  }, [isHomeTabActive, isGuest, refreshFeedFromServer, nativeShell]);
+
+  useEffect(() => {
+    if (!nativeShell || !isHomeTabActive || isGuest) return;
+    const el = tabScrollRef?.current;
+    if (!el) return;
+    const onScroll = () => {
+      if (!feedHasMore) return;
+      const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 900;
+      if (nearBottom) handleLoadMore();
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [nativeShell, isHomeTabActive, isGuest, tabScrollRef, feedHasMore, handleLoadMore]);
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col bg-background">
@@ -279,14 +296,18 @@ export const HomeScreen = memo(function HomeScreen({
       </div>
 
       <section aria-label="الخلاصة" className="relative z-0 flex flex-col bg-background">
-        <VirtualizedHomeFeed
-          posts={feed}
-          scrollRef={tabScrollRef}
-          headerOffsetPx={0}
-          feedHasMore={feedHasMore}
-          onLoadMore={handleLoadMore}
-          feedActions={feedActions}
-        />
+        {nativeShell ? (
+          <SimpleHomeFeed posts={feed} feedActions={feedActions} />
+        ) : (
+          <VirtualizedHomeFeed
+            posts={feed}
+            scrollRef={tabScrollRef}
+            headerOffsetPx={0}
+            feedHasMore={feedHasMore}
+            onLoadMore={handleLoadMore}
+            feedActions={feedActions}
+          />
+        )}
         {feed.length === 0 && (
           <p className="text-center text-muted-foreground py-12">{t("noPosts")}</p>
         )}

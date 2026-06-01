@@ -46,6 +46,7 @@
     }
   })();
 
+  window.__RETWEET_NATIVE_SHELL__ = true;
   window.__RETWEET_NO_SELECT_BOOT__ = true;
   document.documentElement.classList.add("retweet-native-shell");
   document.documentElement.setAttribute("data-native-app", "1");
@@ -115,10 +116,23 @@
     }, 64);
   }
 
+  var capNative = false;
+  try {
+    capNative =
+      window.Capacitor &&
+      typeof window.Capacitor.isNativePlatform === "function" &&
+      window.Capacitor.isNativePlatform();
+  } catch (e) {
+    capNative = false;
+  }
+
   schedulePinNativeViewport(true);
-  window.addEventListener("resize", schedulePinFromResize, { passive: true });
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener("resize", schedulePinFromResize, { passive: true });
+  /** على Capacitor: لا نُعيد ضبط العرض عند كل resize — يتعارض مع nativeViewportLayout ويسبب React #185 */
+  if (!capNative) {
+    window.addEventListener("resize", schedulePinFromResize, { passive: true });
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", schedulePinFromResize, { passive: true });
+    }
   }
 
   var css =
