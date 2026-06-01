@@ -144,25 +144,14 @@ export function snapChatNavInboxRest(layers: ChatNavLayerRefs, widthPx?: number)
     layers.inboxEl.dataset.inboxAtRest = "true";
   }
   if (layers.roomEl) {
-    const roomEmpty = layers.roomEl.childElementCount === 0;
-    const w = chatNavWidth(
-      widthPx ??
-        layers.roomEl.parentElement?.clientWidth ??
-        (typeof window !== "undefined" ? window.innerWidth : 390),
-    );
-    const { room } = chatNavOpenTransforms(0, w);
     layers.roomEl.style.left = "0";
     layers.roomEl.style.right = "0";
     layers.roomEl.style.width = "100%";
     layers.roomEl.style.maxWidth = "100%";
-    layers.roomEl.style.transform = roomEmpty
-      ? "none"
-      : room === "none"
-        ? "translate3d(100%, 0, 0)"
-        : room;
+    layers.roomEl.style.transform = "translate3d(100%, 0, 0)";
     layers.roomEl.style.transformOrigin = "";
     layers.roomEl.style.transition = "none";
-    layers.roomEl.style.visibility = roomEmpty ? "hidden" : "";
+    layers.roomEl.style.visibility = "hidden";
     layers.roomEl.style.opacity = "";
     layers.roomEl.style.pointerEvents = "none";
     layers.roomEl.style.removeProperty("--retweet-chat-room-radius");

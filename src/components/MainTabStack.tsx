@@ -143,16 +143,20 @@ export function MainTabStack({
   }, [activeTab]);
 
   useLayoutEffect(() => {
-    if (!isNativeCapacitorShell() || activeTab !== "chat" || dragIndex != null) return;
+    if (!isNativeCapacitorShell() || activeTab !== "chat") return;
     const host = containerRef.current;
     if (!host) return;
     const panel = host.querySelector<HTMLElement>('[data-tab-panel="chat"]');
     if (!panel) return;
-    panel.style.transform = "translate3d(0, 0, 0)";
+    if (dragIndex == null) {
+      panel.style.transform = "translate3d(0, 0, 0)";
+    }
     panel.style.width = "100%";
     panel.style.maxWidth = "none";
     panel.style.marginLeft = "0";
     panel.style.marginRight = "0";
+    panel.style.left = "0";
+    panel.style.right = "0";
   }, [activeTab, dragIndex, settledIndex]);
 
   const displayIndex =
@@ -190,6 +194,7 @@ export function MainTabStack({
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
       if (!swipeEnabled || e.button !== 0) return;
+      if (isNativeCapacitorShell() && activeRef.current === "chat") return;
       if ((e.target as HTMLElement).closest("[data-no-tab-swipe]")) return;
       const startIdx = tabIndex(activeRef.current);
       markNeighborVisited(startIdx);

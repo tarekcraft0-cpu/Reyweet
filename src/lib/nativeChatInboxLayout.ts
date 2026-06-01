@@ -53,10 +53,15 @@ export function resetNativeChatInboxLayout(layers?: ChatNavLayerRefs): void {
         ? Math.round(window.visualViewport?.width ?? window.innerWidth)
         : undefined;
     snapChatNavInboxRest({ inboxEl: inbox, roomEl: room }, cap);
-  } else if (room && room.childElementCount === 0) {
+  }
+  if (room) {
+    room.style.transform = "translate3d(100%, 0, 0)";
     room.style.visibility = "hidden";
-    room.style.transform = "none";
     room.style.pointerEvents = "none";
+  }
+  if (typeof document !== "undefined") {
+    document.body.style.overflowX = "hidden";
+    document.documentElement.style.overflowX = "hidden";
   }
 
   document.documentElement.classList.add("retweet-chat-inbox-pinned");

@@ -536,6 +536,15 @@ html.retweet-native-shell .chat-stack-scene {
   left: 0 !important;
   right: 0 !important;
   transform: none !important;
+  overflow-x: clip !important;
+  direction: ltr !important;
+}
+
+html.retweet-native-shell [data-chat-stack-room] {
+  left: 0 !important;
+  right: 0 !important;
+  width: 100% !important;
+  max-width: none !important;
 }
 
 html.retweet-native-shell .chat-inbox-pane,

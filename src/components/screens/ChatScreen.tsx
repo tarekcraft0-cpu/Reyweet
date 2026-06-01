@@ -2127,8 +2127,10 @@ export function ChatScreen({
     (p: number, animate: boolean) => {
       try {
         const layers = stackLayers();
-        if (!openChat && !stackClosingId && p < 0.03) {
-          snapChatNavInboxRest(layers);
+        /** قائمة المحادثات — لا نحرّك الغرفة/القائمة أبداً (يمنع انزياح iOS) */
+        if (!openChat && !stackClosingId) {
+          snapChatNavInboxRest(layers, stackCapRef.current);
+          if (isNativeCapacitorShell()) resetNativeChatInboxLayout(layers);
           return;
         }
         let cap = stackCapRef.current;
@@ -2137,14 +2139,6 @@ export function ChatScreen({
           stackCapRef.current = cap;
         }
         applyChatNavOpenTransforms(p, cap, layers, animate);
-        if (layers.inboxEl && !openChat) {
-          layers.inboxEl.style.transform = "none";
-          layers.inboxEl.style.transition = "none";
-          if (p < 0.02) layers.inboxEl.dataset.inboxAtRest = "true";
-        }
-        if (isNativeCapacitorShell() && !openChat && p < 0.02) {
-          resetNativeChatInboxLayout(layers);
-        }
       } catch (err) {
         console.warn("[chat-stack-transform]", err);
       }
@@ -2554,15 +2548,24 @@ export function ChatScreen({
     ) {
       return;
     }
+    if (!openChat && !stackClosingId) {
+      if (stackProgressRef.current > 0.001) {
+        stackProgressRef.current = 0;
+      }
+      resetStackToInboxRest();
+      return;
+    }
     applyStackLayerTransforms(stackProgress, stackSpring);
   }, [
     showGroupSettings,
+    openChat,
     stackProgress,
     stackSpring,
     stackDragChatId,
     stackClosingId,
     stackGestureLocked,
     applyStackLayerTransforms,
+    resetStackToInboxRest,
   ]);
 
   /** سحب/تحديد نص غير مكتمل: إعادة الشريط والنوتات إن علِق وضع الإخفاء */
@@ -3256,7 +3259,7 @@ export function ChatScreen({
   const chatInbox = (
     <div
       ref={stackInboxRef}
-      className="chat-inbox-pane no-scrollbar relative z-[1] flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col overflow-hidden overscroll-none bg-background [transform:translateZ(0)]"
+      className="chat-inbox-pane no-scrollbar relative z-[1] flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col overflow-x-clip overflow-y-hidden overscroll-none bg-background"
       data-no-tab-swipe
       style={stackInboxPointerEvents ? { pointerEvents: stackInboxPointerEvents } : undefined}
     >
@@ -3749,8 +3752,8 @@ export function ChatScreen({
         </div>
       )}
       <div
-        dir={isRtl ? "rtl" : "ltr"}
-        className="chat-stack-scene relative flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col overflow-hidden bg-background"
+        dir="ltr"
+        className="chat-stack-scene relative flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col overflow-x-clip overflow-y-hidden bg-background"
       >
         {chatInbox}
         <ChatStackRoomGestureShell
