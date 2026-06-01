@@ -180,7 +180,7 @@ app.use("/media", (_req, res, next) => {
 app.use("/uploads", (_req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
-  res.acceptRanges("bytes");
+  res.setHeader("Accept-Ranges", "bytes");
   next();
 }, express.static(path.join(DATA_ROOT, "uploads"), { maxAge: "7d", immutable: true }));
 

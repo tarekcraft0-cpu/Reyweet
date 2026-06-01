@@ -4,7 +4,7 @@ import path from "node:path";
 import fs from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { MEDIA_VIDEOS_DIR } from "../config.js";
+import { MEDIA_VIDEOS_DIR, REELS_THUMBNAILS_DIR, REELS_UPLOAD_DIR } from "../config.js";
 import {
   addReelComment,
   createReel,
@@ -213,6 +213,8 @@ export function registerReelsRoutes(
 }
 
 export async function initReelsSubsystem(): Promise<void> {
+  await fs.mkdir(REELS_UPLOAD_DIR, { recursive: true });
+  await fs.mkdir(REELS_THUMBNAILS_DIR, { recursive: true });
   const { initReelsDatabase } = await import("../db/reels.js");
   await initReelsDatabase();
   await migratePostsToReelsStore();
