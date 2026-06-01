@@ -1514,7 +1514,11 @@ export function App() {
           overlayZIndex={120}
           dismissPullCssVar={SETTINGS_DISMISS_PULL_CSS_VAR}
           darkPanelChrome={theme === "dark"}
-          contentClassName="min-h-dvh bg-background text-foreground"
+          contentClassName={
+            nativeShell
+              ? "h-full min-h-0 flex flex-col bg-background text-foreground"
+              : "min-h-dvh bg-background text-foreground"
+          }
         >
           <AppErrorBoundary label="settings-screen">
             <SettingsScreen

@@ -104,6 +104,11 @@ export function useChatSwipeBack({
       startPull: livePullRef.current,
     };
     onPullRef.current(livePullRef.current, "start");
+    try {
+      containerRef.current?.setPointerCapture(pointerId);
+    } catch {
+      /* ignore */
+    }
   }, []);
 
   const finishDrag = useCallback(
@@ -233,11 +238,6 @@ export function useChatSwipeBack({
       isActive: () => enabledRef.current && !blockedRef.current && !dismissingRef.current,
       onEdgePointerDown: (e: PointerEvent) => {
         edgePendingRef.current = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY };
-        try {
-          containerRef.current?.setPointerCapture(e.pointerId);
-        } catch {
-          /* ignore */
-        }
       },
       onPointerMove: (e: PointerEvent) => {
         onPointerMove(e.clientX, e.clientY, e.pointerId);

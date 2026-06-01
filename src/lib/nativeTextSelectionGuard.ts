@@ -9,6 +9,18 @@ export const NATIVE_LONG_PRESS_ATTR = "data-native-long-press";
 const ALLOW_SELECT_SELECTOR =
   'input, textarea, select, [contenteditable="true"], .chat-allow-select, .native-allow-select';
 
+/** مناطق تمرير — لا نمنع touchmove عليها (يُسبب تجمّد اللمس على iOS) */
+const SCROLLABLE_SELECTOR = [
+  ".tab-panel-scroll",
+  ".chat-inbox-scroll",
+  ".chat-scroll-pane",
+  ".profile-scroll-pane",
+  ".settings-screen-root",
+  ".app-dismiss-sheet-panel",
+  ".notifications-panel-scroll",
+  "[data-scroll-pane]",
+].join(", ");
+
 const NO_SELECT_STYLE_ID = "retweet-ios-no-select";
 
 export const NO_SELECT_SHELL_CLASS = "retweet-native-shell";
@@ -111,6 +123,28 @@ export function isNativeLongPressTarget(target: EventTarget | null): boolean {
   return !!target.closest(`[${NATIVE_LONG_PRESS_ATTR}]`);
 }
 
+export function isNativeScrollableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false;
+  if (target.closest(SCROLLABLE_SELECTOR)) return true;
+  let el: Element | null = target;
+  for (let depth = 0; depth < 10 && el; depth += 1) {
+    try {
+      const style = window.getComputedStyle(el);
+      const oy = style.overflowY;
+      if (
+        (oy === "auto" || oy === "scroll" || oy === "overlay") &&
+        el.scrollHeight > el.clientHeight + 4
+      ) {
+        return true;
+      }
+    } catch {
+      /* ignore */
+    }
+    el = el.parentElement;
+  }
+  return false;
+}
+
 function clearNativeSelection(): void {
   try {
     const sel = window.getSelection();
@@ -164,81 +198,31 @@ function injectNoSelectStyles(): void {
   (document.head || document.documentElement).appendChild(style);
 }
 
-/** iOS: منع بدء التحديد عند الضغط المطوّل بدون سحب (مع السماح بالتمرير بعد ~12px) */
-function isAndroidTouchDevice(): boolean {
-  if (typeof navigator === "undefined") return false;
-  return /Android/i.test(navigator.userAgent);
-}
-
+/**
+ * لا نستخدم preventDefault على touchmove — يجمّد التمرير في WKWebView.
+ * يكفي منع selectstart/contextmenu + مسح التحديد عند اللمس.
+ */
 function installTouchSelectionBlocker(): void {
-  let startX = 0;
-  let startY = 0;
-  let touchMoved = false;
-  let rafId = 0;
-
-  const stopRaf = () => {
-    if (rafId) {
-      cancelAnimationFrame(rafId);
-      rafId = 0;
-    }
-  };
-
-  const loopClearSelection = () => {
-    clearNativeSelection();
-    rafId = requestAnimationFrame(loopClearSelection);
-  };
-
   document.addEventListener(
     "touchstart",
     e => {
-      stopRaf();
       if (e.touches.length !== 1) return;
       if (isNativeAllowSelectTarget(e.target)) return;
       if (isNativeLongPressTarget(e.target)) return;
-      startX = e.touches[0].clientX;
-      startY = e.touches[0].clientY;
-      touchMoved = false;
+      if (isNativeScrollableTarget(e.target)) return;
       clearNativeSelection();
-      rafId = requestAnimationFrame(loopClearSelection);
     },
     { capture: true, passive: true },
   );
 
   document.addEventListener(
-    "touchmove",
-    e => {
-      if (!e.touches[0]) return;
-      if (isNativeAllowSelectTarget(e.target)) return;
-      if (isNativeLongPressTarget(e.target)) return;
-      const dx = Math.abs(e.touches[0].clientX - startX);
-      const dy = Math.abs(e.touches[0].clientY - startY);
-      // سحب عمودي واضح — لا نمنع التمرير (Android/WebView حساس لـ preventDefault)
-      if (dy > dx && dy > 4) {
-        touchMoved = true;
-        stopRaf();
-        return;
-      }
-      if (dx > 12 || dy > 12) {
-        touchMoved = true;
-        stopRaf();
-        return;
-      }
-      if (!touchMoved && !isAndroidTouchDevice()) {
-        e.preventDefault();
-        clearNativeSelection();
-      }
+    "touchend",
+    () => {
+      clearNativeSelection();
     },
-    { capture: true, passive: false },
+    { capture: true, passive: true },
   );
-
-  const endTouch = () => {
-    stopRaf();
-    touchMoved = false;
-    clearNativeSelection();
-  };
-
-  document.addEventListener("touchend", endTouch, { capture: true, passive: true });
-  document.addEventListener("touchcancel", endTouch, { capture: true, passive: true });
+  document.addEventListener("touchcancel", clearNativeSelection, { capture: true, passive: true });
 }
 
 export const nativeNoSelectCaptureHandlers = {

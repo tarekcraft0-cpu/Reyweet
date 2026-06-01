@@ -11,20 +11,20 @@ export const MIN_LAYOUT_WIDTH_PX = 260;
 export const CHAT_RIGHT_EDGE_HIT_PX = 40;
 
 /**
- * عرض التخطيط على iOS/Capacitor — لا نعتمد على visualViewport وحده (قد يكون أضيق من الشاشة
- * في WKWebView ويُسبب عموداً ضيقاً ملتصقاً باليسار مع فراغ أبيض على اليمين).
+ * عرض التخطيط على iOS/Capacitor — نأخذ أضيق قياس موثوق (visualViewport / clientWidth)
+ * لتجنب تجاوز 100vw أو scrollWidth المبالغ فيهما (واجهة المحادثات خارج الشاشة).
  */
 export function readNativeLayoutWidth(): number {
   try {
     if (typeof window === "undefined") return DEFAULT_LAYOUT_WIDTH_PX;
+    const vv = window.visualViewport?.width;
     const docW = document.documentElement?.clientWidth;
     const inner = window.innerWidth;
-    const vv = window.visualViewport?.width;
-    const candidates = [docW, inner, vv].filter(
+    const candidates = [vv, docW, inner].filter(
       (n): n is number => typeof n === "number" && Number.isFinite(n) && n > 0,
     );
     if (!candidates.length) return DEFAULT_LAYOUT_WIDTH_PX;
-    return Math.max(MIN_LAYOUT_WIDTH_PX, Math.round(Math.max(...candidates)));
+    return Math.max(MIN_LAYOUT_WIDTH_PX, Math.round(Math.min(...candidates)));
   } catch {
     return DEFAULT_LAYOUT_WIDTH_PX;
   }

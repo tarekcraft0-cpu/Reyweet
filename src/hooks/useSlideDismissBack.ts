@@ -424,6 +424,11 @@ export function useSlideDismissBack({
         fromPanel,
         fromEdge,
       };
+      try {
+        containerRef.current?.setPointerCapture(pointerId);
+      } catch {
+        /* ignore */
+      }
       notifyStackDismissStart();
     },
     [notifyStackDismissStart],
@@ -556,18 +561,7 @@ export function useSlideDismissBack({
       dismissProfile,
       isActive: () => enabledRef.current && !blockedRef.current && !dismissingRef.current,
       onEdgePointerDown: (e: PointerEvent) => {
-        const root = containerRef.current;
-        if (!root) return;
-        if (dismissProfile === "chat") {
-          edgePendingRef.current = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY };
-        } else {
-          beginDrag(e.pointerId, e.clientX, e.clientY, false, true);
-        }
-        try {
-          root.setPointerCapture(e.pointerId);
-        } catch {
-          /* ignore */
-        }
+        edgePendingRef.current = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY };
       },
       onPointerMove: (e: PointerEvent) => {
         onDragPointerMove(e.clientX, e.clientY, e.pointerId);

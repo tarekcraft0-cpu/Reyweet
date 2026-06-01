@@ -45,8 +45,8 @@ function removeIosPlatform() {
 }
 
 const NATIVE_VIEWPORT_CRITICAL_STYLE = `<style id="retweet-native-viewport-critical">
-html,body,#root{width:100%!important;max-width:100vw!important;margin:0!important;padding-left:0!important;padding-right:0!important;left:0!important;right:0!important;overflow-x:hidden!important;box-sizing:border-box!important;transform:none!important;}
-html[data-native-app="1"] [data-tab-panel],html.retweet-native-shell [data-tab-panel]{width:100%!important;max-width:100vw!important;margin-left:0!important;margin-right:0!important;transform:translate3d(0,0,0)!important;left:0!important;right:0!important;}
+html,body,#root{width:100%!important;max-width:100%!important;margin:0!important;padding-left:0!important;padding-right:0!important;left:0!important;right:0!important;overflow-x:hidden!important;box-sizing:border-box!important;transform:none!important;}
+html[data-native-app="1"] [data-tab-panel],html.retweet-native-shell [data-tab-panel]{width:100%!important;max-width:100%!important;margin-left:0!important;margin-right:0!important;transform:translate3d(0,0,0)!important;left:0!important;right:0!important;}
 </style>`;
 
 function injectNativeShellIndex(indexPath) {
@@ -55,6 +55,7 @@ function injectNativeShellIndex(indexPath) {
   if (!html.includes("retweet-native-viewport-critical")) {
     html = html.replace("<head>", `<head>\n${NATIVE_VIEWPORT_CRITICAL_STYLE}`);
   }
+  html = html.replace(/src="\/app\/native-no-select-bootstrap\.js"/g, 'src="./native-no-select-bootstrap.js"');
   const bootstrap = `<script src="./native-no-select-bootstrap.js"></script>`;
   if (!html.includes("native-no-select-bootstrap.js")) {
     html = html.replace("</head>", `${bootstrap}\n</head>`);

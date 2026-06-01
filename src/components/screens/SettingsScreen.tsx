@@ -12,7 +12,8 @@ import {
   getApiToken,
   pushRemoteAppState,
 } from "@/lib/apiBackend";
-import { VERCEL_SITE_URL } from "@/lib/apiUrlPolicy";
+import { isNativeCapacitorShell, VERCEL_SITE_URL } from "@/lib/apiUrlPolicy";
+import { cn } from "@/lib/utils";
 import { getUserEntitlements } from "@/lib/verificationEntitlements";
 import { apiAdminMe } from "@/lib/verificationApi";
 import { VerificationSubscriptionSheet } from "../verification/VerificationSubscriptionSheet";
@@ -91,6 +92,40 @@ function SectionGap() {
 }
 
 const accountsCenterCardClass = "overflow-hidden rounded-2xl border border-border bg-card";
+
+/** إعدادات — تمرير كامل داخل الشاشة (مهم على iOS حيث body overflow:hidden) */
+function SettingsScrollBody({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <div
+      className={cn(
+        "settings-screen-root min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain pb-[max(2.75rem,var(--sab))]",
+        className,
+      )}
+    >
+      {children}
+    </div>
+  );
+}
+
+function SettingsScreenRoot({
+  dir = "rtl",
+  header,
+  children,
+}: {
+  dir?: "rtl" | "ltr";
+  header: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className="flex h-full min-h-0 w-full max-w-full flex-col overflow-hidden bg-background text-foreground"
+      dir={dir}
+    >
+      {header}
+      <SettingsScrollBody>{children}</SettingsScrollBody>
+    </div>
+  );
+}
 
 function SectionTitle({ children }: { children: ReactNode }) {
   return (
@@ -1090,9 +1125,9 @@ export function SettingsScreen({
   if (subView) {
     return (
       <>
-      <div className="settings-screen-root min-h-full w-full overflow-x-hidden bg-background pb-10" dir="rtl">
-        <SettingsHeader title={subTitle(subView)} onBack={closeSubView} navScope="local" />
-
+      <SettingsScreenRoot
+        header={<SettingsHeader title={subTitle(subView)} onBack={closeSubView} navScope="local" />}
+      >
         {subView === "accountInfo" && (
           <AccountInfoPanel me={me} updateProfile={updateProfile} onSaved={closeSubView} />
         )}
@@ -1198,7 +1233,7 @@ export function SettingsScreen({
             )}
           </div>
         )}
-      </div>
+      </SettingsScreenRoot>
 
       <VerificationSubscriptionSheet
         open={subscriptionSheetOpen}
@@ -1213,10 +1248,20 @@ export function SettingsScreen({
     );
   }
 
-  return (
-    <div className="settings-screen-root min-h-full w-full max-w-full overflow-x-hidden bg-background pb-10" dir="rtl">
-      <SettingsHeader title={t("settingsActivity")} onBack={onBack} navScope="local" showBack={!accountsCenterOpen} />
+  const nativeShell = isNativeCapacitorShell();
 
+  return (
+    <>
+      <SettingsScreenRoot
+        header={
+          <SettingsHeader
+            title={t("settingsActivity")}
+            onBack={onBack}
+            navScope="local"
+            showBack={!accountsCenterOpen}
+          />
+        }
+      >
       <SettingsCard>
         <SettingsRow
           icon={Users}
@@ -1229,7 +1274,12 @@ export function SettingsScreen({
       {accountsCenterOpen && (
         <div className="fixed inset-0 z-[10100] bg-black/50">
           <div
-            className="absolute inset-x-0 bottom-0 top-[max(0.75rem,var(--sat))] mx-auto flex w-full max-w-md flex-col overflow-hidden rounded-t-[28px] border border-border bg-background text-foreground shadow-2xl"
+            className={cn(
+              "absolute flex w-full flex-col overflow-hidden border border-border bg-background text-foreground shadow-2xl",
+              nativeShell
+                ? "inset-0 max-w-none rounded-none"
+                : "inset-x-0 bottom-0 top-[max(0.75rem,var(--sat))] mx-auto max-w-md rounded-t-[28px]",
+            )}
             style={{
               transform: `translate3d(0, ${Math.max(0, accountsCenterDragY)}px, 0)`,
               transition: accountsCenterDragging ? "none" : "transform 220ms cubic-bezier(0.22, 1, 0.36, 1)",
@@ -1302,7 +1352,7 @@ export function SettingsScreen({
               </div>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-5">
+            <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain px-4 pb-[max(1.75rem,var(--sab))]">
               <div className={accountsCenterCardClass}>
                 <AccountsCenterRow
                   icon={UserCircle}
@@ -1544,7 +1594,7 @@ export function SettingsScreen({
         <p className="mx-4 mt-2 text-center text-sm text-muted-foreground">{resyncMsg}</p>
       ) : null}
 
-      <div className="mx-4 mt-6">
+      <div className="mx-4 mt-6 mb-2">
         <button
           type="button"
           onClick={() => {
@@ -1557,6 +1607,7 @@ export function SettingsScreen({
           {t("logout")}
         </button>
       </div>
+      </SettingsScreenRoot>
 
       {unblockTarget && (
         <BlockConfirmSheet
@@ -1577,6 +1628,6 @@ export function SettingsScreen({
           setSubView("verify");
         }}
       />
-    </div>
+    </>
   );
 }

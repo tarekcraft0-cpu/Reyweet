@@ -51,7 +51,7 @@
         var el = nodes[i];
         if (!el) continue;
         el.style.width = "100%";
-        el.style.maxWidth = "100vw";
+        el.style.maxWidth = "100%";
         el.style.marginLeft = "0";
         el.style.marginRight = "0";
         el.style.left = "0";
@@ -63,7 +63,7 @@
         var p = panels[j];
         if (p.getAttribute("aria-hidden") === "true") continue;
         p.style.width = "100%";
-        p.style.maxWidth = "100vw";
+        p.style.maxWidth = "100%";
         p.style.marginLeft = "0";
         p.style.marginRight = "0";
         p.style.left = "0";
@@ -112,6 +112,30 @@
     return !!t.closest("[data-native-long-press]");
   }
 
+  var scrollableSel =
+    ".tab-panel-scroll,.chat-inbox-scroll,.chat-scroll-pane,.profile-scroll-pane,.settings-screen-root,.app-dismiss-sheet-panel,.notifications-panel-scroll,[data-scroll-pane]";
+
+  function scrollableTarget(t) {
+    if (!t || !t.closest) return false;
+    if (t.closest(scrollableSel)) return true;
+    var el = t;
+    for (var depth = 0; depth < 10 && el; depth++) {
+      try {
+        var oy = getComputedStyle(el).overflowY;
+        if (
+          (oy === "auto" || oy === "scroll" || oy === "overlay") &&
+          el.scrollHeight > el.clientHeight + 4
+        ) {
+          return true;
+        }
+      } catch (err) {
+        /* ignore */
+      }
+      el = el.parentElement;
+    }
+    return false;
+  }
+
   function clearSelection() {
     try {
       var sel = window.getSelection();
@@ -146,72 +170,24 @@
     true,
   );
 
-  var startX = 0;
-  var startY = 0;
-  var touchMoved = false;
-  var rafId = 0;
-  var isAndroid = /Android/i.test(typeof navigator !== "undefined" ? navigator.userAgent : "");
-
-  function stopRaf() {
-    if (rafId) {
-      cancelAnimationFrame(rafId);
-      rafId = 0;
-    }
-  }
-
-  function loopClear() {
-    clearSelection();
-    rafId = requestAnimationFrame(loopClear);
-  }
-
   document.addEventListener(
     "touchstart",
     function (e) {
-      stopRaf();
       if (e.touches.length !== 1) return;
-      if (allowTarget(e.target) || longPressTarget(e.target)) return;
-      startX = e.touches[0].clientX;
-      startY = e.touches[0].clientY;
-      touchMoved = false;
+      if (allowTarget(e.target) || longPressTarget(e.target) || scrollableTarget(e.target)) return;
       clearSelection();
-      rafId = requestAnimationFrame(loopClear);
     },
     { capture: true, passive: true },
   );
 
   document.addEventListener(
-    "touchmove",
-    function (e) {
-      if (!e.touches[0]) return;
-      if (allowTarget(e.target) || longPressTarget(e.target)) return;
-      var dx = Math.abs(e.touches[0].clientX - startX);
-      var dy = Math.abs(e.touches[0].clientY - startY);
-      if (dy > dx && dy > 4) {
-        touchMoved = true;
-        stopRaf();
-        return;
-      }
-      if (dx > 12 || dy > 12) {
-        touchMoved = true;
-        stopRaf();
-        return;
-      }
-      if (!touchMoved && !isAndroid) {
-        e.preventDefault();
-        clearSelection();
-      }
+    "touchend",
+    function () {
+      clearSelection();
     },
-    { capture: true, passive: false },
+    { capture: true, passive: true },
   );
-
-  function endTouch() {
-    stopRaf();
-    touchMoved = false;
-    clearSelection();
-  }
-
-  document.addEventListener("touchend", endTouch, { capture: true, passive: true });
-  document.addEventListener("touchcancel", endTouch, { capture: true, passive: true });
+  document.addEventListener("touchcancel", clearSelection, { capture: true, passive: true });
 
   /** قبل React — ضبط --sat حتى لا يظهر الهيدر تحت النوتش */
   function syncSafeAreaEarly() {

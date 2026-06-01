@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { ArrowRight } from "lucide-react";
+import { isNativeCapacitorShell } from "@/lib/apiUrlPolicy";
 import { cn } from "@/lib/utils";
 import { GENERIC_DISMISS_PULL_CSS_VAR, SETTINGS_DISMISS_PULL_CSS_VAR } from "@/lib/navigationDismiss";
 import { useSlideDismissBack, type UseSlideDismissBackOptions } from "@/hooks/useSlideDismissBack";
@@ -81,6 +82,8 @@ export function SlideDismissShell({
   const ctx = useMemo(() => ({ requestDismiss }), [requestDismiss]);
 
   const isOverlay = variant === "overlay";
+  const nativeShell = isNativeCapacitorShell();
+  const sheetWidthClass = nativeShell ? "max-w-none w-full" : "max-w-md w-full";
 
   const panel = (
     <>
@@ -123,14 +126,14 @@ export function SlideDismissShell({
         }
         style={{
           zIndex: overlayZIndex,
-          top: "var(--sat, env(safe-area-inset-top, 0px))",
+          top: nativeShell ? 0 : "var(--sat, env(safe-area-inset-top, 0px))",
           bottom: 0,
         }}
       >
         <div
           ref={containerRef}
           data-edge-swipe-root
-          className="relative h-full w-full max-w-md min-w-0 overflow-hidden overscroll-none"
+          className={"relative h-full min-w-0 overflow-hidden overscroll-none " + sheetWidthClass}
         >
           {panel}
         </div>
@@ -270,6 +273,8 @@ export function AppDismissSheet({
     : {};
   const ctx = useMemo(() => ({ requestDismiss }), [requestDismiss]);
   const dimBase = isDarkChrome ? 0.48 : 0.35;
+  const nativeShell = isNativeCapacitorShell();
+  const sheetWidthClass = nativeShell ? "max-w-none w-full" : "max-w-md w-full";
   const panelClassName = cn(
     "app-dismiss-sheet-panel no-scrollbar relative z-10 flex h-full min-h-0 flex-col overflow-x-hidden overflow-y-auto overscroll-y-contain shadow-2xl will-change-transform",
     isDarkChrome && "[color-scheme:dark]",
@@ -291,11 +296,15 @@ export function AppDismissSheet({
         className="pointer-events-none fixed inset-0 flex justify-center bg-transparent"
         style={{
           zIndex: overlayZIndex,
-          top: "var(--sat, env(safe-area-inset-top, 0px))",
+          top: nativeShell ? 0 : "var(--sat, env(safe-area-inset-top, 0px))",
           bottom: 0,
         }}
       >
-        <div ref={containerRef} data-edge-swipe-root className="pointer-events-auto relative h-full w-full max-w-md overflow-hidden">
+        <div
+          ref={containerRef}
+          data-edge-swipe-root
+          className={"pointer-events-auto relative h-full overflow-hidden " + sheetWidthClass}
+        >
           <div {...edgeStripProps} />
           <SlideDismissContext.Provider value={ctx}>
             <div

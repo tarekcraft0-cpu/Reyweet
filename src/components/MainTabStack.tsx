@@ -156,7 +156,7 @@ export function MainTabStack({
       if (panel.getAttribute("aria-hidden") === "true") return;
       panel.style.transform = "translate3d(0, 0, 0)";
       panel.style.width = "100%";
-      panel.style.maxWidth = "100vw";
+      panel.style.maxWidth = "100%";
       panel.style.marginLeft = "0";
       panel.style.marginRight = "0";
       panel.style.left = "0";

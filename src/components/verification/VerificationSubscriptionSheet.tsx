@@ -77,7 +77,7 @@ function TierCard({
 
 const CAROUSEL_GAP = 14;
 const CAROUSEL_SLIDE_RATIO = 0.88;
-/** سحب يمين = الباقة السابقة، سحب يسار = التالية (يتوافق مع أزرار الشيفرون في RTL) */
+/** RTL: سحب من اليمين→اليسار = الباقة على يمين الشاشة، من اليسار→اليمين = على اليسار */
 const SWIPE_COMMIT_PX = 48;
 
 function TierSwipeCarousel({
@@ -127,15 +127,14 @@ function TierSwipeCarousel({
   const centerPad = layout.viewportW > 0 ? (layout.viewportW - layout.slideW) / 2 : 0;
   const baseTranslate =
     layout.step > 0 ? -clampedIndex * layout.step + centerPad : centerPad;
-  /** يتبع الإصبع — سحب يمين يحرّك الشريط يميناً (الباقة السابقة) */
   const translateX = baseTranslate + dragPx;
 
   const finishDrag = (clientX: number) => {
     const dx = clientX - dragRef.current.startX;
     const threshold = Math.max(SWIPE_COMMIT_PX, layout.step * 0.14);
     let next = dragRef.current.startIndex;
-    if (dx > threshold) next = Math.max(0, next - 1);
-    else if (dx < -threshold) next = Math.min(maxIndex, next + 1);
+    if (dx < -threshold) next = Math.max(0, next - 1);
+    else if (dx > threshold) next = Math.min(maxIndex, next + 1);
     setDragPx(0);
     setDragging(false);
     dragRef.current.active = false;
@@ -165,9 +164,9 @@ function TierSwipeCarousel({
     let dx = e.clientX - dragRef.current.startX;
     const atStart = dragRef.current.startIndex <= 0;
     const atEnd = dragRef.current.startIndex >= maxIndex;
-    if (atStart && dx > 0) dx *= 0.22;
-    if (atEnd && dx < 0) dx *= 0.22;
-    setDragPx(dx);
+    if (atStart && dx < 0) dx *= 0.22;
+    if (atEnd && dx > 0) dx *= 0.22;
+    setDragPx(-dx);
   };
 
   const onPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -186,7 +185,7 @@ function TierSwipeCarousel({
         ref={viewportRef}
         dir="ltr"
         aria-roledescription="carousel"
-        aria-label="باقات الاشتراك — اسحب يميناً للسابق ويساراً للتالي"
+        aria-label="باقات الاشتراك — اسحب من اليمين لليسار للباقة السابقة ومن اليسار لليمين للتالية"
         className={
           "overflow-hidden py-1 " + (disabled ? "pointer-events-none opacity-60" : "cursor-grab active:cursor-grabbing")
         }
@@ -362,7 +361,7 @@ export function VerificationSubscriptionSheet({ open, onClose, onSubscribed }: P
             </button>
             <h3 className="text-[26px] font-bold text-foreground">اشتراك التوثيق</h3>
             <p className="mx-auto mt-2.5 max-w-[94%] text-[15px] leading-7 text-muted-foreground">
-              اسحب يميناً للباقة السابقة · يساراً للتالية
+              اسحب من اليمين لليسار للباقة السابقة · من اليسار لليمين للتالية
             </p>
           </div>
         </div>

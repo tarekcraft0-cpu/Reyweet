@@ -22,7 +22,7 @@ class RetweetBridgeViewController: CAPBridgeViewController, WKUIDelegate, WKNavi
         (function(){
           [document.documentElement,document.body,document.getElementById('root')].forEach(function(el){
             if(!el)return;
-            el.style.width='100%';el.style.maxWidth='100vw';el.style.marginLeft='0';el.style.marginRight='0';el.style.left='0';el.style.right='0';el.style.transform='none';
+            el.style.width='100%';el.style.maxWidth='100%';el.style.marginLeft='0';el.style.marginRight='0';el.style.left='0';el.style.right='0';el.style.transform='none';
           });
           try{window.scrollTo(0,0);document.documentElement.scrollLeft=0;if(document.body)document.body.scrollLeft=0;}catch(x){}
         })();
@@ -40,7 +40,7 @@ class RetweetBridgeViewController: CAPBridgeViewController, WKUIDelegate, WKNavi
           document.body.style.webkitUserSelect='none';
           document.body.style.webkitTouchCallout='none';
         }
-        var css='html.retweet-native-shell,html.retweet-native-shell *,#root,#root *{-webkit-user-select:none!important;user-select:none!important;-webkit-touch-callout:none!important;-webkit-user-modify:read-only!important;}html.retweet-native-shell input,html.retweet-native-shell textarea,html.retweet-native-shell select,html.retweet-native-shell [contenteditable=true],html.retweet-native-shell .chat-allow-select,html.retweet-native-shell .chat-allow-select *{-webkit-user-select:text!important;user-select:text!important;-webkit-touch-callout:auto!important;}html.retweet-native-shell ::selection,#root ::selection{background:transparent!important;}';
+        var css='html,body,#root{width:100%!important;max-width:100%!important;margin:0!important;left:0!important;right:0!important;overflow-x:hidden!important;transform:none!important;}[data-tab-panel]{width:100%!important;max-width:100%!important;margin-left:0!important;margin-right:0!important;transform:translate3d(0,0,0)!important;left:0!important;right:0!important;}html.retweet-native-shell,html.retweet-native-shell *,#root,#root *{-webkit-user-select:none!important;user-select:none!important;-webkit-touch-callout:none!important;-webkit-user-modify:read-only!important;}html.retweet-native-shell input,html.retweet-native-shell textarea,html.retweet-native-shell select,html.retweet-native-shell [contenteditable=true],html.retweet-native-shell .chat-allow-select,html.retweet-native-shell .chat-allow-select *{-webkit-user-select:text!important;user-select:text!important;-webkit-touch-callout:auto!important;}html.retweet-native-shell ::selection,#root ::selection{background:transparent!important;}';
         var id='retweet-ios-no-select';
         if(!document.getElementById(id)){
           var s=document.createElement('style');
@@ -64,23 +64,26 @@ class RetweetBridgeViewController: CAPBridgeViewController, WKUIDelegate, WKNavi
             if(el&&allow(el))return;
             sel.removeAllRanges();
           },true);
-          var sx=0,sy=0,moved=0,raf=0;
-          var stopRaf=function(){if(raf){cancelAnimationFrame(raf);raf=0;}};
-          var loop=function(){clear();raf=requestAnimationFrame(loop);};
+          var scrollSel='.tab-panel-scroll,.chat-inbox-scroll,.chat-scroll-pane,.profile-scroll-pane,.settings-screen-root,.app-dismiss-sheet-panel,.notifications-panel-scroll,[data-scroll-pane]';
+          var scrollT=function(t){
+            if(!t||!t.closest)return false;
+            if(t.closest(scrollSel))return true;
+            var el=t;
+            for(var d=0;d<10&&el;d++){
+              try{
+                var oy=getComputedStyle(el).overflowY;
+                if((oy==='auto'||oy==='scroll'||oy==='overlay')&&el.scrollHeight>el.clientHeight+4)return true;
+              }catch(x){}
+              el=el.parentElement;
+            }
+            return false;
+          };
           document.addEventListener('touchstart',function(e){
-            stopRaf();
-            if(e.touches.length!==1||allow(e.target)||lp(e.target))return;
-            sx=e.touches[0].clientX;sy=e.touches[0].clientY;moved=0;clear();raf=requestAnimationFrame(loop);
+            if(e.touches.length!==1||allow(e.target)||lp(e.target)||scrollT(e.target))return;
+            clear();
           },{capture:true,passive:true});
-          document.addEventListener('touchmove',function(e){
-            if(!e.touches[0]||allow(e.target)||lp(e.target))return;
-            var dx=Math.abs(e.touches[0].clientX-sx),dy=Math.abs(e.touches[0].clientY-sy);
-            if(dx>12||dy>12){moved=1;stopRaf();return;}
-            if(!moved){e.preventDefault();clear();}
-          },{capture:true,passive:false});
-          var end=function(){stopRaf();moved=0;clear();};
-          document.addEventListener('touchend',end,{capture:true,passive:true});
-          document.addEventListener('touchcancel',end,{capture:true,passive:true});
+          document.addEventListener('touchend',function(){clear();},{capture:true,passive:true});
+          document.addEventListener('touchcancel',clear,{capture:true,passive:true});
         }
       } catch(e) {}
     })();

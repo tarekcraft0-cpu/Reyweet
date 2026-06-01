@@ -3810,7 +3810,12 @@ export function ChatScreen({
       openChat &&
       stackChat &&
       (stackChat.isGroup || stackChat.isChannel) ? (
-        <div className="pointer-events-auto fixed inset-0 z-[220] mx-auto flex max-w-md flex-col bg-background">
+        <div
+          className={
+            "pointer-events-auto fixed inset-0 z-[220] flex w-full flex-col bg-background " +
+            (isNativeCapacitorShell() ? "" : "mx-auto max-w-md")
+          }
+        >
           <GroupDetailsScreen
             embeddedInChatStack
             chat={stackChat}
@@ -5944,7 +5949,7 @@ function ChatRoom({
         (embedInStack
           ? "chat-room-viewport relative flex h-full min-h-0 w-full flex-col overflow-hidden overscroll-none pointer-events-auto touch-manipulation "
           : (nativeShell
-              ? "chat-room-solo absolute inset-0 z-[200] box-border flex justify-center overflow-hidden overscroll-none pointer-events-none touch-manipulation "
+              ? "chat-room-solo absolute inset-0 z-[200] box-border flex w-full overflow-hidden overscroll-none pointer-events-none touch-manipulation "
               : "chat-room-solo fixed inset-x-0 z-[200] box-border flex justify-center overflow-hidden overscroll-none pointer-events-none touch-manipulation ")) +
         (useIgDm ? "" : "bg-background")
       }
@@ -5982,18 +5987,27 @@ function ChatRoom({
         <>
           {chatWallpaperUrl ? (
             <div
-              className="pointer-events-none fixed inset-0 z-[208] mx-auto w-full max-w-md bg-cover bg-center bg-no-repeat"
+              className={
+                "chat-room-wallpaper pointer-events-none fixed inset-0 z-[208] w-full bg-cover bg-center bg-no-repeat " +
+                (nativeShell ? "" : "mx-auto max-w-md")
+              }
               style={{ backgroundImage: `url(${chatWallpaperUrl})` }}
               aria-hidden
             />
           ) : isVerifiedGoldWallpaper ? (
             <div
-              className="pointer-events-none fixed inset-0 z-[208] mx-auto w-full max-w-md bg-gradient-to-br from-amber-600/80 via-[#0095F6]/70 to-[#FF2D55]/60"
+              className={
+                "chat-room-wallpaper pointer-events-none fixed inset-0 z-[208] w-full bg-gradient-to-br from-amber-600/80 via-[#0095F6]/70 to-[#FF2D55]/60 " +
+                (nativeShell ? "" : "mx-auto max-w-md")
+              }
               aria-hidden
             />
           ) : null}
           <div
-            className="pointer-events-none fixed inset-0 z-[208] mx-auto w-full max-w-md"
+            className={
+              "chat-room-wallpaper pointer-events-none fixed inset-0 z-[208] w-full " +
+              (nativeShell ? "" : "mx-auto max-w-md")
+            }
             style={{ backgroundColor: `rgba(0,0,0,${activeWallpaper.overlayOpacity ?? 0.4})` }}
             aria-hidden
           />
@@ -6002,9 +6016,8 @@ function ChatRoom({
       <SlideDismissContext.Provider value={chatDismissCtx}>
       <div
         className={
-          embedInStack
-            ? "relative z-[210] mx-auto h-full w-full min-w-0 max-w-md overflow-hidden overscroll-none pointer-events-auto"
-            : "relative z-[210] mx-auto h-full w-full min-w-0 max-w-md overflow-hidden overscroll-none pointer-events-auto"
+          "chat-room-column relative z-[210] h-full w-full min-w-0 overflow-hidden overscroll-none pointer-events-auto " +
+          (nativeShell ? "max-w-none" : "mx-auto max-w-md")
         }
       >
       <div

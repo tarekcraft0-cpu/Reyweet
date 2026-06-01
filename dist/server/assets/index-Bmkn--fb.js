@@ -1,10 +1,10 @@
-import { r as reactExports, a2 as getAugmentedNamespace, S as getDefaultExportFromCjs, W as jsxRuntimeExports, V as React__default, a3 as React } from "./server-az2GfvBf.js";
+import { r as reactExports, a2 as getAugmentedNamespace, S as getDefaultExportFromCjs, W as jsxRuntimeExports, V as React__default, a3 as React } from "./server-Cv49EzQk.js";
 import require$$0 from "fs";
 import require$$1 from "url";
-import { n as notImplementedClass, a as notImplemented } from "./worker-entry-CiU8C1I8.js";
+import { n as notImplementedClass, a as notImplemented } from "./worker-entry-CjZkqde3.js";
 import require$$3 from "http";
 import require$$4 from "https";
-import { r as reactDomExports, R as ReactDOM } from "./router-ByylINOy.js";
+import { r as reactDomExports, R as ReactDOM } from "./router-TfSVVz_L.js";
 import require$$0$1 from "util";
 import require$$1$1 from "stream";
 import require$$1$2 from "zlib";
@@ -1046,7 +1046,7 @@ function peekApiBaseUrl() {
 function isRenderableMediaUrl(s) {
   if (!s?.trim()) return false;
   const t = s.trim();
-  return t.startsWith("data:") || t.startsWith("http://") || t.startsWith("https://") || t.startsWith("blob:") || t.startsWith("/media/") || t.startsWith("/stickers/") || t.startsWith("/app/");
+  return t.startsWith("data:") || t.startsWith("http://") || t.startsWith("https://") || t.startsWith("blob:") || t.startsWith("/media/") || t.startsWith("/uploads/") || t.startsWith("/stickers/") || t.startsWith("/app/");
 }
 function coerceMediaBaseForHttpsPage(base) {
   const b = base.trim().replace(/\/$/, "");
@@ -1087,7 +1087,7 @@ function getMediaServingOrigin() {
   return pageOriginForMedia() || VERCEL_SITE_URL;
 }
 function isServerMediaPath(path) {
-  return path.startsWith("/media/") || path.startsWith("/stickers/") || path.startsWith("/public/");
+  return path.startsWith("/media/") || path.startsWith("/uploads/") || path.startsWith("/stickers/") || path.startsWith("/public/");
 }
 function resolveServerMediaPath(pathnameOnly, search) {
   const base = getMediaServingOrigin().replace(/\/$/, "");
@@ -1604,6 +1604,7 @@ const REMOVED_ACCOUNT_IDS = /* @__PURE__ */ new Set([
   "u_sara",
   "u_lina"
 ]);
+const REMOVED_ACCOUNT_USERNAMES = /* @__PURE__ */ new Set(["lina_art", "sata_q", "user"]);
 function isValidAccountSwitchTarget(userId) {
   if (!userId || REMOVED_ACCOUNT_IDS.has(userId)) return false;
   return !!getAccountSession(userId)?.token;
@@ -1629,9 +1630,14 @@ function writeSessions(store2) {
   } catch {
   }
 }
+function isRemovedAccountSession(meta) {
+  if (REMOVED_ACCOUNT_IDS.has(meta.userId)) return true;
+  const un = (meta.username || "").trim().toLowerCase();
+  return un.length > 0 && REMOVED_ACCOUNT_USERNAMES.has(un);
+}
 function listAccountSessions() {
   const { order, sessions } = readSessions();
-  return order.map((id) => sessions[id]).filter(Boolean);
+  return order.map((id) => sessions[id]).filter((m) => !!m && !isRemovedAccountSession(m));
 }
 function getAccountSession(userId) {
   return readSessions().sessions[userId] ?? null;
@@ -3152,16 +3158,38 @@ const VERIFICATION_TIERS = [
     badgeAr: "للبدء",
     perksAr: [
       "طلب توثيق يُرسل لفريق الدعم",
-      "شارة توثيق بعد الموافقة",
-      "ستوري حتى 45 ثانية",
-      "منشورات حتى 500 حرف",
-      "مدة ستوري 24 ساعة"
+      "شارة توثيق بعد الموافقة (بحث، شات، تعليقات، ريلز)",
+      "افتار متحرك (GIF)",
+      "إطار ذهبي حول الصورة في الستوري والنوت",
+      "شارة «قيد المراجعة» بعد الدفع",
+      "ستيكرز حصرية للموثّقين (حزمة أساسية)",
+      "ردود سريعة جاهزة في الرسائل (٣ قوالب)",
+      "أولوية خفيفة في نتائج البحث",
+      "ستوري حتى 45 ثانية · منشورات 500 حرف · 24 ساعة",
+      "مراجعة خلال 72 ساعة · إعادة طلب مجانية عند الرفض"
     ],
     storyMaxDuration: 45,
     postCharacterLimit: 500,
     storyExpiryHours: [24],
-    canUseAnimatedAvatar: false,
-    canPickBadgeColor: false
+    canUseAnimatedAvatar: true,
+    canPickBadgeColor: false,
+    searchRankBoost: 1,
+    exclusiveStickers: "basic",
+    hasStoryLinkSticker: false,
+    hasStoryAnalytics: false,
+    hasScheduledPosts: false,
+    hasQuickReplies: true,
+    maxQuickReplies: 3,
+    canPinPost: false,
+    canRestrictComments: false,
+    canRestrictDm: false,
+    reviewPriorityHours: 72,
+    canResubmitOnReject: true,
+    showPendingReviewBadge: true,
+    hasVerifiedAvatarFrame: true,
+    hasExclusiveChatTheme: false,
+    reelsPriorityBoost: false,
+    hasUnlimitedDrafts: false
   },
   {
     id: "verified_plus",
@@ -3171,17 +3199,40 @@ const VERIFICATION_TIERS = [
     badgeAr: "الأكثر اختياراً",
     perksAr: [
       "كل مزايا التوثيق الأساسي",
-      "افتار متحرك (GIF)",
-      "اختيار لون شارة التوثيق",
-      "ستوري حتى 60 ثانية",
-      "مدة ستوري حتى 48 ساعة",
-      "منشورات حتى 750 حرف"
+      "اختيار لون شارة التوثيق (أزرق / وردي)",
+      "تثبيت منشور واحد في البروفايل",
+      "رابط قابل للنقر في الستوري",
+      "إحصائيات مشاهدات الستوري",
+      "ستيكرز حصرية كاملة + مسودات غير محدودة",
+      "ثيم شات ذهبي حصري",
+      "تقييد التعليقات على منشوراتك",
+      "ردود سريعة حتى 8 قوالب",
+      "أولوية أعلى في البحث والريلز",
+      "ستوري 60 ث · 48 ساعة · منشورات 750 حرف",
+      "مراجعة خلال 48 ساعة"
     ],
     storyMaxDuration: 60,
     postCharacterLimit: 750,
     storyExpiryHours: [24, 48],
     canUseAnimatedAvatar: true,
-    canPickBadgeColor: true
+    canPickBadgeColor: true,
+    searchRankBoost: 2,
+    exclusiveStickers: "full",
+    hasStoryLinkSticker: true,
+    hasStoryAnalytics: true,
+    hasScheduledPosts: false,
+    hasQuickReplies: true,
+    maxQuickReplies: 8,
+    canPinPost: true,
+    canRestrictComments: true,
+    canRestrictDm: false,
+    reviewPriorityHours: 48,
+    canResubmitOnReject: true,
+    showPendingReviewBadge: true,
+    hasVerifiedAvatarFrame: true,
+    hasExclusiveChatTheme: true,
+    reelsPriorityBoost: true,
+    hasUnlimitedDrafts: true
   },
   {
     id: "verified_max",
@@ -3191,17 +3242,36 @@ const VERIFICATION_TIERS = [
     badgeAr: "أقصى مزايا",
     perksAr: [
       "كل مزايا توثيق بلس",
-      "ستوري حتى 60 ثانية",
-      "مدة ستوري حتى 72 ساعة",
-      "منشورات حتى 1000 حرف",
-      "أولوية في مراجعة الطلب",
+      "جدولة نشر المنشورات والستوري",
+      "تقييد الرسائل من غير المتابعين",
+      "ردود سريعة حتى 15 قالباً",
+      "أقصى أولوية في البحث والريلز ومراجعة الطلب",
+      "ستوري 60 ث · 72 ساعة · منشورات 1000 حرف",
+      "مراجعة خلال 24 ساعة",
       "دعم أسرع من فريق التوثيق"
     ],
     storyMaxDuration: 60,
     postCharacterLimit: 1e3,
     storyExpiryHours: [24, 48, 72],
     canUseAnimatedAvatar: true,
-    canPickBadgeColor: true
+    canPickBadgeColor: true,
+    searchRankBoost: 3,
+    exclusiveStickers: "full",
+    hasStoryLinkSticker: true,
+    hasStoryAnalytics: true,
+    hasScheduledPosts: true,
+    hasQuickReplies: true,
+    maxQuickReplies: 15,
+    canPinPost: true,
+    canRestrictComments: true,
+    canRestrictDm: true,
+    reviewPriorityHours: 24,
+    canResubmitOnReject: true,
+    showPendingReviewBadge: true,
+    hasVerifiedAvatarFrame: true,
+    hasExclusiveChatTheme: true,
+    reelsPriorityBoost: true,
+    hasUnlimitedDrafts: true
   }
 ];
 const DEFAULT_VERIFICATION_TIER_ID = "verified_plus";
@@ -3214,15 +3284,8 @@ function getVerificationTier(plan) {
   const found = VERIFICATION_TIERS.find((t) => t.plan === id || t.id === id);
   return found ?? VERIFICATION_TIERS.find((t) => t.id === DEFAULT_VERIFICATION_TIER_ID);
 }
-function tierLimitsFromPlan(plan) {
-  const t = getVerificationTier(plan);
-  return {
-    storyMaxDuration: t.storyMaxDuration,
-    postCharacterLimit: t.postCharacterLimit,
-    storyExpiryHours: t.storyExpiryHours,
-    canUseAnimatedAvatar: t.canUseAnimatedAvatar,
-    canPickBadgeColor: t.canPickBadgeColor
-  };
+function tierFeaturesFromPlan(plan) {
+  return getVerificationTier(plan);
 }
 function isExemptAccount(user) {
   return user.founderVerified === true || user.appOfficialVerified === true || user.supportOfficialVerified === true;
@@ -3241,28 +3304,57 @@ function hasActiveSubscription(user, now = Date.now()) {
   const t = Date.parse(exp);
   return Number.isFinite(t) && t > now;
 }
+function isPendingReviewBadgeVisible(user) {
+  if (isExemptAccount(user)) return false;
+  if (isVerifiedBadgeActive(user)) return false;
+  if (!hasActiveSubscription(user)) return false;
+  return user.verificationStatus === "pending";
+}
 function getUserEntitlements(user, now = Date.now()) {
   const exempt = isExemptAccount(user);
   const status = user.verificationStatus === "pending" || user.verificationStatus === "approved" || user.verificationStatus === "rejected" ? user.verificationStatus : user.verified ? "approved" : "none";
   const isVerified = exempt || isVerifiedBadgeActive(user) || user.founderVerified === true;
   const isSubscribed = exempt || hasActiveSubscription(user, now);
-  const tier = tierLimitsFromPlan(user.subscriptionPlan);
+  const tier = tierFeaturesFromPlan(user.subscriptionPlan);
   const premiumActive = isVerified || isSubscribed;
   const storyMax = user.storyMaxDuration ?? (premiumActive ? tier.storyMaxDuration : 30);
   const postLimit = user.postCharacterLimit ?? (premiumActive ? tier.postCharacterLimit : 300);
   const rawExpiry = Array.isArray(user.storyExpiryOptions) ? user.storyExpiryOptions : [];
   const expiryOpts = rawExpiry.length && premiumActive ? rawExpiry.filter((h) => tier.storyExpiryHours.includes(h)) : premiumActive ? tier.storyExpiryHours : [24];
+  const subscribedOrExempt = isSubscribed || exempt;
   return {
     isVerified,
     isSubscribed,
     verificationStatus: status,
     verificationBadgeColor: user.verificationBadgeColor === "pink" ? "pink" : "blue",
-    canUseAnimatedAvatar: exempt || isVerified && tier.canUseAnimatedAvatar && user.canUseAnimatedAvatar !== false,
+    canUseAnimatedAvatar: exempt || subscribedOrExempt && tier.canUseAnimatedAvatar && user.canUseAnimatedAvatar !== false,
     storyMaxDurationSec: Math.min(60, Math.max(30, storyMax)),
     storyExpiryHoursOptions: expiryOpts.length ? expiryOpts : [24],
     postCharacterLimit: postLimit,
-    canRequestVerification: isSubscribed && !isVerified && status !== "pending" && status !== "rejected"
+    canRequestVerification: isSubscribed && !isVerified && status !== "pending" && (status !== "rejected" || tier.canResubmitOnReject && user.verificationResubmitUsed !== true),
+    showPendingReviewBadge: tier.showPendingReviewBadge && isPendingReviewBadgeVisible(user),
+    searchRankBoost: premiumActive ? tier.searchRankBoost : 0,
+    exclusiveStickers: premiumActive ? tier.exclusiveStickers : "none",
+    hasStoryLinkSticker: premiumActive && tier.hasStoryLinkSticker,
+    hasStoryAnalytics: premiumActive && tier.hasStoryAnalytics,
+    hasScheduledPosts: premiumActive && tier.hasScheduledPosts,
+    hasQuickReplies: premiumActive && tier.hasQuickReplies,
+    maxQuickReplies: premiumActive ? tier.maxQuickReplies : 0,
+    canPinPost: premiumActive && tier.canPinPost,
+    canRestrictComments: premiumActive && tier.canRestrictComments,
+    canRestrictDm: premiumActive && tier.canRestrictDm,
+    reviewPriorityHours: tier.reviewPriorityHours,
+    canResubmitOnReject: tier.canResubmitOnReject,
+    hasVerifiedAvatarFrame: exempt || isVerified || premiumActive && tier.hasVerifiedAvatarFrame,
+    hasExclusiveChatTheme: premiumActive && tier.hasExclusiveChatTheme,
+    reelsPriorityBoost: premiumActive && tier.reelsPriorityBoost,
+    hasUnlimitedDrafts: premiumActive && tier.hasUnlimitedDrafts,
+    canPickBadgeColor: exempt || isVerified && tier.canPickBadgeColor
   };
+}
+function searchVerifiedBoostRank(user) {
+  const ent = getUserEntitlements(user);
+  return ent.searchRankBoost;
 }
 const AppLanguageCtx = reactExports.createContext("ar");
 const TypingCtx = reactExports.createContext({});
@@ -7704,7 +7796,15 @@ function hasCreateAttachmentMedia(media, hasFile) {
   if (isVideoMediaRef(m)) return true;
   return isRenderableMediaUrl(m);
 }
+const HIDDEN_REEL_USER_IDS = /* @__PURE__ */ new Set(["u_omar", "u_lina", "u_sara"]);
+const BLOCKED_REEL_VIDEO_URL_RE = /commondatastorage\.googleapis\.com\/gtv-videos-bucket\/sample/i;
+function shouldHideReelPost(post) {
+  if (HIDDEN_REEL_USER_IDS.has(post.userId)) return true;
+  const v = `${post.video || ""} ${post.image || ""}`;
+  return BLOCKED_REEL_VIDEO_URL_RE.test(v);
+}
 function isReelFeedPost(post) {
+  if (shouldHideReelPost(post)) return false;
   if (post.type === "tweet") return false;
   return normalizePostMedia(post).hasVideo;
 }
@@ -7718,7 +7818,7 @@ function isVideoMediaRef(s) {
   const t = s.trim();
   if (t.startsWith("data:video/")) return true;
   if (/\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(t)) return true;
-  return t.includes("/media/videos/");
+  return t.includes("/media/videos/") || t.includes("/uploads/reels/");
 }
 function normalizePostMedia(post) {
   let imageRaw = post.image?.trim() || "";
@@ -8489,7 +8589,7 @@ function useReelsPosts(meId, blocked) {
         const out = [];
         for (const p of s.posts ?? []) {
           if (!p?.id || seen.has(p.id)) continue;
-          if (p.type !== "reel" && !p.video) continue;
+          if (!isReelFeedPost(p)) continue;
           const author = s.users.find((u) => u.id === p.userId);
           if (author && blockedSet.has(author.id)) continue;
           seen.add(p.id);
@@ -8635,6 +8735,12 @@ const LEGACY_REMOVED_USER_IDS = /* @__PURE__ */ new Set([
   "u_sara",
   "u_lina"
 ]);
+const LEGACY_REMOVED_USERNAMES = /* @__PURE__ */ new Set(["lina_art", "sata_q", "user"]);
+function isLegacyRemovedUser(u) {
+  if (LEGACY_REMOVED_USER_IDS.has(u.id)) return true;
+  const un = (u.username || "").trim().toLowerCase();
+  return un.length > 0 && LEGACY_REMOVED_USERNAMES.has(un);
+}
 function cleanStoryStickersForLegacyUser(stickers, L) {
   if (!stickers?.length) return stickers;
   return stickers.map((sk) => {
@@ -8653,8 +8759,12 @@ function cleanStoryStickersForLegacyUser(stickers, L) {
 }
 function stripLegacyFounderFromState(s) {
   const CH = LEGACY_FOUNDER_CHANNEL_ID;
-  const stripUser = (id) => !LEGACY_REMOVED_USER_IDS.has(id);
-  const users = (s.users || []).filter((u) => !LEGACY_REMOVED_USER_IDS.has(u.id)).map((u) => ({
+  const stripUser = (id) => {
+    const row = (s.users || []).find((u) => u.id === id);
+    if (row && isLegacyRemovedUser(row)) return false;
+    return !LEGACY_REMOVED_USER_IDS.has(id);
+  };
+  const users = (s.users || []).filter((u) => !isLegacyRemovedUser(u)).map((u) => ({
     ...u,
     followers: (u.followers || []).filter(stripUser),
     following: (u.following || []).filter(stripUser),
@@ -8722,7 +8832,8 @@ function stripLegacyFounderFromState(s) {
     (n) => stripUser(n.userId) && stripUser(n.fromId)
   );
   const mediaNotes = (s.mediaNotes || []).filter((mn) => stripUser(mn.authorId));
-  const currentUserId = s.currentUserId && LEGACY_REMOVED_USER_IDS.has(s.currentUserId) ? null : s.currentUserId;
+  const currentRow = s.currentUserId ? (s.users || []).find((u) => u.id === s.currentUserId) : void 0;
+  const currentUserId = s.currentUserId && (LEGACY_REMOVED_USER_IDS.has(s.currentUserId) || currentRow && isLegacyRemovedUser(currentRow)) ? null : s.currentUserId;
   const accountIds = (s.accountIds || []).filter(stripUser);
   return {
     ...s,
@@ -9021,6 +9132,10 @@ function normalizePersistedAppState(merged) {
       storyMaxDuration: typeof u.storyMaxDuration === "number" ? u.storyMaxDuration : 30,
       storyExpiryOptions: Array.isArray(u.storyExpiryOptions) && u.storyExpiryOptions.length > 0 ? u.storyExpiryOptions : [24],
       postCharacterLimit: typeof u.postCharacterLimit === "number" && u.postCharacterLimit > 0 ? u.postCharacterLimit : 300,
+      verificationResubmitUsed: u.verificationResubmitUsed === true,
+      pinnedPostId: typeof u.pinnedPostId === "string" ? u.pinnedPostId : void 0,
+      restrictComments: u.restrictComments === true,
+      restrictDmFromNonFollowers: u.restrictDmFromNonFollowers === true,
       founderVerified: u.founderVerified === true,
       founderOfficialLabel: typeof u.founderOfficialLabel === "string" ? u.founderOfficialLabel : void 0,
       appOfficialVerified: u.appOfficialVerified === true,
@@ -11130,6 +11245,8 @@ function AppProvider({
       if (!s.currentUserId || isGuestUserId(s.currentUserId)) return s;
       const post = s.posts.find((p) => p.id === postId);
       if (!post) return s;
+      const author = s.users.find((u) => u.id === post.userId);
+      if (author?.restrictComments && post.userId !== s.currentUserId) return s;
       const c = {
         id: optimisticId,
         userId: s.currentUserId,
@@ -17981,14 +18098,12 @@ function chatNavCompleteMs(pullPx, widthPx) {
   const frac = w > 0 ? remaining / w : 1;
   return Math.max(100, Math.min(CHAT_NAV_MS, Math.round(CHAT_NAV_MS * frac)));
 }
-function chatNavOpenTransforms(t, widthPx) {
-  const w = chatNavWidth(widthPx);
+function chatNavOpenTransforms(t, _widthPx) {
   const p = Math.max(0, Math.min(1, t));
-  const roomTx = Math.round(w * (1 - p));
-  const inboxTx = Math.round(-w * 0.05 * (1 - p));
+  const room = p >= 0.999 ? "none" : `translate3d(${(100 * (1 - p)).toFixed(4)}%, 0, 0)`;
   return {
-    room: `translate3d(${roomTx}px, 0, 0)`,
-    inbox: `translate3d(${inboxTx}px, 0, 0)`
+    room,
+    inbox: "none"
   };
 }
 function chatNavReleaseTarget(pullPx, widthPx, velocityX = 0) {
@@ -18015,28 +18130,45 @@ function applyChatNavDismissTransforms(pullPx, widthPx, layers2, animate, durati
   return { progress, dismissPull, roomRadius };
 }
 function applyChatNavOpenTransforms(t, widthPx, layers2, animate) {
-  const { room, inbox } = chatNavOpenTransforms(t, widthPx);
+  const { room } = chatNavOpenTransforms(t);
   const transition = animate ? `transform ${CHAT_NAV_MS}ms ${CHAT_NAV_EASE}` : "none";
   if (layers2.inboxEl) {
-    layers2.inboxEl.style.transform = inbox;
+    layers2.inboxEl.style.transform = "none";
     layers2.inboxEl.style.transformOrigin = "";
-    layers2.inboxEl.style.transition = transition;
+    layers2.inboxEl.style.transition = "none";
+    if (t < 1e-3) layers2.inboxEl.dataset.inboxAtRest = "true";
+    else delete layers2.inboxEl.dataset.inboxAtRest;
   }
   if (layers2.roomEl) {
+    layers2.roomEl.style.visibility = "";
     layers2.roomEl.style.transform = room;
     layers2.roomEl.style.transition = transition;
     layers2.roomEl.style.removeProperty("--retweet-chat-room-radius");
     layers2.roomEl.style.removeProperty("--retweet-chat-dismiss-pull");
   }
 }
-function snapChatNavInboxRest(layers2) {
+function snapChatNavInboxRest(layers2, widthPx) {
   if (layers2.inboxEl) {
     layers2.inboxEl.style.transform = "none";
     layers2.inboxEl.style.transformOrigin = "";
     layers2.inboxEl.style.transition = "none";
+    layers2.inboxEl.style.left = "0";
+    layers2.inboxEl.style.right = "0";
+    layers2.inboxEl.style.width = "100%";
+    layers2.inboxEl.style.maxWidth = "100%";
+    layers2.inboxEl.dataset.inboxAtRest = "true";
   }
   if (layers2.roomEl) {
+    layers2.roomEl.style.left = "0";
+    layers2.roomEl.style.right = "0";
+    layers2.roomEl.style.width = "100%";
+    layers2.roomEl.style.maxWidth = "100%";
+    layers2.roomEl.style.transform = "translate3d(100%, 0, 0)";
+    layers2.roomEl.style.transformOrigin = "";
     layers2.roomEl.style.transition = "none";
+    layers2.roomEl.style.visibility = "hidden";
+    layers2.roomEl.style.opacity = "";
+    layers2.roomEl.style.pointerEvents = "none";
     layers2.roomEl.style.removeProperty("--retweet-chat-room-radius");
     layers2.roomEl.style.removeProperty("--retweet-chat-dismiss-pull");
   }
@@ -18065,6 +18197,9 @@ function isPointerOnPhysicalChatBackEdge(clientX, containerRect, edgePx = CHAT_E
   } catch {
     return false;
   }
+}
+function resolveDismissRtl(profile = "app") {
+  return profile === "chat" ? true : isDocumentRtl();
 }
 function isPointerOnDismissEdge(clientX, containerRect, profile = "app") {
   return profile === "chat" ? isPointerOnPhysicalChatBackEdge(clientX, containerRect) : isPointerOnPhysicalBackEdge(clientX, containerRect);
@@ -18154,6 +18289,9 @@ let installed$1 = false;
 const layers = [];
 let activePointerId = null;
 let activeLayerId = null;
+let gestureStartX = 0;
+let gestureStartY = 0;
+let dragCommitted = false;
 function topLayer() {
   for (let i = layers.length - 1; i >= 0; i--) {
     const L = layers[i];
@@ -18188,24 +18326,40 @@ function installDocumentRouter() {
     if (profile === "chat" ? !isChatNavBackEdge(e.clientX, rect, CHAT_EDGE_SWIPE_HIT_PX) : !isPointerOnDismissEdge(e.clientX, rect, profile)) {
       return;
     }
+    gestureStartX = e.clientX;
+    gestureStartY = e.clientY;
+    dragCommitted = false;
     activePointerId = e.pointerId;
     activeLayerId = layer.id;
     layer.onEdgePointerDown(e);
-    e.preventDefault();
-    e.stopPropagation();
   };
   const onMove = (e) => {
     if (activePointerId == null || e.pointerId !== activePointerId) return;
     const layer = layers.find((L) => L.id === activeLayerId);
     if (!layer) return;
+    if (!dragCommitted) {
+      const dx = e.clientX - gestureStartX;
+      const dy = e.clientY - gestureStartY;
+      if (Math.hypot(dx, dy) < 10) return;
+      const profile = layer.dismissProfile ?? "app";
+      const horizontal = profile === "chat" ? isChatNavBackSwipe(dx, dy) : isDismissSwipeDelta(dx, dy, resolveDismissRtl(profile), profile);
+      if (!horizontal) {
+        activePointerId = null;
+        activeLayerId = null;
+        dragCommitted = false;
+        return;
+      }
+      dragCommitted = true;
+    }
     layer.onPointerMove(e);
-    e.preventDefault();
+    if (dragCommitted) e.preventDefault();
   };
   const onUp = (e) => {
     if (activePointerId == null || e.pointerId !== activePointerId) return;
     const layer = layers.find((L) => L.id === activeLayerId);
     activePointerId = null;
     activeLayerId = null;
+    dragCommitted = false;
     layer?.onPointerUp(e);
   };
   const onCancel = (e) => {
@@ -18213,16 +18367,20 @@ function installDocumentRouter() {
     const layer = layers.find((L) => L.id === activeLayerId);
     activePointerId = null;
     activeLayerId = null;
+    dragCommitted = false;
     layer?.onPointerUp(e);
   };
   const resetActivePointer = () => {
     activePointerId = null;
     activeLayerId = null;
+    dragCommitted = false;
   };
-  document.addEventListener("pointerdown", onDown, { capture: true, passive: false });
+  document.addEventListener("pointerdown", onDown, { capture: true, passive: true });
   document.addEventListener("pointermove", onMove, { capture: true, passive: false });
   document.addEventListener("pointerup", onUp, { capture: true });
   document.addEventListener("pointercancel", onCancel, { capture: true });
+  document.addEventListener("touchend", resetActivePointer, { capture: true, passive: true });
+  document.addEventListener("touchcancel", resetActivePointer, { capture: true, passive: true });
   window.addEventListener("blur", resetActivePointer);
   document.addEventListener("visibilitychange", resetActivePointer);
 }
@@ -18241,6 +18399,7 @@ function registerPointerBackLayer(handlers) {
     if (activeLayerId === layer.id) {
       activePointerId = null;
       activeLayerId = null;
+      dragCommitted = false;
     }
   };
 }
@@ -18540,6 +18699,10 @@ function useSlideDismissBack({
         fromPanel,
         fromEdge
       };
+      try {
+        containerRef.current?.setPointerCapture(pointerId);
+      } catch {
+      }
       notifyStackDismissStart();
     },
     [notifyStackDismissStart]
@@ -18657,17 +18820,7 @@ function useSlideDismissBack({
       dismissProfile,
       isActive: () => enabledRef.current && !blockedRef.current && !dismissingRef.current,
       onEdgePointerDown: (e) => {
-        const root = containerRef.current;
-        if (!root) return;
-        if (dismissProfile === "chat") {
-          edgePendingRef.current = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY };
-        } else {
-          beginDrag(e.pointerId, e.clientX, e.clientY, false, true);
-        }
-        try {
-          root.setPointerCapture(e.pointerId);
-        } catch {
-        }
+        edgePendingRef.current = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY };
       },
       onPointerMove: (e) => {
         onDragPointerMove(e.clientX, e.clientY, e.pointerId);
@@ -18826,6 +18979,8 @@ function SlideDismissShell({
     onLostPointerCapture: panelSwipeProps.onLostPointerCapture
   } : {};
   const ctx = reactExports.useMemo(() => ({ requestDismiss }), [requestDismiss]);
+  const nativeShell = isNativeCapacitorShell();
+  const sheetWidthClass = nativeShell ? "max-w-none w-full" : "max-w-md w-full";
   const panel = /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx("div", { ...edgeStripProps }),
     /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -18860,7 +19015,7 @@ function SlideDismissShell({
       className: "pointer-events-auto fixed inset-x-0 flex justify-center overflow-hidden overscroll-none bg-transparent " + className,
       style: {
         zIndex: overlayZIndex,
-        top: "var(--sat, env(safe-area-inset-top, 0px))",
+        top: nativeShell ? 0 : "var(--sat, env(safe-area-inset-top, 0px))",
         bottom: 0
       },
       children: /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -18868,7 +19023,7 @@ function SlideDismissShell({
         {
           ref: containerRef,
           "data-edge-swipe-root": true,
-          className: "relative h-full w-full max-w-md min-w-0 overflow-hidden overscroll-none",
+          className: "relative h-full min-w-0 overflow-hidden overscroll-none " + sheetWidthClass,
           children: panel
         }
       )
@@ -18936,7 +19091,7 @@ function SlideDismissBackButton({
 }
 function AppDismissSheet({
   children,
-  onClose,
+  onClose: onClose2,
   contentClassName,
   overlayZIndex = 50,
   panelSwipeDismiss = true,
@@ -18950,7 +19105,7 @@ function AppDismissSheet({
   const pullVar = dismissPullCssVar ?? (panelSwipeDismiss ? GENERIC_DISMISS_PULL_CSS_VAR : void 0);
   const isDarkChrome = darkPanelChrome ?? (contentClassName ?? "").includes("bg-black");
   const { containerRef, panelStyle, requestDismiss, edgeStripProps, panelSwipeProps } = useSlideDismissBack({
-    onDismiss: onClose,
+    onDismiss: onClose2,
     enabled,
     blocked,
     dismissPullCssVar: pullVar,
@@ -18968,6 +19123,8 @@ function AppDismissSheet({
   } : {};
   const ctx = reactExports.useMemo(() => ({ requestDismiss }), [requestDismiss]);
   const dimBase = isDarkChrome ? 0.48 : 0.35;
+  const nativeShell = isNativeCapacitorShell();
+  const sheetWidthClass = nativeShell ? "max-w-none w-full" : "max-w-md w-full";
   const panelClassName = cn(
     "app-dismiss-sheet-panel no-scrollbar relative z-10 flex h-full min-h-0 flex-col overflow-x-hidden overflow-y-auto overscroll-y-contain shadow-2xl will-change-transform",
     isDarkChrome && "[color-scheme:dark]",
@@ -18990,22 +19147,30 @@ function AppDismissSheet({
         className: "pointer-events-none fixed inset-0 flex justify-center bg-transparent",
         style: {
           zIndex: overlayZIndex,
-          top: "var(--sat, env(safe-area-inset-top, 0px))",
+          top: nativeShell ? 0 : "var(--sat, env(safe-area-inset-top, 0px))",
           bottom: 0
         },
-        children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { ref: containerRef, "data-edge-swipe-root": true, className: "pointer-events-auto relative h-full w-full max-w-md overflow-hidden", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { ...edgeStripProps }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(SlideDismissContext.Provider, { value: ctx, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "div",
-            {
-              className: panelClassName,
-              style: { ...panelStyle, ...panelTouchStyle },
-              onClick: (e) => e.stopPropagation(),
-              ...panelPointerHandlers,
-              children
-            }
-          ) })
-        ] })
+        children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "div",
+          {
+            ref: containerRef,
+            "data-edge-swipe-root": true,
+            className: "pointer-events-auto relative h-full overflow-hidden " + sheetWidthClass,
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { ...edgeStripProps }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(SlideDismissContext.Provider, { value: ctx, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "div",
+                {
+                  className: panelClassName,
+                  style: { ...panelStyle, ...panelTouchStyle },
+                  onClick: (e) => e.stopPropagation(),
+                  ...panelPointerHandlers,
+                  children
+                }
+              ) })
+            ]
+          }
+        )
       }
     )
   ] });
@@ -19055,6 +19220,319 @@ function useTabActive() {
 function useIsTabActive(tab) {
   return useTabActive() === tab;
 }
+const NAV_HIDE_PROGRESS_CSS_VAR = "--retweet-nav-hide-progress";
+const CHAT_DISMISS_ROOM_TX_VAR = "--retweet-chat-dismiss-room-tx";
+const REELS_NAV_COLLAPSE_PROGRESS_VAR = "--retweet-reels-nav-collapse-progress";
+const DEFAULT_TRAVEL_PX = 72;
+function clamp$2(n, min, max) {
+  return Math.min(max, Math.max(min, n));
+}
+function useBottomNavSheet(options) {
+  const optionsRef = reactExports.useRef(options);
+  optionsRef.current = options;
+  const navRef = reactExports.useRef(null);
+  const travelRef = reactExports.useRef(DEFAULT_TRAVEL_PX);
+  const suppressTapUntilRef = reactExports.useRef(0);
+  const shouldSuppressTap = reactExports.useCallback(() => Date.now() < suppressTapUntilRef.current, []);
+  const measureTravel = reactExports.useCallback(() => {
+    const el = navRef.current;
+    if (!el) return;
+    const h = el.offsetHeight;
+    if (h > 0) travelRef.current = h;
+  }, []);
+  const publishHideProgress = reactExports.useCallback((p) => {
+    document.documentElement.style.setProperty(NAV_HIDE_PROGRESS_CSS_VAR, String(clamp$2(p, 0, 1)));
+  }, []);
+  reactExports.useLayoutEffect(() => {
+    measureTravel();
+    publishHideProgress(0);
+  }, [measureTravel, publishHideProgress]);
+  reactExports.useLayoutEffect(() => {
+    const el = navRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => measureTravel());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [measureTravel]);
+  reactExports.useEffect(() => {
+    document.documentElement.style.setProperty(REELS_NAV_COLLAPSE_PROGRESS_VAR, "0");
+    return () => {
+      document.documentElement.style.removeProperty(NAV_HIDE_PROGRESS_CSS_VAR);
+      document.documentElement.style.removeProperty(CHAT_DISMISS_ROOM_TX_VAR);
+      document.documentElement.style.removeProperty(REELS_NAV_COLLAPSE_PROGRESS_VAR);
+    };
+  }, []);
+  travelRef.current;
+  const externalDrive = !!optionsRef.current?.externalHideDrive;
+  const navStyle = externalDrive ? {
+    transform: `translate3d(var(${CHAT_DISMISS_ROOM_TX_VAR}, 0px), 0, 0)`,
+    transformOrigin: "50% 100%",
+    transition: "none",
+    willChange: "transform"
+  } : {
+    transform: "translate3d(0, 0, 0)",
+    transformOrigin: "50% 100%",
+    transition: "none",
+    willChange: "auto"
+  };
+  return {
+    navRef,
+    navStyle,
+    shouldSuppressTap
+  };
+}
+const CHAT_STACK_PROGRESS_VAR = "--retweet-chat-stack-progress";
+function clampStackProgress(p) {
+  return Math.max(0, Math.min(1, Number.isFinite(p) ? p : 0));
+}
+function publishChatStackCssProgress(progress) {
+  const clamped = clampStackProgress(progress);
+  if (typeof document !== "undefined") {
+    document.documentElement.style.setProperty(CHAT_STACK_PROGRESS_VAR, String(clamped));
+  }
+  return clamped;
+}
+function clearChatDismissRoomTx() {
+  if (typeof document === "undefined") return;
+  document.documentElement.style.removeProperty(CHAT_DISMISS_ROOM_TX_VAR);
+}
+function clearChatStackCssProgress() {
+  if (typeof document === "undefined") return;
+  document.documentElement.style.removeProperty(CHAT_STACK_PROGRESS_VAR);
+  clearChatDismissRoomTx();
+}
+function snapStackLayersToInboxRest(layers2) {
+  if (layers2.inboxEl) {
+    layers2.inboxEl.style.transform = "none";
+    layers2.inboxEl.style.transformOrigin = "";
+    layers2.inboxEl.style.transition = "none";
+    layers2.inboxEl.style.willChange = "auto";
+    layers2.inboxEl.dataset.inboxAtRest = "true";
+  }
+  if (layers2.roomEl) {
+    layers2.roomEl.style.visibility = "";
+    layers2.roomEl.style.opacity = "";
+    layers2.roomEl.style.pointerEvents = "";
+    layers2.roomEl.style.transition = "none";
+    layers2.roomEl.style.willChange = "auto";
+    layers2.roomEl.style.removeProperty("--retweet-chat-room-radius");
+    layers2.roomEl.style.removeProperty("--retweet-chat-dismiss-pull");
+  }
+  clearChatStackCssProgress();
+}
+function syncStackNavHideProgress(progress) {
+  if (typeof document === "undefined") return;
+  if (progress == null) {
+    document.documentElement.style.removeProperty(NAV_HIDE_PROGRESS_CSS_VAR);
+    return;
+  }
+  document.documentElement.style.setProperty(
+    NAV_HIDE_PROGRESS_CSS_VAR,
+    String(clampStackProgress(progress))
+  );
+}
+const DEFAULT_LAYOUT_WIDTH_PX = 390;
+const MIN_LAYOUT_WIDTH_PX = 260;
+function readNativeLayoutWidth() {
+  try {
+    if (typeof window === "undefined") return DEFAULT_LAYOUT_WIDTH_PX;
+    const vv = window.visualViewport?.width;
+    const docW = document.documentElement?.clientWidth;
+    const inner = window.innerWidth;
+    const candidates = [vv, docW, inner].filter(
+      (n) => typeof n === "number" && Number.isFinite(n) && n > 0
+    );
+    if (!candidates.length) return DEFAULT_LAYOUT_WIDTH_PX;
+    return Math.max(MIN_LAYOUT_WIDTH_PX, Math.round(Math.min(...candidates)));
+  } catch {
+    return DEFAULT_LAYOUT_WIDTH_PX;
+  }
+}
+function readSafeViewportWidth() {
+  try {
+    if (typeof window === "undefined") return DEFAULT_LAYOUT_WIDTH_PX;
+    if (isNativeCapacitorShell()) return readNativeLayoutWidth();
+    const vv = window.visualViewport?.width;
+    const raw = Number(vv ?? window.innerWidth);
+    if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_LAYOUT_WIDTH_PX;
+    const w = Math.max(MIN_LAYOUT_WIDTH_PX, Math.round(raw));
+    return Math.min(w, APP_COLUMN_MAX_PX);
+  } catch {
+    return DEFAULT_LAYOUT_WIDTH_PX;
+  }
+}
+function readSafeContainerRect(el) {
+  try {
+    if (!el || typeof el.getBoundingClientRect !== "function") return null;
+    const r2 = el.getBoundingClientRect();
+    if (!Number.isFinite(r2.width) || r2.width <= 0) return null;
+    return {
+      left: Number.isFinite(r2.left) ? r2.left : 0,
+      top: Number.isFinite(r2.top) ? r2.top : 0,
+      width: r2.width,
+      height: Number.isFinite(r2.height) && r2.height > 0 ? r2.height : 0
+    };
+  } catch {
+    return null;
+  }
+}
+function readSafeStackCapPx(containerEl, fallbackCapRef) {
+  try {
+    const rect = readSafeContainerRect(containerEl);
+    const fromRect = rect?.width;
+    const fromRef = fallbackCapRef?.current && Number.isFinite(fallbackCapRef.current) ? fallbackCapRef.current : 0;
+    const base = fromRect && fromRect > 0 ? fromRect : fromRef > 0 ? fromRef : readSafeViewportWidth();
+    const w = Math.max(MIN_LAYOUT_WIDTH_PX, Math.round(base));
+    if (isNativeCapacitorShell()) return w;
+    return Math.min(w, APP_COLUMN_MAX_PX);
+  } catch {
+    return readSafeViewportWidth();
+  }
+}
+const LAYOUT_SELECTORS = '#root, #root > .retweet-no-select-pane, [data-tab-panel="chat"], [data-tab-panel="chat"] .tab-panel-scroll, .chat-stack-scene, .chat-inbox-pane, .chat-inbox-scroll, [data-chat-stack-room]';
+function pinFullWidth(el) {
+  el.style.width = "100%";
+  el.style.maxWidth = "100%";
+  el.style.minWidth = "0";
+  el.style.boxSizing = "border-box";
+  el.style.marginLeft = "0";
+  el.style.marginRight = "0";
+  el.style.marginInline = "0";
+  el.style.paddingLeft = "";
+  el.style.paddingRight = "";
+  el.style.left = "0";
+  el.style.right = "0";
+  el.style.insetInlineStart = "0";
+  el.style.insetInlineEnd = "0";
+  el.style.transform = "none";
+  el.style.translate = "none";
+  el.style.overflowX = "hidden";
+}
+function resetNativeChatInboxLayout(layers2) {
+  if (!isNativeCapacitorShell() || typeof document === "undefined") return;
+  clearChatStackCssProgress();
+  const root = document.documentElement;
+  root.style.removeProperty(CHAT_DISMISS_ROOM_TX_VAR);
+  root.style.removeProperty(NAV_HIDE_PROGRESS_CSS_VAR);
+  document.querySelectorAll(LAYOUT_SELECTORS).forEach(pinFullWidth);
+  const chatPanel = document.querySelector('[data-tab-panel="chat"]');
+  if (chatPanel) {
+    chatPanel.style.transform = "translate3d(0, 0, 0)";
+    chatPanel.style.width = "100%";
+    chatPanel.style.maxWidth = "none";
+    chatPanel.style.marginLeft = "0";
+    chatPanel.style.marginRight = "0";
+    chatPanel.style.visibility = "visible";
+    chatPanel.dataset.chatInboxSettled = "true";
+  }
+  const scene = document.querySelector(".chat-stack-scene");
+  if (scene) {
+    scene.style.overflow = "hidden";
+    scene.style.contain = "none";
+  }
+  const room = layers2?.roomEl ?? document.querySelector("[data-chat-stack-room]");
+  const inbox = layers2?.inboxEl ?? document.querySelector(".chat-inbox-pane");
+  if (inbox || room) {
+    typeof window !== "undefined" ? readNativeLayoutWidth() : void 0;
+    snapChatNavInboxRest({ inboxEl: inbox, roomEl: room });
+  }
+  if (room) {
+    room.style.transform = "translate3d(100%, 0, 0)";
+    room.style.visibility = "hidden";
+    room.style.pointerEvents = "none";
+  }
+  if (typeof document !== "undefined") {
+    document.body.style.overflowX = "hidden";
+    document.documentElement.style.overflowX = "hidden";
+  }
+  document.documentElement.classList.add("retweet-chat-inbox-pinned");
+}
+const NATIVE_APP_ATTR = "data-native-app";
+function resetNativeDocumentScroll() {
+  if (typeof window === "undefined") return;
+  try {
+    window.scrollTo(0, 0);
+    const se = document.scrollingElement ?? document.documentElement;
+    if (se) {
+      se.scrollLeft = 0;
+      if (Math.abs(se.scrollLeft) > 0.5) {
+        try {
+          se.scrollTo({ left: 0, top: se.scrollTop, behavior: "instant" });
+        } catch {
+          se.scrollLeft = 0;
+        }
+      }
+    }
+    document.documentElement.scrollLeft = 0;
+    if (document.body) document.body.scrollLeft = 0;
+  } catch {
+  }
+}
+function pinElementFullWidth(el) {
+  el.style.width = "100%";
+  el.style.maxWidth = "100%";
+  el.style.minWidth = "0";
+  el.style.marginLeft = "0";
+  el.style.marginRight = "0";
+  el.style.marginInline = "0";
+  el.style.paddingLeft = "";
+  el.style.paddingRight = "";
+  el.style.left = "0";
+  el.style.right = "0";
+  el.style.insetInlineStart = "0";
+  el.style.insetInlineEnd = "0";
+  el.style.transform = "none";
+  el.style.translate = "none";
+  el.style.boxSizing = "border-box";
+}
+function applyNativeViewportFullBleed() {
+  if (!isNativeCapacitorShell() || typeof document === "undefined") return;
+  const html = document.documentElement;
+  const body = document.body;
+  const root = document.getElementById("root");
+  html.classList.add("retweet-native-shell");
+  html.setAttribute(NATIVE_APP_ATTR, "1");
+  body?.setAttribute(NATIVE_APP_ATTR, "1");
+  pinElementFullWidth(html);
+  if (body) pinElementFullWidth(body);
+  if (root) pinElementFullWidth(root);
+  const shell = root?.firstElementChild;
+  if (shell instanceof HTMLElement) {
+    pinElementFullWidth(shell);
+  }
+  const pinSelectors = ".retweet-no-select-pane, .tab-panel-scroll, .chat-stack-scene, .chat-inbox-pane, [data-floating-nav-host], [data-edge-swipe-root], [data-tab-panel]";
+  document.querySelectorAll(pinSelectors).forEach((el) => {
+    if (el.getAttribute("data-tab-panel") && el.getAttribute("aria-hidden") === "true") return;
+    pinElementFullWidth(el);
+    if (el.hasAttribute("data-tab-panel")) {
+      el.style.transform = "translate3d(0, 0, 0)";
+    }
+  });
+  resetNativeDocumentScroll();
+  resetNativeChatInboxLayout();
+}
+let booted$1 = false;
+function initNativeViewportLayout() {
+  if (!isNativeCapacitorShell() || typeof window === "undefined" || booted$1) return;
+  booted$1 = true;
+  const run = () => applyNativeViewportFullBleed();
+  run();
+  requestAnimationFrame(run);
+  window.setTimeout(run, 0);
+  window.setTimeout(run, 120);
+  window.setTimeout(run, 400);
+  window.addEventListener("resize", run, { passive: true });
+  window.visualViewport?.addEventListener("resize", run, { passive: true });
+  window.addEventListener("retweet-safe-area-change", run, { passive: true });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") run();
+  });
+}
+const nativeViewportLayout = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+  __proto__: null,
+  applyNativeViewportFullBleed,
+  initNativeViewportLayout
+}, Symbol.toStringTag, { value: "Module" }));
 const PAGER_TAB_CHAIN = ["home", "search", "reels", "chat", "profile"];
 const TAB_AXIS_LOCK_PX = 10;
 const TAB_HORIZONTAL_RATIO = 1.4;
@@ -19068,11 +19546,11 @@ const TAB_COUNT = PAGER_TAB_CHAIN.length;
 function tabIndex(tab) {
   return PAGER_TAB_CHAIN.indexOf(tab);
 }
-function clamp$2(n, min, max) {
+function clamp$1(n, min, max) {
   return Math.min(max, Math.max(min, n));
 }
 function indexToTab(i) {
-  return PAGER_TAB_CHAIN[clamp$2(Math.round(i), 0, TAB_COUNT - 1)];
+  return PAGER_TAB_CHAIN[clamp$1(Math.round(i), 0, TAB_COUNT - 1)];
 }
 const KeepAlivePanel = reactExports.memo(function KeepAlivePanel2({
   tabId,
@@ -19090,12 +19568,15 @@ const KeepAlivePanel = reactExports.memo(function KeepAlivePanel2({
   const isDragging = dragIndex != null;
   const near = Math.abs(i - displayIndex) < 1.01;
   const showPanel = isDragging ? near : isSettled;
+  const native = isNativeCapacitorShell();
+  const panelTransform = native && dragIndex == null ? "translate3d(0, 0, 0)" : isSettled && dragIndex == null ? "translate3d(0, 0, 0)" : `translate3d(${offset}%, 0, 0)`;
   return /* @__PURE__ */ jsxRuntimeExports.jsx(
     "div",
     {
-      className: "absolute inset-0 flex min-h-0 flex-col " + (tabId === "reels" ? "bg-black " : "bg-background ") + (animate ? "will-change-transform" : ""),
+      "data-tab-panel": tabId,
+      className: "absolute inset-0 flex min-h-0 w-full max-w-full flex-col " + (tabId === "reels" ? "bg-black " : "bg-background ") + (animate ? "will-change-transform" : ""),
       style: {
-        transform: `translate3d(${offset}%, 0, 0)`,
+        transform: panelTransform,
         transition: animate && isSettled ? `transform ${TAB_TRANSITION_MS}ms ${TAB_EASE}` : "none",
         visibility: showPanel ? "visible" : "hidden",
         contentVisibility: isSettled ? "visible" : "hidden",
@@ -19136,7 +19617,23 @@ function MainTabStack({
     setDragIndex(null);
     setAnimating(false);
   }, [activeTab]);
-  const displayIndex = dragIndex != null ? clamp$2(dragIndex, 0, TAB_COUNT - 1) : settledIndex;
+  reactExports.useLayoutEffect(() => {
+    if (!isNativeCapacitorShell() || dragIndex != null) return;
+    const host = containerRef.current;
+    if (!host) return;
+    host.querySelectorAll("[data-tab-panel]").forEach((panel) => {
+      if (panel.getAttribute("aria-hidden") === "true") return;
+      panel.style.transform = "translate3d(0, 0, 0)";
+      panel.style.width = "100%";
+      panel.style.maxWidth = "100%";
+      panel.style.marginLeft = "0";
+      panel.style.marginRight = "0";
+      panel.style.left = "0";
+      panel.style.right = "0";
+    });
+    if (activeTab === "chat") applyNativeViewportFullBleed();
+  }, [activeTab, dragIndex, settledIndex]);
+  const displayIndex = dragIndex != null ? clamp$1(dragIndex, 0, TAB_COUNT - 1) : settledIndex;
   const markNeighborVisited = reactExports.useCallback((index2) => {
     const lo = Math.floor(index2);
     const hi = Math.ceil(index2);
@@ -19148,7 +19645,7 @@ function MainTabStack({
     });
   }, []);
   const snapToIndex = reactExports.useCallback((i, animate) => {
-    const clamped = clamp$2(Math.round(i), 0, TAB_COUNT - 1);
+    const clamped = clamp$1(Math.round(i), 0, TAB_COUNT - 1);
     const next = PAGER_TAB_CHAIN[clamped];
     setDragIndex(null);
     setAnimating(animate);
@@ -19166,6 +19663,7 @@ function MainTabStack({
   const onPointerDown = reactExports.useCallback(
     (e) => {
       if (!swipeEnabled || e.button !== 0) return;
+      if (isNativeCapacitorShell() && activeRef.current === "chat") return;
       if (e.target.closest("[data-no-tab-swipe]")) return;
       const startIdx = tabIndex(activeRef.current);
       markNeighborVisited(startIdx);
@@ -19213,7 +19711,7 @@ function MainTabStack({
       d.lastT = now;
       const w = containerRef.current?.clientWidth ?? 1;
       const delta = (e.clientX - d.startX) / w;
-      const next = clamp$2(d.startIndex - delta, 0, TAB_COUNT - 1);
+      const next = clamp$1(d.startIndex - delta, 0, TAB_COUNT - 1);
       markNeighborVisited(next);
       setDragIndex(next);
     },
@@ -19788,7 +20286,7 @@ const MEDIA_TYPES = [
 function StoryAlbumPicker({
   open,
   albums,
-  onClose,
+  onClose: onClose2,
   onPickAlbum,
   onQuickFilter,
   onMediaType,
@@ -19803,7 +20301,7 @@ function StoryAlbumPicker({
   const topAlbums = reactExports.useMemo(() => albums.slice(0, 6), [albums]);
   if (!open || typeof document === "undefined") return null;
   return reactDomExports.createPortal(
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-[650] flex flex-col justify-end bg-black/60", onClick: onClose, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-[650] flex flex-col justify-end bg-black/60", onClick: onClose2, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
       "div",
       {
         className: "mx-auto flex w-full max-w-md flex-col rounded-t-[22px] bg-black text-white",
@@ -19812,7 +20310,7 @@ function StoryAlbumPicker({
         children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex shrink-0 justify-center pt-2 pb-1", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-1 w-10 rounded-full bg-white/25" }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex shrink-0 items-center justify-between px-4 pb-3", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onClose, className: "text-[17px] font-medium text-[#3897f0]", children: cancel }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onClose2, className: "text-[17px] font-medium text-[#3897f0]", children: cancel }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-[17px] font-semibold", children: title }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "w-14" })
           ] }),
@@ -19875,7 +20373,7 @@ const FILTER_LABELS = {
 };
 function StoryGalleryPicker({
   open,
-  onClose,
+  onClose: onClose2,
   onOpenCamera,
   onPickDraft,
   language = "ar"
@@ -19962,7 +20460,7 @@ function StoryGalleryPicker({
     const draft = await resolveGalleryDraft(item);
     if (!draft) return;
     onPickDraft(draft);
-    onClose();
+    onClose2();
   };
   const onImport = async (files2) => {
     if (!files2?.length) return;
@@ -19982,7 +20480,7 @@ function StoryGalleryPicker({
   const closePicker = () => {
     setMenuOpen(false);
     setAlbumPickerOpen(false);
-    onClose();
+    onClose2();
   };
   if (!open || typeof document === "undefined") return null;
   const title = ar ? "إضافة إلى الستوري" : "Add to story";
@@ -20093,7 +20591,7 @@ function StoryGalleryPicker({
                   {
                     type: "button",
                     onClick: () => {
-                      onClose();
+                      onClose2();
                       onOpenCamera();
                     },
                     className: "relative aspect-[3/4] bg-[#1c1c1c] active:opacity-80",
@@ -20324,7 +20822,7 @@ function SideToolBtn({
 }
 function InstagramCamera({
   open,
-  onClose,
+  onClose: onClose2,
   onCapture,
   onFallback,
   language = "ar"
@@ -20418,9 +20916,9 @@ function InstagramCamera({
     window.setTimeout(() => {
       setClosing(false);
       setEntered(false);
-      onClose();
+      onClose2();
     }, 200);
-  }, [closing, onClose, teardown]);
+  }, [closing, onClose2, teardown]);
   reactExports.useEffect(() => {
     if (!open) {
       setEntered(false);
@@ -21094,10 +21592,23 @@ function SupportOfficialVerifiedBadge({
     }
   );
 }
+function PendingReviewBadge({
+  className = ""
+}) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "span",
+    {
+      className: "inline-flex shrink-0 items-center rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-amber-800 dark:text-amber-200 " + className,
+      title: "طلب التوثيق قيد المراجعة",
+      children: "قيد المراجعة"
+    }
+  );
+}
 function VerifiedMarkForUser({
   user,
   size = 16,
-  className
+  className,
+  showPendingIfQueued = true
 }) {
   if (user.founderVerified) {
     return /* @__PURE__ */ jsxRuntimeExports.jsx(FounderVerifiedBadge, { size, className, title: "منشئ التطبيق — الحساب الرسمي" });
@@ -21107,6 +21618,9 @@ function VerifiedMarkForUser({
   }
   if (user.supportOfficialVerified) {
     return /* @__PURE__ */ jsxRuntimeExports.jsx(SupportOfficialVerifiedBadge, { size, className, title: "حساب الدعم الرسمي — موثّق" });
+  }
+  if (showPendingIfQueued && isPendingReviewBadgeVisible(user)) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(PendingReviewBadge, { className });
   }
   if (!isVerifiedBadgeActive(user)) return null;
   const color = user.verificationBadgeColor === "pink" ? "pink" : "blue";
@@ -21130,7 +21644,7 @@ function SideEditBtn({
 }
 function CameraCaptureShareScreen({
   draft,
-  onClose,
+  onClose: onClose2,
   language = "ar",
   mode: mode2 = "default",
   onSendToChat
@@ -21154,8 +21668,8 @@ function CameraCaptureShareScreen({
   }, [draft, mode2]);
   const closeAll = reactExports.useCallback(() => {
     notifyCameraClose();
-    onClose();
-  }, [onClose]);
+    onClose2();
+  }, [onClose2]);
   const friends = reactExports.useMemo(() => {
     if (!me) return [];
     const ids = /* @__PURE__ */ new Set([...me.following, ...state2.chats.map((c) => c.members.find((m) => m !== me.id)).filter(Boolean)]);
@@ -23319,9 +23833,144 @@ function useT() {
   const lang = reactExports.useContext(AppLanguageCtx);
   return (k) => dict[lang][k] ?? k;
 }
+function reelsApiEnabled() {
+  return apiBackendEnabled() && !!getApiToken();
+}
+function reelPublicToPost(reel, meId) {
+  return {
+    id: reel.postId || reel.id,
+    userId: reel.userId,
+    type: "reel",
+    text: reel.caption,
+    image: reel.thumbnailUrl || "🎬",
+    video: reel.videoUrl,
+    likes: reel.likedByMe ? [meId] : [],
+    reposts: [],
+    comments: [],
+    createdAt: Date.parse(reel.createdAt) || Date.now()
+  };
+}
+function reelMetaFromPublic(reel) {
+  return {
+    likesCount: reel.likesCount,
+    commentsCount: reel.commentsCount,
+    viewsCount: reel.viewsCount,
+    likedByMe: reel.likedByMe
+  };
+}
+async function apiFetchReelsFeed(opts) {
+  const token = getApiToken();
+  if (!token) return { ok: false, error: "غير مسجّل" };
+  await ensureApiRuntimeConfig();
+  const qs = new URLSearchParams();
+  qs.set("limit", String(opts?.limit));
+  if (opts?.cursor) qs.set("cursor", opts.cursor);
+  if (opts?.scope === "friends") qs.set("scope", "friends");
+  const res = await apiFetch$1(`/v1/reels?${qs}`, { method: "GET", token });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    return { ok: false, error: err.error || `HTTP ${res.status}` };
+  }
+  const data = await res.json();
+  return { ok: true, data };
+}
+async function apiUploadReel(file, caption) {
+  const token = getApiToken();
+  if (!token) return { ok: false, error: "غير مسجّل" };
+  await ensureApiRuntimeConfig();
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("caption", caption);
+  const res = await apiFetch$1("/v1/reels/upload", {
+    method: "POST",
+    token,
+    body: fd,
+    timeoutMs: 6e5
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    return { ok: false, error: err.error || `HTTP ${res.status}` };
+  }
+  const json = await res.json();
+  return { ok: true, reel: json.reel };
+}
+async function apiRecordReelView(reelId) {
+  const token = getApiToken();
+  if (!token) return { ok: false };
+  const res = await apiFetch$1(`/v1/reels/${encodeURIComponent(reelId)}/view`, {
+    method: "POST",
+    token
+  });
+  if (!res.ok) return { ok: false };
+  const json = await res.json();
+  return { ok: true, viewsCount: json.viewsCount };
+}
+async function apiToggleReelLike(reelId) {
+  const token = getApiToken();
+  if (!token) return { ok: false };
+  const res = await apiFetch$1(`/v1/reels/${encodeURIComponent(reelId)}/like`, {
+    method: "POST",
+    token
+  });
+  if (!res.ok) return { ok: false };
+  const json = await res.json();
+  return { ok: true, liked: json.liked, likesCount: json.likesCount };
+}
+async function apiAddReelComment(reelId, text) {
+  const token = getApiToken();
+  if (!token) return { ok: false, error: "غير مسجّل" };
+  const res = await apiFetch$1(`/v1/reels/${encodeURIComponent(reelId)}/comment`, {
+    method: "POST",
+    token,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text })
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    return { ok: false, error: err.error || `HTTP ${res.status}` };
+  }
+  const json = await res.json();
+  return { ok: true, comment: json.comment, commentsCount: json.commentsCount };
+}
+async function apiFetchReelComments(reelId, opts) {
+  const token = getApiToken();
+  if (!token) return { ok: false, error: "غير مسجّل" };
+  const qs = new URLSearchParams();
+  qs.set("limit", String(30));
+  const res = await apiFetch$1(
+    `/v1/reels/${encodeURIComponent(reelId)}/comments?${qs}`,
+    { method: "GET", token }
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    return { ok: false, error: err.error || `HTTP ${res.status}` };
+  }
+  const json = await res.json();
+  return { ok: true, ...json };
+}
+async function apiDeleteReel(reelId) {
+  const token = getApiToken();
+  if (!token) return { ok: false, error: "غير مسجّل" };
+  const res = await apiFetch$1(`/v1/reels/${encodeURIComponent(reelId)}`, {
+    method: "DELETE",
+    token
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    return { ok: false, error: err.error || `HTTP ${res.status}` };
+  }
+  return { ok: true };
+}
+function normalizeReelMediaUrls(reel) {
+  return {
+    ...reel,
+    videoUrl: resolveMediaUrl(reel.videoUrl) || reel.videoUrl,
+    thumbnailUrl: resolveMediaUrl(reel.thumbnailUrl) || reel.thumbnailUrl
+  };
+}
 function PostOptionsMenu({
   post,
-  onClose,
+  onClose: onClose2,
   onDeleted
 }) {
   const { currentUser, deletePost } = useApp();
@@ -23330,10 +23979,10 @@ function PostOptionsMenu({
   const isOwner = currentUser?.id === post.userId;
   reactExports.useEffect(() => {
     const onDoc = (e) => {
-      if (panelRef.current && !panelRef.current.contains(e.target)) onClose();
+      if (panelRef.current && !panelRef.current.contains(e.target)) onClose2();
     };
     const onKey = (e) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") onClose2();
     };
     document.addEventListener("mousedown", onDoc);
     document.addEventListener("keydown", onKey);
@@ -23341,7 +23990,7 @@ function PostOptionsMenu({
       document.removeEventListener("mousedown", onDoc);
       document.removeEventListener("keydown", onKey);
     };
-  }, [onClose]);
+  }, [onClose2]);
   if (!isOwner) return null;
   return /* @__PURE__ */ jsxRuntimeExports.jsx(
     "div",
@@ -23356,12 +24005,19 @@ function PostOptionsMenu({
           type: "button",
           role: "menuitem",
           className: "flex w-full flex-row items-center gap-2 px-4 py-2.5 text-start text-destructive hover:bg-destructive/10",
-          onClick: () => {
+          onClick: async () => {
             const label = post.type === "tweet" ? "حذف هذه التغريدة؟" : post.type === "reel" ? "حذف هذا الريل؟" : "حذف هذا المنشور؟";
             if (!window.confirm(label)) return;
+            if (post.type === "reel" && reelsApiEnabled()) {
+              const del = await apiDeleteReel(post.id);
+              if (!del.ok) {
+                window.alert(del.error);
+                return;
+              }
+            }
             deletePost(post.id);
             onDeleted?.();
-            onClose();
+            onClose2();
           },
           children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 18, className: "shrink-0" }),
@@ -23376,7 +24032,7 @@ function CommentOptionsMenu({
   postId,
   commentId,
   authorId,
-  onClose
+  onClose: onClose2
 }) {
   const { currentUser, deleteComment } = useApp();
   const t = useT();
@@ -23384,10 +24040,10 @@ function CommentOptionsMenu({
   const isOwner = currentUser?.id === authorId;
   reactExports.useEffect(() => {
     const onDoc = (e) => {
-      if (panelRef.current && !panelRef.current.contains(e.target)) onClose();
+      if (panelRef.current && !panelRef.current.contains(e.target)) onClose2();
     };
     const onKey = (e) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") onClose2();
     };
     document.addEventListener("mousedown", onDoc);
     document.addEventListener("keydown", onKey);
@@ -23395,7 +24051,7 @@ function CommentOptionsMenu({
       document.removeEventListener("mousedown", onDoc);
       document.removeEventListener("keydown", onKey);
     };
-  }, [onClose]);
+  }, [onClose2]);
   if (!isOwner) return null;
   return /* @__PURE__ */ jsxRuntimeExports.jsx(
     "div",
@@ -23413,7 +24069,7 @@ function CommentOptionsMenu({
           onClick: () => {
             if (!window.confirm("حذف هذا التعليق؟")) return;
             deleteComment(postId, commentId);
-            onClose();
+            onClose2();
           },
           children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(Trash2, { size: 16, className: "shrink-0" }),
@@ -23459,7 +24115,7 @@ function formatRelativeTime(createdAt, lang = "ar") {
   const y = Math.floor(d / 365);
   return y <= 1 ? "منذ سنة" : `منذ ${y} سنوات`;
 }
-function NoteReplySheet({ note, contentLabelAr, onClose, onSent }) {
+function NoteReplySheet({ note, contentLabelAr, onClose: onClose2, onSent }) {
   const { state: state2, replyToMediaNoteAsDm, isGuest } = useApp();
   const [text, setText] = reactExports.useState("");
   if (!note) return null;
@@ -23480,10 +24136,10 @@ function NoteReplySheet({ note, contentLabelAr, onClose, onSent }) {
     if (res) {
       setText("");
       onSent(res.chatId);
-      onClose();
+      onClose2();
     }
   };
-  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-[120] bg-black/50 flex items-end justify-center", onClick: onClose, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-[120] bg-black/50 flex items-end justify-center", onClick: onClose2, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "div",
     {
       className: "w-full max-w-md bg-background rounded-t-3xl p-4 pb-6 shadow-xl border border-border",
@@ -23491,7 +24147,7 @@ function NoteReplySheet({ note, contentLabelAr, onClose, onSent }) {
       children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between mb-3", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "font-semibold text-sm", children: "رد على النوت في الخاص" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onClose, className: "p-2 rounded-full hover:bg-secondary", "aria-label": "إغلاق", children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 20 }) })
+          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onClose2, className: "p-2 rounded-full hover:bg-secondary", "aria-label": "إغلاق", children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 20 }) })
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-xs text-muted-foreground mb-2", children: [
           "@",
@@ -24623,7 +25279,7 @@ function buildShareUrl(target) {
   if (target.kind === "post") return `${base}?post=${encodeURIComponent(target.post.id)}`;
   return `${base}?story=${encodeURIComponent(target.storyId)}`;
 }
-function ShareSheet({ target, onClose }) {
+function ShareSheet({ target, onClose: onClose2 }) {
   const { state: state2, currentUser, openOrCreateChat, sendMessage, addMediaNote, isGuest } = useApp();
   const me = currentUser;
   const friends = me.following.map((id) => userById(state2, id)).filter(Boolean);
@@ -24658,7 +25314,7 @@ function ShareSheet({ target, onClose }) {
       });
     }
     setShareComment("");
-    onClose();
+    onClose2();
   };
   const copyLink = async () => {
     const url2 = buildShareUrl(target);
@@ -24683,9 +25339,9 @@ function ShareSheet({ target, onClose }) {
     setNoteText("");
     setNoteMode(false);
     alert("تم إرسال النوت");
-    onClose();
+    onClose2();
   };
-  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 bg-black/50 z-50 flex items-end", onClick: onClose, children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "bg-background w-full rounded-t-3xl p-4 max-h-[70vh] overflow-y-auto", onClick: (e) => e.stopPropagation(), children: [
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 bg-black/50 z-50 flex items-end", onClick: onClose2, children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "bg-background w-full rounded-t-3xl p-4 max-h-[70vh] overflow-y-auto", onClick: (e) => e.stopPropagation(), children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-12 h-1 bg-muted rounded-full mx-auto mb-4" }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("h3", { className: "font-semibold mb-3 text-center", children: [
       "مشاركة ",
@@ -24816,8 +25472,13 @@ function PostDetail({ post: postProp, onBack, onOpenProfile, onOpenChat, profile
     });
   }, [post.text, state2.users, onOpenProfile, returnCtx]);
   if (!author) return null;
+  const commentsClosed = author.restrictComments === true && post.userId !== me.id;
   const submitComment = () => {
     if (guestBlock()) return;
+    if (commentsClosed) {
+      window.alert("صاحب المنشور عطّل التعليقات");
+      return;
+    }
     const text = comment.trim();
     if (!text) return;
     addComment(post.id, text);
@@ -24998,9 +25659,10 @@ function PostDetail({ post: postProp, onBack, onOpenProfile, onOpenChat, profile
           return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative flex gap-2 text-sm", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "shrink-0 rounded-full", onClick: () => reactExports.startTransition(() => u && onOpenProfile(u.id, returnCtx(true))), children: /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u?.username || "?", src: u?.avatar, size: 28 }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", className: "font-semibold", onClick: () => reactExports.startTransition(() => u && onOpenProfile(u.id, returnCtx(true))), children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", className: "font-semibold inline-flex items-center gap-1", onClick: () => reactExports.startTransition(() => u && onOpenProfile(u.id, returnCtx(true))), children: [
                 "@",
-                u?.username
+                u?.username,
+                u ? /* @__PURE__ */ jsxRuntimeExports.jsx(VerifiedMarkForUser, { user: u, size: 13 }) : null
               ] }),
               " ",
               /* @__PURE__ */ jsxRuntimeExports.jsx("span", { dir: "auto", className: "break-words", children: c.text })
@@ -25033,7 +25695,7 @@ function PostDetail({ post: postProp, onBack, onOpenProfile, onOpenChat, profile
         }
       )
     ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    commentsClosed ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "shrink-0 border-t border-border px-4 py-3 text-center text-sm text-muted-foreground pb-[max(0.75rem,var(--sab))]", children: "التعليقات معطّلة على هذا المنشور" }) : /* @__PURE__ */ jsxRuntimeExports.jsxs(
       "form",
       {
         onSubmit: (e) => {
@@ -25087,9 +25749,10 @@ function preloadStoryUrls(urls) {
 function StoryViewsSheet({
   open,
   story,
-  onClose,
+  onClose: onClose2,
   onOpenProfile,
-  onDelete
+  onDelete,
+  showAnalytics = false
 }) {
   const users = useAppSelector((s) => s.users);
   const [sheetY, setSheetY] = reactExports.useState(0);
@@ -25116,8 +25779,8 @@ function StoryViewsSheet({
   const snapClose = reactExports.useCallback(() => {
     setSheetSpring(true);
     setSheetY(sheetMaxRef.current);
-    window.setTimeout(() => onClose(), 280);
-  }, [onClose]);
+    window.setTimeout(() => onClose2(), 280);
+  }, [onClose2]);
   const snapOpen = reactExports.useCallback(() => {
     setSheetSpring(true);
     setSheetY(0);
@@ -25196,13 +25859,27 @@ function StoryViewsSheet({
             "المشاهدات · ",
             viewers.length
           ] }),
+          showAnalytics ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mx-4 mb-2 grid grid-cols-3 gap-2 rounded-xl bg-white/5 p-2 text-center text-[11px] text-white/80", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "font-bold text-white tabular-nums", children: viewers.length }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "مشاهدات" })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "font-bold text-white tabular-nums", children: story.likes?.length ?? 0 }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "إعجابات" })
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "font-bold text-white tabular-nums", children: story.stickers?.length ?? 0 }),
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: "ملصقات" })
+            ] })
+          ] }) : null,
           /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-2 [-webkit-overflow-scrolling:touch]", children: viewers.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "py-12 text-center text-sm text-white/45", children: "لا مشاهدات بعد" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("ul", { className: "space-y-0.5 pb-2", children: viewers.map(({ user: vu, at }) => /* @__PURE__ */ jsxRuntimeExports.jsx("li", { children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
             "button",
             {
               type: "button",
               className: "flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-start active:bg-white/10",
               onClick: () => {
-                onClose();
+                onClose2();
                 onOpenProfile?.(vu.id);
               },
               children: [
@@ -25336,6 +26013,20 @@ ${text.trim()}` });
       sk.tag.replace(/^#/, "")
     ] }),
     sk.kind === "quiz" && /* @__PURE__ */ jsxRuntimeExports.jsx(QuizSticker, { sk, storyId: story.id, meId: me.id, isOwn, answerStoryQuiz }),
+    sk.kind === "link" && /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "a",
+      {
+        href: sk.url,
+        target: "_blank",
+        rel: "noopener noreferrer",
+        className: "rounded-full bg-white text-[#0095F6] px-4 py-2 text-sm font-bold shadow-lg border-2 border-white/90",
+        onClick: (e) => e.stopPropagation(),
+        children: [
+          sk.label,
+          " ↑"
+        ]
+      }
+    ),
     sk.kind === "slider" && /* @__PURE__ */ jsxRuntimeExports.jsx(
       SliderSticker,
       {
@@ -25870,7 +26561,7 @@ const StoryViewer = reactExports.memo(function StoryViewer2({
   trayRing,
   initialStoryId,
   openOrigin,
-  onClose,
+  onClose: onClose2,
   onOpenProfile,
   onOpenChat,
   onRequestAuthor
@@ -25888,8 +26579,8 @@ const StoryViewer = reactExports.memo(function StoryViewer2({
   const me = currentUser;
   const author = useAppSelector((s) => userById(s, userId));
   const stories = useAppSelector((s) => storiesForUser(s, userId, me.id));
-  const onCloseRef = reactExports.useRef(onClose);
-  onCloseRef.current = onClose;
+  const onCloseRef = reactExports.useRef(onClose2);
+  onCloseRef.current = onClose2;
   const ring = trayRing.length > 0 ? trayRing : [userId];
   const [i, setI] = reactExports.useState(0);
   const pendingStoryIdRef = reactExports.useRef(initialStoryId);
@@ -26610,6 +27301,7 @@ const StoryViewer = reactExports.memo(function StoryViewer2({
             {
               open: userId === me.id && ownViewsOpen,
               story: cur,
+              showAnalytics: getUserEntitlements(me).hasStoryAnalytics,
               onClose: () => setOwnViewsOpen(false),
               onOpenProfile,
               onDelete: handleDeleteCurrentStory
@@ -26879,6 +27571,14 @@ const HomeScreen = reactExports.memo(function HomeScreen2({
     };
     window.addEventListener("retweet-open-story", handler);
     return () => window.removeEventListener("retweet-open-story", handler);
+  }, []);
+  reactExports.useEffect(() => {
+    const onOpenPost = (e) => {
+      const postId = e.detail?.postId;
+      if (postId) setOpenPostId(postId);
+    };
+    window.addEventListener("retweet-open-post-id", onOpenPost);
+    return () => window.removeEventListener("retweet-open-post-id", onOpenPost);
   }, []);
   reactExports.useLayoutEffect(() => {
     if (!restoreFromProfileContext || restoreFromProfileContext.tab !== "home") return;
@@ -27222,8 +27922,15 @@ function rankUsersBySearchQuery(users, query) {
     const ra = rank(a);
     const rb = rank(b);
     if (ra !== rb) return ra - rb;
+    const vb = searchVerifiedBoostRank(b) - searchVerifiedBoostRank(a);
+    if (vb !== 0) return vb;
     return a.username.localeCompare(b.username, void 0, { sensitivity: "base" });
   });
+}
+function sortUsersVerifiedFirst(users) {
+  return [...users].sort(
+    (a, b) => searchVerifiedBoostRank(b) - searchVerifiedBoostRank(a)
+  );
 }
 function shuffle(arr) {
   const a = [...arr];
@@ -27252,6 +27959,7 @@ function SearchScreen({
   const [openPostId, setOpenPostId] = reactExports.useState(null);
   const [focusCommentsOnOpen, setFocusCommentsOnOpen] = reactExports.useState(false);
   const [sharePost, setSharePost] = reactExports.useState(null);
+  const [discoverTab, setDiscoverTab] = reactExports.useState("search");
   const searchSeqRef = reactExports.useRef(0);
   const me = currentUser;
   const qq = q.trim();
@@ -27340,6 +28048,12 @@ function SearchScreen({
     return rankUsersBySearchQuery([...byId.values()], qq);
   }, [qq, remoteHits, recentUsers, state2.users, me]);
   const tags = trendingHashtags(state2);
+  const verifiedAccounts = reactExports.useMemo(() => {
+    const list = state2.users.filter(
+      (u) => u.id !== me.id && !isGuestUserId(u.id) && !isBlockedBetween(me, u) && isVerifiedBadgeActive(u)
+    );
+    return sortUsersVerifiedFirst(list);
+  }, [state2.users, me]);
   const explorePool = reactExports.useMemo(
     () => state2.posts.filter((p) => {
       if (p.type !== "post" && p.type !== "reel") return false;
@@ -27385,7 +28099,53 @@ function SearchScreen({
               }
             )
           ] }) }),
-          q === "" && tags.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-4 divide-y divide-zinc-100 dark:divide-zinc-800 border-t border-zinc-100", children: tags.slice(0, 12).map(([tag, n], i) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          q === "" ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-3 flex gap-2 px-4", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                type: "button",
+                onClick: () => setDiscoverTab("search"),
+                className: "flex-1 rounded-full py-2 text-sm font-semibold " + (discoverTab === "search" ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900" : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300"),
+                children: "استكشاف"
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                type: "button",
+                onClick: () => setDiscoverTab("verified"),
+                className: "flex-1 rounded-full py-2 text-sm font-semibold " + (discoverTab === "verified" ? "bg-[#0095F6] text-white" : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300"),
+                children: "حسابات موثّقة"
+              }
+            )
+          ] }) : null,
+          q === "" && discoverTab === "verified" ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2 px-4 mt-4", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-xs text-muted-foreground", children: "حسابات موثّقة على Retweet" }),
+            verifiedAccounts.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground py-2", children: "لا توجد حسابات موثّقة بعد" }) : null,
+            verifiedAccounts.map((u) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "button",
+              {
+                type: "button",
+                onClick: () => onOpenProfile(u.id),
+                className: "w-full flex items-center gap-3 p-2 hover:bg-secondary rounded-2xl",
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u.username, src: u.avatar }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 text-start flex-1", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1 truncate text-sm font-semibold", children: [
+                      userDisplayName(u),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx(VerifiedMarkForUser, { user: u, size: 14 })
+                    ] }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "truncate text-xs text-muted-foreground", dir: "ltr", children: [
+                      "@",
+                      u.username
+                    ] })
+                  ] })
+                ]
+              },
+              u.id
+            ))
+          ] }) : null,
+          q === "" && tags.length > 0 && discoverTab === "search" && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-4 divide-y divide-zinc-100 dark:divide-zinc-800 border-t border-zinc-100", children: tags.slice(0, 12).map(([tag, n], i) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
             "button",
             {
               type: "button",
@@ -27425,14 +28185,17 @@ function SearchScreen({
               ]
             }
           ),
-          qq ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2 px-4 mt-4", children: [
+          qq || q === "" && discoverTab === "search" && accountList.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2 px-4 mt-4", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-xs text-muted-foreground", children: qq ? "نتائج البحث" : "حسابات جديدة" }),
             searching && accountList.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground py-2", children: "جاري التحديث من الخادم…" }),
             !searching && accountList.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground py-2", children: qq ? "لا توجد حسابات مطابقة" : "لا توجد حسابات بعد" }),
             accountList.map((u) => /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", onClick: () => onOpenProfile(u.id), className: "w-full flex items-center gap-3 p-2 hover:bg-secondary rounded-2xl", children: [
               /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: u.username, src: u.avatar }),
               /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 text-start", children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "truncate text-sm font-semibold", children: userDisplayName(u) }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1 truncate text-sm font-semibold", children: [
+                  userDisplayName(u),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(VerifiedMarkForUser, { user: u, size: 14 })
+                ] }),
                 /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "truncate text-xs text-muted-foreground", dir: "ltr", children: [
                   "@",
                   u.username
@@ -27481,6 +28244,127 @@ function formatReelMaxSizeError(bytes) {
   return `الملف ${mb} ميجا — الحد الأقصى ${REEL_MAX_UPLOAD_MB} ميجا للريلز.`;
 }
 const REEL_SAFE_CONTENT_RATIO = REEL_SAFE_CONTENT_HEIGHT / REEL_HEIGHT;
+function useReelsFeed(meId, blocked, following, tab) {
+  const legacyReels = useReelsPosts(meId, blocked);
+  const apiOn = reelsApiEnabled();
+  const [apiPosts, setApiPosts] = reactExports.useState([]);
+  const [reelMeta, setReelMeta] = reactExports.useState({});
+  const [hasMore, setHasMore] = reactExports.useState(false);
+  const [cursor, setCursor] = reactExports.useState(void 0);
+  const [loading, setLoading] = reactExports.useState(false);
+  const [useApi, setUseApi] = reactExports.useState(apiOn);
+  const loadingRef = reactExports.useRef(false);
+  const legacyFiltered = reactExports.useMemo(() => {
+    if (tab === "friends") {
+      const set2 = new Set(following);
+      set2.add(meId);
+      return legacyReels.filter((p) => set2.has(p.userId));
+    }
+    return legacyReels;
+  }, [legacyReels, tab, following, meId]);
+  const applyFeedPage = reactExports.useCallback(
+    (append, data) => {
+      const posts = data.reels.map((r2) => {
+        const norm = normalizeReelMediaUrls(r2);
+        return reelPublicToPost(norm, meId);
+      });
+      const meta = {};
+      for (const r2 of data.reels) {
+        const norm = normalizeReelMediaUrls(r2);
+        meta[norm.postId || norm.id] = reelMetaFromPublic(norm);
+      }
+      setApiPosts((prev) => append ? [...prev, ...posts] : posts);
+      setReelMeta((prev) => append ? { ...prev, ...meta } : meta);
+      setHasMore(data.hasMore);
+      setCursor(data.nextCursor);
+    },
+    [meId]
+  );
+  const loadPage = reactExports.useCallback(
+    async (opts) => {
+      if (!apiOn || loadingRef.current) return;
+      loadingRef.current = true;
+      setLoading(true);
+      try {
+        const res = await apiFetchReelsFeed({
+          limit: 15,
+          cursor: opts?.reset ? void 0 : cursor,
+          scope: tab
+        });
+        if (!res.ok) {
+          setUseApi(false);
+          return;
+        }
+        setUseApi(true);
+        applyFeedPage(!opts?.reset, res.data);
+        setCursor(res.data.nextCursor);
+      } finally {
+        loadingRef.current = false;
+        setLoading(false);
+      }
+    },
+    [apiOn, applyFeedPage, cursor, tab]
+  );
+  const refresh = reactExports.useCallback(async () => {
+    if (!apiOn) return;
+    setCursor(void 0);
+    await loadPage({ reset: true });
+  }, [apiOn, loadPage]);
+  const loadMore = reactExports.useCallback(async () => {
+    if (!useApi || !hasMore || loadingRef.current || !cursor) return;
+    await loadPage({ reset: false });
+  }, [useApi, hasMore, cursor, loadPage]);
+  reactExports.useEffect(() => {
+    if (!apiOn) {
+      setUseApi(false);
+      return;
+    }
+    setApiPosts([]);
+    setReelMeta({});
+    setHasMore(false);
+    setCursor(void 0);
+    void loadPage({ reset: true });
+  }, [apiOn, tab]);
+  const reels = useApi ? apiPosts : legacyFiltered;
+  const patchReelMeta = reactExports.useCallback((postId, patch) => {
+    setReelMeta((prev) => {
+      const base = {
+        likesCount: 0,
+        commentsCount: 0,
+        viewsCount: 0,
+        likedByMe: false,
+        ...prev[postId],
+        ...patch
+      };
+      return { ...prev, [postId]: base };
+    });
+  }, []);
+  const getLikeCount = reactExports.useCallback(
+    (post) => reelMeta[post.id]?.likesCount ?? post.likes.length,
+    [reelMeta]
+  );
+  const getCommentCount = reactExports.useCallback(
+    (post) => reelMeta[post.id]?.commentsCount ?? post.comments.length,
+    [reelMeta]
+  );
+  const isLiked = reactExports.useCallback(
+    (post) => reelMeta[post.id]?.likedByMe ?? post.likes.includes(meId),
+    [reelMeta, meId]
+  );
+  return {
+    reels,
+    useApi,
+    loading,
+    hasMore,
+    refresh,
+    loadMore,
+    reelMeta,
+    patchReelMeta,
+    getLikeCount,
+    getCommentCount,
+    isLiked
+  };
+}
 const ReelMediaPlayer = reactExports.memo(function ReelMediaPlayer2({
   media,
   active: active2,
@@ -27541,7 +28425,7 @@ const ReelMediaPlayer = reactExports.memo(function ReelMediaPlayer2({
     onHoldEnd();
   };
   const frameClass = "absolute inset-0 flex items-center justify-center bg-black";
-  const fillFrame = !!media.videoUrl && (/\/media\/videos\//.test(media.videoUrl) || media.videoUrl.includes(".mp4"));
+  const fillFrame = !!media.videoUrl && (/\/media\/videos\//.test(media.videoUrl) || /\/uploads\/reels\//.test(media.videoUrl) || media.videoUrl.includes(".mp4"));
   return /* @__PURE__ */ jsxRuntimeExports.jsx(
     "div",
     {
@@ -27655,13 +28539,32 @@ const ReelsScreen = reactExports.memo(function ReelsScreen2({
   useScreenPerf("ReelsScreen", { active: isTabActive });
   const t = useT();
   const me = currentUser;
-  const allReels = useReelsPosts(me.id, me.blocked ?? []);
   const guestBlock = () => {
     if (!isGuest) return false;
     notifyGuestActionBlocked();
     return true;
   };
   const [tab, setTab] = reactExports.useState("all");
+  const {
+    reels: reelsFeed,
+    useApi: reelsUseApi,
+    hasMore: reelsHasMore,
+    refresh: refreshReelsFeed,
+    loadMore: loadMoreReels,
+    patchReelMeta,
+    getLikeCount,
+    getCommentCount,
+    isLiked: isReelLiked
+  } = useReelsFeed(me.id, me.blocked ?? [], me.following ?? [], tab);
+  const reels = reactExports.useMemo(() => {
+    return [...reelsFeed].sort((a, b) => {
+      const ua = users.find((u) => u.id === a.userId);
+      const ub = users.find((u) => u.id === b.userId);
+      const va = ua && isVerifiedBadgeActive(ua) ? 1 : 0;
+      const vb = ub && isVerifiedBadgeActive(ub) ? 1 : 0;
+      return vb - va;
+    });
+  }, [reelsFeed, users]);
   const [sharePost, setSharePost] = reactExports.useState(null);
   const [commentsFor, setCommentsFor] = reactExports.useState(null);
   const [commentDraft, setCommentDraft] = reactExports.useState("");
@@ -27698,7 +28601,8 @@ const ReelsScreen = reactExports.memo(function ReelsScreen2({
   reactExports.useEffect(() => {
     if (!isTabActive) return;
     refreshFromServer();
-  }, [refreshFromServer, isTabActive]);
+    void refreshReelsFeed();
+  }, [refreshFromServer, refreshReelsFeed, isTabActive]);
   reactExports.useEffect(() => {
     if (!isTabActive) return;
     document.documentElement.classList.add("retweet-overscroll-lock");
@@ -27716,6 +28620,7 @@ const ReelsScreen = reactExports.memo(function ReelsScreen2({
       const dy = (e.changedTouches[0]?.clientY ?? pullRef.current.y0) - pullRef.current.y0;
       if (el.scrollTop <= 0 && dy > 72) {
         refreshFromServer();
+        void refreshReelsFeed();
         setReelPullHint(true);
         window.setTimeout(() => setReelPullHint(false), 1200);
       }
@@ -27726,9 +28631,22 @@ const ReelsScreen = reactExports.memo(function ReelsScreen2({
       el.removeEventListener("touchstart", onStart);
       el.removeEventListener("touchend", onEnd);
     };
-  }, [refreshFromServer]);
-  const reels = tab === "friends" ? allReels.filter((p) => me.following.includes(p.userId)) : allReels;
+  }, [refreshFromServer, refreshReelsFeed]);
   const reelIdSetKey = reactExports.useMemo(() => reels.map((r2) => r2.id).sort().join("|"), [reels]);
+  const handleReelLike = reactExports.useCallback(
+    async (postId) => {
+      if (reelsUseApi && reelsApiEnabled()) {
+        const res = await apiToggleReelLike(postId);
+        if (res.ok) {
+          patchReelMeta(postId, { likedByMe: res.liked, likesCount: res.likesCount });
+          return;
+        }
+      }
+      toggleLike(postId);
+    },
+    [reelsUseApi, patchReelMeta, toggleLike]
+  );
+  const viewedReelsRef = reactExports.useRef(/* @__PURE__ */ new Set());
   const activeReelIdx = reactExports.useMemo(() => {
     if (!activeReelId || reels.length === 0) return 0;
     const i = reels.findIndex((r2) => r2.id === activeReelId);
@@ -27771,6 +28689,21 @@ const ReelsScreen = reactExports.memo(function ReelsScreen2({
     activeReelIdRef.current = activeReelId;
     setHoldPaused(false);
   }, [activeReelId]);
+  reactExports.useEffect(() => {
+    if (!isTabActive || !activeReelId || !reelsUseApi) return;
+    if (viewedReelsRef.current.has(activeReelId)) return;
+    viewedReelsRef.current.add(activeReelId);
+    void apiRecordReelView(activeReelId).then((res) => {
+      if (res.ok && res.viewsCount != null) {
+        patchReelMeta(activeReelId, { viewsCount: res.viewsCount });
+      }
+    });
+  }, [activeReelId, isTabActive, reelsUseApi, patchReelMeta]);
+  reactExports.useEffect(() => {
+    if (!reelsUseApi || !reelsHasMore) return;
+    const idx = reels.findIndex((r2) => r2.id === activeReelId);
+    if (idx >= 0 && idx >= reels.length - 3) void loadMoreReels();
+  }, [activeReelId, reels, reelsUseApi, reelsHasMore, loadMoreReels]);
   const snapToNearestReel = reactExports.useCallback(
     (behavior = "auto") => {
       const root = scrollRef.current;
@@ -27856,12 +28789,18 @@ const ReelsScreen = reactExports.memo(function ReelsScreen2({
     });
   }, [restoreFromProfileContext, posts, onConsumedRestoreFromProfile, reels, slideHeightPx]);
   const effectiveSoundOn = soundOn && soundUnlocked;
+  const nextPreloadVideoUrl = reactExports.useMemo(() => {
+    const next = reels[activeReelIdx + 1];
+    if (!next) return null;
+    const media = normalizePostMedia(next);
+    return media.hasVideo ? media.videoUrl : null;
+  }, [reels, activeReelIdx]);
   const handleDoubleTap = reactExports.useCallback(
     (postId, x, y) => {
       if (guestBlock()) return;
       const post = reels.find((r2) => r2.id === postId);
       if (!post) return;
-      if (!post.likes.includes(me.id)) toggleLike(postId);
+      if (!isReelLiked(post)) void handleReelLike(postId);
       try {
         navigator.vibrate?.(15);
       } catch {
@@ -27869,9 +28808,22 @@ const ReelsScreen = reactExports.memo(function ReelsScreen2({
       setHeartBurst({ id: postId, x, y });
       window.setTimeout(() => setHeartBurst((prev) => prev?.id === postId ? null : prev), 800);
     },
-    [reels, me.id, toggleLike, isGuest]
+    [reels, isReelLiked, handleReelLike, isGuest]
   );
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-black text-white overscroll-none", children: [
+    nextPreloadVideoUrl ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "video",
+      {
+        src: nextPreloadVideoUrl,
+        preload: "auto",
+        muted: true,
+        playsInline: true,
+        className: "pointer-events-none fixed h-px w-px opacity-0",
+        "aria-hidden": true,
+        tabIndex: -1
+      },
+      nextPreloadVideoUrl
+    ) : null,
     /* @__PURE__ */ jsxRuntimeExports.jsxs(
       "div",
       {
@@ -27960,8 +28912,10 @@ const ReelsScreen = reactExports.memo(function ReelsScreen2({
             );
             const friendReposter = friendReposterId ? users.find((x) => x.id === friendReposterId) : null;
             const media = normalizePostMedia(r2);
-            const liked = r2.likes.includes(me.id);
+            const liked = isReelLiked(r2);
             const reposted = r2.reposts.includes(me.id);
+            const likeCount = getLikeCount(r2);
+            const commentCount = getCommentCount(r2);
             const notes = visibleMediaNotes(state2, "post", r2.id, me.id).slice(0, 8);
             const isActive = isTabActive && activeReelId === r2.id;
             return /* @__PURE__ */ jsxRuntimeExports.jsxs(ReelSlide, { reelId: r2.id, slideHeightPx: slideH, children: [
@@ -28026,7 +28980,7 @@ const ReelsScreen = reactExports.memo(function ReelsScreen2({
                       {
                         onClick: () => {
                           if (guestBlock()) return;
-                          toggleLike(r2.id);
+                          void handleReelLike(r2.id);
                         },
                         label: "إعجاب",
                         icon: /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -28038,7 +28992,7 @@ const ReelsScreen = reactExports.memo(function ReelsScreen2({
                             style: { filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.6))" }
                           }
                         ),
-                        count: r2.likes.length,
+                        count: likeCount,
                         active: liked,
                         activeColor: "text-rose-500"
                       }
@@ -28046,10 +29000,21 @@ const ReelsScreen = reactExports.memo(function ReelsScreen2({
                     /* @__PURE__ */ jsxRuntimeExports.jsx(
                       SideActionButton,
                       {
-                        onClick: () => setCommentsFor(r2),
+                        onClick: () => {
+                          setCommentsFor(r2);
+                          if (reelsUseApi && reelsApiEnabled()) {
+                            void apiFetchReelComments(r2.id).then((res) => {
+                              if (res.ok) {
+                                setCommentsFor(
+                                  (prev) => prev && prev.id === r2.id ? { ...prev, comments: res.comments } : prev
+                                );
+                              }
+                            });
+                          }
+                        },
                         label: "تعليقات",
                         icon: /* @__PURE__ */ jsxRuntimeExports.jsx(MessageCircle, { size: 30, strokeWidth: 1.75, style: { filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.6))" } }),
-                        count: r2.comments.length
+                        count: commentCount
                       }
                     ),
                     /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -28292,10 +29257,24 @@ const ReelsScreen = reactExports.memo(function ReelsScreen2({
                 "form",
                 {
                   className: "flex gap-2 px-4 pt-2 pb-2 border-t border-white/10",
-                  onSubmit: (e) => {
+                  onSubmit: async (e) => {
                     e.preventDefault();
-                    if (!commentDraft.trim()) return;
-                    addComment(commentsFor.id, commentDraft);
+                    if (!commentDraft.trim() || !commentsFor) return;
+                    const draft = commentDraft.trim();
+                    if (reelsUseApi && reelsApiEnabled()) {
+                      const res = await apiAddReelComment(commentsFor.id, draft);
+                      if (res.ok) {
+                        patchReelMeta(commentsFor.id, { commentsCount: res.commentsCount });
+                        addComment(commentsFor.id, draft);
+                        setCommentsFor({
+                          ...commentsFor,
+                          comments: [...commentsFor.comments, res.comment]
+                        });
+                        setCommentDraft("");
+                        return;
+                      }
+                    }
+                    addComment(commentsFor.id, draft);
                     setCommentDraft("");
                   },
                   children: [
@@ -28421,6 +29400,10 @@ function useChatSwipeBack({
       startPull: livePullRef.current
     };
     onPullRef.current(livePullRef.current, "start");
+    try {
+      containerRef.current?.setPointerCapture(pointerId);
+    } catch {
+    }
   }, []);
   const finishDrag = reactExports.useCallback(
     (pointerId) => {
@@ -28535,10 +29518,6 @@ function useChatSwipeBack({
       isActive: () => enabledRef.current && !blockedRef.current && !dismissingRef.current,
       onEdgePointerDown: (e) => {
         edgePendingRef.current = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY };
-        try {
-          containerRef.current?.setPointerCapture(e.pointerId);
-        } catch {
-        }
       },
       onPointerMove: (e) => {
         onPointerMove(e.clientX, e.clientY, e.pointerId);
@@ -28708,158 +29687,13 @@ function animateChatScrollToBottom(el, opts) {
     }
   };
 }
-const NAV_HIDE_PROGRESS_CSS_VAR = "--retweet-nav-hide-progress";
-const CHAT_DISMISS_ROOM_TX_VAR = "--retweet-chat-dismiss-room-tx";
-const REELS_NAV_COLLAPSE_PROGRESS_VAR = "--retweet-reels-nav-collapse-progress";
-const DEFAULT_TRAVEL_PX = 72;
-function clamp$1(n, min, max) {
-  return Math.min(max, Math.max(min, n));
-}
-function useBottomNavSheet(options) {
-  const optionsRef = reactExports.useRef(options);
-  optionsRef.current = options;
-  const navRef = reactExports.useRef(null);
-  const travelRef = reactExports.useRef(DEFAULT_TRAVEL_PX);
-  const suppressTapUntilRef = reactExports.useRef(0);
-  const shouldSuppressTap = reactExports.useCallback(() => Date.now() < suppressTapUntilRef.current, []);
-  const measureTravel = reactExports.useCallback(() => {
-    const el = navRef.current;
-    if (!el) return;
-    const h = el.offsetHeight;
-    if (h > 0) travelRef.current = h;
-  }, []);
-  const publishHideProgress = reactExports.useCallback((p) => {
-    document.documentElement.style.setProperty(NAV_HIDE_PROGRESS_CSS_VAR, String(clamp$1(p, 0, 1)));
-  }, []);
-  reactExports.useLayoutEffect(() => {
-    measureTravel();
-    publishHideProgress(0);
-  }, [measureTravel, publishHideProgress]);
-  reactExports.useLayoutEffect(() => {
-    const el = navRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => measureTravel());
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [measureTravel]);
-  reactExports.useEffect(() => {
-    document.documentElement.style.setProperty(REELS_NAV_COLLAPSE_PROGRESS_VAR, "0");
-    return () => {
-      document.documentElement.style.removeProperty(NAV_HIDE_PROGRESS_CSS_VAR);
-      document.documentElement.style.removeProperty(CHAT_DISMISS_ROOM_TX_VAR);
-      document.documentElement.style.removeProperty(REELS_NAV_COLLAPSE_PROGRESS_VAR);
-    };
-  }, []);
-  travelRef.current;
-  const externalDrive = !!optionsRef.current?.externalHideDrive;
-  const navStyle = externalDrive ? {
-    transform: `translate3d(var(${CHAT_DISMISS_ROOM_TX_VAR}, 0px), 0, 0)`,
-    transformOrigin: "50% 100%",
-    transition: "none",
-    willChange: "transform"
-  } : {
-    transform: "translate3d(0, 0, 0)",
-    transformOrigin: "50% 100%",
-    transition: "none",
-    willChange: "auto"
-  };
-  return {
-    navRef,
-    navStyle,
-    shouldSuppressTap
-  };
-}
-const CHAT_STACK_PROGRESS_VAR = "--retweet-chat-stack-progress";
-function clampStackProgress(p) {
-  return Math.max(0, Math.min(1, Number.isFinite(p) ? p : 0));
-}
-function publishChatStackCssProgress(progress) {
-  const clamped = clampStackProgress(progress);
-  if (typeof document !== "undefined") {
-    document.documentElement.style.setProperty(CHAT_STACK_PROGRESS_VAR, String(clamped));
-  }
-  return clamped;
-}
-function clearChatDismissRoomTx() {
-  if (typeof document === "undefined") return;
-  document.documentElement.style.removeProperty(CHAT_DISMISS_ROOM_TX_VAR);
-}
-function clearChatStackCssProgress() {
-  if (typeof document === "undefined") return;
-  document.documentElement.style.removeProperty(CHAT_STACK_PROGRESS_VAR);
-  clearChatDismissRoomTx();
-}
-function snapStackLayersToInboxRest(layers2) {
-  if (layers2.inboxEl) {
-    layers2.inboxEl.style.transform = "none";
-    layers2.inboxEl.style.transformOrigin = "";
-    layers2.inboxEl.style.transition = "none";
-    layers2.inboxEl.style.willChange = "auto";
-  }
-  if (layers2.roomEl) {
-    layers2.roomEl.style.transition = "none";
-    layers2.roomEl.style.willChange = "auto";
-    layers2.roomEl.style.removeProperty("--retweet-chat-room-radius");
-    layers2.roomEl.style.removeProperty("--retweet-chat-dismiss-pull");
-  }
-  clearChatStackCssProgress();
-}
-function syncStackNavHideProgress(progress) {
-  if (typeof document === "undefined") return;
-  if (progress == null) {
-    document.documentElement.style.removeProperty(NAV_HIDE_PROGRESS_CSS_VAR);
-    return;
-  }
-  document.documentElement.style.setProperty(
-    NAV_HIDE_PROGRESS_CSS_VAR,
-    String(clampStackProgress(progress))
-  );
-}
-const DEFAULT_LAYOUT_WIDTH_PX = 390;
-const MIN_LAYOUT_WIDTH_PX = 260;
-function readSafeViewportWidth() {
-  try {
-    if (typeof window === "undefined") return DEFAULT_LAYOUT_WIDTH_PX;
-    const vv = window.visualViewport?.width;
-    const raw = Number(vv ?? window.innerWidth);
-    if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_LAYOUT_WIDTH_PX;
-    return Math.min(Math.max(Math.round(raw), MIN_LAYOUT_WIDTH_PX), APP_COLUMN_MAX_PX);
-  } catch {
-    return DEFAULT_LAYOUT_WIDTH_PX;
-  }
-}
-function readSafeContainerRect(el) {
-  try {
-    if (!el || typeof el.getBoundingClientRect !== "function") return null;
-    const r2 = el.getBoundingClientRect();
-    if (!Number.isFinite(r2.width) || r2.width <= 0) return null;
-    return {
-      left: Number.isFinite(r2.left) ? r2.left : 0,
-      top: Number.isFinite(r2.top) ? r2.top : 0,
-      width: r2.width,
-      height: Number.isFinite(r2.height) && r2.height > 0 ? r2.height : 0
-    };
-  } catch {
-    return null;
-  }
-}
-function readSafeStackCapPx(containerEl, fallbackCapRef) {
-  try {
-    const rect = readSafeContainerRect(containerEl);
-    const fromRect = rect?.width;
-    const fromRef = fallbackCapRef?.current && Number.isFinite(fallbackCapRef.current) ? fallbackCapRef.current : 0;
-    const base = fromRect && fromRect > 0 ? fromRect : fromRef > 0 ? fromRef : readSafeViewportWidth();
-    return Math.max(MIN_LAYOUT_WIDTH_PX, Math.min(Math.round(base), APP_COLUMN_MAX_PX));
-  } catch {
-    return readSafeViewportWidth();
-  }
-}
 function ChatStackRoomGestureShell({
   roomRef,
   widthCapRef,
   children,
   interactive = true
 }) {
+  const hasRoomContent = children != null && children !== false;
   reactExports.useEffect(() => {
     try {
       if (widthCapRef.current <= 0) widthCapRef.current = readSafeViewportWidth();
@@ -28872,13 +29706,24 @@ function ChatStackRoomGestureShell({
     {
       ref: roomRef,
       "data-chat-stack-room": true,
-      className: "chat-no-select chat-room-stack absolute inset-0 z-[2] flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-background [transform:translateZ(0)] chat-room-stack-dismiss " + (interactive ? "pointer-events-auto touch-manipulation" : "pointer-events-none"),
+      "aria-hidden": !hasRoomContent,
+      className: "chat-no-select chat-room-stack absolute inset-0 z-[2] flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden [transform:translateZ(0)] chat-room-stack-dismiss " + (hasRoomContent ? "bg-background " : "pointer-events-none bg-transparent ") + (interactive ? "pointer-events-auto touch-manipulation" : "pointer-events-none"),
       children
     }
   ) });
 }
 const NATIVE_LONG_PRESS_ATTR = "data-native-long-press";
 const ALLOW_SELECT_SELECTOR = 'input, textarea, select, [contenteditable="true"], .chat-allow-select, .native-allow-select';
+const SCROLLABLE_SELECTOR = [
+  ".tab-panel-scroll",
+  ".chat-inbox-scroll",
+  ".chat-scroll-pane",
+  ".profile-scroll-pane",
+  ".settings-screen-root",
+  ".app-dismiss-sheet-panel",
+  ".notifications-panel-scroll",
+  "[data-scroll-pane]"
+].join(", ");
 const NO_SELECT_STYLE_ID = "retweet-ios-no-select";
 const NO_SELECT_SHELL_CLASS = "retweet-native-shell";
 const NO_SELECT_GLOBAL_CSS = `
@@ -28967,6 +29812,23 @@ function isNativeLongPressTarget(target) {
   if (!(target instanceof Element)) return false;
   return !!target.closest(`[${NATIVE_LONG_PRESS_ATTR}]`);
 }
+function isNativeScrollableTarget(target) {
+  if (!(target instanceof Element)) return false;
+  if (target.closest(SCROLLABLE_SELECTOR)) return true;
+  let el = target;
+  for (let depth = 0; depth < 10 && el; depth += 1) {
+    try {
+      const style = window.getComputedStyle(el);
+      const oy = style.overflowY;
+      if ((oy === "auto" || oy === "scroll" || oy === "overlay") && el.scrollHeight > el.clientHeight + 4) {
+        return true;
+      }
+    } catch {
+    }
+    el = el.parentElement;
+  }
+  return false;
+}
 function clearNativeSelection() {
   try {
     const sel = window.getSelection();
@@ -29014,72 +29876,26 @@ function injectNoSelectStyles() {
   style.textContent = NO_SELECT_GLOBAL_CSS;
   (document.head || document.documentElement).appendChild(style);
 }
-function isAndroidTouchDevice() {
-  if (typeof navigator === "undefined") return false;
-  return /Android/i.test(navigator.userAgent);
-}
 function installTouchSelectionBlocker() {
-  let startX = 0;
-  let startY = 0;
-  let touchMoved = false;
-  let rafId = 0;
-  const stopRaf = () => {
-    if (rafId) {
-      cancelAnimationFrame(rafId);
-      rafId = 0;
-    }
-  };
-  const loopClearSelection = () => {
-    clearNativeSelection();
-    rafId = requestAnimationFrame(loopClearSelection);
-  };
   document.addEventListener(
     "touchstart",
     (e) => {
-      stopRaf();
       if (e.touches.length !== 1) return;
       if (isNativeAllowSelectTarget(e.target)) return;
       if (isNativeLongPressTarget(e.target)) return;
-      startX = e.touches[0].clientX;
-      startY = e.touches[0].clientY;
-      touchMoved = false;
+      if (isNativeScrollableTarget(e.target)) return;
       clearNativeSelection();
-      rafId = requestAnimationFrame(loopClearSelection);
     },
     { capture: true, passive: true }
   );
   document.addEventListener(
-    "touchmove",
-    (e) => {
-      if (!e.touches[0]) return;
-      if (isNativeAllowSelectTarget(e.target)) return;
-      if (isNativeLongPressTarget(e.target)) return;
-      const dx = Math.abs(e.touches[0].clientX - startX);
-      const dy = Math.abs(e.touches[0].clientY - startY);
-      if (dy > dx && dy > 4) {
-        touchMoved = true;
-        stopRaf();
-        return;
-      }
-      if (dx > 12 || dy > 12) {
-        touchMoved = true;
-        stopRaf();
-        return;
-      }
-      if (!touchMoved && !isAndroidTouchDevice()) {
-        e.preventDefault();
-        clearNativeSelection();
-      }
+    "touchend",
+    () => {
+      clearNativeSelection();
     },
-    { capture: true, passive: false }
+    { capture: true, passive: true }
   );
-  const endTouch = () => {
-    stopRaf();
-    touchMoved = false;
-    clearNativeSelection();
-  };
-  document.addEventListener("touchend", endTouch, { capture: true, passive: true });
-  document.addEventListener("touchcancel", endTouch, { capture: true, passive: true });
+  document.addEventListener("touchcancel", clearNativeSelection, { capture: true, passive: true });
 }
 const nativeNoSelectCaptureHandlers = {
   onSelectStartCapture: blockNativeTextMenu,
@@ -29299,7 +30115,7 @@ const ChatStickerPicker = reactExports.memo(function ChatStickerPicker2({
   favoriteStickerContents = [],
   createdStickerContents: _createdStickerContents,
   onPick,
-  onClose,
+  onClose: onClose2,
   isTyping = false
 }) {
   const [tab, setTab] = reactExports.useState("custom");
@@ -29571,13 +30387,13 @@ function ChatDrawingCanvas({
 function ViewOnceMediaOverlay({
   media,
   src,
-  onClose
+  onClose: onClose2
 }) {
   if (typeof document === "undefined") return null;
   const drawPayload = media === "drawing" ? parseDrawingPayload(src) : null;
   return reactDomExports.createPortal(
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "fixed inset-0 z-[370] flex flex-col bg-black", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex shrink-0 justify-end p-3", children: /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onClose, className: "rounded-full bg-white/10 p-2.5 text-white hover:bg-white/20", "aria-label": "إغلاق", children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 22 }) }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex shrink-0 justify-end p-3", children: /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onClose2, className: "rounded-full bg-white/10 p-2.5 text-white hover:bg-white/20", "aria-label": "إغلاق", children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 22 }) }) }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex min-h-0 flex-1 items-center justify-center p-2", children: media === "drawing" ? drawPayload ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-full w-full max-w-lg flex-col items-center justify-center", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChatDrawingCanvas, { payload: drawPayload, className: "w-full", maxHeightPx: 620 }) }) : /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-center text-sm text-white/80", children: "تعذر عرض الرسمة" }) : media === "image" ? /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src, alt: "", className: "max-h-full max-w-full object-contain" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("video", { src, controls: true, autoPlay: true, className: "max-h-full max-w-full object-contain", playsInline: true }) })
     ] }),
     document.body
@@ -29590,7 +30406,7 @@ function clientToCanvas(e, canvas2) {
   return [(e.clientX - rect.left) * scaleX, (e.clientY - rect.top) * scaleY];
 }
 function ChatDrawComposeModal({
-  onClose,
+  onClose: onClose2,
   onSend,
   senderName,
   senderAvatar,
@@ -29653,11 +30469,11 @@ function ChatDrawComposeModal({
   }, [redraw]);
   reactExports.useEffect(() => {
     const onKey = (e) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") onClose2();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [onClose2]);
   const addTextCenter = reactExports.useCallback(() => {
     const canvas2 = canvasRef.current;
     if (!canvas2) return;
@@ -29721,7 +30537,7 @@ function ChatDrawComposeModal({
     const payload = buildPayload();
     if (!payload) return;
     onSend({ type: "drawing", content: JSON.stringify(payload), viewOnce });
-    onClose();
+    onClose2();
   };
   const toolBtn = "flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/20 bg-white/10 text-white backdrop-blur-sm transition hover:bg-white/20 active:scale-95";
   const cycleBg = (delta) => {
@@ -29742,7 +30558,7 @@ function ChatDrawComposeModal({
       className: (overMessages ? "absolute inset-0 z-[85] flex min-h-0 flex-col bg-black/25 " : "fixed inset-0 z-[365] mx-auto flex min-h-0 max-w-md flex-col bg-black/30 backdrop-blur-md ") + "pointer-events-auto",
       children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex shrink-0 items-center justify-between gap-2 px-3 pb-2 pt-[max(0.75rem,var(--sat))]", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onClose, className: toolBtn, "aria-label": "إغلاق", children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 20 }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onClose2, className: toolBtn, "aria-label": "إغلاق", children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 20 }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "min-w-0 flex-1 text-center text-xs font-medium text-white/95 sm:text-sm", children: "رسم وكتابة" }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => cycleBg(-1), className: toolBtn, "aria-label": "خلفية سابقة", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronRight, { size: 20, className: "rtl:rotate-180" }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => cycleBg(1), className: toolBtn, "aria-label": "خلفية تالية", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronLeft, { size: 20, className: "rtl:rotate-180" }) })
@@ -29829,7 +30645,7 @@ function ChatDrawComposeModal({
     }
   );
 }
-function ChatInlineMediaLightbox({ media, src, sender, senderLabel, onClose }) {
+function ChatInlineMediaLightbox({ media, src, sender, senderLabel, onClose: onClose2 }) {
   const [menuOpen, setMenuOpen] = reactExports.useState(false);
   const menuRef = reactExports.useRef(null);
   const download = reactExports.useCallback(() => {
@@ -29846,7 +30662,7 @@ function ChatInlineMediaLightbox({ media, src, sender, senderLabel, onClose }) {
     const onKey = (e) => {
       if (e.key === "Escape") {
         setMenuOpen(false);
-        onClose();
+        onClose2();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -29856,7 +30672,7 @@ function ChatInlineMediaLightbox({ media, src, sender, senderLabel, onClose }) {
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = prev;
     };
-  }, [onClose]);
+  }, [onClose2]);
   reactExports.useEffect(() => {
     if (!menuOpen) return;
     const onDoc = (e) => {
@@ -29874,7 +30690,7 @@ function ChatInlineMediaLightbox({ media, src, sender, senderLabel, onClose }) {
         dir: "ltr",
         className: "flex shrink-0 items-center gap-2 border-b border-white/10 px-2 pb-2 pt-[max(10px,var(--sat))]",
         children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onClose, className: "rounded-full p-2.5 text-white transition hover:bg-white/10", "aria-label": "رجوع", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronLeft, { size: 26, strokeWidth: 2.25 }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onClose2, className: "rounded-full p-2.5 text-white transition hover:bg-white/10", "aria-label": "رجوع", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronLeft, { size: 26, strokeWidth: 2.25 }) }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-w-0 flex-1 items-center justify-center gap-2 px-1", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: displayName.replace(/^@/, ""), src: sender?.avatar, size: 34 }),
             /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "truncate text-sm font-semibold text-white", children: displayName })
@@ -30022,7 +30838,7 @@ function ShareFeedStorySection({ storyId }) {
 function ChatSharedFeedOverlay({
   items,
   initialIndex,
-  onClose
+  onClose: onClose2
 }) {
   const scrollKeyRef = reactExports.useRef("");
   const key2 = reactExports.useMemo(() => items.map((i) => i.messageId).join("|") + "#" + initialIndex, [items, initialIndex]);
@@ -30047,7 +30863,7 @@ function ChatSharedFeedOverlay({
   }, []);
   return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-[380] flex justify-center bg-background", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex h-[100dvh] w-full max-w-md flex-col overflow-hidden", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs("header", { className: "flex shrink-0 items-center gap-3 px-3 py-2.5", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onClose, className: "shrink-0 rounded-full p-2 hover:bg-secondary", "aria-label": "إغلاق", children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 22 }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onClose2, className: "shrink-0 rounded-full p-2 hover:bg-secondary", "aria-label": "إغلاق", children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 22 }) }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-w-0 flex-1", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "truncate text-sm font-semibold", children: "مشاركات المحادثة" }),
         /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "truncate text-[11px] text-muted-foreground", children: "مرّر لأعلى أو لأسفل بين المنشورات والستوريات المشتركة" })
@@ -30892,6 +31708,30 @@ function readNativeKeyboardInsetFromCss() {
   const n = parseFloat(raw);
   return Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0;
 }
+function readBodyShrinkPx() {
+  if (typeof document === "undefined" || !document.body) return 0;
+  const layoutH = window.innerHeight;
+  const bodyH = document.body.getBoundingClientRect().height;
+  return Math.max(0, Math.round(layoutH - bodyH));
+}
+function applyComposerKeyboardLift() {
+  if (typeof document === "undefined") return;
+  const root = document.documentElement;
+  if (!root.classList.contains("retweet-kb-body-resize")) {
+    root.style.setProperty("--retweet-composer-kb-lift", "0px");
+    return;
+  }
+  const kb = Math.max(nativeKeyboardPx, readNativeKeyboardInsetFromCss());
+  if (kb < 8) {
+    root.style.setProperty("--retweet-composer-kb-lift", "0px");
+    return;
+  }
+  const extraLift = Math.max(0, Math.round(kb - readBodyShrinkPx()));
+  root.style.setProperty(
+    "--retweet-composer-kb-lift",
+    extraLift < 3 ? "0px" : `${extraLift}px`
+  );
+}
 function readChatKeyboardSnapshot() {
   if (typeof window === "undefined") {
     return { keyboardInset: 0, vvHeight: 0, vvOffsetTop: 0, open: false };
@@ -30934,6 +31774,7 @@ function applyChatKeyboardCss() {
   root.classList.toggle("chat-keyboard-open", snap.open);
   const scrollPad = snap.open ? "calc(4px + var(--chat-composer-h, 72px))" : "calc(8px + var(--chat-composer-h, 72px))";
   root.style.setProperty("--chat-scroll-padding-bottom", scrollPad);
+  applyComposerKeyboardLift();
   return snap;
 }
 function onViewportChange() {
@@ -30948,24 +31789,26 @@ async function ensureNativeKeyboardBridge() {
   nativeListenersReady = true;
   try {
     const [{ Keyboard }, { Capacitor: Capacitor2 }] = await Promise.all([
-      import("./index-C0tRN2zI.js"),
+      import("./index-gJlssfqe.js"),
       Promise.resolve().then(() => index$1)
     ]);
     if (!Capacitor2.isNativePlatform()) return;
     useNativeKeyboardHeight = true;
     document.documentElement.classList.add("retweet-kb-body-resize");
     try {
-      const { KeyboardResize } = await import("./index-C0tRN2zI.js");
+      const { KeyboardResize } = await import("./index-gJlssfqe.js");
       await Keyboard.setResizeMode({ mode: KeyboardResize.Body });
     } catch {
     }
     const onShow = (info) => {
       nativeKeyboardPx = Math.max(0, Math.round(info.keyboardHeight ?? 0));
+      applyComposerKeyboardLift();
       applyChatKeyboardCss();
       dispatchKeyboardSync();
     };
     const onHide = () => {
       nativeKeyboardPx = 0;
+      applyComposerKeyboardLift();
       applyChatKeyboardCss();
       dispatchKeyboardSync();
     };
@@ -31016,6 +31859,7 @@ function mountChatKeyboardEngine() {
     root.style.removeProperty("--vv-offset-top");
     root.style.removeProperty("--chat-sab-effective");
     root.style.removeProperty("--chat-scroll-padding-bottom");
+    root.style.removeProperty("--retweet-composer-kb-lift");
     root.classList.remove("chat-keyboard-open");
     applyChatKeyboardCss();
   };
@@ -31239,7 +32083,7 @@ function ChatComposerReplyBar({
   authorLabel,
   preview,
   isQuran,
-  onClose
+  onClose: onClose2
 }) {
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "div",
@@ -31275,7 +32119,7 @@ function ChatComposerReplyBar({
             type: "button",
             className: "shrink-0 rounded-full p-1.5 " + (isQuran ? "text-zinc-400 hover:bg-zinc-800" : "text-muted-foreground hover:bg-secondary"),
             "aria-label": "إلغاء الرد",
-            onClick: onClose,
+            onClick: onClose2,
             children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 18 })
           }
         )
@@ -31383,7 +32227,7 @@ const ROLE_ICON = {
 };
 function GroupRolesSheet({
   chat,
-  onClose,
+  onClose: onClose2,
   onChatUpdated
 }) {
   const { state: state2, currentUser, setState } = useApp();
@@ -31430,7 +32274,7 @@ function GroupRolesSheet({
       setBusy(null);
     }
   };
-  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-[220] flex flex-col justify-end bg-black/50", onClick: onClose, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-[220] flex flex-col justify-end bg-black/50", onClick: onClose2, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "div",
     {
       className: "mx-auto flex max-h-[min(85vh,640px)] w-full max-w-md flex-col rounded-t-3xl bg-background animate-in slide-in-from-bottom",
@@ -31487,7 +32331,7 @@ function GroupRolesSheet({
           "button",
           {
             type: "button",
-            onClick: onClose,
+            onClick: onClose2,
             className: "w-full rounded-xl bg-secondary py-2.5 text-sm font-medium",
             children: "إغلاق"
           }
@@ -31498,7 +32342,7 @@ function GroupRolesSheet({
 }
 function GroupSettingsSheet({
   chat,
-  onClose
+  onClose: onClose2
 }) {
   const { currentUser, setState } = useApp();
   const me = currentUser;
@@ -31542,13 +32386,13 @@ function GroupSettingsSheet({
           )
         }));
       }
-      onClose();
+      onClose2();
     } finally {
       setBusy(false);
     }
   };
   const vis = settings.visibility;
-  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-[220] flex flex-col justify-end bg-black/50", onClick: onClose, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-[220] flex flex-col justify-end bg-black/50", onClick: onClose2, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "div",
     {
       className: "mx-auto max-h-[min(90vh,720px)] w-full max-w-md overflow-y-auto rounded-t-3xl bg-background animate-in slide-in-from-bottom",
@@ -31655,7 +32499,7 @@ function GroupSettingsSheet({
           err && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-destructive", children: err })
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sticky bottom-0 flex gap-2 border-t border-border bg-background p-4 pb-[max(1rem,var(--sab))]", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onClose, className: "flex-1 rounded-xl bg-secondary py-2.5 text-sm", children: "إلغاء" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onClose2, className: "flex-1 rounded-xl bg-secondary py-2.5 text-sm", children: "إلغاء" }),
           canEdit && /* @__PURE__ */ jsxRuntimeExports.jsx(
             "button",
             {
@@ -31812,7 +32656,7 @@ function ReportFlow({
   targetType,
   targetId,
   reportedUsername,
-  onClose,
+  onClose: onClose2,
   onDone,
   fullScreen = false,
   contentScrollRef,
@@ -31890,7 +32734,7 @@ function ReportFlow({
             }
           ),
           /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "flex-1 text-center text-base font-semibold pe-10", children: title }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onClose, className: "text-sm text-muted-foreground", children: "إغلاق" })
+          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onClose2, className: "text-sm text-muted-foreground", children: "إغلاق" })
         ] }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs(
           "div",
@@ -31990,7 +32834,7 @@ function ReportFlow({
                   "button",
                   {
                     type: "button",
-                    onClick: onClose,
+                    onClick: onClose2,
                     className: "mt-8 w-full max-w-xs rounded-xl bg-secondary py-2.5 text-sm font-semibold",
                     children: "تم"
                   }
@@ -32007,7 +32851,7 @@ const DISMISS_START_PX$1 = 10;
 const DISMISS_FLING_VY$1 = 0.45;
 function ReportFlowSheet({
   open,
-  onClose,
+  onClose: onClose2,
   reportedUserId,
   reportedUsername,
   targetType,
@@ -32038,8 +32882,8 @@ function ReportFlowSheet({
     }
   }, [open]);
   const finishClose = reactExports.useCallback(() => {
-    onClose();
-  }, [onClose]);
+    onClose2();
+  }, [onClose2]);
   const snapBack = reactExports.useCallback(() => {
     if (closeTimerRef.current != null) {
       window.clearTimeout(closeTimerRef.current);
@@ -32273,8 +33117,19 @@ const CHAT_WALLPAPER_THEMES = [
     labelEn: "Monstera",
     imagePath: "chat-themes/monstera.png",
     overlayOpacity: 0.38
+  },
+  {
+    id: "verified_gold",
+    labelAr: "ذهبي موثّق ✦",
+    labelEn: "Verified Gold",
+    overlayOpacity: 0.42
   }
 ];
+function chatWallpaperThemesForUser(hasExclusiveChatTheme) {
+  return CHAT_WALLPAPER_THEMES.filter(
+    (t) => t.id !== "verified_gold" || hasExclusiveChatTheme
+  );
+}
 const STORAGE_KEY = "retweet_chat_wallpapers_v1";
 function readMap() {
   if (typeof localStorage === "undefined") return {};
@@ -33567,9 +34422,11 @@ function ChatThemePickerSheet({
   selectedId,
   language,
   onSelect,
-  onClose
+  onClose: onClose2,
+  hasExclusiveChatTheme = false
 }) {
   if (!open) return null;
+  const themes = chatWallpaperThemesForUser(hasExclusiveChatTheme);
   return /* @__PURE__ */ jsxRuntimeExports.jsx(
     "div",
     {
@@ -33577,7 +34434,7 @@ function ChatThemePickerSheet({
       role: "dialog",
       "aria-modal": true,
       "aria-label": language === "en" ? "Chat theme" : "سمة المحادثة",
-      onClick: onClose,
+      onClick: onClose2,
       children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
         "div",
         {
@@ -33590,15 +34447,16 @@ function ChatThemePickerSheet({
                 "button",
                 {
                   type: "button",
-                  onClick: onClose,
+                  onClick: onClose2,
                   className: "rounded-full px-3 py-1.5 text-sm font-semibold text-primary",
                   children: language === "en" ? "Done" : "تم"
                 }
               )
             ] }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "no-scrollbar overflow-y-auto px-4 py-4 pb-[max(1rem,var(--sab))]", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "grid grid-cols-2 gap-3", children: CHAT_WALLPAPER_THEMES.map((theme) => {
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "no-scrollbar overflow-y-auto px-4 py-4 pb-[max(1rem,var(--sab))]", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "grid grid-cols-2 gap-3", children: themes.map((theme) => {
               const selected = theme.id === selectedId;
               const previewUrl = theme.imagePath ? chatWallpaperAssetUrl(theme.imagePath) : null;
+              const isVerifiedGold = theme.id === "verified_gold";
               return /* @__PURE__ */ jsxRuntimeExports.jsxs(
                 "button",
                 {
@@ -33621,7 +34479,7 @@ function ChatThemePickerSheet({
                           style: { backgroundColor: `rgba(0,0,0,${theme.overlayOpacity ?? 0.38})` }
                         }
                       )
-                    ] }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 bg-gradient-to-br from-zinc-200 to-zinc-400 dark:from-zinc-700 dark:to-zinc-900" }),
+                    ] }) : isVerifiedGold ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 bg-gradient-to-br from-amber-500 via-[#0095F6] to-[#FF2D55]" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 bg-gradient-to-br from-zinc-200 to-zinc-400 dark:from-zinc-700 dark:to-zinc-900" }),
                     /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent px-2.5 pb-2.5 pt-8", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-[13px] font-semibold text-white", children: chatWallpaperLabel(theme, language) }) }),
                     selected ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-primary text-primary-foreground shadow", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Check, { size: 16, strokeWidth: 2.5 }) }) : null
                   ]
@@ -34013,6 +34871,46 @@ function MentionComposerField({
     )
   ] });
 }
+const KEY$1 = "retweet-quick-replies";
+function loadQuickReplies(userId) {
+  if (typeof localStorage === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(`${KEY$1}:${userId}`);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((x) => x && typeof x.text === "string").slice(0, 20) : [];
+  } catch {
+    return [];
+  }
+}
+function saveQuickReplies(userId, items) {
+  if (typeof localStorage === "undefined") return;
+  localStorage.setItem(`${KEY$1}:${userId}`, JSON.stringify(items.slice(0, 20)));
+}
+const DEFAULT_QUICK_REPLIES_AR = [
+  "شكراً لك 🙏",
+  "سأرد عليك قريباً",
+  "موافق ✅"
+];
+function ChatQuickRepliesBar({
+  me,
+  onPick
+}) {
+  const ent = getUserEntitlements(me);
+  if (!ent.hasQuickReplies) return null;
+  const items = loadQuickReplies(me.id).slice(0, ent.maxQuickReplies);
+  if (!items.length) return null;
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex gap-2 overflow-x-auto no-scrollbar px-3 py-2 border-b border-border/50", children: items.map((q) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "button",
+    {
+      type: "button",
+      onClick: () => onPick(q.text),
+      className: "shrink-0 rounded-full border border-border bg-secondary/80 px-3 py-1.5 text-xs font-medium text-foreground active:scale-95",
+      children: q.text
+    },
+    q.id
+  )) });
+}
 const TW = 400;
 const TH = 800;
 const BR = 12;
@@ -34266,7 +35164,7 @@ function SideBallRack({ ballIds, label }) {
     ))
   ] });
 }
-function PoolGame({ roomId, onClose, onGameEnd }) {
+function PoolGame({ roomId, onClose: onClose2, onGameEnd }) {
   const { state: state2, currentUser } = useApp();
   const me = currentUser;
   const canvasRef = reactExports.useRef(null);
@@ -34499,7 +35397,7 @@ function PoolGame({ roomId, onClose, onGameEnd }) {
   const forfeit = async () => {
     if (!confirm("هل أنت متأكد من الاستسلام؟")) return;
     await apiFetch(`/v1/games/pool/${roomId}/forfeit`, { method: "POST" });
-    onClose();
+    onClose2();
   };
   if (result && !result.shown) {
     return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-[300] flex items-center justify-center bg-black/85 p-6", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col items-center gap-4 rounded-3xl bg-white p-8 text-center shadow-2xl", children: [
@@ -34511,7 +35409,7 @@ function PoolGame({ roomId, onClose, onGameEnd }) {
           className: "rounded-2xl bg-[#0095F6] px-8 py-3 font-bold text-white",
           onClick: () => {
             setResult({ ...result, shown: true });
-            onClose();
+            onClose2();
           },
           children: "خروج"
         }
@@ -34524,7 +35422,7 @@ function PoolGame({ roomId, onClose, onGameEnd }) {
         "button",
         {
           type: "button",
-          onClick: onClose,
+          onClick: onClose2,
           className: "rounded-full bg-white/10 px-3 py-1.5 text-sm text-white",
           children: "✕"
         }
@@ -34773,7 +35671,7 @@ function RSocialAvatar({ name = "?", src, size = 48, ring, className }) {
 function CallScreen({
   chatId,
   video,
-  onClose,
+  onClose: onClose2,
   calleePeerId
 }) {
   const { state: state2, currentUser } = useApp();
@@ -34837,7 +35735,7 @@ function CallScreen({
   }, [chatId, otherId, video, calleePeerId, chat?.isGroup, chat?.isChannel]);
   const hangUp = () => {
     void endCall();
-    onClose();
+    onClose2();
   };
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "fixed inset-0 z-[300] bg-black text-white flex flex-col", children: [
     video && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative flex-1 min-h-0", children: [
@@ -34981,7 +35879,7 @@ function ForwardChatSheet({
   currentChat,
   message,
   me,
-  onClose
+  onClose: onClose2
 }) {
   const { forwardMessage } = useAppActions();
   const chats = useChats();
@@ -35019,7 +35917,7 @@ function ForwardChatSheet({
       return lastActivityAt(b) - lastActivityAt(a);
     });
   }, [chats, users, currentChat.id, me.id, q, currentUser]);
-  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-[400] flex justify-center bg-black/50", role: "presentation", onClick: onClose, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-[400] flex justify-center bg-black/50", role: "presentation", onClick: onClose2, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "div",
     {
       className: "absolute bottom-0 left-0 right-0 mx-auto max-w-md rounded-t-3xl border border-border bg-background p-4 shadow-xl",
@@ -35048,7 +35946,7 @@ function ForwardChatSheet({
               className: "flex w-full items-center gap-3 rounded-2xl p-2 text-start hover:bg-secondary",
               onClick: () => {
                 forwardMessage(currentChat.id, c.id, message.id);
-                onClose();
+                onClose2();
               },
               children: [
                 /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: label, src: av, size: 40 }),
@@ -35058,7 +35956,7 @@ function ForwardChatSheet({
             c.id
           );
         }) }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "mt-3 w-full py-2 text-sm text-muted-foreground hover:text-foreground", onClick: onClose, children: t("cancel") })
+        /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", className: "mt-3 w-full py-2 text-sm text-muted-foreground hover:text-foreground", onClick: onClose2, children: t("cancel") })
       ]
     }
   ) });
@@ -35926,7 +36824,10 @@ const ChatListRowWithPeek = reactExports.memo(function ChatListRowWithPeek2({
                 children: [
                   /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-w-0 items-center gap-1.5", children: [
                     c.isChannel && /* @__PURE__ */ jsxRuntimeExports.jsx(Megaphone, { size: 12, className: "shrink-0 text-muted-foreground", "aria-hidden": true }),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "min-w-0 truncate text-[16px] leading-tight " + (hasUnread ? "font-bold text-foreground" : "font-semibold text-foreground"), children: c.isGroup || c.isChannel ? c.name || "Group" : displayNameFromUsername(other?.username || displayName) }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "min-w-0 truncate text-[16px] leading-tight inline-flex items-center gap-1 " + (hasUnread ? "font-bold text-foreground" : "font-semibold text-foreground"), children: [
+                      c.isGroup || c.isChannel ? c.name || "Group" : displayNameFromUsername(other?.username || displayName),
+                      !c.isGroup && !c.isChannel && other ? /* @__PURE__ */ jsxRuntimeExports.jsx(VerifiedMarkForUser, { user: other, size: 12 }) : null
+                    ] }),
                     isListPinned && /* @__PURE__ */ jsxRuntimeExports.jsx(Pin, { size: 11, className: "shrink-0 text-amber-500", "aria-hidden": true }),
                     isMuted && /* @__PURE__ */ jsxRuntimeExports.jsx(BellOff, { size: 11, className: "shrink-0 text-muted-foreground/60", "aria-hidden": true }),
                     !c.isGroup && !c.isChannel && (c.streak?.streakCount ?? 0) > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(StreakBadge, { streak: c.streak })
@@ -36216,17 +37117,23 @@ function ChatScreen({
   const applyStackLayerTransforms = reactExports.useCallback(
     (p, animate) => {
       try {
+        const layers2 = stackLayers();
+        if (!openChat && !stackClosingId) {
+          snapChatNavInboxRest(layers2, stackCapRef.current);
+          if (isNativeCapacitorShell()) resetNativeChatInboxLayout(layers2);
+          return;
+        }
         let cap = stackCapRef.current;
         if (!(cap > 0)) {
           cap = readSafeStackCapPx(stackInboxRef.current, stackCapRef);
           stackCapRef.current = cap;
         }
-        applyChatNavOpenTransforms(p, cap, stackLayers(), animate);
+        applyChatNavOpenTransforms(p, cap, layers2, animate);
       } catch (err) {
         console.warn("[chat-stack-transform]", err);
       }
     },
-    [stackLayers]
+    [stackLayers, openChat, stackClosingId]
   );
   const applyNavDismissPull = reactExports.useCallback(
     (pullPx, animate, durationMs = CHAT_NAV_MS) => {
@@ -36294,17 +37201,12 @@ function ChatScreen({
       if (typeof document !== "undefined") {
         document.documentElement.style.removeProperty(CHAT_DISMISS_PULL_CSS_VAR);
       }
-      const { inboxEl, roomEl } = stackLayers();
-      if (inboxEl) {
-        inboxEl.style.transformOrigin = "";
-      }
-      if (roomEl) {
-        roomEl.style.removeProperty("--retweet-chat-room-radius");
-        roomEl.style.removeProperty("--retweet-chat-dismiss-pull");
-      }
-      applyStackLayerTransforms(0, !!opts?.animate);
+      const layers2 = stackLayers();
+      snapChatNavInboxRest(layers2);
+      snapStackLayersToInboxRest(layers2);
+      resetNativeChatInboxLayout(layers2);
     },
-    [applyStackLayerTransforms, onExitNavRevealProgress]
+    [stackLayers, onExitNavRevealProgress]
   );
   const publishStackProgressVisual = reactExports.useCallback(
     (p, commitState = false, animate = false) => {
@@ -36562,7 +37464,14 @@ function ChatScreen({
     } catch {
       stackCapRef.current = DEFAULT_LAYOUT_WIDTH_PX;
     }
-  }, []);
+    if (!openChat && !stackClosingId) {
+      applyStackLayerTransforms(0, false);
+      if (chatTabActive) resetNativeChatInboxLayout(stackLayers());
+    } else {
+      snapChatNavInboxRest(stackLayers(), stackCapRef.current);
+    }
+    clearChatStackCssProgress();
+  }, [stackLayers, applyStackLayerTransforms, openChat, stackClosingId, chatTabActive]);
   reactExports.useLayoutEffect(() => {
     const el = stackInboxRef.current;
     if (!el) return;
@@ -36584,15 +37493,24 @@ function ChatScreen({
     if (stackDismissFinalizingRef.current || stackOpenDragRef.current || stackDragChatId || stackClosingId || stackTapTransitionRef.current || stackRoomDismissRef.current || stackRoomDriveRef.current === "close" || stackGestureLocked || stackTransitionLockRef.current || stackSwipeOpeningRef.current) {
       return;
     }
+    if (!openChat && !stackClosingId) {
+      if (stackProgressRef.current > 1e-3) {
+        stackProgressRef.current = 0;
+      }
+      resetStackToInboxRest();
+      return;
+    }
     applyStackLayerTransforms(stackProgress, stackSpring);
   }, [
     showGroupSettings,
+    openChat,
     stackProgress,
     stackSpring,
     stackDragChatId,
     stackClosingId,
     stackGestureLocked,
-    applyStackLayerTransforms
+    applyStackLayerTransforms,
+    resetStackToInboxRest
   ]);
   reactExports.useEffect(() => {
     if (openChat || stackDragChatId || stackClosingId) return;
@@ -36809,7 +37727,8 @@ function ChatScreen({
         showStackChrome();
         releaseStackTransitionLock();
         requestAnimationFrame(() => {
-          applyStackLayerTransforms(0, false);
+          snapChatNavInboxRest(stackLayers());
+          clearChatStackCssProgress();
           stackDismissFinalizingRef.current = false;
           stackCloseCommitRef.current = false;
         });
@@ -36961,6 +37880,47 @@ function ChatScreen({
     if (chatTabActive) return;
     releaseStuckStackListGestureRef.current();
   }, [chatTabActive]);
+  reactExports.useLayoutEffect(() => {
+    if (!chatTabActive || openChat || stackClosingId) return;
+    resetStackToInboxRest();
+    resetNativeChatInboxLayout(stackLayers());
+  }, [chatTabActive, openChat, stackClosingId, resetStackToInboxRest, stackLayers]);
+  reactExports.useLayoutEffect(() => {
+    if (!chatTabActive || !isNativeCapacitorShell() || openChat || stackClosingId) return;
+    let raf1 = 0;
+    let raf2 = 0;
+    const pin = () => resetNativeChatInboxLayout(stackLayers());
+    raf1 = requestAnimationFrame(() => {
+      pin();
+      raf2 = requestAnimationFrame(pin);
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [chatTabActive, openChat, stackClosingId, stackLayers]);
+  reactExports.useEffect(() => {
+    if (!chatTabActive || !isNativeCapacitorShell()) return;
+    const onVisible = () => {
+      if (document.visibilityState !== "visible" || openChat || stackClosingId) return;
+      resetStackToInboxRest();
+    };
+    const onResize = () => {
+      if (openChat || stackClosingId) return;
+      stackCapRef.current = readSafeViewportWidth();
+      resetNativeChatInboxLayout(stackLayers());
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("resize", onResize);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", onResize);
+    }
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("resize", onResize);
+      window.visualViewport?.removeEventListener("resize", onResize);
+    };
+  }, [chatTabActive, openChat, stackClosingId, resetStackToInboxRest, stackLayers]);
   reactExports.useEffect(() => {
     const onRing = (e) => {
       const detail = e.detail;
@@ -37124,15 +38084,17 @@ function ChatScreen({
     {
       ref: stackInboxRef,
       dir: isRtl ? "rtl" : "ltr",
-      className: "chat-inbox-pane no-scrollbar relative z-[1] flex min-h-0 flex-1 flex-col overflow-hidden overscroll-none bg-background [transform:translateZ(0)]",
+      className: "chat-inbox-pane no-scrollbar relative z-[1] flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col overflow-x-clip overflow-y-hidden overscroll-none bg-background",
       "data-no-tab-swipe": true,
+      "data-inbox-at-rest": !openChat && !stackClosingId ? "true" : void 0,
       style: stackInboxPointerEvents ? { pointerEvents: stackInboxPointerEvents } : void 0,
       children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs(
           "div",
           {
             ref: inboxListScrollRef,
-            className: "chat-inbox-scroll no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain",
+            dir: isRtl ? "rtl" : "ltr",
+            className: "chat-inbox-scroll no-scrollbar min-h-0 w-full min-w-0 flex-1 overflow-y-auto overscroll-contain",
             "data-no-tab-swipe": true,
             children: [
               /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "shrink-0 px-4 pb-2 pt-[max(0.75rem,max(0.75rem, var(--sat)))]", children: [
@@ -37591,69 +38553,82 @@ function ChatScreen({
         ] })
       }
     ),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "chat-stack-scene relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background", children: [
-      chatInbox,
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        ChatStackRoomGestureShell,
-        {
-          roomRef: stackRoomRef,
-          widthCapRef: stackCapRef,
-          interactive: !!openChat,
-          children: (openChat || stackClosingId) && stackChat ? /* @__PURE__ */ jsxRuntimeExports.jsx(
-            ChatRoom,
-            {
-              chat: stackChat,
-              embedInStack: true,
-              stackFullyOpen: !!openChat,
-              roomDismissBlocked: chatRoomDismissBlocked,
-              forceScrollToBottom: stackRoomForceScrollBottom,
-              onStackProgress: openChat ? syncStackProgressFromRoom : void 0,
-              onAnimatedBack: openChat ? handleStackRoomAnimatedBack : void 0,
-              dismissCommitRef: stackCloseCommitRef,
-              onBack: openChat ? closeOpenChat : () => {
-              },
-              onCall: openChat ? (video) => {
-                setCallVideo(video);
-                setShowCall(stackChat.id);
-              } : () => {
-              },
-              onOpenSettings: openChat ? () => {
-                groupSettingsStackProgressRef.current = Math.max(
-                  stackProgressRef.current,
-                  stackProgress,
-                  0.98
-                );
-                setShowGroupSettings(true);
-              } : () => {
-              },
-              onOpenProfile,
-              registerOpenThemePicker: (open) => {
-                openChatThemePickerRef.current = open;
-              }
-            },
-            `${accountSessionKey}-${stackChat.id}`
-          ) : null
-        }
-      )
-    ] }),
-    showGroupSettings && openChat && stackChat && (stackChat.isGroup || stackChat.isChannel) ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "pointer-events-auto fixed inset-0 z-[220] mx-auto flex max-w-md flex-col bg-background", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-      GroupDetailsScreen,
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      "div",
       {
-        embeddedInChatStack: true,
-        chat: stackChat,
-        messages: stackChat.messages,
-        onBack: closeGroupSettings,
-        onOpenProfile,
-        onOpenChatTheme: () => {
-          closeGroupSettings();
-          window.setTimeout(() => openChatThemePickerRef.current(), 0);
-        },
-        onCreateNewGroup: () => {
-          closeGroupSettings();
-          setShowCreate("group");
-        }
+        dir: "ltr",
+        className: "chat-stack-scene relative flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col overflow-x-clip overflow-y-hidden bg-background",
+        children: [
+          chatInbox,
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            ChatStackRoomGestureShell,
+            {
+              roomRef: stackRoomRef,
+              widthCapRef: stackCapRef,
+              interactive: !!openChat,
+              children: (openChat || stackClosingId) && stackChat ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+                ChatRoom,
+                {
+                  chat: stackChat,
+                  embedInStack: true,
+                  stackFullyOpen: !!openChat,
+                  roomDismissBlocked: chatRoomDismissBlocked,
+                  forceScrollToBottom: stackRoomForceScrollBottom,
+                  onStackProgress: openChat ? syncStackProgressFromRoom : void 0,
+                  onAnimatedBack: openChat ? handleStackRoomAnimatedBack : void 0,
+                  dismissCommitRef: stackCloseCommitRef,
+                  onBack: openChat ? closeOpenChat : () => {
+                  },
+                  onCall: openChat ? (video) => {
+                    setCallVideo(video);
+                    setShowCall(stackChat.id);
+                  } : () => {
+                  },
+                  onOpenSettings: openChat ? () => {
+                    groupSettingsStackProgressRef.current = Math.max(
+                      stackProgressRef.current,
+                      stackProgress,
+                      0.98
+                    );
+                    setShowGroupSettings(true);
+                  } : () => {
+                  },
+                  onOpenProfile,
+                  registerOpenThemePicker: (open) => {
+                    openChatThemePickerRef.current = open;
+                  }
+                },
+                `${accountSessionKey}-${stackChat.id}`
+              ) : null
+            }
+          )
+        ]
       }
-    ) }) : null
+    ),
+    showGroupSettings && openChat && stackChat && (stackChat.isGroup || stackChat.isChannel) ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "div",
+      {
+        className: "pointer-events-auto fixed inset-0 z-[220] flex w-full flex-col bg-background " + (isNativeCapacitorShell() ? "" : "mx-auto max-w-md"),
+        children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+          GroupDetailsScreen,
+          {
+            embeddedInChatStack: true,
+            chat: stackChat,
+            messages: stackChat.messages,
+            onBack: closeGroupSettings,
+            onOpenProfile,
+            onOpenChatTheme: () => {
+              closeGroupSettings();
+              window.setTimeout(() => openChatThemePickerRef.current(), 0);
+            },
+            onCreateNewGroup: () => {
+              closeGroupSettings();
+              setShowCreate("group");
+            }
+          }
+        )
+      }
+    ) : null
   ] });
 }
 function RequestsList({
@@ -38708,8 +39683,9 @@ function ChatRoom({
   const dmDir = chatDmLayoutDir(lang);
   const dmRtl = chatDmIsRtl(lang);
   const activeWallpaper = reactExports.useMemo(() => getChatWallpaperTheme(wallpaperId), [wallpaperId]);
+  const isVerifiedGoldWallpaper = wallpaperId === "verified_gold";
   const chatWallpaperUrl = activeWallpaper.imagePath ? chatWallpaperAssetUrl(activeWallpaper.imagePath) : null;
-  const chromeOnWallpaper = !!chatWallpaperUrl && !isQuranChannel;
+  const chromeOnWallpaper = !isQuranChannel && (!!chatWallpaperUrl || isVerifiedGoldWallpaper);
   const wallpaperIconClass = "text-white/85 hover:bg-white/10 active:bg-white/15 transition-colors";
   const igDmSurfaceStyle = reactExports.useMemo(() => {
     if (chromeOnWallpaper) return void 0;
@@ -39489,7 +40465,7 @@ function ChatRoom({
     {
       ref: chatSwipeColumnRef,
       "data-chat-swipe-column": true,
-      className: (embedInStack ? "chat-room-viewport relative flex h-full min-h-0 w-full flex-col overflow-hidden overscroll-none pointer-events-auto touch-manipulation " : nativeShell ? "chat-room-solo absolute inset-0 z-[200] box-border flex justify-center overflow-hidden overscroll-none pointer-events-none touch-manipulation " : "chat-room-solo fixed inset-x-0 z-[200] box-border flex justify-center overflow-hidden overscroll-none pointer-events-none touch-manipulation ") + (useIgDm ? "" : "bg-background"),
+      className: (embedInStack ? "chat-room-viewport relative flex h-full min-h-0 w-full flex-col overflow-hidden overscroll-none pointer-events-auto touch-manipulation " : nativeShell ? "chat-room-solo absolute inset-0 z-[200] box-border flex w-full overflow-hidden overscroll-none pointer-events-none touch-manipulation " : "chat-room-solo fixed inset-x-0 z-[200] box-border flex justify-center overflow-hidden overscroll-none pointer-events-none touch-manipulation ") + (useIgDm ? "" : "bg-background"),
       style: embedInStack ? {
         ...panelDismissTouchStyle,
         ...useIgDm && dmPalette && !chromeOnWallpaper ? igDmSurfaceStyle : {}
@@ -39512,19 +40488,25 @@ function ChatRoom({
       } : {},
       children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx("div", { ...edgeStripProps, "data-chat-nav-back-edge": true, "aria-label": "سحب للرجوع من الحافة اليمنى" }),
-        chromeOnWallpaper && chatWallpaperUrl ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
+        chromeOnWallpaper ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+          chatWallpaperUrl ? /* @__PURE__ */ jsxRuntimeExports.jsx(
             "div",
             {
-              className: "pointer-events-none fixed inset-0 z-[208] mx-auto w-full max-w-md bg-cover bg-center bg-no-repeat",
+              className: "chat-room-wallpaper pointer-events-none fixed inset-0 z-[208] w-full bg-cover bg-center bg-no-repeat " + (nativeShell ? "" : "mx-auto max-w-md"),
               style: { backgroundImage: `url(${chatWallpaperUrl})` },
               "aria-hidden": true
             }
-          ),
+          ) : isVerifiedGoldWallpaper ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "div",
+            {
+              className: "chat-room-wallpaper pointer-events-none fixed inset-0 z-[208] w-full bg-gradient-to-br from-amber-600/80 via-[#0095F6]/70 to-[#FF2D55]/60 " + (nativeShell ? "" : "mx-auto max-w-md"),
+              "aria-hidden": true
+            }
+          ) : null,
           /* @__PURE__ */ jsxRuntimeExports.jsx(
             "div",
             {
-              className: "pointer-events-none fixed inset-0 z-[208] mx-auto w-full max-w-md",
+              className: "chat-room-wallpaper pointer-events-none fixed inset-0 z-[208] w-full " + (nativeShell ? "" : "mx-auto max-w-md"),
               style: { backgroundColor: `rgba(0,0,0,${activeWallpaper.overlayOpacity ?? 0.4})` },
               "aria-hidden": true
             }
@@ -39533,7 +40515,7 @@ function ChatRoom({
         /* @__PURE__ */ jsxRuntimeExports.jsx(SlideDismissContext.Provider, { value: chatDismissCtx, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
           "div",
           {
-            className: embedInStack ? "relative z-[210] mx-auto h-full w-full min-w-0 max-w-md overflow-hidden overscroll-none pointer-events-auto" : "relative z-[210] mx-auto h-full w-full min-w-0 max-w-md overflow-hidden overscroll-none pointer-events-auto",
+            className: "chat-room-column relative z-[210] h-full w-full min-w-0 overflow-hidden overscroll-none pointer-events-auto " + (nativeShell ? "max-w-none" : "mx-auto max-w-md"),
             children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
               "div",
               {
@@ -39611,6 +40593,7 @@ function ChatRoom({
                                   /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-1.5 truncate text-sm font-semibold", children: [
                                     chat.isChannel && /* @__PURE__ */ jsxRuntimeExports.jsx(Megaphone, { size: 14 }),
                                     /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "truncate", children: useIgDm && isDmRoom ? `@${other?.username || "?"}` : title }),
+                                    isDmRoom && other ? /* @__PURE__ */ jsxRuntimeExports.jsx(VerifiedMarkForUser, { user: other, size: 14 }) : null,
                                     isDmRoom && (chat.streak?.streakCount ?? 0) > 0 && /* @__PURE__ */ jsxRuntimeExports.jsx(StreakBadge, { streak: chat.streak, compact: true })
                                   ] }),
                                   useIgDm && isDmRoom && dmPalette && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex items-center gap-1.5 text-xs " + dmPalette.headerSubClass, children: peerIsTyping && !hideTypingStatus ? /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -40319,6 +41302,7 @@ function ChatRoom({
                           {
                             className: isQuranChannel ? "border-t border-zinc-700 bg-zinc-900" : "bg-transparent",
                             children: [
+                              /* @__PURE__ */ jsxRuntimeExports.jsx(ChatQuickRepliesBar, { me, onPick: (t2) => setText((prev) => prev ? `${prev} ${t2}` : t2) }),
                               replyingTo && /* @__PURE__ */ jsxRuntimeExports.jsx(
                                 ChatComposerReplyBar,
                                 {
@@ -40954,6 +41938,7 @@ function ChatRoom({
                       open: showChatThemePicker,
                       selectedId: wallpaperId,
                       language: lang,
+                      hasExclusiveChatTheme: getUserEntitlements(me).hasExclusiveChatTheme,
                       onClose: () => setShowChatThemePicker(false),
                       onSelect: (id) => {
                         setWallpaperId(id);
@@ -41054,6 +42039,228 @@ const ProfileTabPanel = reactExports.memo(function ProfileTabPanel2({
 }) {
   return /* @__PURE__ */ jsxRuntimeExports.jsx(TabPanelShell, { lockScroll, fullHeight: true, children: lockScroll ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 z-0 flex min-h-0 flex-col overflow-hidden", children }) : children });
 });
+const KEY = "retweet-scheduled-posts";
+function loadScheduledPosts(userId) {
+  if (typeof localStorage === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(`${KEY}:${userId}`);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+function saveScheduledPosts(userId, items) {
+  if (typeof localStorage === "undefined") return;
+  localStorage.setItem(`${KEY}:${userId}`, JSON.stringify(items.slice(0, 50)));
+}
+function addScheduledPost(userId, draft) {
+  const item = {
+    ...draft,
+    id: `sched-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    createdAt: Date.now()
+  };
+  const list = [...loadScheduledPosts(userId), item].sort((a, b) => a.publishAt - b.publishAt);
+  saveScheduledPosts(userId, list);
+  return item;
+}
+function removeScheduledPost(userId, id) {
+  saveScheduledPosts(
+    userId,
+    loadScheduledPosts(userId).filter((p) => p.id !== id)
+  );
+}
+function VerificationPerksSettings({ onNeedSubscription }) {
+  const { currentUser, updateProfile, state: state2 } = useApp();
+  const [quickReplies, setQuickReplies] = reactExports.useState([]);
+  const [scheduled, setScheduled] = reactExports.useState([]);
+  const [scheduleText, setScheduleText] = reactExports.useState("");
+  const [scheduleAt, setScheduleAt] = reactExports.useState("");
+  const [pinPostId, setPinPostId] = reactExports.useState("");
+  const [msg, setMsg] = reactExports.useState(null);
+  if (!currentUser) return null;
+  const ent = getUserEntitlements(currentUser);
+  const premium = ent.isSubscribed || ent.isVerified;
+  if (!premium) return null;
+  const myPosts = state2.posts.filter(
+    (p) => p.userId === currentUser.id && (p.type === "post" || p.type === "tweet")
+  );
+  reactExports.useEffect(() => {
+    if (!currentUser) return;
+    const saved = loadQuickReplies(currentUser.id);
+    if (saved.length) setQuickReplies(saved);
+    else {
+      const defaults = DEFAULT_QUICK_REPLIES_AR.map((text, i) => ({
+        id: `qr-${i}`,
+        text
+      }));
+      setQuickReplies(defaults);
+      saveQuickReplies(currentUser.id, defaults);
+    }
+    setScheduled(loadScheduledPosts(currentUser.id));
+    setPinPostId(currentUser.pinnedPostId || "");
+  }, [currentUser?.id, currentUser?.pinnedPostId]);
+  const persistProfile = (patch) => {
+    updateProfile(patch, { commitRemote: apiBackendEnabled() && !!getApiToken() });
+    setMsg("تم الحفظ");
+    window.setTimeout(() => setMsg(null), 2e3);
+  };
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mx-4 mt-4 space-y-4 rounded-xl border border-border bg-card p-4", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("h2", { className: "text-[15px] font-semibold text-foreground", children: "مزايا الاشتراك" }),
+    msg ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-[#0095F6]", children: msg }) : null,
+    ent.canPinPost ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("label", { className: "text-sm font-medium text-foreground", children: "تثبيت منشور في البروفايل" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        "select",
+        {
+          value: pinPostId,
+          onChange: (e) => {
+            const v = e.target.value;
+            setPinPostId(v);
+            persistProfile({ pinnedPostId: v || void 0 });
+          },
+          className: "w-full rounded-xl border border-border bg-background px-3 py-2 text-sm",
+          children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "", children: "بدون تثبيت" }),
+            myPosts.map((p) => /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: p.id, children: p.text.slice(0, 48) || "منشور بدون نص" }, p.id))
+          ]
+        }
+      )
+    ] }) : null,
+    (ent.canRestrictComments || ent.canRestrictDm) && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-3", children: [
+      ent.canRestrictComments ? /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "flex items-center justify-between gap-3 text-sm", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "تعطيل التعليقات على منشوراتي" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "input",
+          {
+            type: "checkbox",
+            checked: !!currentUser.restrictComments,
+            onChange: (e) => persistProfile({ restrictComments: e.target.checked }),
+            className: "h-5 w-5 accent-[#0095F6]"
+          }
+        )
+      ] }) : null,
+      ent.canRestrictDm ? /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "flex items-center justify-between gap-3 text-sm", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "الرسائل من غير المتابعين كطلبات فقط" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "input",
+          {
+            type: "checkbox",
+            checked: !!currentUser.restrictDmFromNonFollowers,
+            onChange: (e) => persistProfile({ restrictDmFromNonFollowers: e.target.checked }),
+            className: "h-5 w-5 accent-[#0095F6]"
+          }
+        )
+      ] }) : null
+    ] }),
+    ent.hasQuickReplies ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-sm font-medium text-foreground", children: [
+        "ردود سريعة في الرسائل (حتى ",
+        ent.maxQuickReplies,
+        ")"
+      ] }),
+      quickReplies.slice(0, ent.maxQuickReplies).map((q, i) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "input",
+        {
+          value: q.text,
+          onChange: (e) => {
+            const next = [...quickReplies];
+            next[i] = { ...q, text: e.target.value };
+            setQuickReplies(next);
+            saveQuickReplies(currentUser.id, next);
+          },
+          className: "w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+        },
+        q.id
+      ))
+    ] }) : null,
+    ent.hasScheduledPosts ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm font-medium text-foreground", children: "جدولة منشور" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "textarea",
+        {
+          value: scheduleText,
+          onChange: (e) => setScheduleText(e.target.value),
+          rows: 2,
+          placeholder: "نص المنشور…",
+          className: "w-full rounded-xl border border-border bg-background px-3 py-2 text-sm resize-none"
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "input",
+        {
+          type: "datetime-local",
+          value: scheduleAt,
+          onChange: (e) => setScheduleAt(e.target.value),
+          className: "w-full rounded-xl border border-border bg-background px-3 py-2 text-sm"
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          type: "button",
+          className: "rounded-xl bg-[#0095F6] px-4 py-2 text-sm font-semibold text-white",
+          onClick: () => {
+            const text = scheduleText.trim();
+            const at = scheduleAt ? new Date(scheduleAt).getTime() : 0;
+            if (!text || !at || at <= Date.now()) {
+              setMsg("أدخل نصاً ووقتاً في المستقبل");
+              return;
+            }
+            addScheduledPost(currentUser.id, { text, publishAt: at });
+            setScheduled(loadScheduledPosts(currentUser.id));
+            setScheduleText("");
+            setScheduleAt("");
+            setMsg("تمت الجدولة");
+          },
+          children: "إضافة للجدولة"
+        }
+      ),
+      scheduled.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("ul", { className: "space-y-1 text-xs text-muted-foreground", children: scheduled.map((s) => /* @__PURE__ */ jsxRuntimeExports.jsxs("li", { className: "flex items-center justify-between gap-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "truncate flex-1", children: s.text }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            type: "button",
+            className: "text-destructive shrink-0",
+            onClick: () => {
+              removeScheduledPost(currentUser.id, s.id);
+              setScheduled(loadScheduledPosts(currentUser.id));
+            },
+            children: "حذف"
+          }
+        )
+      ] }, s.id)) }) : null
+    ] }) : null,
+    !ent.isSubscribed && !ent.isVerified ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+      "button",
+      {
+        type: "button",
+        className: "text-sm text-[#0095F6] underline",
+        onClick: onNeedSubscription,
+        children: "ترقية الاشتراك لمزيد من المزايا"
+      }
+    ) : null
+  ] });
+}
+function useScheduledPostsPublisher(userId, createPostFn, hasScheduled) {
+  reactExports.useEffect(() => {
+    if (!userId || !hasScheduled) return;
+    const tick = () => {
+      const now = Date.now();
+      const due = loadScheduledPosts(userId).filter((p) => p.publishAt <= now);
+      if (!due.length) return;
+      for (const p of due) {
+        createPostFn(p.text);
+        removeScheduledPost(userId, p.id);
+      }
+    };
+    tick();
+    const id = window.setInterval(tick, 3e4);
+    return () => clearInterval(id);
+  }, [userId, hasScheduled, createPostFn]);
+}
 const PROFILE_RETURN_POST_KEY = "retweet_return_post_context";
 const BottomNavDragContext = reactExports.createContext({
   shouldSuppressTap: () => false
@@ -41384,7 +42591,7 @@ function BottomNavSheet({
       dir: "ltr",
       role: "navigation",
       "aria-label": "شريط التنقل",
-      className: "pointer-events-none fixed inset-x-0 bottom-0 z-[90] mx-auto flex w-full max-w-md justify-center px-4",
+      className: "pointer-events-none fixed inset-x-0 bottom-0 z-[90] mx-auto flex w-full justify-center px-4 " + (isNativeCapacitorShell() ? "max-w-none" : "max-w-md"),
       style: {
         paddingBottom: "max(12px, var(--sab))"
       },
@@ -41977,7 +43184,7 @@ function ProfilePostsFeedOverlay({
   profileOwnerId,
   gridTab,
   initialCommentsOpen = false,
-  onClose,
+  onClose: onClose2,
   onOpenProfile,
   onOpenChat
 }) {
@@ -42007,11 +43214,11 @@ function ProfilePostsFeedOverlay({
       scrollKeyRef.current = "";
     };
   }, []);
-  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "data-no-tab-swipe": true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(SlideDismissShell, { onDismiss: onClose, overlayZIndex: 220, panelSwipeDismiss: true, edgeTopInsetPx: 56, children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex h-[100dvh] w-full flex-col overflow-hidden border-x border-border bg-background shadow-xl", children: [
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { "data-no-tab-swipe": true, children: /* @__PURE__ */ jsxRuntimeExports.jsx(SlideDismissShell, { onDismiss: onClose2, overlayZIndex: 220, panelSwipeDismiss: true, edgeTopInsetPx: 56, children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex h-[100dvh] w-full flex-col overflow-hidden border-x border-border bg-background shadow-xl", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsx(
       RtlScreenHeader,
       {
-        onBack: onClose,
+        onBack: onClose2,
         className: "bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80",
         title: /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "block truncate", children: TAB_TITLE_AR[gridTab] }),
@@ -42195,7 +43402,7 @@ function SafetyActionSheet({
   reportedUsername,
   targetType,
   targetId,
-  onClose,
+  onClose: onClose2,
   onBlock,
   onRestrict,
   onMute,
@@ -42209,7 +43416,7 @@ function SafetyActionSheet({
         open: true,
         onClose: () => {
           setShowReport(false);
-          onClose();
+          onClose2();
         },
         reportedUserId,
         reportedUsername,
@@ -42230,7 +43437,7 @@ function SafetyActionSheet({
       ]
     }
   );
-  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-[10050] flex flex-col justify-end bg-black/50", onClick: onClose, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-[10050] flex flex-col justify-end bg-black/50", onClick: onClose2, children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "div",
     {
       className: "mx-auto w-full max-w-md rounded-t-3xl bg-background animate-in slide-in-from-bottom",
@@ -42244,17 +43451,17 @@ function SafetyActionSheet({
           isBlocked ? "إلغاء الحظر" : "حظر",
           () => {
             onBlock?.();
-            onClose();
+            onClose2();
           },
           true
         ),
         row(/* @__PURE__ */ jsxRuntimeExports.jsx(Shield, { size: 18 }), "تقييد", () => {
           onRestrict?.();
-          onClose();
+          onClose2();
         }),
         row(/* @__PURE__ */ jsxRuntimeExports.jsx(VolumeX, { size: 18 }), "كتم", () => {
           onMute?.();
-          onClose();
+          onClose2();
         }),
         row(/* @__PURE__ */ jsxRuntimeExports.jsx(Ban, { size: 18 }), "إبلاغ وحظر", () => {
           setShowReport(true);
@@ -42268,7 +43475,7 @@ const DISMISS_START_PX = 8;
 const DISMISS_FLING_VY = 0.45;
 function BottomDismissSheet({
   open,
-  onClose,
+  onClose: onClose2,
   title,
   subtitle,
   children,
@@ -42301,8 +43508,8 @@ function BottomDismissSheet({
     return () => ro.disconnect();
   }, [open]);
   const finishClose = reactExports.useCallback(() => {
-    onClose();
-  }, [onClose]);
+    onClose2();
+  }, [onClose2]);
   const snapBack = reactExports.useCallback(() => {
     if (closeTimerRef.current != null) {
       window.clearTimeout(closeTimerRef.current);
@@ -42491,7 +43698,7 @@ function BottomDismissSheet({
 }
 function BlockConfirmSheet({
   open,
-  onClose,
+  onClose: onClose2,
   username,
   mode: mode2,
   onConfirm
@@ -42515,10 +43722,10 @@ function BlockConfirmSheet({
       }
       setPhase("success");
       window.setTimeout(() => {
-        onClose();
+        onClose2();
       }, 1100);
     });
-  }, [onConfirm, onClose]);
+  }, [onConfirm, onClose2]);
   const isBlock = mode2 === "block";
   const title = isBlock ? "تأكيد حظر الحساب" : "إلغاء الحظر";
   const subtitle = isBlock ? `هل أنت متأكد أنك تريد حظر @${username}؟ سيتم إلغاء المتابعة وطلبات المتابعة بينكما ولن ترى منشوراته.` : `هل تريد إلغاء حظر @${username}؟ لن تُستعاد المتابعة تلقائياً.`;
@@ -42529,7 +43736,7 @@ function BlockConfirmSheet({
     {
       open,
       onClose: phase === "success" ? () => {
-      } : onClose,
+      } : onClose2,
       zIndex: 10060,
       children: /* @__PURE__ */ jsxRuntimeExports.jsx(
         "div",
@@ -42571,7 +43778,7 @@ function BlockConfirmSheet({
                 "button",
                 {
                   type: "button",
-                  onClick: onClose,
+                  onClick: onClose2,
                   className: "w-full rounded-xl bg-secondary py-3 text-[15px] font-semibold text-foreground",
                   children: "تراجع"
                 }
@@ -47188,7 +48395,7 @@ function requireLib() {
 }
 var libExports = requireLib();
 const QRCode = /* @__PURE__ */ getDefaultExportFromCjs(libExports);
-function ProfileShareModal({ userId, onClose }) {
+function ProfileShareModal({ userId, onClose: onClose2 }) {
   const { state: state2, currentUser, openOrCreateChat, sendMessage, isGuest } = useApp();
   const [qrCodeUrl, setQrCodeUrl] = reactExports.useState("");
   const [profileUrl, setProfileUrl] = reactExports.useState("");
@@ -47242,7 +48449,7 @@ ${profileUrl}`;
   return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 bg-black/50 z-[70] flex items-center justify-center p-4", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "bg-background rounded-3xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between mb-4", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-lg font-bold", children: "مشاركة الملف الشخصي" }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: onClose, className: "p-2 rounded-full hover:bg-secondary", children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 20 }) })
+      /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: onClose2, className: "p-2 rounded-full hover:bg-secondary", children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 20 }) })
     ] }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex flex-col items-center mb-6", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(Avatar, { name: user.username, src: user.avatar, size: 80 }),
@@ -47501,7 +48708,15 @@ function ProfileScreen({
     () => sortProfilePostsNewestFirst(state2.posts.filter((p) => postByProfileAuthor(p) && isReelFeedPost(p))),
     [state2.posts, postByProfileAuthor]
   );
-  const tabPosts = tab === "all" ? myAllFeed : tab === "tweets" ? myTweets : tab === "reposts" ? myReposts : myReels;
+  const tabPostsRaw = tab === "all" ? myAllFeed : tab === "tweets" ? myTweets : tab === "reposts" ? myReposts : myReels;
+  const tabPosts = reactExports.useMemo(() => {
+    const usr = userById(state2, userId);
+    const pin = usr?.pinnedPostId?.trim();
+    if (!pin) return tabPostsRaw;
+    const pinned = tabPostsRaw.find((p) => p.id === pin);
+    if (!pinned) return tabPostsRaw;
+    return [pinned, ...tabPostsRaw.filter((p) => p.id !== pin)];
+  }, [tabPostsRaw, userId, state2.users]);
   const publicChannels = reactExports.useMemo(() => {
     const usr = userById(state2, userId);
     if (!usr) return [];
@@ -48252,7 +49467,7 @@ function ProfileScreen({
 function HighlightForm({
   stories,
   onSave,
-  onClose
+  onClose: onClose2
 }) {
   const [title, setTitle] = reactExports.useState("");
   const [cover, setCover] = reactExports.useState("⭐");
@@ -48275,7 +49490,7 @@ function HighlightForm({
     onSave({ title: title.trim(), cover, coverImage, storyIds: selected });
   };
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "w-full min-w-0 max-w-full space-y-3", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onClose, className: "text-sm text-muted-foreground w-full text-center mb-1", children: "إلغاء" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: onClose2, className: "text-sm text-muted-foreground w-full text-center mb-1", children: "إلغاء" }),
     /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex justify-center", children: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-5xl bg-secondary rounded-full w-20 h-20 flex items-center justify-center overflow-hidden shrink-0", children: coverImage?.startsWith("data:") ? /* @__PURE__ */ jsxRuntimeExports.jsx("img", { src: coverImage, alt: "", className: "w-full h-full object-cover" }) : cover }) }),
     /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex gap-2 justify-center flex-wrap max-w-full", children: ["⭐", "✈️", "🎉", "❤️", "🌸", "🎨", "🎬", "🍔"].map((e) => /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => setCover(e), className: "text-2xl p-1 rounded-lg hover:bg-secondary shrink-0", children: e }, e)) }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "block text-center text-sm min-w-0 max-w-full", children: [
@@ -49389,31 +50604,156 @@ function StripeVerificationPay({ onPaid, tierId = "verified_plus" }) {
     }
   );
 }
-function TierCard({ tier, active: active2 }) {
+function TierCard({
+  tier,
+  active: active2,
+  neighbor
+}) {
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "article",
     {
-      className: `flex h-full min-h-[320px] flex-col rounded-3xl border p-5 transition-shadow ${active2 ? "border-[#0095F6] bg-gradient-to-b from-[#0095F6]/12 to-card shadow-lg ring-1 ring-[#0095F6]/30" : "border-border bg-card"}`,
+      className: `flex h-full min-h-[clamp(400px,54vh,540px)] w-full flex-col rounded-[28px] border p-6 transition-[transform,opacity,box-shadow,border-color] duration-300 ease-out ${active2 ? "scale-100 border-[#0095F6] bg-gradient-to-b from-[#0095F6]/14 to-card opacity-100 shadow-xl ring-1 ring-[#0095F6]/35" : neighbor ? "scale-[0.94] border-border/80 bg-card/90 opacity-80 shadow-md" : "scale-[0.9] border-border/60 bg-card/70 opacity-55 shadow-sm"}`,
       children: [
-        tier.badgeAr ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "mb-3 w-fit rounded-full bg-[#0095F6]/15 px-3 py-1 text-xs font-semibold text-[#0095F6]", children: tier.badgeAr }) : null,
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-2", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(BadgeCheck, { className: "text-[#0095F6]", size: 28, strokeWidth: 2.2 }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-xl font-bold text-foreground", children: tier.nameAr })
+        tier.badgeAr ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "mb-4 w-fit rounded-full bg-[#0095F6]/15 px-3.5 py-1.5 text-[13px] font-semibold text-[#0095F6]", children: tier.badgeAr }) : null,
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center gap-3", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex h-12 w-12 items-center justify-center rounded-2xl bg-[#0095F6]/15", children: /* @__PURE__ */ jsxRuntimeExports.jsx(BadgeCheck, { className: "text-[#0095F6]", size: 30, strokeWidth: 2.2 }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-[26px] font-bold leading-tight text-foreground", children: tier.nameAr })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-2 text-3xl font-bold tracking-tight text-foreground", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "mt-4 text-[40px] font-bold tracking-tight text-foreground", children: [
           "$",
           tier.priceUsd,
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-base font-medium text-muted-foreground", children: "/شهر" })
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-lg font-medium text-muted-foreground", children: "/شهر" })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx("ul", { className: "mt-5 flex-1 space-y-2.5 overflow-y-auto", children: tier.perksAr.map((label) => /* @__PURE__ */ jsxRuntimeExports.jsxs("li", { className: "flex items-start gap-2.5 text-sm leading-snug text-foreground", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#0095F6]/15", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Check, { size: 12, className: "text-[#0095F6]", strokeWidth: 3 }) }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("ul", { className: "mt-6 flex-1 space-y-3 overflow-y-auto overscroll-contain pr-0.5", children: tier.perksAr.map((label) => /* @__PURE__ */ jsxRuntimeExports.jsxs("li", { className: "flex items-start gap-3 text-[15px] leading-relaxed text-foreground", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#0095F6]/15", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Check, { size: 14, className: "text-[#0095F6]", strokeWidth: 3 }) }),
           label
         ] }, label)) })
       ]
     }
   );
 }
-function VerificationSubscriptionSheet({ open, onClose, onSubscribed }) {
+const CAROUSEL_GAP = 14;
+const CAROUSEL_SLIDE_RATIO = 0.88;
+const SWIPE_COMMIT_PX = 48;
+function TierSwipeCarousel({
+  index: index2,
+  onIndexChange,
+  disabled,
+  children
+}) {
+  const viewportRef = reactExports.useRef(null);
+  const [layout, setLayout] = reactExports.useState({ viewportW: 0, slideW: 0, step: 0 });
+  const [dragPx, setDragPx] = reactExports.useState(0);
+  const [dragging, setDragging] = reactExports.useState(false);
+  const [ready, setReady] = reactExports.useState(false);
+  const dragRef = reactExports.useRef({ pointerId: -1, startX: 0, startIndex: 0, active: false });
+  const maxIndex = Math.max(0, children.length - 1);
+  const clampedIndex = Math.min(maxIndex, Math.max(0, index2));
+  const measure = reactExports.useCallback(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const viewportW = el.clientWidth;
+    if (viewportW < 1) return;
+    const slideW = viewportW * CAROUSEL_SLIDE_RATIO;
+    setLayout({ viewportW, slideW, step: slideW + CAROUSEL_GAP });
+    setReady(true);
+  }, []);
+  reactExports.useLayoutEffect(() => {
+    measure();
+    const id = requestAnimationFrame(measure);
+    const el = viewportRef.current;
+    if (!el) return () => cancelAnimationFrame(id);
+    const ro = new ResizeObserver(() => measure());
+    ro.observe(el);
+    return () => {
+      cancelAnimationFrame(id);
+      ro.disconnect();
+    };
+  }, [measure]);
+  const centerPad = layout.viewportW > 0 ? (layout.viewportW - layout.slideW) / 2 : 0;
+  const baseTranslate = layout.step > 0 ? -clampedIndex * layout.step + centerPad : centerPad;
+  const translateX = baseTranslate + dragPx;
+  const finishDrag = (clientX) => {
+    const dx = clientX - dragRef.current.startX;
+    const threshold = Math.max(SWIPE_COMMIT_PX, layout.step * 0.14);
+    let next = dragRef.current.startIndex;
+    if (dx < -threshold) next = Math.max(0, next - 1);
+    else if (dx > threshold) next = Math.min(maxIndex, next + 1);
+    setDragPx(0);
+    setDragging(false);
+    dragRef.current.active = false;
+    if (next !== index2) onIndexChange(next);
+  };
+  const onPointerDown = (e) => {
+    if (disabled || !ready || layout.step <= 0) return;
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    dragRef.current = {
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startIndex: clampedIndex,
+      active: true
+    };
+    setDragging(true);
+    setDragPx(0);
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+    }
+  };
+  const onPointerMove = (e) => {
+    if (!dragRef.current.active || dragRef.current.pointerId !== e.pointerId) return;
+    let dx = e.clientX - dragRef.current.startX;
+    const atStart = dragRef.current.startIndex <= 0;
+    const atEnd = dragRef.current.startIndex >= maxIndex;
+    if (atStart && dx < 0) dx *= 0.22;
+    if (atEnd && dx > 0) dx *= 0.22;
+    setDragPx(-dx);
+  };
+  const onPointerUp = (e) => {
+    if (dragRef.current.pointerId !== e.pointerId) return;
+    finishDrag(e.clientX);
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch {
+    }
+  };
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "relative w-full min-h-[clamp(400px,54vh,540px)]", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "div",
+    {
+      ref: viewportRef,
+      dir: "ltr",
+      "aria-roledescription": "carousel",
+      "aria-label": "باقات الاشتراك — اسحب من اليمين لليسار للباقة السابقة ومن اليسار لليمين للتالية",
+      className: "overflow-hidden py-1 " + (disabled ? "pointer-events-none opacity-60" : "cursor-grab active:cursor-grabbing"),
+      style: { touchAction: "none" },
+      onPointerDown,
+      onPointerMove,
+      onPointerUp,
+      onPointerCancel: onPointerUp,
+      children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "div",
+        {
+          className: `flex will-change-transform ${ready ? "opacity-100" : "opacity-0"}`,
+          style: {
+            gap: CAROUSEL_GAP,
+            transform: `translate3d(${translateX}px, 0, 0)`,
+            transition: dragging ? "none" : "transform 380ms cubic-bezier(0.22, 1, 0.36, 1), opacity 120ms ease"
+          },
+          children: children.map((child, i) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "div",
+            {
+              className: "shrink-0",
+              style: { width: layout.slideW > 0 ? layout.slideW : "88%" },
+              children: child
+            },
+            i
+          ))
+        }
+      )
+    }
+  ) });
+}
+function VerificationSubscriptionSheet({ open, onClose: onClose2, onSubscribed }) {
   const { currentUser, updateProfile } = useApp();
   const [tierIndex, setTierIndex] = reactExports.useState(1);
   const [showPay, setShowPay] = reactExports.useState(false);
@@ -49421,9 +50761,8 @@ function VerificationSubscriptionSheet({ open, onClose, onSubscribed }) {
   const [err, setErr] = reactExports.useState(null);
   const [successMsg, setSuccessMsg] = reactExports.useState(null);
   const [dragY, setDragY] = reactExports.useState(0);
-  const [dragging, setDragging] = reactExports.useState(false);
-  const dragRef = reactExports.useRef({ pointerId: -1, startY: 0, dragging: false });
-  const scrollRef = reactExports.useRef(null);
+  const [sheetDragging, setSheetDragging] = reactExports.useState(false);
+  const sheetDragRef = reactExports.useRef({ pointerId: -1, startY: 0, dragging: false });
   const tier = VERIFICATION_TIERS[tierIndex] ?? VERIFICATION_TIERS[1];
   const tierId = tier.id;
   const resetSheet = reactExports.useCallback(() => {
@@ -49431,7 +50770,7 @@ function VerificationSubscriptionSheet({ open, onClose, onSubscribed }) {
     setErr(null);
     setSuccessMsg(null);
     setDragY(0);
-    setDragging(false);
+    setSheetDragging(false);
   }, []);
   reactExports.useEffect(() => {
     if (!open) {
@@ -49444,29 +50783,8 @@ function VerificationSubscriptionSheet({ open, onClose, onSubscribed }) {
     setErr(null);
     setSuccessMsg(null);
   }, [open, resetSheet]);
-  const scrollToIndex = (index2) => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const child = el.children[index2];
-    if (child) child.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
-    setTierIndex(index2);
-  };
-  const handleScroll2 = () => {
-    const el = scrollRef.current;
-    if (!el || !el.children.length) return;
-    const center = el.scrollLeft + el.clientWidth / 2;
-    let best = 0;
-    let bestDist = Infinity;
-    for (let i = 0; i < el.children.length; i++) {
-      const child = el.children[i];
-      const childCenter = child.offsetLeft + child.offsetWidth / 2;
-      const dist2 = Math.abs(childCenter - center);
-      if (dist2 < bestDist) {
-        bestDist = dist2;
-        best = i;
-      }
-    }
-    if (best !== tierIndex) setTierIndex(best);
+  const goTier = (next) => {
+    setTierIndex(Math.min(VERIFICATION_TIERS.length - 1, Math.max(0, next)));
   };
   const handlePaid = (r2) => {
     if (!r2.ok) {
@@ -49503,40 +50821,40 @@ function VerificationSubscriptionSheet({ open, onClose, onSubscribed }) {
     })();
   };
   if (!open) return null;
-  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-[10150] bg-black/50", role: "dialog", "aria-modal": "true", "aria-label": "باقات التوثيق", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-[10150] bg-black/55", role: "dialog", "aria-modal": "true", "aria-label": "باقات التوثيق", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "div",
     {
-      className: "absolute inset-x-0 bottom-0 top-[max(2.5rem,var(--sat))] mx-auto flex w-full max-w-md flex-col overflow-hidden rounded-t-[28px] border border-border bg-background text-foreground shadow-2xl",
+      className: "absolute inset-x-0 bottom-0 top-[max(0.35rem,var(--sat))] mx-auto flex w-full max-w-lg flex-col overflow-hidden rounded-t-[32px] border border-border bg-background text-foreground shadow-2xl",
       style: {
         transform: `translate3d(0, ${Math.max(0, dragY)}px, 0)`,
-        transition: dragging ? "none" : "transform 220ms cubic-bezier(0.22, 1, 0.36, 1)"
+        transition: sheetDragging ? "none" : "transform 240ms cubic-bezier(0.22, 1, 0.36, 1)"
       },
       onPointerDown: (e) => {
         if (e.pointerType === "mouse" && e.button !== 0) return;
         const target = e.target;
         if (!target?.closest("[data-subscription-drag-handle]")) return;
-        dragRef.current = {
+        sheetDragRef.current = {
           pointerId: e.pointerId,
           startY: e.clientY - dragY,
           dragging: true
         };
-        setDragging(true);
+        setSheetDragging(true);
         try {
           e.currentTarget.setPointerCapture(e.pointerId);
         } catch {
         }
       },
       onPointerMove: (e) => {
-        const d = dragRef.current;
+        const d = sheetDragRef.current;
         if (!d.dragging || d.pointerId !== e.pointerId) return;
         setDragY(Math.max(0, e.clientY - d.startY));
       },
       onPointerUp: (e) => {
-        const d = dragRef.current;
+        const d = sheetDragRef.current;
         if (!d.dragging || d.pointerId !== e.pointerId) return;
         d.dragging = false;
-        setDragging(false);
-        if (dragY > 140) onClose();
+        setSheetDragging(false);
+        if (dragY > 150) onClose2();
         else setDragY(0);
         try {
           e.currentTarget.releasePointerCapture(e.pointerId);
@@ -49544,41 +50862,41 @@ function VerificationSubscriptionSheet({ open, onClose, onSubscribed }) {
         }
       },
       onPointerCancel: (e) => {
-        const d = dragRef.current;
+        const d = sheetDragRef.current;
         if (d.pointerId !== e.pointerId) return;
         d.dragging = false;
-        setDragging(false);
+        setSheetDragging(false);
         setDragY(0);
       },
       children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "data-subscription-drag-handle": true, className: "shrink-0 px-4 pb-2 pt-4", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mx-auto mb-3 h-1.5 w-14 rounded-full bg-muted-foreground/30" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "data-subscription-drag-handle": true, className: "shrink-0 px-5 pb-3 pt-5", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mx-auto mb-4 h-1.5 w-16 rounded-full bg-muted-foreground/35" }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative text-center", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(
               "button",
               {
                 type: "button",
-                className: "absolute start-0 top-0 rounded-full p-2 text-foreground hover:bg-accent",
-                onClick: onClose,
+                className: "absolute start-0 top-0 rounded-full p-2.5 text-foreground hover:bg-accent",
+                onClick: onClose2,
                 "aria-label": "إغلاق",
-                children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 22 })
+                children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 24 })
               }
             ),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-[22px] font-bold text-foreground", children: "اشتراك التوثيق" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mx-auto mt-2 max-w-[92%] text-sm leading-6 text-muted-foreground", children: "اسحب بين الباقات واختر ما يناسبك. بعد الدفع يُرسل طلبك لفريق الدعم." })
+            /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "text-[26px] font-bold text-foreground", children: "اشتراك التوثيق" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mx-auto mt-2.5 max-w-[94%] text-[15px] leading-7 text-muted-foreground", children: "اسحب من اليمين لليسار للباقة السابقة · من اليسار لليمين للتالية" })
           ] })
         ] }),
-        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-h-0 flex-1 overflow-y-auto px-1 pb-4", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative px-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-h-0 flex-1 overflow-y-auto overscroll-contain pb-5", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative px-1", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(
               "button",
               {
                 type: "button",
                 "aria-label": "الباقة السابقة",
-                disabled: tierIndex <= 0,
-                onClick: () => scrollToIndex(Math.max(0, tierIndex - 1)),
-                className: "absolute start-0 top-1/2 z-10 -translate-y-1/2 rounded-full bg-background/90 p-1.5 shadow border border-border disabled:opacity-30",
-                children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronRight, { size: 20 })
+                disabled: tierIndex <= 0 || showPay,
+                onClick: () => goTier(tierIndex - 1),
+                className: "absolute start-1 top-[48%] z-20 -translate-y-1/2 rounded-full border border-border bg-background/95 p-2.5 shadow-lg backdrop-blur-sm transition-opacity disabled:opacity-25",
+                children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronRight, { size: 22 })
               }
             ),
             /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -49586,56 +50904,56 @@ function VerificationSubscriptionSheet({ open, onClose, onSubscribed }) {
               {
                 type: "button",
                 "aria-label": "الباقة التالية",
-                disabled: tierIndex >= VERIFICATION_TIERS.length - 1,
-                onClick: () => scrollToIndex(Math.min(VERIFICATION_TIERS.length - 1, tierIndex + 1)),
-                className: "absolute end-0 top-1/2 z-10 -translate-y-1/2 rounded-full bg-background/90 p-1.5 shadow border border-border disabled:opacity-30",
-                children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronLeft, { size: 20 })
+                disabled: tierIndex >= VERIFICATION_TIERS.length - 1 || showPay,
+                onClick: () => goTier(tierIndex + 1),
+                className: "absolute end-1 top-[48%] z-20 -translate-y-1/2 rounded-full border border-border bg-background/95 p-2.5 shadow-lg backdrop-blur-sm transition-opacity disabled:opacity-25",
+                children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronLeft, { size: 22 })
               }
             ),
             /* @__PURE__ */ jsxRuntimeExports.jsx(
-              "div",
+              TierSwipeCarousel,
               {
-                ref: scrollRef,
-                onScroll: handleScroll2,
-                className: "flex snap-x snap-mandatory gap-3 overflow-x-auto px-8 pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
-                dir: "ltr",
+                index: tierIndex,
+                onIndexChange: goTier,
+                disabled: showPay,
                 children: VERIFICATION_TIERS.map((t, i) => /* @__PURE__ */ jsxRuntimeExports.jsx(
-                  "div",
+                  TierCard,
                   {
-                    className: "w-[calc(100%-4rem)] shrink-0 snap-center",
-                    style: { scrollSnapAlign: "center" },
-                    children: /* @__PURE__ */ jsxRuntimeExports.jsx(TierCard, { tier: t, active: i === tierIndex })
+                    tier: t,
+                    active: i === tierIndex,
+                    neighbor: Math.abs(i - tierIndex) === 1
                   },
                   t.id
                 ))
-              }
+              },
+              open ? "subscription-carousel-open" : "subscription-carousel-closed"
             ),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-3 flex justify-center gap-2", children: VERIFICATION_TIERS.map((t, i) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mt-5 flex justify-center gap-2.5", children: VERIFICATION_TIERS.map((t, i) => /* @__PURE__ */ jsxRuntimeExports.jsx(
               "button",
               {
                 type: "button",
                 "aria-label": t.nameAr,
-                onClick: () => scrollToIndex(i),
-                className: `h-2 rounded-full transition-all ${i === tierIndex ? "w-6 bg-[#0095F6]" : "w-2 bg-muted-foreground/35"}`
+                onClick: () => goTier(i),
+                className: `rounded-full transition-all duration-300 ${i === tierIndex ? "h-2.5 w-8 bg-[#0095F6]" : "h-2.5 w-2.5 bg-muted-foreground/35 hover:bg-muted-foreground/55"}`
               },
               t.id
             )) })
           ] }),
-          successMsg ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mx-4 mt-4 rounded-xl border border-[#0095F6]/30 bg-[#0095F6]/10 px-4 py-3 text-center text-sm text-[#0095F6]", children: successMsg }) : null,
-          err ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mx-4 mt-3 text-center text-sm text-destructive", children: err }) : null,
-          !successMsg && showPay && getApiToken() ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mx-4 mt-4", children: [
+          successMsg ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mx-5 mt-5 rounded-2xl border border-[#0095F6]/30 bg-[#0095F6]/10 px-4 py-3.5 text-center text-[15px] text-[#0095F6]", children: successMsg }) : null,
+          err ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mx-5 mt-4 text-center text-[15px] text-destructive", children: err }) : null,
+          !successMsg && showPay && getApiToken() ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mx-5 mt-5", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsx(StripeVerificationPay, { tierId, onPaid: handlePaid }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(
               "button",
               {
                 type: "button",
-                className: "mt-3 w-full text-center text-sm text-muted-foreground underline",
+                className: "mt-4 w-full text-center text-sm text-muted-foreground underline",
                 onClick: () => setShowPay(false),
                 children: "رجوع لاختيار الباقة"
               }
             )
           ] }) : null,
-          !successMsg && !showPay ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mx-4 mt-5 space-y-2 pb-2", children: [
+          !successMsg && !showPay ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mx-5 mt-6 space-y-2.5 pb-1", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsxs(
               "button",
               {
@@ -49645,14 +50963,14 @@ function VerificationSubscriptionSheet({ open, onClose, onSubscribed }) {
                   setErr(null);
                   redirectCheckout();
                 },
-                className: "flex w-full items-center justify-center gap-2 rounded-2xl bg-[#0095F6] py-3.5 text-[15px] font-semibold text-white disabled:opacity-60",
+                className: "flex w-full items-center justify-center gap-2 rounded-2xl bg-[#0095F6] py-4 text-[17px] font-semibold text-white shadow-lg shadow-[#0095F6]/25 disabled:opacity-60",
                 children: [
-                  busy ? /* @__PURE__ */ jsxRuntimeExports.jsx(LoaderCircle, { size: 18, className: "animate-spin" }) : null,
+                  busy ? /* @__PURE__ */ jsxRuntimeExports.jsx(LoaderCircle, { size: 20, className: "animate-spin" }) : null,
                   busy ? "جاري التحضير…" : `اشترك — $${tier.priceUsd}/شهر`
                 ]
               }
             ),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-center text-[11px] leading-relaxed text-muted-foreground", children: "دفع آمن ببطاقة أو Apple Pay. التوثيق بعد موافقة الفريق وليس فوراً." })
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-center text-xs leading-relaxed text-muted-foreground", children: "دفع آمن ببطاقة أو Apple Pay. التوثيق بعد موافقة الفريق وليس فوراً." })
           ] }) : null
         ] })
       ]
@@ -49715,7 +51033,8 @@ function VerificationRequestPanel({ onNeedSubscription }) {
       /* @__PURE__ */ jsxRuntimeExports.jsx(CircleX, { size: 18, className: "shrink-0 mt-0.5" }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { children: [
         "تم رفض الطلب",
-        currentUser.verificationRejectReason ? `: ${currentUser.verificationRejectReason}` : ""
+        currentUser.verificationRejectReason ? `: ${currentUser.verificationRejectReason}` : "",
+        ent.canRequestVerification ? " — يمكنك إعادة التقديم مرة واحدة مجاناً." : currentUser.verificationResubmitUsed ? " — استُخدمت إعادة التقديم المجانية." : ""
       ] })
     ] }) : null,
     msg ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-[#0095F6]", children: msg }) : null,
@@ -49873,7 +51192,7 @@ function AdminVerificationPanel() {
 }
 function AdminBanConfirmSheet({
   open,
-  onClose,
+  onClose: onClose2,
   username,
   action,
   onConfirm
@@ -49901,15 +51220,15 @@ function AdminBanConfirmSheet({
     }
     setPhase("success");
     window.setTimeout(() => {
-      onClose();
+      onClose2();
     }, 1500);
-  }, [onConfirm, onClose]);
+  }, [onConfirm, onClose2]);
   return /* @__PURE__ */ jsxRuntimeExports.jsx(
     BottomDismissSheet,
     {
       open,
       onClose: phase === "loading" ? () => {
-      } : onClose,
+      } : onClose2,
       zIndex: 320,
       children: /* @__PURE__ */ jsxRuntimeExports.jsx(
         "div",
@@ -49948,7 +51267,7 @@ function AdminBanConfirmSheet({
                 {
                   type: "button",
                   disabled: phase === "loading",
-                  onClick: onClose,
+                  onClick: onClose2,
                   className: "w-full rounded-xl bg-secondary py-3 text-[15px] font-semibold disabled:opacity-60",
                   children: "إلغاء"
                 }
@@ -50443,7 +51762,7 @@ const SEGMENT_MS = 8e3;
 function StoriesArchiveViewer({
   stories,
   initialIndex,
-  onClose
+  onClose: onClose2
 }) {
   const { state: state2, currentUser, deleteStory, addHighlight } = useApp();
   const [index2, setIndex] = reactExports.useState(() => Math.min(Math.max(0, initialIndex), Math.max(0, stories.length - 1)));
@@ -50464,9 +51783,9 @@ function StoriesArchiveViewer({
     };
   }, []);
   reactExports.useEffect(() => {
-    if (stories.length === 0) onClose();
+    if (stories.length === 0) onClose2();
     else if (index2 >= stories.length) setIndex(Math.max(0, stories.length - 1));
-  }, [stories.length, index2, onClose]);
+  }, [stories.length, index2, onClose2]);
   const clearTimer = reactExports.useCallback(() => {
     if (timerRef.current != null) {
       window.clearTimeout(timerRef.current);
@@ -50476,11 +51795,11 @@ function StoriesArchiveViewer({
   const goForward = reactExports.useCallback(() => {
     if (stories.length === 0) return;
     if (safeIndex >= stories.length - 1) {
-      onClose();
+      onClose2();
       return;
     }
     setIndex((i) => Math.min(stories.length - 1, i + 1));
-  }, [safeIndex, stories.length, onClose]);
+  }, [safeIndex, stories.length, onClose2]);
   const goBack = reactExports.useCallback(() => {
     setIndex((i) => Math.max(0, i - 1));
   }, []);
@@ -50513,7 +51832,7 @@ function StoriesArchiveViewer({
     const remaining = stories.length - 1;
     deleteStory(cur.id);
     if (remaining <= 0) {
-      onClose();
+      onClose2();
       return;
     }
     if (safeIndex >= remaining) setIndex((i) => Math.max(0, i - 1));
@@ -50541,7 +51860,7 @@ function StoriesArchiveViewer({
         {
           type: "button",
           className: "rounded-full p-2 text-white hover:bg-white/10",
-          onClick: onClose,
+          onClick: onClose2,
           "aria-label": "إغلاق",
           children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 24 })
         }
@@ -50736,6 +52055,35 @@ function SectionGap() {
   return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "h-2 shrink-0 bg-background", "aria-hidden": true });
 }
 const accountsCenterCardClass = "overflow-hidden rounded-2xl border border-border bg-card";
+function SettingsScrollBody({ children, className }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "div",
+    {
+      className: cn(
+        "settings-screen-root min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain pb-[max(2.75rem,var(--sab))]",
+        className
+      ),
+      children
+    }
+  );
+}
+function SettingsScreenRoot({
+  dir = "rtl",
+  header,
+  children
+}) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    "div",
+    {
+      className: "flex h-full min-h-0 w-full max-w-full flex-col overflow-hidden bg-background text-foreground",
+      dir,
+      children: [
+        header,
+        /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsScrollBody, { children })
+      ]
+    }
+  );
+}
 function SectionTitle({ children }) {
   return /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "px-4 pb-1.5 pt-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground", children });
 }
@@ -51410,7 +52758,7 @@ function SettingsScreen({
   const [subViewReturnToAccountsCenter, setSubViewReturnToAccountsCenter] = reactExports.useState(false);
   const [accountsCenterOpen, setAccountsCenterOpen] = reactExports.useState(false);
   const [subscriptionSheetOpen, setSubscriptionSheetOpen] = reactExports.useState(false);
-  const openSubscriptionSheet = reactExports.useCallback(() => setSubscriptionSheetOpen(true), []);
+  const subscriptionReturnToAccountsCenterRef = React__default.useRef(false);
   const openSubViewFromAccountsCenter = reactExports.useCallback((view) => {
     setAccountsCenterOpen(false);
     setSubViewReturnToAccountsCenter(true);
@@ -51420,8 +52768,42 @@ function SettingsScreen({
     const returnToAccountsCenter = subViewReturnToAccountsCenter;
     setSubView(null);
     setSubViewReturnToAccountsCenter(false);
+    setSubscriptionSheetOpen(false);
+    subscriptionReturnToAccountsCenterRef.current = false;
     if (returnToAccountsCenter) setAccountsCenterOpen(true);
   }, [subViewReturnToAccountsCenter]);
+  const openVerificationFlow = reactExports.useCallback(
+    (fromAccountsCenter = false) => {
+      const ent = getUserEntitlements(me);
+      if (!ent.isSubscribed && !ent.isVerified) {
+        subscriptionReturnToAccountsCenterRef.current = fromAccountsCenter;
+        if (fromAccountsCenter) {
+          setAccountsCenterOpen(false);
+          setSubViewReturnToAccountsCenter(false);
+        }
+        setSubscriptionSheetOpen(true);
+        return;
+      }
+      if (fromAccountsCenter) openSubViewFromAccountsCenter("verify");
+      else setSubView("verify");
+    },
+    [me, openSubViewFromAccountsCenter]
+  );
+  const openSubscriptionSheetFromVerify = reactExports.useCallback(() => {
+    subscriptionReturnToAccountsCenterRef.current = false;
+    setSubscriptionSheetOpen(true);
+  }, []);
+  const closeSubscriptionSheet = reactExports.useCallback(() => {
+    setSubscriptionSheetOpen(false);
+    if (subscriptionReturnToAccountsCenterRef.current) {
+      subscriptionReturnToAccountsCenterRef.current = false;
+      setAccountsCenterOpen(true);
+      return;
+    }
+    if (subView === "verify" && !getUserEntitlements(me).isSubscribed) {
+      closeSubView();
+    }
+  }, [subView, me, closeSubView]);
   const [accountsCenterDragY, setAccountsCenterDragY] = reactExports.useState(0);
   const [accountsCenterDragging, setAccountsCenterDragging] = reactExports.useState(false);
   const accountsCenterDragRef = React__default.useRef({ pointerId: null, startY: 0, dragging: false });
@@ -51502,19 +52884,6 @@ function SettingsScreen({
       accountsCenterDragRef.current = { pointerId: null, startY: 0, dragging: false };
     }
   }, [accountsCenterOpen]);
-  const verifySheetPromptedRef = React__default.useRef(false);
-  reactExports.useEffect(() => {
-    if (subView !== "verify") {
-      verifySheetPromptedRef.current = false;
-      return;
-    }
-    if (verifySheetPromptedRef.current) return;
-    const ent = getUserEntitlements(me);
-    if (!ent.isSubscribed && !ent.isVerified) {
-      verifySheetPromptedRef.current = true;
-      setSubscriptionSheetOpen(true);
-    }
-  }, [subView, me]);
   const subTitle = (k) => {
     if (k === "adminModeration") return "لوحة الإشراف";
     if (k === "security") return "الأمان";
@@ -51562,478 +52931,507 @@ function SettingsScreen({
   }
   if (subView) {
     return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "settings-screen-root min-h-full w-full overflow-x-hidden bg-background pb-10", dir: "rtl", children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsHeader, { title: subTitle(subView), onBack: closeSubView, navScope: "local" }),
-        subView === "accountInfo" && /* @__PURE__ */ jsxRuntimeExports.jsx(AccountInfoPanel, { me, updateProfile, onSaved: closeSubView }),
-        subView === "changePwd" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mx-4 mt-4 space-y-3", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "input",
-            {
-              value: oldP,
-              onChange: (e) => setOldP(e.target.value),
-              type: "password",
-              placeholder: t("pwdCurrent"),
-              className: "w-full rounded-xl border border-border bg-input px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground"
-            }
-          ),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "input",
-            {
-              value: newP,
-              onChange: (e) => setNewP(e.target.value),
-              type: "password",
-              placeholder: t("pwdNew"),
-              className: "w-full rounded-xl border border-border bg-input px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground"
-            }
-          ),
-          /* @__PURE__ */ jsxRuntimeExports.jsx(
-            "button",
-            {
-              type: "button",
-              onClick: changePwd,
-              className: "w-full rounded-xl bg-[#0095F6] py-3 text-sm font-semibold text-white",
-              children: t("save")
-            }
-          )
-        ] }),
-        subView === "verify" ? /* @__PURE__ */ jsxRuntimeExports.jsx(AppErrorBoundaryLocal, { label: "verify-panel", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-          "div",
-          {
-            onPointerDown: (e) => {
-              verifyDismissDragRef.current = { pointerId: e.pointerId, startY: e.clientY, dragging: true };
-            },
-            onPointerMove: (e) => {
-              const d = verifyDismissDragRef.current;
-              if (!d.dragging || d.pointerId !== e.pointerId) return;
-              const dy = e.clientY - d.startY;
-              if (dy > 120) {
-                d.dragging = false;
-                closeSubView();
-              }
-            },
-            onPointerUp: (e) => {
-              const d = verifyDismissDragRef.current;
-              if (d.pointerId === e.pointerId) d.dragging = false;
-            },
-            onPointerCancel: (e) => {
-              const d = verifyDismissDragRef.current;
-              if (d.pointerId === e.pointerId) d.dragging = false;
-            },
-            children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx(VerificationRequestPanel, { onNeedSubscription: openSubscriptionSheet }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx(VerificationBadgeColorPicker, {})
-            ]
-          }
-        ) }) : null,
-        subView === "adminVerify" ? /* @__PURE__ */ jsxRuntimeExports.jsx(AppErrorBoundaryLocal, { label: "admin-verify", children: /* @__PURE__ */ jsxRuntimeExports.jsx(AdminVerificationPanel, {}) }) : null,
-        subView === "adminModeration" ? /* @__PURE__ */ jsxRuntimeExports.jsx(AppErrorBoundaryLocal, { label: "admin-moderation", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ModerationDashboard, {}) }) : null,
-        subView === "closeFriends" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-2", children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "px-4 pb-3 text-xs leading-relaxed text-muted-foreground", children: t("closeFriendsHint") }),
-          followingUsers.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "px-4 text-sm text-muted-foreground", children: t("closeFriendsEmpty") }) : /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsCard, { children: followingUsers.map((u) => {
-            const isClose = (me.closeFriends ?? []).includes(u.id);
-            return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-h-[52px] items-center gap-3 px-4 py-2", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx(RSocialAvatar, { name: u.username, src: u.avatar, size: 44 }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "min-w-0 flex-1", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "truncate text-[15px] text-foreground", children: [
-                "@",
-                u.username
-              ] }) }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs(
+        SettingsScreenRoot,
+        {
+          header: /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsHeader, { title: subTitle(subView), onBack: closeSubView, navScope: "local" }),
+          children: [
+            subView === "accountInfo" && /* @__PURE__ */ jsxRuntimeExports.jsx(AccountInfoPanel, { me, updateProfile, onSaved: closeSubView }),
+            subView === "changePwd" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mx-4 mt-4 space-y-3", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "input",
+                {
+                  value: oldP,
+                  onChange: (e) => setOldP(e.target.value),
+                  type: "password",
+                  placeholder: t("pwdCurrent"),
+                  className: "w-full rounded-xl border border-border bg-input px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground"
+                }
+              ),
+              /* @__PURE__ */ jsxRuntimeExports.jsx(
+                "input",
+                {
+                  value: newP,
+                  onChange: (e) => setNewP(e.target.value),
+                  type: "password",
+                  placeholder: t("pwdNew"),
+                  className: "w-full rounded-xl border border-border bg-input px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground"
+                }
+              ),
               /* @__PURE__ */ jsxRuntimeExports.jsx(
                 "button",
                 {
                   type: "button",
-                  onClick: () => toggleCloseFriend(u.id),
-                  className: "rounded-lg px-3 py-1.5 text-xs font-semibold " + (isClose ? "bg-secondary text-foreground" : "bg-[#0095F6] text-white"),
-                  children: isClose ? "✓" : t("addToCloseFriends")
+                  onClick: changePwd,
+                  className: "w-full rounded-xl bg-[#0095F6] py-3 text-sm font-semibold text-white",
+                  children: t("save")
                 }
               )
-            ] }, u.id);
-          }) })
-        ] })
-      ] }),
+            ] }),
+            subView === "verify" ? /* @__PURE__ */ jsxRuntimeExports.jsx(AppErrorBoundaryLocal, { label: "verify-panel", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+              "div",
+              {
+                onPointerDown: (e) => {
+                  verifyDismissDragRef.current = { pointerId: e.pointerId, startY: e.clientY, dragging: true };
+                },
+                onPointerMove: (e) => {
+                  const d = verifyDismissDragRef.current;
+                  if (!d.dragging || d.pointerId !== e.pointerId) return;
+                  const dy = e.clientY - d.startY;
+                  if (dy > 120) {
+                    d.dragging = false;
+                    closeSubView();
+                  }
+                },
+                onPointerUp: (e) => {
+                  const d = verifyDismissDragRef.current;
+                  if (d.pointerId === e.pointerId) d.dragging = false;
+                },
+                onPointerCancel: (e) => {
+                  const d = verifyDismissDragRef.current;
+                  if (d.pointerId === e.pointerId) d.dragging = false;
+                },
+                children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(VerificationRequestPanel, { onNeedSubscription: openSubscriptionSheetFromVerify }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(VerificationPerksSettings, { onNeedSubscription: openSubscriptionSheetFromVerify }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(VerificationBadgeColorPicker, {})
+                ]
+              }
+            ) }) : null,
+            subView === "adminVerify" ? /* @__PURE__ */ jsxRuntimeExports.jsx(AppErrorBoundaryLocal, { label: "admin-verify", children: /* @__PURE__ */ jsxRuntimeExports.jsx(AdminVerificationPanel, {}) }) : null,
+            subView === "adminModeration" ? /* @__PURE__ */ jsxRuntimeExports.jsx(AppErrorBoundaryLocal, { label: "admin-moderation", children: /* @__PURE__ */ jsxRuntimeExports.jsx(ModerationDashboard, {}) }) : null,
+            subView === "closeFriends" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-2", children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "px-4 pb-3 text-xs leading-relaxed text-muted-foreground", children: t("closeFriendsHint") }),
+              followingUsers.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "px-4 text-sm text-muted-foreground", children: t("closeFriendsEmpty") }) : /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsCard, { children: followingUsers.map((u) => {
+                const isClose = (me.closeFriends ?? []).includes(u.id);
+                return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-h-[52px] items-center gap-3 px-4 py-2", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(RSocialAvatar, { name: u.username, src: u.avatar, size: 44 }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "min-w-0 flex-1", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "truncate text-[15px] text-foreground", children: [
+                    "@",
+                    u.username
+                  ] }) }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    "button",
+                    {
+                      type: "button",
+                      onClick: () => toggleCloseFriend(u.id),
+                      className: "rounded-lg px-3 py-1.5 text-xs font-semibold " + (isClose ? "bg-secondary text-foreground" : "bg-[#0095F6] text-white"),
+                      children: isClose ? "✓" : t("addToCloseFriends")
+                    }
+                  )
+                ] }, u.id);
+              }) })
+            ] })
+          ]
+        }
+      ),
       /* @__PURE__ */ jsxRuntimeExports.jsx(
         VerificationSubscriptionSheet,
         {
           open: subscriptionSheetOpen,
-          onClose: () => setSubscriptionSheetOpen(false),
-          onSubscribed: () => setSubscriptionSheetOpen(false)
+          onClose: closeSubscriptionSheet,
+          onSubscribed: () => {
+            setSubscriptionSheetOpen(false);
+            subscriptionReturnToAccountsCenterRef.current = false;
+            if (subView !== "verify") setSubView("verify");
+          }
         }
       )
     ] });
   }
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "settings-screen-root min-h-full w-full max-w-full overflow-x-hidden bg-background pb-10", dir: "rtl", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsHeader, { title: t("settingsActivity"), onBack, navScope: "local", showBack: !accountsCenterOpen }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsCard, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-      SettingsRow,
+  const nativeShell = isNativeCapacitorShell();
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+      SettingsScreenRoot,
       {
-        icon: Users,
-        label: t("accountsCenter"),
-        chevron: true,
-        onClick: () => setAccountsCenterOpen(true)
-      }
-    ) }),
-    accountsCenterOpen && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-[10100] bg-black/50", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-      "div",
-      {
-        className: "absolute inset-x-0 bottom-0 top-[max(0.75rem,var(--sat))] mx-auto flex w-full max-w-md flex-col overflow-hidden rounded-t-[28px] border border-border bg-background text-foreground shadow-2xl",
-        style: {
-          transform: `translate3d(0, ${Math.max(0, accountsCenterDragY)}px, 0)`,
-          transition: accountsCenterDragging ? "none" : "transform 220ms cubic-bezier(0.22, 1, 0.36, 1)"
-        },
-        onPointerDown: (e) => {
-          if (e.pointerType === "mouse" && e.button !== 0) return;
-          const target = e.target;
-          if (!target?.closest("[data-accounts-center-drag-handle]")) return;
-          accountsCenterDragRef.current = {
-            pointerId: e.pointerId,
-            startY: e.clientY - accountsCenterDragY,
-            dragging: true
-          };
-          setAccountsCenterDragging(true);
-          try {
-            e.currentTarget.setPointerCapture(e.pointerId);
-          } catch {
+        header: /* @__PURE__ */ jsxRuntimeExports.jsx(
+          SettingsHeader,
+          {
+            title: t("settingsActivity"),
+            onBack,
+            navScope: "local",
+            showBack: !accountsCenterOpen
           }
-        },
-        onPointerMove: (e) => {
-          const d = accountsCenterDragRef.current;
-          if (!d.dragging || d.pointerId !== e.pointerId) return;
-          const dy = Math.max(0, e.clientY - d.startY);
-          setAccountsCenterDragY(dy);
-        },
-        onPointerUp: (e) => {
-          const d = accountsCenterDragRef.current;
-          if (!d.dragging || d.pointerId !== e.pointerId) return;
-          d.dragging = false;
-          setAccountsCenterDragging(false);
-          if (accountsCenterDragY > 140) {
-            setAccountsCenterOpen(false);
-          } else {
-            setAccountsCenterDragY(0);
-          }
-          try {
-            e.currentTarget.releasePointerCapture(e.pointerId);
-          } catch {
-          }
-        },
-        onPointerCancel: (e) => {
-          const d = accountsCenterDragRef.current;
-          if (d.pointerId !== e.pointerId) return;
-          d.dragging = false;
-          setAccountsCenterDragging(false);
-          setAccountsCenterDragY(0);
-        },
+        ),
         children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "data-accounts-center-drag-handle": true, className: "shrink-0 px-4 pb-3 pt-4", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mx-auto mb-3 h-1.5 w-14 rounded-full bg-muted-foreground/30" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative text-center", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx(
-                "button",
-                {
-                  type: "button",
-                  className: "absolute start-0 top-0 rounded-full p-2 text-foreground hover:bg-accent",
-                  onClick: () => {
-                    setAccountsCenterOpen(false);
-                    setSubViewReturnToAccountsCenter(false);
-                  },
-                  "aria-label": "إغلاق",
-                  children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 22 })
-                }
-              ),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm font-semibold text-muted-foreground", children: "Retweet" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "mt-2 text-[34px] font-bold leading-none text-foreground", children: "Accounts Center" }),
-              /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mx-auto mt-3 max-w-[92%] text-sm leading-6 text-muted-foreground", children: "Manage your connected experiences and account settings across Retweet." })
-            ] })
-          ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-h-0 flex-1 overflow-y-auto px-4 pb-5", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: accountsCenterCardClass, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-              AccountsCenterRow,
-              {
-                icon: CircleUser,
-                label: "Profiles and personal details",
-                subtitle: "2 profiles",
-                onClick: () => openSubViewFromAccountsCenter("accountInfo")
-              }
-            ) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `mt-3 ${accountsCenterCardClass}`, children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsx(
-                AccountsCenterRow,
-                {
-                  icon: ShieldCheck,
-                  label: "Password and security",
-                  onClick: () => openSubViewFromAccountsCenter(apiBackendEnabled() ? "security" : "changePwd")
-                }
-              ),
-              /* @__PURE__ */ jsxRuntimeExports.jsx(
-                AccountsCenterRow,
-                {
-                  icon: UsersRound,
-                  label: "Connected experiences",
-                  onClick: () => openSubViewFromAccountsCenter("closeFriends")
-                }
-              ),
-              /* @__PURE__ */ jsxRuntimeExports.jsx(
-                AccountsCenterRow,
-                {
-                  icon: Info,
-                  label: "Your information and permissions",
-                  onClick: () => openSubViewFromAccountsCenter("accountInfo")
-                }
-              ),
-              /* @__PURE__ */ jsxRuntimeExports.jsx(
-                AccountsCenterRow,
-                {
-                  icon: Bell,
-                  label: "Ad preferences",
-                  onClick: () => openSubViewFromAccountsCenter("notifications")
-                }
-              ),
-              /* @__PURE__ */ jsxRuntimeExports.jsx(
-                AccountsCenterRow,
-                {
-                  icon: Bookmark,
-                  label: "Retweet Pay",
-                  onClick: () => openSubViewFromAccountsCenter("saved")
-                }
-              ),
-              /* @__PURE__ */ jsxRuntimeExports.jsx(
-                AccountsCenterRow,
-                {
-                  icon: BadgeCheck,
-                  label: "Subscriptions",
-                  onClick: () => openSubViewFromAccountsCenter("verify")
-                }
-              )
-            ] }),
-            onOpenAccounts ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `mt-3 ${accountsCenterCardClass}`, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
-              AccountsCenterRow,
-              {
-                icon: Users,
-                label: "Manage accounts",
-                onClick: () => {
-                  setAccountsCenterOpen(false);
-                  setSubViewReturnToAccountsCenter(false);
-                  onOpenAccounts();
-                }
-              }
-            ) }) : null,
-            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-6 text-[26px] font-bold leading-none text-foreground", children: "More from Retweet" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-3 grid grid-cols-2 gap-3", children: [
-              /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                "button",
-                {
-                  type: "button",
-                  className: "rounded-2xl border border-border bg-card px-4 py-5 text-start transition-colors active:bg-accent",
-                  onClick: () => openSubViewFromAccountsCenter("verify"),
-                  children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(BadgeCheck, { size: 24, className: "mb-3 text-blue-400" }),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-sm font-semibold text-foreground", children: "Retweet Verified" })
-                  ]
-                }
-              ),
-              /* @__PURE__ */ jsxRuntimeExports.jsxs(
-                "button",
-                {
-                  type: "button",
-                  className: "rounded-2xl border border-border bg-card px-4 py-5 text-start transition-colors active:bg-accent",
-                  onClick: () => openSubViewFromAccountsCenter("timeManagement"),
-                  children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(Globe, { size: 24, className: "mb-3 text-sky-300" }),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-sm font-semibold text-foreground", children: "AI Glasses" })
-                  ]
-                }
-              )
-            ] }),
-            isAdmin || isModerator ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `mt-4 ${accountsCenterCardClass}`, children: [
-              isAdmin ? /* @__PURE__ */ jsxRuntimeExports.jsx(
-                AccountsCenterRow,
-                {
-                  icon: BadgeCheck,
-                  label: "لوحة طلبات التوثيق",
-                  onClick: () => openSubViewFromAccountsCenter("adminVerify")
-                }
-              ) : null,
-              isModerator ? /* @__PURE__ */ jsxRuntimeExports.jsx(
-                AccountsCenterRow,
-                {
-                  icon: Shield,
-                  label: "لوحة الإشراف والبلاغات",
-                  onClick: () => openSubViewFromAccountsCenter("adminModeration")
-                }
-              ) : null
-            ] }) : null
-          ] })
-        ]
-      }
-    ) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(SectionGap, {}),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(SectionTitle, { children: t("howYouUseApp") }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs(SettingsCard, { children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsRow, { icon: Bookmark, label: t("saved"), chevron: true, onClick: () => setSubView("saved") }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsRow, { icon: Archive, label: t("archive"), chevron: true, onClick: () => setSubView("archive") }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsRow, { icon: Clock, label: t("timeManagement"), chevron: true, onClick: () => setSubView("timeManagement") })
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(SectionGap, {}),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(SectionTitle, { children: t("whoCanSee") }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsCard, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsRow, { icon: UsersRound, label: t("closeFriends"), chevron: true, onClick: () => setSubView("closeFriends") }) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(SectionGap, {}),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(SectionTitle, { children: t("preferences") }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs(SettingsCard, { children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        SettingsRow,
-        {
-          icon: state2.theme === "dark" ? Moon : Sun,
-          label: t("darkMode"),
-          right: /* @__PURE__ */ jsxRuntimeExports.jsx(IgToggle, { on: state2.theme === "dark", onToggle: () => setTheme(state2.theme === "dark" ? "light" : "dark") })
-        }
-      ),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        SettingsRow,
-        {
-          icon: Globe,
-          label: t("language"),
-          right: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-            "select",
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsCard, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+            SettingsRow,
             {
-              value: state2.language,
-              onChange: (e) => setLang(e.target.value),
-              className: "bg-transparent text-sm text-muted-foreground outline-none",
+              icon: Users,
+              label: t("accountsCenter"),
+              chevron: true,
+              onClick: () => setAccountsCenterOpen(true)
+            }
+          ) }),
+          accountsCenterOpen && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed inset-0 z-[10100] bg-black/50", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "div",
+            {
+              className: cn(
+                "absolute flex w-full flex-col overflow-hidden border border-border bg-background text-foreground shadow-2xl",
+                nativeShell ? "inset-0 max-w-none rounded-none" : "inset-x-0 bottom-0 top-[max(0.75rem,var(--sat))] mx-auto max-w-md rounded-t-[28px]"
+              ),
+              style: {
+                transform: `translate3d(0, ${Math.max(0, accountsCenterDragY)}px, 0)`,
+                transition: accountsCenterDragging ? "none" : "transform 220ms cubic-bezier(0.22, 1, 0.36, 1)"
+              },
+              onPointerDown: (e) => {
+                if (e.pointerType === "mouse" && e.button !== 0) return;
+                const target = e.target;
+                if (!target?.closest("[data-accounts-center-drag-handle]")) return;
+                accountsCenterDragRef.current = {
+                  pointerId: e.pointerId,
+                  startY: e.clientY - accountsCenterDragY,
+                  dragging: true
+                };
+                setAccountsCenterDragging(true);
+                try {
+                  e.currentTarget.setPointerCapture(e.pointerId);
+                } catch {
+                }
+              },
+              onPointerMove: (e) => {
+                const d = accountsCenterDragRef.current;
+                if (!d.dragging || d.pointerId !== e.pointerId) return;
+                const dy = Math.max(0, e.clientY - d.startY);
+                setAccountsCenterDragY(dy);
+              },
+              onPointerUp: (e) => {
+                const d = accountsCenterDragRef.current;
+                if (!d.dragging || d.pointerId !== e.pointerId) return;
+                d.dragging = false;
+                setAccountsCenterDragging(false);
+                if (accountsCenterDragY > 140) {
+                  setAccountsCenterOpen(false);
+                } else {
+                  setAccountsCenterDragY(0);
+                }
+                try {
+                  e.currentTarget.releasePointerCapture(e.pointerId);
+                } catch {
+                }
+              },
+              onPointerCancel: (e) => {
+                const d = accountsCenterDragRef.current;
+                if (d.pointerId !== e.pointerId) return;
+                d.dragging = false;
+                setAccountsCenterDragging(false);
+                setAccountsCenterDragY(0);
+              },
               children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "ar", children: "العربية" }),
-                /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "en", children: "English" })
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "data-accounts-center-drag-handle": true, className: "shrink-0 px-4 pb-3 pt-4", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mx-auto mb-3 h-1.5 w-14 rounded-full bg-muted-foreground/30" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative text-center", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      "button",
+                      {
+                        type: "button",
+                        className: "absolute start-0 top-0 rounded-full p-2 text-foreground hover:bg-accent",
+                        onClick: () => {
+                          setAccountsCenterOpen(false);
+                          setSubViewReturnToAccountsCenter(false);
+                        },
+                        "aria-label": "إغلاق",
+                        children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 22 })
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm font-semibold text-muted-foreground", children: "Retweet" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "mt-2 text-[34px] font-bold leading-none text-foreground", children: "Accounts Center" }),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mx-auto mt-3 max-w-[92%] text-sm leading-6 text-muted-foreground", children: "Manage your connected experiences and account settings across Retweet." })
+                  ] })
+                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain px-4 pb-[max(1.75rem,var(--sab))]", children: [
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: accountsCenterCardClass, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    AccountsCenterRow,
+                    {
+                      icon: CircleUser,
+                      label: "Profiles and personal details",
+                      subtitle: "2 profiles",
+                      onClick: () => openSubViewFromAccountsCenter("accountInfo")
+                    }
+                  ) }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `mt-3 ${accountsCenterCardClass}`, children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      AccountsCenterRow,
+                      {
+                        icon: ShieldCheck,
+                        label: "Password and security",
+                        onClick: () => openSubViewFromAccountsCenter(apiBackendEnabled() ? "security" : "changePwd")
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      AccountsCenterRow,
+                      {
+                        icon: UsersRound,
+                        label: "Connected experiences",
+                        onClick: () => openSubViewFromAccountsCenter("closeFriends")
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      AccountsCenterRow,
+                      {
+                        icon: Info,
+                        label: "Your information and permissions",
+                        onClick: () => openSubViewFromAccountsCenter("accountInfo")
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      AccountsCenterRow,
+                      {
+                        icon: Bell,
+                        label: "Ad preferences",
+                        onClick: () => openSubViewFromAccountsCenter("notifications")
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      AccountsCenterRow,
+                      {
+                        icon: Bookmark,
+                        label: "Retweet Pay",
+                        onClick: () => openSubViewFromAccountsCenter("saved")
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      AccountsCenterRow,
+                      {
+                        icon: BadgeCheck,
+                        label: "Subscriptions",
+                        onClick: () => openVerificationFlow(true)
+                      }
+                    )
+                  ] }),
+                  onOpenAccounts ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: `mt-3 ${accountsCenterCardClass}`, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
+                    AccountsCenterRow,
+                    {
+                      icon: Users,
+                      label: "Manage accounts",
+                      onClick: () => {
+                        setAccountsCenterOpen(false);
+                        setSubViewReturnToAccountsCenter(false);
+                        onOpenAccounts();
+                      }
+                    }
+                  ) }) : null,
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-6 text-[26px] font-bold leading-none text-foreground", children: "More from Retweet" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-3 grid grid-cols-2 gap-3", children: [
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                      "button",
+                      {
+                        type: "button",
+                        className: "rounded-2xl border border-border bg-card px-4 py-5 text-start transition-colors active:bg-accent",
+                        onClick: () => openVerificationFlow(true),
+                        children: [
+                          /* @__PURE__ */ jsxRuntimeExports.jsx(BadgeCheck, { size: 24, className: "mb-3 text-blue-400" }),
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-sm font-semibold text-foreground", children: "Retweet Verified" })
+                        ]
+                      }
+                    ),
+                    /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                      "button",
+                      {
+                        type: "button",
+                        className: "rounded-2xl border border-border bg-card px-4 py-5 text-start transition-colors active:bg-accent",
+                        onClick: () => openSubViewFromAccountsCenter("timeManagement"),
+                        children: [
+                          /* @__PURE__ */ jsxRuntimeExports.jsx(Globe, { size: 24, className: "mb-3 text-sky-300" }),
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-sm font-semibold text-foreground", children: "AI Glasses" })
+                        ]
+                      }
+                    )
+                  ] }),
+                  isAdmin || isModerator ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `mt-4 ${accountsCenterCardClass}`, children: [
+                    isAdmin ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      AccountsCenterRow,
+                      {
+                        icon: BadgeCheck,
+                        label: "لوحة طلبات التوثيق",
+                        onClick: () => openSubViewFromAccountsCenter("adminVerify")
+                      }
+                    ) : null,
+                    isModerator ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+                      AccountsCenterRow,
+                      {
+                        icon: Shield,
+                        label: "لوحة الإشراف والبلاغات",
+                        onClick: () => openSubViewFromAccountsCenter("adminModeration")
+                      }
+                    ) : null
+                  ] }) : null
+                ] })
               ]
             }
-          )
-        }
-      ),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsRow, { icon: Bell, label: t("notifications"), chevron: true, onClick: () => setSubView("notifications") })
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(SectionGap, {}),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(SectionTitle, { children: t("privacy") }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs(SettingsCard, { children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        SettingsRow,
-        {
-          icon: Lock,
-          label: t("private"),
-          right: /* @__PURE__ */ jsxRuntimeExports.jsx(IgToggle, { on: me.isPrivate, onToggle: togglePrivate })
-        }
-      ),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        SettingsRow,
-        {
-          icon: MessageCircle,
-          label: t("allowStoryReplies"),
-          right: /* @__PURE__ */ jsxRuntimeExports.jsx(
-            IgToggle,
-            {
-              on: me.allowStoryReplies !== false,
-              onToggle: () => updateProfile({ allowStoryReplies: me.allowStoryReplies === false })
-            }
-          )
-        }
-      ),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        SettingsRow,
-        {
-          icon: UsersRound,
-          label: t("hideFollowLists"),
-          right: /* @__PURE__ */ jsxRuntimeExports.jsx(IgToggle, { on: !!me.hideFollowListsFromOthers, onToggle: () => updateProfile({ hideFollowListsFromOthers: !me.hideFollowListsFromOthers }) })
-        }
-      ),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        SettingsRow,
-        {
-          icon: Heart,
-          label: t("showLikesOnProfile"),
-          right: /* @__PURE__ */ jsxRuntimeExports.jsx(
-            IgToggle,
-            {
-              on: me.showLikesAndFavoritesOnProfile !== false,
-              onToggle: () => {
-                const v = me.showLikesAndFavoritesOnProfile !== false;
-                updateProfile({ showLikesAndFavoritesOnProfile: !v });
+          ) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SectionGap, {}),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SectionTitle, { children: t("howYouUseApp") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(SettingsCard, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsRow, { icon: Bookmark, label: t("saved"), chevron: true, onClick: () => setSubView("saved") }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsRow, { icon: Archive, label: t("archive"), chevron: true, onClick: () => setSubView("archive") }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsRow, { icon: Clock, label: t("timeManagement"), chevron: true, onClick: () => setSubView("timeManagement") })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SectionGap, {}),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SectionTitle, { children: t("whoCanSee") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsCard, { children: /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsRow, { icon: UsersRound, label: t("closeFriends"), chevron: true, onClick: () => setSubView("closeFriends") }) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SectionGap, {}),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SectionTitle, { children: t("preferences") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(SettingsCard, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SettingsRow,
+              {
+                icon: state2.theme === "dark" ? Moon : Sun,
+                label: t("darkMode"),
+                right: /* @__PURE__ */ jsxRuntimeExports.jsx(IgToggle, { on: state2.theme === "dark", onToggle: () => setTheme(state2.theme === "dark" ? "light" : "dark") })
               }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SettingsRow,
+              {
+                icon: Globe,
+                label: t("language"),
+                right: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                  "select",
+                  {
+                    value: state2.language,
+                    onChange: (e) => setLang(e.target.value),
+                    className: "bg-transparent text-sm text-muted-foreground outline-none",
+                    children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "ar", children: "العربية" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("option", { value: "en", children: "English" })
+                    ]
+                  }
+                )
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsRow, { icon: Bell, label: t("notifications"), chevron: true, onClick: () => setSubView("notifications") })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SectionGap, {}),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SectionTitle, { children: t("privacy") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(SettingsCard, { children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SettingsRow,
+              {
+                icon: Lock,
+                label: t("private"),
+                right: /* @__PURE__ */ jsxRuntimeExports.jsx(IgToggle, { on: me.isPrivate, onToggle: togglePrivate })
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SettingsRow,
+              {
+                icon: MessageCircle,
+                label: t("allowStoryReplies"),
+                right: /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  IgToggle,
+                  {
+                    on: me.allowStoryReplies !== false,
+                    onToggle: () => updateProfile({ allowStoryReplies: me.allowStoryReplies === false })
+                  }
+                )
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SettingsRow,
+              {
+                icon: UsersRound,
+                label: t("hideFollowLists"),
+                right: /* @__PURE__ */ jsxRuntimeExports.jsx(IgToggle, { on: !!me.hideFollowListsFromOthers, onToggle: () => updateProfile({ hideFollowListsFromOthers: !me.hideFollowListsFromOthers }) })
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SettingsRow,
+              {
+                icon: Heart,
+                label: t("showLikesOnProfile"),
+                right: /* @__PURE__ */ jsxRuntimeExports.jsx(
+                  IgToggle,
+                  {
+                    on: me.showLikesAndFavoritesOnProfile !== false,
+                    onToggle: () => {
+                      const v = me.showLikesAndFavoritesOnProfile !== false;
+                      updateProfile({ showLikesAndFavoritesOnProfile: !v });
+                    }
+                  }
+                )
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SettingsRow,
+              {
+                icon: Shield,
+                label: t("privacyPolicy"),
+                chevron: true,
+                onClick: () => {
+                  window.open(PRIVACY_POLICY_URL, "_blank", "noopener,noreferrer");
+                }
+              }
+            ),
+            apiBackendEnabled() && currentUser && !isGuestUserId(currentUser.id) ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SettingsRow,
+              {
+                icon: Trash2,
+                label: t("deleteAccount"),
+                chevron: true,
+                onClick: () => setSubView("deleteAccount")
+              }
+            ) : null
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SectionGap, {}),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SectionTitle, { children: t("blockedAccounts") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsCard, { children: blockedUsers.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "px-4 py-4 text-sm text-muted-foreground", children: t("noBlockedAccounts") }) : blockedUsers.map((u) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-h-[52px] items-center gap-3 px-4 py-2", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(RSocialAvatar, { name: u.username, src: u.avatar, size: 40 }),
+            /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "flex-1 truncate text-[15px] text-foreground", children: [
+              "@",
+              u.username
+            ] }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                type: "button",
+                onClick: () => setUnblockTarget({ id: u.id, username: u.username }),
+                className: "rounded-lg bg-secondary px-3 py-1.5 text-xs font-medium text-foreground",
+                children: t("unblockUser")
+              }
+            )
+          ] }, u.id)) }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SectionGap, {}),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(SectionTitle, { children: t("support") }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs(SettingsCard, { children: [
+            apiBackendEnabled() && currentUser && !isGuestUserId(currentUser.id) ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+              SettingsRow,
+              {
+                icon: Archive,
+                label: resyncBusy ? "جاري الاستعادة…" : "استعادة البيانات من الخادم",
+                onClick: () => {
+                  if (resyncBusy) return;
+                  setResyncBusy(true);
+                  setResyncMsg(null);
+                  void hardResyncFromServer().then((r2) => {
+                    setResyncBusy(false);
+                    setResyncMsg(r2.ok ? "تمت الاستعادة من الخادم بنجاح" : r2.error || "فشلت الاستعادة");
+                  });
+                }
+              }
+            ) : null,
+            /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsRow, { icon: CircleQuestionMark, label: t("help"), chevron: true }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsRow, { icon: Info, label: t("about"), chevron: true })
+          ] }),
+          resyncMsg ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mx-4 mt-2 text-center text-sm text-muted-foreground", children: resyncMsg }) : null,
+          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mx-4 mt-6 mb-2", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+            "button",
+            {
+              type: "button",
+              onClick: () => {
+                logout();
+                onBack();
+              },
+              className: "flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-card py-3.5 text-[15px] font-semibold text-red-500 active:bg-accent dark:text-red-400",
+              children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx(LogOut, { size: 18 }),
+                t("logout")
+              ]
             }
-          )
-        }
-      ),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        SettingsRow,
-        {
-          icon: Shield,
-          label: t("privacyPolicy"),
-          chevron: true,
-          onClick: () => {
-            window.open(PRIVACY_POLICY_URL, "_blank", "noopener,noreferrer");
-          }
-        }
-      ),
-      apiBackendEnabled() && currentUser && !isGuestUserId(currentUser.id) ? /* @__PURE__ */ jsxRuntimeExports.jsx(
-        SettingsRow,
-        {
-          icon: Trash2,
-          label: t("deleteAccount"),
-          chevron: true,
-          onClick: () => setSubView("deleteAccount")
-        }
-      ) : null
-    ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(SectionGap, {}),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(SectionTitle, { children: t("blockedAccounts") }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsCard, { children: blockedUsers.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "px-4 py-4 text-sm text-muted-foreground", children: t("noBlockedAccounts") }) : blockedUsers.map((u) => /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-h-[52px] items-center gap-3 px-4 py-2", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(RSocialAvatar, { name: u.username, src: u.avatar, size: 40 }),
-      /* @__PURE__ */ jsxRuntimeExports.jsxs("span", { className: "flex-1 truncate text-[15px] text-foreground", children: [
-        "@",
-        u.username
-      ] }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(
-        "button",
-        {
-          type: "button",
-          onClick: () => setUnblockTarget({ id: u.id, username: u.username }),
-          className: "rounded-lg bg-secondary px-3 py-1.5 text-xs font-medium text-foreground",
-          children: t("unblockUser")
-        }
-      )
-    ] }, u.id)) }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(SectionGap, {}),
-    /* @__PURE__ */ jsxRuntimeExports.jsx(SectionTitle, { children: t("support") }),
-    /* @__PURE__ */ jsxRuntimeExports.jsxs(SettingsCard, { children: [
-      apiBackendEnabled() && currentUser && !isGuestUserId(currentUser.id) ? /* @__PURE__ */ jsxRuntimeExports.jsx(
-        SettingsRow,
-        {
-          icon: Archive,
-          label: resyncBusy ? "جاري الاستعادة…" : "استعادة البيانات من الخادم",
-          onClick: () => {
-            if (resyncBusy) return;
-            setResyncBusy(true);
-            setResyncMsg(null);
-            void hardResyncFromServer().then((r2) => {
-              setResyncBusy(false);
-              setResyncMsg(r2.ok ? "تمت الاستعادة من الخادم بنجاح" : r2.error || "فشلت الاستعادة");
-            });
-          }
-        }
-      ) : null,
-      /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsRow, { icon: CircleQuestionMark, label: t("help"), chevron: true }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsRow, { icon: Info, label: t("about"), chevron: true })
-    ] }),
-    resyncMsg ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mx-4 mt-2 text-center text-sm text-muted-foreground", children: resyncMsg }) : null,
-    /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mx-4 mt-6", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
-      "button",
-      {
-        type: "button",
-        onClick: () => {
-          logout();
-          onBack();
-        },
-        className: "flex w-full items-center justify-center gap-2 rounded-xl border border-border bg-card py-3.5 text-[15px] font-semibold text-red-500 active:bg-accent dark:text-red-400",
-        children: [
-          /* @__PURE__ */ jsxRuntimeExports.jsx(LogOut, { size: 18 }),
-          t("logout")
+          ) })
         ]
       }
-    ) }),
+    ),
     unblockTarget && /* @__PURE__ */ jsxRuntimeExports.jsx(
       BlockConfirmSheet,
       {
@@ -52048,8 +53446,12 @@ function SettingsScreen({
       VerificationSubscriptionSheet,
       {
         open: subscriptionSheetOpen,
-        onClose: () => setSubscriptionSheetOpen(false),
-        onSubscribed: () => setSubscriptionSheetOpen(false)
+        onClose: closeSubscriptionSheet,
+        onSubscribed: () => {
+          setSubscriptionSheetOpen(false);
+          subscriptionReturnToAccountsCenterRef.current = false;
+          setSubView("verify");
+        }
       }
     )
   ] });
@@ -52076,9 +53478,15 @@ function TrayBtn({ icon: Icon2, label, onClick }) {
     }
   );
 }
+const VERIFIED_STICKER_LABELS = {
+  basic: ["✓ موثّق", "★ مميز", "🔥"],
+  full: ["✓ موثّق", "★ مميز", "🔥", "💎 VIP", "⚡", "🎯"]
+};
 function StoryCreationStickers({
   stickers,
-  setStickers
+  setStickers,
+  exclusivePack = "none",
+  hasStoryLink = false
 }) {
   const { state: state2, currentUser } = useApp();
   const me = currentUser;
@@ -52097,6 +53505,7 @@ function StoryCreationStickers({
   const [hashtag, setHashtag] = reactExports.useState({ tag: "ستوري" });
   const [quiz, setQuiz] = reactExports.useState({ question: "", o0: "", o1: "", o2: "", o3: "", correct: 0 });
   const [slider, setSlider] = reactExports.useState({ emoji: "❤️", label: "مودك؟" });
+  const [linkDraft, setLinkDraft] = reactExports.useState({ url: "https://", label: "اضغط هنا" });
   const mentionChoices = state2.users.filter((u) => u.id !== me.id).slice(0, 40);
   let sheetBody = null;
   if (sheet === "poll") {
@@ -52213,6 +53622,47 @@ function StoryCreationStickers({
         }
       )
     ] });
+  } else if (sheet === "link") {
+    sheetBody = /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "input",
+        {
+          value: linkDraft.label,
+          onChange: (e) => setLinkDraft((s) => ({ ...s, label: e.target.value })),
+          placeholder: "نص الزر",
+          className: "w-full bg-zinc-800 rounded-xl px-3 py-2 text-sm text-white outline-none"
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "input",
+        {
+          value: linkDraft.url,
+          onChange: (e) => setLinkDraft((s) => ({ ...s, url: e.target.value })),
+          placeholder: "https://...",
+          className: "w-full bg-zinc-800 rounded-xl px-3 py-2 text-sm text-white outline-none",
+          dir: "ltr"
+        }
+      ),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          type: "button",
+          className: "w-full bg-[#0095F6] text-white rounded-xl py-2.5 font-semibold text-sm",
+          onClick: () => {
+            const url2 = linkDraft.url.trim();
+            if (!url2.startsWith("http")) return;
+            push({
+              id: nid(),
+              kind: "link",
+              ...p,
+              url: url2,
+              label: linkDraft.label.trim() || "زيارة الرابط"
+            });
+          },
+          children: "إضافة الرابط"
+        }
+      )
+    ] });
   } else if (sheet === "slider") {
     sheetBody = /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx("input", { value: slider.emoji, onChange: (e) => setSlider((s) => ({ ...s, emoji: e.target.value })), className: "w-full bg-zinc-800 rounded-xl px-3 py-2 text-sm text-white outline-none", placeholder: "إيموجي" }),
@@ -52231,8 +53681,30 @@ function StoryCreationStickers({
         /* @__PURE__ */ jsxRuntimeExports.jsx(TrayBtn, { icon: AtSign, label: "منشن", onClick: () => setSheet("mention") }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(TrayBtn, { icon: Hash, label: "هاشتاق", onClick: () => setSheet("hashtag") }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(TrayBtn, { icon: ListOrdered, label: "اختبار", onClick: () => setSheet("quiz") }),
-        /* @__PURE__ */ jsxRuntimeExports.jsx(TrayBtn, { icon: SlidersHorizontal, label: "منزلق", onClick: () => setSheet("slider") })
+        /* @__PURE__ */ jsxRuntimeExports.jsx(TrayBtn, { icon: SlidersHorizontal, label: "منزلق", onClick: () => setSheet("slider") }),
+        hasStoryLink ? /* @__PURE__ */ jsxRuntimeExports.jsx(TrayBtn, { icon: Link2, label: "رابط", onClick: () => setSheet("link") }) : null
       ] }),
+      exclusivePack !== "none" ? /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-2 border-t border-white/10 pt-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-[9px] text-amber-300/90 text-center mb-1.5 flex items-center justify-center gap-1", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx(Sparkles, { size: 10 }),
+          " ملصقات موثّقين"
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "flex flex-wrap justify-center gap-1.5", children: VERIFIED_STICKER_LABELS[exclusivePack === "full" ? "full" : "basic"].map((label) => /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            type: "button",
+            className: "rounded-full bg-white/15 px-2.5 py-1 text-xs font-bold text-white border border-amber-400/40",
+            onClick: () => push({
+              id: nid(),
+              kind: "hashtag",
+              ...nextPlacement(stickers.length),
+              tag: label.replace(/\s/g, "")
+            }),
+            children: label
+          },
+          label
+        )) })
+      ] }) : null,
       stickers.length > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("button", { type: "button", className: "w-full mt-2 text-xs text-red-300 py-1", onClick: () => setStickers([]), children: [
         "مسح كل الملصقات (",
         stickers.length,
@@ -52316,6 +53788,18 @@ function captureReelCoverFromVideo(video, timeSec = 1) {
       { once: true }
     );
   });
+}
+async function publishReelViaApi(file, caption, meId) {
+  const check = await validateReelVideoFile(file);
+  if (!check.ok) return check;
+  if (!reelsApiEnabled()) {
+    return { ok: false, error: "الخادم غير متصل" };
+  }
+  await ensureApiRuntimeConfig();
+  const up = await apiUploadReel(file, caption);
+  if (!up.ok) return up;
+  const post = reelPublicToPost(normalizeReelMediaUrls(up.reel), meId);
+  return { ok: true, post };
 }
 async function uploadReelVideo(file) {
   const token = getApiToken();
@@ -52536,6 +54020,18 @@ function CreateScreen({
       let coverUrl = reelCover ? resolveMediaUrl(reelCover) : "";
       let resolvedVideo = "";
       if (pickedFile) {
+        const viaApi = await publishReelViaApi(pickedFile, text, currentUser.id);
+        if (viaApi.ok) {
+          setPublishing(false);
+          createPost(viaApi.post);
+          onClose();
+          return;
+        }
+        if (viaApi.error !== "الخادم غير متصل") {
+          setPublishing(false);
+          alert(viaApi.error);
+          return;
+        }
         const uploaded = await uploadReelVideo(pickedFile);
         if (!uploaded.ok) {
           setPublishing(false);
@@ -52896,7 +54392,15 @@ function CreateScreen({
       ] })
     ] }),
     type === "story" && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-3", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(StoryCreationStickers, { stickers: storyStickers, setStickers: setStoryStickers }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(
+        StoryCreationStickers,
+        {
+          stickers: storyStickers,
+          setStickers: setStoryStickers,
+          exclusivePack: getUserEntitlements(me).exclusiveStickers,
+          hasStoryLink: getUserEntitlements(me).hasStoryLinkSticker
+        }
+      ),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-2", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-2", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -55771,7 +57275,7 @@ function usePositionFixed({ isOpen, modal, nested, hasBeenOpened, preventScrollR
     restorePositionSetting
   };
 }
-function Root({ open: openProp, onOpenChange, children, onDrag: onDragProp, onRelease: onReleaseProp, snapPoints, shouldScaleBackground = false, setBackgroundColorOnScale = true, closeThreshold = CLOSE_THRESHOLD, scrollLockTimeout = SCROLL_LOCK_TIMEOUT, dismissible = true, handleOnly = false, fadeFromIndex = snapPoints && snapPoints.length - 1, activeSnapPoint: activeSnapPointProp, setActiveSnapPoint: setActiveSnapPointProp, fixed, modal = true, onClose, nested, noBodyStyles = false, direction = "bottom", defaultOpen = false, disablePreventScroll = true, snapToSequentialPoint = false, preventScrollRestoration = false, repositionInputs = true, onAnimationEnd, container, autoFocus = false }) {
+function Root({ open: openProp, onOpenChange, children, onDrag: onDragProp, onRelease: onReleaseProp, snapPoints, shouldScaleBackground = false, setBackgroundColorOnScale = true, closeThreshold = CLOSE_THRESHOLD, scrollLockTimeout = SCROLL_LOCK_TIMEOUT, dismissible = true, handleOnly = false, fadeFromIndex = snapPoints && snapPoints.length - 1, activeSnapPoint: activeSnapPointProp, setActiveSnapPoint: setActiveSnapPointProp, fixed, modal = true, onClose: onClose2, nested, noBodyStyles = false, direction = "bottom", defaultOpen = false, disablePreventScroll = true, snapToSequentialPoint = false, preventScrollRestoration = false, repositionInputs = true, onAnimationEnd, container, autoFocus = false }) {
   var _drawerRef_current, _drawerRef_current1;
   const [isOpen = false, setIsOpen] = useControllableState({
     defaultProp: defaultOpen,
@@ -56038,7 +57542,7 @@ function Root({ open: openProp, onOpenChange, children, onDrag: onDragProp, onRe
   ]);
   function closeDrawer(fromWithin) {
     cancelDrag();
-    onClose == null ? void 0 : onClose();
+    onClose2 == null ? void 0 : onClose2();
     if (!fromWithin) {
       setIsOpen(false);
     }
@@ -57457,7 +58961,7 @@ function GuestBrowseProfilePrompt({ onGoLogin }) {
   ] }) });
 }
 function NotificationsPanel({
-  onClose,
+  onClose: onClose2,
   onOpenProfile,
   onOpenChat,
   onOpenReportStatus
@@ -57469,11 +58973,11 @@ function NotificationsPanel({
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(
     AppDismissSheet,
     {
-      onClose,
+      onClose: onClose2,
       overlayZIndex: 45,
       contentClassName: "min-h-0 flex flex-col overflow-hidden bg-background",
       children: [
-        /* @__PURE__ */ jsxRuntimeExports.jsx(RtlScreenHeader, { onBack: onClose, title: t("notifications"), className: "z-20 shrink-0" }),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(RtlScreenHeader, { onBack: onClose2, title: t("notifications"), className: "z-20 shrink-0" }),
         /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "notifications-panel-scroll no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-y-contain pb-8", children: [
           list.length === 0 && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "py-12 text-center text-muted-foreground", children: "—" }),
           list.map((n) => {
@@ -57492,12 +58996,12 @@ function NotificationsPanel({
                     if (n.type === "report_update" && n.reportId) {
                       markNotificationRead(n.id);
                       onOpenReportStatus?.(n.reportId, n.reportStatus);
-                      onClose();
+                      onClose2();
                       return;
                     }
                     if (n.type === "message" && n.chatId) onOpenChat?.(n.chatId);
                     else if (n.type !== "friend_request" || friendReqResolved) onOpenProfile(n.fromId);
-                    onClose();
+                    onClose2();
                   },
                   className: "-m-1 flex w-full items-center gap-3 rounded-xl p-1 text-start hover:bg-secondary/60",
                   children: [
@@ -57570,7 +59074,7 @@ function resolveUiStatus(report) {
 function ReportStatusScreen({
   reportId,
   initialStatus,
-  onClose
+  onClose: onClose2
 }) {
   const { state: state2, markNotificationRead } = useApp();
   const [report, setReport] = reactExports.useState(null);
@@ -57652,8 +59156,8 @@ function ReportStatusScreen({
     };
   }, [report, reportedUser?.username, uiStatus]);
   const Icon2 = body.icon;
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs(AppDismissSheet, { onClose, overlayZIndex: 48, contentClassName: "min-h-0 flex flex-col bg-background", children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx(RtlScreenHeader, { onBack: onClose, title: "حالة البلاغ", className: "shrink-0" }),
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(AppDismissSheet, { onClose: onClose2, overlayZIndex: 48, contentClassName: "min-h-0 flex flex-col bg-background", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(RtlScreenHeader, { onBack: onClose2, title: "حالة البلاغ", className: "shrink-0" }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-h-0 flex-1 flex-col overflow-y-auto px-5 pb-10 pt-2", children: [
       loading && !report && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "py-16 text-center text-sm text-muted-foreground", children: "جاري تحميل تفاصيل البلاغ…" }),
       err && /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-8 flex flex-col items-center gap-3 text-center", children: [
@@ -57726,7 +59230,7 @@ function ReportStatusScreen({
           "button",
           {
             type: "button",
-            onClick: onClose,
+            onClick: onClose2,
             className: "mt-8 w-full max-w-sm rounded-2xl bg-primary py-3 text-sm font-semibold text-primary-foreground",
             children: "تم"
           }
@@ -57836,6 +59340,104 @@ function NotificationBanner() {
     )
   ] });
 }
+function normType(raw) {
+  return (raw || "").trim().toUpperCase();
+}
+function routePushNotificationTap(data) {
+  if (!data || typeof window === "undefined") return;
+  const type = normType(data.type);
+  const chatId = typeof data.chatId === "string" ? data.chatId : typeof data.chat_id === "string" ? data.chat_id : "";
+  if (type === "MESSAGE" || chatId) {
+    if (chatId) {
+      window.dispatchEvent(new CustomEvent("retweet-open-chat", { detail: { chatId } }));
+    }
+    return;
+  }
+  if (type === "FOLLOW" || type === "FOLLOW_REQUEST" || type === "MENTION") {
+    const profileId = typeof data.fromId === "string" ? data.fromId : "";
+    if (profileId) {
+      window.dispatchEvent(new CustomEvent("retweet-open-profile", { detail: { userId: profileId } }));
+      return;
+    }
+  }
+  if ((type === "LIKE" || type === "COMMENT" || type === "REPOST") && data.postId) {
+    window.dispatchEvent(
+      new CustomEvent("retweet-open-post-id", { detail: { postId: data.postId, fromUserId: data.fromId } })
+    );
+    return;
+  }
+  window.dispatchEvent(new CustomEvent("retweet-open-notifications"));
+}
+const TOAST_MS = 4500;
+function InAppPushToast() {
+  const [visible, setVisible] = reactExports.useState(false);
+  const [payload, setPayload] = reactExports.useState(null);
+  const timerRef = reactExports.useRef(null);
+  reactExports.useEffect(() => {
+    const onPush = (ev) => {
+      const detail = ev.detail;
+      if (!detail?.title) return;
+      setPayload(detail);
+      setVisible(true);
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(() => {
+        timerRef.current = null;
+        setVisible(false);
+      }, TOAST_MS);
+    };
+    window.addEventListener("retweet-push-received", onPush);
+    return () => {
+      window.removeEventListener("retweet-push-received", onPush);
+      if (timerRef.current) clearTimeout(timerRef.current);
+    };
+  }, []);
+  const dismiss = () => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = null;
+    setVisible(false);
+  };
+  const open = () => {
+    if (payload?.data) {
+      routePushNotificationTap(payload.data);
+    }
+    dismiss();
+  };
+  if (!visible || !payload) return null;
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(
+    "div",
+    {
+      className: "fixed left-0 right-0 z-[110] max-w-md mx-auto w-full px-2 pointer-events-none",
+      style: { top: "calc(var(--sat, env(safe-area-inset-top, 0px)) + 4px)" },
+      children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "pointer-events-auto bg-card/95 backdrop-blur-md border border-border shadow-lg rounded-2xl px-3 py-2.5 flex items-start gap-2", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs(
+          "button",
+          {
+            type: "button",
+            className: "flex-1 min-w-0 flex items-start gap-2 text-start",
+            onClick: open,
+            children: [
+              /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "w-9 h-9 rounded-full bg-primary/15 flex items-center justify-center text-primary shrink-0", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Bell, { size: 18 }) }),
+              /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex-1 min-w-0", children: [
+                /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm font-semibold truncate", children: payload.title }),
+                payload.body ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground line-clamp-2 mt-0.5", children: payload.body }) : null
+              ] })
+            ]
+          }
+        ),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(
+          "button",
+          {
+            type: "button",
+            className: "p-1.5 rounded-full hover:bg-secondary shrink-0",
+            "aria-label": "إغلاق",
+            onClick: dismiss,
+            children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 18, className: "text-muted-foreground" })
+          }
+        )
+      ] })
+    }
+  );
+}
 function PerfHUD() {
   const [visible, setVisible] = reactExports.useState(false);
   const [frame, setFrame] = reactExports.useState({ fps: 0, droppedFrames: 0, ts: 0 });
@@ -57908,10 +59510,10 @@ function PerfHUD() {
     }
   );
 }
-function AccountSwitcherSheet({ switchingAccountId, onSwitching, onClose, onAddAccount }) {
+function AccountSwitcherSheet({ switchingAccountId, onSwitching, onClose: onClose2, onAddAccount }) {
   const { state: state2, currentUser, switchAccount } = useApp();
   const t = useT();
-  return /* @__PURE__ */ jsxRuntimeExports.jsx(AppDismissSheet, { onClose, overlayZIndex: 200, contentClassName: "bg-zinc-100 dark:bg-zinc-950", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(AppDismissSheet, { onClose: onClose2, overlayZIndex: 200, contentClassName: "bg-zinc-100 dark:bg-zinc-950", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "div",
     {
       dir: "rtl",
@@ -57921,7 +59523,7 @@ function AccountSwitcherSheet({ switchingAccountId, onSwitching, onClose, onAddA
           /* @__PURE__ */ jsxRuntimeExports.jsx(
             SlideDismissBackButton,
             {
-              onDismiss: onClose,
+              onDismiss: onClose2,
               className: "shrink-0 rounded-full p-2 text-zinc-900 active:bg-zinc-200 dark:text-zinc-50 dark:active:bg-zinc-800",
               "aria-label": t("cancel"),
               children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowRight, { size: 22, strokeWidth: 1.75 })
@@ -57979,7 +59581,7 @@ function AccountSwitcherSheet({ switchingAccountId, onSwitching, onClose, onAddA
                     onSwitching(id);
                     try {
                       await switchAccount(id);
-                      onClose();
+                      onClose2();
                     } finally {
                       onSwitching(null);
                     }
@@ -58550,9 +60152,42 @@ function App() {
     updateProfile,
     exitGuestBrowseMode,
     joinGroupByInviteCode,
-    logout
+    logout,
+    createPost
   } = useAppActions();
+  const scheduleEnt = currentUser ? getUserEntitlements(currentUser) : null;
+  useScheduledPostsPublisher(
+    currentUser?.id,
+    (text) => {
+      createPost({ type: "post", text });
+    },
+    !!scheduleEnt?.hasScheduledPosts
+  );
   reactExports.useEffect(() => startPerfSession(), []);
+  reactExports.useEffect(() => {
+    if (!currentUser || isGuest) return;
+    void import("./pushNotifications-CSIPKTat.js").then((m) => {
+      void m.initPushNotifications();
+      void m.syncPushRegistration();
+    });
+    return () => {
+      void import("./pushNotifications-CSIPKTat.js").then((m) => m.teardownPushNotifications());
+    };
+  }, [currentUser?.id, isGuest]);
+  reactExports.useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const chatId = params.get("openChat")?.trim();
+      if (!chatId) return;
+      setOpenChatId(chatId);
+      setTab("chat");
+      params.delete("openChat");
+      const next = `${window.location.pathname}${params.toString() ? `?${params}` : ""}${window.location.hash}`;
+      window.history.replaceState(null, "", next);
+    } catch {
+    }
+  }, []);
   const t = useT();
   const [banInfo, setBanInfo] = reactExports.useState(null);
   const [banPresentation, setBanPresentation] = reactExports.useState(null);
@@ -58595,12 +60230,12 @@ function App() {
   const clearRestorePostContext = reactExports.useCallback(() => setRestorePostContext(null), []);
   reactExports.useEffect(() => {
     const onOpen = () => setPostDetailOpen(true);
-    const onClose = () => setPostDetailOpen(false);
+    const onClose2 = () => setPostDetailOpen(false);
     window.addEventListener("retweet-post-detail-open", onOpen);
-    window.addEventListener("retweet-post-detail-close", onClose);
+    window.addEventListener("retweet-post-detail-close", onClose2);
     return () => {
       window.removeEventListener("retweet-post-detail-open", onOpen);
-      window.removeEventListener("retweet-post-detail-close", onClose);
+      window.removeEventListener("retweet-post-detail-close", onClose2);
     };
   }, []);
   reactExports.useEffect(() => {
@@ -59101,6 +60736,29 @@ function App() {
     },
     [tab, viewProfileId, currentUser, activeChatId]
   );
+  reactExports.useEffect(() => {
+    const onOpenProfileFromPush = (e) => {
+      const userId = e.detail?.userId;
+      if (!userId) return;
+      openProfile(userId);
+    };
+    const onOpenNotifications = () => {
+      if (!isGuest) setModal("notifications");
+    };
+    const onOpenPostFromPush = () => {
+      setTab("home");
+      setModal(null);
+      setViewProfileId(null);
+    };
+    window.addEventListener("retweet-open-profile", onOpenProfileFromPush);
+    window.addEventListener("retweet-open-notifications", onOpenNotifications);
+    window.addEventListener("retweet-open-post-id", onOpenPostFromPush);
+    return () => {
+      window.removeEventListener("retweet-open-profile", onOpenProfileFromPush);
+      window.removeEventListener("retweet-open-notifications", onOpenNotifications);
+      window.removeEventListener("retweet-open-post-id", onOpenPostFromPush);
+    };
+  }, [openProfile, isGuest]);
   const popProfileScreenBack = reactExports.useCallback(() => {
     if (modal) {
       setModal(null);
@@ -59469,11 +61127,22 @@ function App() {
   const showBottomNav = !hideBottomBar || chatExitNavActive;
   const banOverlayActive = !!(banInfo && banPresentation === "overlay" && !isGuest);
   const nativeShell = isNativeCapacitorShell();
+  reactExports.useEffect(() => {
+    if (typeof document === "undefined") return;
+    const root = document.documentElement;
+    if (nativeShell && tab === "chat") {
+      root.classList.add("retweet-chat-tab-active");
+      void Promise.resolve().then(() => nativeViewportLayout).then((m) => m.applyNativeViewportFullBleed());
+    } else {
+      root.classList.remove("retweet-chat-tab-active");
+    }
+    return () => root.classList.remove("retweet-chat-tab-active");
+  }, [tab, nativeShell]);
   const appShellHeight = nativeShell ? "h-full max-h-full min-h-0" : immersiveOverlay || settingsImmersive ? "h-dvh max-h-dvh" : "h-dvh max-h-dvh";
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "div",
     {
-      className: "retweet-no-select-pane select-none relative mx-auto flex w-full max-w-md flex-col overflow-x-hidden overscroll-none bg-background " + (nativeShell ? "" : "supports-[height:100dvh] ") + (banOverlayActive ? "pointer-events-none " : "") + appShellHeight + " overflow-hidden",
+      className: "retweet-no-select-pane select-none relative flex w-full flex-col overflow-x-hidden overscroll-none bg-background " + (nativeShell ? "max-w-none " : "mx-auto max-w-md supports-[height:100dvh] ") + (banOverlayActive ? "pointer-events-none " : "") + appShellHeight + " overflow-hidden",
       style: {
         [NAV_FLOAT_INSET_CSS_VAR]: NAV_FLOAT_INSET_DEFAULT,
         [NAV_SCROLL_PADDING_CSS_VAR]: NAV_SCROLL_PADDING_DEFAULT
@@ -59483,6 +61152,7 @@ function App() {
         !chatOccupiesShell && !postImmersiveMode && !settingsImmersive && !storyFullscreen && /* @__PURE__ */ jsxRuntimeExports.jsx(SafeAreaTop, {}),
         guestToast && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed left-3 right-3 top-[max(0.75rem,var(--sat,0px))] z-[500] mx-auto max-w-md rounded-2xl border border-border bg-card px-4 py-3 text-start text-sm shadow-lg", children: "سجّل الدخول أو أنشئ حساباً لاستخدام هذه الميزة (إعجاب، رسائل، متابعة…)." }),
         switchFailToast && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed left-3 right-3 top-[max(0.75rem,var(--sat,0px))] z-[501] mx-auto max-w-md rounded-2xl border border-destructive/40 bg-card px-4 py-3 text-start text-sm text-destructive shadow-lg", children: switchFailToast }),
+        currentUser && !isGuest && /* @__PURE__ */ jsxRuntimeExports.jsx(InAppPushToast, {}),
         !storyFullscreen && !chatOccupiesShell && !postImmersiveMode && !settingsImmersive && /* @__PURE__ */ jsxRuntimeExports.jsx(NotificationBanner, {}),
         /* @__PURE__ */ jsxRuntimeExports.jsx(PerfHUD, {}),
         !hideAppHeader && /* @__PURE__ */ jsxRuntimeExports.jsx(
@@ -59672,7 +61342,7 @@ function App() {
             overlayZIndex: 120,
             dismissPullCssVar: SETTINGS_DISMISS_PULL_CSS_VAR,
             darkPanelChrome: theme === "dark",
-            contentClassName: "min-h-dvh bg-background text-foreground",
+            contentClassName: nativeShell ? "h-full min-h-0 flex flex-col bg-background text-foreground" : "min-h-dvh bg-background text-foreground",
             children: /* @__PURE__ */ jsxRuntimeExports.jsx(AppErrorBoundary, { label: "settings-screen", children: /* @__PURE__ */ jsxRuntimeExports.jsx(
               SettingsScreen,
               {
@@ -60041,6 +61711,7 @@ function WebAppRoot() {
     initSafeAreaBootstrap();
     clearStaleApiConfig();
     if (isNativeCapacitorShell()) {
+      initNativeViewportLayout();
       void initNativeKeyboardLayout();
     }
     logAuthRoute("webapp-root-mount", {
@@ -60175,7 +61846,7 @@ function WebAppRoot() {
   return /* @__PURE__ */ jsxRuntimeExports.jsx(
     "div",
     {
-      className: "relative mx-auto w-full max-w-md overflow-x-hidden bg-background text-start " + (nativeShell ? "flex h-full min-h-0 flex-col" : "min-h-dvh supports-[height:100dvh]:min-h-dvh"),
+      className: "relative w-full overflow-x-hidden bg-background text-start " + (nativeShell ? "flex h-full min-h-0 max-w-none flex-col" : "mx-auto max-w-md min-h-dvh supports-[height:100dvh]:min-h-dvh"),
       ...nativeNoSelectCaptureHandlers,
       children: /* @__PURE__ */ jsxRuntimeExports.jsx(AppProvider, { initialState: bootState ?? void 0, children: /* @__PURE__ */ jsxRuntimeExports.jsx(App, {}) })
     }
@@ -60189,6 +61860,11 @@ const index = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePropert
   component: Index
 }, Symbol.toStringTag, { value: "Module" }));
 export {
-  index as i,
+  Capacitor as C,
+  apiFetch$1 as a,
+  routePushNotificationTap as b,
+  apiBackend as c,
+  index as d,
+  isNativeCapacitorShell as i,
   registerPlugin as r
 };

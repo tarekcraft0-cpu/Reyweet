@@ -10,15 +10,20 @@ const LAYOUT_SELECTORS =
 function pinFullWidth(el: HTMLElement): void {
   el.style.width = "100%";
   el.style.maxWidth = "100%";
+  el.style.minWidth = "0";
+  el.style.boxSizing = "border-box";
   el.style.marginLeft = "0";
   el.style.marginRight = "0";
   el.style.marginInline = "0";
+  el.style.paddingLeft = "";
+  el.style.paddingRight = "";
   el.style.left = "0";
   el.style.right = "0";
   el.style.insetInlineStart = "0";
   el.style.insetInlineEnd = "0";
   el.style.transform = "none";
   el.style.translate = "none";
+  el.style.overflowX = "hidden";
 }
 
 /** iOS IPA — يُصفّر انزياح القائمة/التبويب ويملأ عرض الشاشة */
