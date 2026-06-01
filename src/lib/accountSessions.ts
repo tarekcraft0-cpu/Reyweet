@@ -35,6 +35,8 @@ export const REMOVED_ACCOUNT_IDS = new Set<string>([
   "u_lina",
 ]);
 
+const REMOVED_ACCOUNT_USERNAMES = new Set<string>(["lina_art", "sata_q", "user"]);
+
 export function isValidAccountSwitchTarget(userId: ID): boolean {
   if (!userId || REMOVED_ACCOUNT_IDS.has(userId)) return false;
   return !!getAccountSession(userId)?.token;
@@ -64,9 +66,17 @@ function writeSessions(store: SessionsStore): void {
   }
 }
 
+function isRemovedAccountSession(meta: AccountSessionMeta): boolean {
+  if (REMOVED_ACCOUNT_IDS.has(meta.userId)) return true;
+  const un = (meta.username || "").trim().toLowerCase();
+  return un.length > 0 && REMOVED_ACCOUNT_USERNAMES.has(un);
+}
+
 export function listAccountSessions(): AccountSessionMeta[] {
   const { order, sessions } = readSessions();
-  return order.map(id => sessions[id]).filter(Boolean);
+  return order
+    .map(id => sessions[id])
+    .filter((m): m is AccountSessionMeta => !!m && !isRemovedAccountSession(m));
 }
 
 export function getAccountSession(userId: ID): AccountSessionMeta | null {

@@ -356,6 +356,15 @@ const LEGACY_REMOVED_USER_IDS = new Set<string>([
   "u_lina",
 ]);
 
+/** بوتات/حسابات تجريبية محذوفة — تُزال من الحالة المحلية حتى بعد المزامنة */
+const LEGACY_REMOVED_USERNAMES = new Set<string>(["lina_art", "sata_q", "user"]);
+
+function isLegacyRemovedUser(u: Pick<User, "id" | "username">): boolean {
+  if (LEGACY_REMOVED_USER_IDS.has(u.id)) return true;
+  const un = (u.username || "").trim().toLowerCase();
+  return un.length > 0 && LEGACY_REMOVED_USERNAMES.has(un);
+}
+
 function cleanStoryStickersForLegacyUser(stickers: StorySticker[] | undefined, L: string): StorySticker[] | undefined {
   if (!stickers?.length) return stickers;
   return stickers.map(sk => {
@@ -375,10 +384,14 @@ function cleanStoryStickersForLegacyUser(stickers: StorySticker[] | undefined, L
 
 function stripLegacyFounderFromState(s: AppState): AppState {
   const CH = LEGACY_FOUNDER_CHANNEL_ID;
-  const stripUser = (id: string) => !LEGACY_REMOVED_USER_IDS.has(id);
+  const stripUser = (id: string) => {
+    const row = (s.users || []).find(u => u.id === id);
+    if (row && isLegacyRemovedUser(row)) return false;
+    return !LEGACY_REMOVED_USER_IDS.has(id);
+  };
 
   const users = (s.users || [])
-    .filter(u => !LEGACY_REMOVED_USER_IDS.has(u.id))
+    .filter(u => !isLegacyRemovedUser(u))
     .map(u => ({
       ...u,
       followers: (u.followers || []).filter(stripUser),
@@ -464,8 +477,13 @@ function stripLegacyFounderFromState(s: AppState): AppState {
     n => stripUser(n.userId) && stripUser(n.fromId),
   );
   const mediaNotes = (s.mediaNotes || []).filter(mn => stripUser(mn.authorId));
+  const currentRow = s.currentUserId
+    ? (s.users || []).find(u => u.id === s.currentUserId)
+    : undefined;
   const currentUserId =
-    s.currentUserId && LEGACY_REMOVED_USER_IDS.has(s.currentUserId) ? null : s.currentUserId;
+    s.currentUserId && (LEGACY_REMOVED_USER_IDS.has(s.currentUserId) || (currentRow && isLegacyRemovedUser(currentRow)))
+      ? null
+      : s.currentUserId;
   const accountIds = (s.accountIds || []).filter(stripUser);
 
   return {
