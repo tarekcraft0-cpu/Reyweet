@@ -81,6 +81,14 @@ export async function deliverNotification(
       await saveUserState(recipientId, state);
     }
     broadcastSseToUser(recipientId, "social_update", { notification: row });
+    void (async () => {
+      try {
+        const { sendInAppNotificationPush } = await import("./fcmAdmin.js");
+        await sendInAppNotificationPush(row);
+      } catch (e) {
+        console.warn("[fcm] deliverNotification push failed", e);
+      }
+    })();
     return row;
   } catch (e) {
     // eslint-disable-next-line no-console

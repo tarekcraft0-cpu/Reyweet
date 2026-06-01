@@ -26,11 +26,17 @@ loadConfig()
     messaging.onBackgroundMessage(payload => {
       const title = payload.notification?.title || "Retweet";
       const body = payload.notification?.body || "";
-      const chatId = payload.data?.chatId || "";
+      const d = payload.data || {};
       self.registration.showNotification(title, {
         body,
         icon: `${baseFromScope()}/favicon.png`,
-        data: { chatId, type: payload.data?.type || "message" },
+        data: {
+          type: d.type || "MESSAGE",
+          chatId: d.chatId || "",
+          fromId: d.fromId || "",
+          postId: d.postId || "",
+          storyId: d.storyId || "",
+        },
       });
     });
   })
@@ -40,18 +46,23 @@ loadConfig()
 
 self.addEventListener("notificationclick", event => {
   event.notification.close();
-  const chatId = event.notification?.data?.chatId;
+  const data = event.notification?.data || {};
+  const chatId = data.chatId || "";
+  const type = data.type || "MESSAGE";
   event.waitUntil(
     clients.matchAll({ type: "window", includeUncontrolled: true }).then(list => {
       for (const client of list) {
         if ("focus" in client) {
           client.focus();
-          client.postMessage({ type: "open_chat", chatId });
+          client.postMessage({ type: "push_tap", ...data });
           return;
         }
       }
       if (clients.openWindow) {
-        const url = chatId ? `${baseFromScope()}?openChat=${encodeURIComponent(chatId)}` : baseFromScope();
+        let url = baseFromScope();
+        if (type === "MESSAGE" && chatId) {
+          url = `${url}?openChat=${encodeURIComponent(chatId)}`;
+        }
         return clients.openWindow(url);
       }
     }),

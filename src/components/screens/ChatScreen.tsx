@@ -2968,6 +2968,12 @@ export function ChatScreen({
     releaseStuckStackListGestureRef.current();
   }, [chatTabActive]);
 
+  /** عند العودة لتبويب المحادثات — إعادة القائمة لعرض الشاشة كاملاً (iOS IPA) */
+  useLayoutEffect(() => {
+    if (!chatTabActive || openChat || stackClosingId) return;
+    resetStackToInboxRest();
+  }, [chatTabActive, openChat, stackClosingId, resetStackToInboxRest]);
+
   useEffect(() => {
     const onRing = (e: Event) => {
       const detail = (e as CustomEvent<IncomingCallRing>).detail;

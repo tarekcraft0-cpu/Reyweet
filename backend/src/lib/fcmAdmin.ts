@@ -1,10 +1,17 @@
+import type { Notification } from "../../../src/lib/types.js";
 import { getUserById } from "../db/engine.js";
 import { listPushTokensForUser, removePushTokens, type PushTokenRow } from "../db/pushTokens.js";
+import { buildPushFromNotification } from "./pushPresentation.js";
 
 export type FcmDataPayload = Record<string, string>;
 
 function env(key: string): string {
   return (process.env[key] || "").trim();
+}
+
+/** Android: res/raw/insta_sound.mp3 — iOS: insta_sound.caf في الحزمة */
+function fcmNotificationSound(): string {
+  return env("FCM_NOTIFICATION_SOUND") || "default";
 }
 
 export function isFcmConfigured(): boolean {
@@ -57,6 +64,11 @@ async function getMessaging(): Promise<Messaging | null> {
   return messagingPromise;
 }
 
+function apnsSoundValue(sound: string): string {
+  if (!sound || sound === "default") return "default";
+  return sound.endsWith(".caf") ? sound : `${sound}.caf`;
+}
+
 async function sendToToken(
   messaging: Messaging,
   row: PushTokenRow,
@@ -64,6 +76,8 @@ async function sendToToken(
   body: string,
   data: FcmDataPayload,
 ): Promise<boolean> {
+  const sound = fcmNotificationSound();
+  const androidSound = sound === "default" ? "default" : sound.replace(/\.(mp3|caf)$/i, "");
   try {
     await messaging.send({
       token: row.token,
@@ -71,13 +85,17 @@ async function sendToToken(
       data,
       android: {
         priority: "high",
-        notification: { channelId: "retweet_messages", sound: "default" },
+        notification: {
+          channelId: "retweet_messages",
+          sound: androidSound,
+        },
       },
       apns: {
         payload: {
           aps: {
-            sound: "default",
+            sound: apnsSoundValue(sound),
             badge: 1,
+            alert: { title, body },
           },
         },
       },
@@ -136,8 +154,29 @@ export async function sendNewChatMessagePush(opts: {
       : senderLabel;
   const body = opts.preview.trim() || "رسالة جديدة";
   void sendPushToUser(opts.recipientUserId, title, body, {
-    type: "message",
+    type: "MESSAGE",
     chatId: opts.chatId,
     senderId: opts.senderUserId,
   }).catch(e => console.warn("[fcm] message push failed", e));
+}
+
+/** إشعار اجتماعي (إعجاب، متابعة، تعليق…) — يُستدعى من deliverNotification */
+export async function sendInAppNotificationPush(
+  notif: Pick<
+    Notification,
+    | "type"
+    | "fromId"
+    | "userId"
+    | "text"
+    | "postId"
+    | "chatId"
+    | "storyId"
+    | "followRequestStatus"
+  >,
+): Promise<void> {
+  if (!notif.userId || notif.userId === notif.fromId) return;
+  const { title, body, data } = await buildPushFromNotification(notif);
+  void sendPushToUser(notif.userId, title, body, data).catch(e =>
+    console.warn("[fcm] social push failed", e),
+  );
 }

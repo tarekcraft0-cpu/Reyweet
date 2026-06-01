@@ -18,6 +18,44 @@ const sendSchema = z.object({
   data: z.record(z.string()).optional(),
 });
 
+async function handleRegisterToken(req: Request, res: Response): Promise<void> {
+  const userId = (req as AuthedReq).userId;
+  const parsed = registerSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "بيانات غير صالحة" });
+    return;
+  }
+  await upsertPushToken(userId, parsed.data.token, parsed.data.platform as PushPlatform);
+  res.json({ ok: true, success: true });
+}
+
+async function handleSendNotification(req: Request, res: Response): Promise<void> {
+  const callerId = (req as AuthedReq).userId;
+  const parsed = sendSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: "بيانات غير صالحة" });
+    return;
+  }
+  if (!isFcmConfigured()) {
+    res.status(503).json({ error: "FCM غير مُعدّ على الخادم", success: false });
+    return;
+  }
+
+  const targetId = parsed.data.userId?.trim() || callerId;
+  const isAdmin = await isPlatformAdmin(callerId);
+  if (targetId !== callerId && !isAdmin) {
+    res.status(403).json({ error: "غير مصرح بإرسال إشعار لمستخدم آخر", success: false });
+    return;
+  }
+
+  const data: Record<string, string> = {
+    ...(parsed.data.data ?? {}),
+    type: parsed.data.data?.type || "CUSTOM",
+  };
+  const result = await sendPushToUser(targetId, parsed.data.title, parsed.data.body, data);
+  res.json({ ok: true, success: true, ...result });
+}
+
 export function registerPushRoutes(
   app: Express,
   authMiddleware: (req: Request, res: Response, next: NextFunction) => void,
@@ -28,13 +66,8 @@ export function registerPushRoutes(
     });
   });
 
-  app.post("/v1/push/register", authMiddleware, async (req, res) => {
-    const userId = (req as AuthedReq).userId;
-    const parsed = registerSchema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ error: "بيانات غير صالحة" });
-    await upsertPushToken(userId, parsed.data.token, parsed.data.platform as PushPlatform);
-    return res.json({ ok: true });
-  });
+  app.post("/v1/push/register", authMiddleware, handleRegisterToken);
+  app.post("/save-token", authMiddleware, handleRegisterToken);
 
   app.delete("/v1/push/register", authMiddleware, async (req, res) => {
     const parsed = z.object({ token: z.string().min(20).max(4096) }).safeParse(req.body ?? {});
@@ -43,23 +76,6 @@ export function registerPushRoutes(
     return res.json({ ok: true });
   });
 
-  /** إرسال إشعار لمستخدم — للاختبار أو لوحة الإدارة */
-  app.post("/v1/push/send", authMiddleware, async (req, res) => {
-    const callerId = (req as AuthedReq).userId;
-    const parsed = sendSchema.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ error: "بيانات غير صالحة" });
-    if (!isFcmConfigured()) {
-      return res.status(503).json({ error: "FCM غير مُعدّ على الخادم" });
-    }
-
-    const targetId = parsed.data.userId?.trim() || callerId;
-    const isAdmin = await isPlatformAdmin(callerId);
-    if (targetId !== callerId && !isAdmin) {
-      return res.status(403).json({ error: "غير مصرح بإرسال إشعار لمستخدم آخر" });
-    }
-
-    const data: Record<string, string> = { ...(parsed.data.data ?? {}), type: "custom" };
-    const result = await sendPushToUser(targetId, parsed.data.title, parsed.data.body, data);
-    return res.json({ ok: true, ...result });
-  });
+  app.post("/v1/push/send", authMiddleware, handleSendNotification);
+  app.post("/send-notification", authMiddleware, handleSendNotification);
 }

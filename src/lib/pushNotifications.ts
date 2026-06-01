@@ -3,22 +3,16 @@ import { PushNotifications } from "@capacitor/push-notifications";
 import { isNativeCapacitorShell } from "./apiUrlPolicy";
 import { apiRegisterPushToken, apiUnregisterPushToken, type PushPlatform } from "./pushApi";
 import { isFirebaseWebConfigured, readFirebaseWebConfig } from "./firebaseClient";
+import { routePushNotificationTap, type PushDeepLinkPayload } from "./pushDeepLink";
 
 const PERMISSION_ASKED_KEY = "retweet_push_permission_asked_v1";
 let nativeListenersBound = false;
 let webMessagingBound = false;
 let lastRegisteredToken: string | null = null;
 
-function openChatFromPayload(data?: Record<string, unknown>): void {
-  const chatId =
-    typeof data?.chatId === "string"
-      ? data.chatId
-      : typeof data?.chat_id === "string"
-        ? data.chat_id
-        : "";
-  if (!chatId) return;
+function openFromPayload(data?: Record<string, unknown>): void {
   try {
-    window.dispatchEvent(new CustomEvent("retweet-open-chat", { detail: { chatId } }));
+    routePushNotificationTap(data as PushDeepLinkPayload);
   } catch {
     /* ignore */
   }
@@ -52,15 +46,15 @@ function bindNativePushListeners(): void {
 
   void PushNotifications.addListener("pushNotificationActionPerformed", action => {
     const data = action.notification.data as Record<string, unknown> | undefined;
-    openChatFromPayload(data);
+    openFromPayload(data);
   });
 
   void PushNotifications.addListener("pushNotificationReceived", notification => {
     const data = notification.data as Record<string, unknown> | undefined;
-    if (document.visibilityState === "visible" && data?.type === "message") {
+    const t = String(data?.type || "").toUpperCase();
+    if (document.visibilityState === "visible" && (t === "MESSAGE" || t === "message")) {
       return;
     }
-    openChatFromPayload(data);
   });
 }
 
@@ -137,10 +131,10 @@ async function initWebPush(): Promise<void> {
       const data = payload.data as Record<string, unknown> | undefined;
       const title = payload.notification?.title || "رسالة جديدة";
       const body = payload.notification?.body || "";
-      if (data?.type === "message" && Notification.permission === "granted") {
-        const n = new Notification(title, { body, data });
+      if (Notification.permission === "granted") {
+        const n = new Notification(title, { body, data: data as NotificationOptions["data"] });
         n.onclick = () => {
-          openChatFromPayload(data);
+          openFromPayload(data);
           n.close();
         };
       }
@@ -148,9 +142,14 @@ async function initWebPush(): Promise<void> {
   }
 
   navigator.serviceWorker.addEventListener("message", ev => {
-    const msg = ev.data as { type?: string; chatId?: string } | undefined;
-    if (msg?.type === "open_chat" && msg.chatId) {
-      openChatFromPayload({ chatId: msg.chatId });
+    const msg = ev.data as PushDeepLinkPayload & { type?: string } | undefined;
+    if (!msg) return;
+    if (msg.type === "open_chat" && msg.chatId) {
+      openFromPayload({ type: "MESSAGE", chatId: msg.chatId });
+      return;
+    }
+    if (msg.type === "open_push" || msg.type === "push_tap") {
+      openFromPayload(msg);
     }
   });
 }

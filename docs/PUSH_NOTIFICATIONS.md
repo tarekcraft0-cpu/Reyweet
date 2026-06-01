@@ -87,11 +87,15 @@ npm run build:spa
 | Method | Path | الوصف |
 |--------|------|--------|
 | GET | `/v1/push/status` | هل FCM مُعدّ؟ |
-| POST | `/v1/push/register` | حفظ token `{ token, platform: ios\|android\|web }` |
+| POST | `/v1/push/register` أو `/save-token` | حفظ token `{ token, platform: ios\|android\|web }` |
 | DELETE | `/v1/push/register` | إزالة token |
-| POST | `/v1/push/send` | إرسال تجريبي `{ title, body, userId? }` |
+| POST | `/v1/push/send` أو `/send-notification` | إرسال تجريبي `{ title, body, userId? }` |
 
-**إرسال تلقائي:** عند `POST /v1/messages` يُرسل إشعار للمستلم (عنوان = اسم المرسل، نص = معاينة الرسالة).
+**إرسال تلقائي:**
+- رسائل: عند `POST /v1/messages`
+- اجتماعي (إعجاب، متابعة، تعليق…): عبر `deliverNotification` → FCM
+
+انظر أيضاً: [`PUSH_NOTIFICATIONS_INSTAGRAM.md`](./PUSH_NOTIFICATIONS_INSTAGRAM.md)
 
 ---
 

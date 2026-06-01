@@ -197,10 +197,10 @@ export function WebAppRoot() {
   return (
     <div
       className={
-        "relative mx-auto w-full max-w-md overflow-x-hidden bg-background text-start " +
+        "relative w-full overflow-x-hidden bg-background text-start " +
         (nativeShell
-          ? "flex h-full min-h-0 flex-col"
-          : "min-h-dvh supports-[height:100dvh]:min-h-dvh")
+          ? "flex h-full min-h-0 max-w-none flex-col"
+          : "mx-auto max-w-md min-h-dvh supports-[height:100dvh]:min-h-dvh")
       }
       {...nativeNoSelectCaptureHandlers}
     >

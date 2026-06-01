@@ -478,12 +478,39 @@ html.retweet-native-shell.retweet-kb-body-resize {
 
 html.retweet-native-shell body,
 html.retweet-native-shell #root {
+  width: 100%;
+  max-width: none;
   height: 100%;
   max-height: 100%;
   min-height: 0;
   box-sizing: border-box;
   overflow: hidden;
   overscroll-behavior: none;
+}
+
+/** iOS/Capacitor — عمود التطبيق بعرض الشاشة (بدون max-w-md ولا هوامش جانبية) */
+html.retweet-native-shell .retweet-no-select-pane,
+html.retweet-native-shell #root > .retweet-no-select-pane {
+  width: 100%;
+  max-width: none;
+  margin-inline: 0;
+}
+
+html.retweet-native-shell [data-floating-nav-host] {
+  max-width: none;
+}
+
+html.retweet-native-shell .chat-stack-scene,
+html.retweet-native-shell .chat-inbox-pane,
+html.retweet-native-shell .chat-inbox-scroll {
+  width: 100%;
+  max-width: none;
+  margin-inline: 0;
+}
+
+html.retweet-native-shell .chat-room-viewport {
+  max-width: none;
+  margin-inline: 0;
 }
 
 /* Capacitor resize:body — body يتقلص فوق الكيبورد؛ dvh لا يتبع ذلك */

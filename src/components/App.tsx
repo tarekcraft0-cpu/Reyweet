@@ -776,6 +776,30 @@ export function App() {
     [tab, viewProfileId, currentUser, activeChatId],
   );
 
+  useEffect(() => {
+    const onOpenProfileFromPush = (e: Event) => {
+      const userId = (e as CustomEvent<{ userId: string }>).detail?.userId;
+      if (!userId) return;
+      openProfile(userId);
+    };
+    const onOpenNotifications = () => {
+      if (!isGuest) setModal("notifications");
+    };
+    const onOpenPostFromPush = () => {
+      setTab("home");
+      setModal(null);
+      setViewProfileId(null);
+    };
+    window.addEventListener("retweet-open-profile", onOpenProfileFromPush);
+    window.addEventListener("retweet-open-notifications", onOpenNotifications);
+    window.addEventListener("retweet-open-post-id", onOpenPostFromPush);
+    return () => {
+      window.removeEventListener("retweet-open-profile", onOpenProfileFromPush);
+      window.removeEventListener("retweet-open-notifications", onOpenNotifications);
+      window.removeEventListener("retweet-open-post-id", onOpenPostFromPush);
+    };
+  }, [openProfile, isGuest]);
+
   const popProfileScreenBack = useCallback(() => {
     if (modal) {
       setModal(null);
@@ -1218,8 +1242,8 @@ export function App() {
     <div
       key={accountSessionKey}
       className={
-        "retweet-no-select-pane select-none relative mx-auto flex w-full max-w-md flex-col overflow-x-hidden overscroll-none bg-background " +
-        (nativeShell ? "" : "supports-[height:100dvh] ") +
+        "retweet-no-select-pane select-none relative flex w-full flex-col overflow-x-hidden overscroll-none bg-background " +
+        (nativeShell ? "max-w-none " : "mx-auto max-w-md supports-[height:100dvh] ") +
         (banOverlayActive ? "pointer-events-none " : "") +
         appShellHeight +
         " overflow-hidden"

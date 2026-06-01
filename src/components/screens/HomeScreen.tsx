@@ -84,7 +84,16 @@ export const HomeScreen = memo(function HomeScreen({
     window.addEventListener("retweet-open-story", handler);
     return () => window.removeEventListener("retweet-open-story", handler);
   }, []);
-  
+
+  useEffect(() => {
+    const onOpenPost = (e: Event) => {
+      const postId = (e as CustomEvent<{ postId: string }>).detail?.postId;
+      if (postId) setOpenPostId(postId);
+    };
+    window.addEventListener("retweet-open-post-id", onOpenPost);
+    return () => window.removeEventListener("retweet-open-post-id", onOpenPost);
+  }, []);
+
   useLayoutEffect(() => {
     if (!restoreFromProfileContext || restoreFromProfileContext.tab !== "home") return;
     const d = restoreFromProfileContext;

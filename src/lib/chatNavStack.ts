@@ -65,12 +65,16 @@ export function chatNavCompleteMs(pullPx: number, widthPx: number): number {
 export function chatNavOpenTransforms(t: number, widthPx: number) {
   const w = chatNavWidth(widthPx);
   const p = Math.max(0, Math.min(1, t));
-  const roomTx = Math.round(w * (1 - p));
+  /** نسبة مئوية — تطابق عرض الحاوية دائماً (يمنع فراغاً على iOS عند اختلاف cap عن العرض الفعلي) */
+  const room =
+    p >= 0.999
+      ? "none"
+      : `translate3d(${(100 * (1 - p)).toFixed(4)}%, 0, 0)`;
   /** القائمة تبقى بعرض الشاشة عند الراحة — parallax خفيف فقط أثناء الفتح */
   const inboxTx =
     p <= 0.001 || p >= 0.999 ? 0 : Math.round(-w * 0.05 * (1 - p));
   return {
-    room: `translate3d(${roomTx}px, 0, 0)`,
+    room,
     inbox: inboxTx === 0 ? "none" : `translate3d(${inboxTx}px, 0, 0)`,
   };
 }
@@ -141,7 +145,7 @@ export function snapChatNavInboxRest(layers: ChatNavLayerRefs, widthPx?: number)
         (typeof window !== "undefined" ? window.innerWidth : 390),
     );
     const { room } = chatNavOpenTransforms(0, w);
-    layers.roomEl.style.transform = room;
+    layers.roomEl.style.transform = room === "none" ? "translate3d(100%, 0, 0)" : room;
     layers.roomEl.style.transformOrigin = "";
     layers.roomEl.style.transition = "none";
     layers.roomEl.style.visibility = "";
