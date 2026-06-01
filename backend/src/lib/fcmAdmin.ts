@@ -1,17 +1,17 @@
 import type { Notification } from "../../../src/lib/types.js";
 import { getUserById } from "../db/engine.js";
-import { listPushTokensForUser, removePushTokens, type PushTokenRow } from "../db/pushTokens.js";
+import {
+  listPushTokensForUser,
+  removePushTokens,
+  type PushTokenRow,
+} from "../db/pushTokens.js";
+import { buildProductionFcmMessage, stringifyFcmData } from "./fcmMessage.js";
 import { buildPushFromNotification } from "./pushPresentation.js";
 
 export type FcmDataPayload = Record<string, string>;
 
 function env(key: string): string {
   return (process.env[key] || "").trim();
-}
-
-/** Android: res/raw/insta_sound.mp3 — iOS: insta_sound.caf في الحزمة */
-function fcmNotificationSound(): string {
-  return env("FCM_NOTIFICATION_SOUND") || "default";
 }
 
 export function isFcmConfigured(): boolean {
@@ -23,8 +23,7 @@ function serviceAccountFromEnv(): Record<string, string> | null {
   const json = env("FIREBASE_SERVICE_ACCOUNT_JSON");
   if (json) {
     try {
-      const parsed = JSON.parse(json) as Record<string, string>;
-      return parsed;
+      return JSON.parse(json) as Record<string, string>;
     } catch {
       return null;
     }
@@ -64,11 +63,6 @@ async function getMessaging(): Promise<Messaging | null> {
   return messagingPromise;
 }
 
-function apnsSoundValue(sound: string): string {
-  if (!sound || sound === "default") return "default";
-  return sound.endsWith(".caf") ? sound : `${sound}.caf`;
-}
-
 async function sendToToken(
   messaging: Messaging,
   row: PushTokenRow,
@@ -76,30 +70,16 @@ async function sendToToken(
   body: string,
   data: FcmDataPayload,
 ): Promise<boolean> {
-  const sound = fcmNotificationSound();
-  const androidSound = sound === "default" ? "default" : sound.replace(/\.(mp3|caf)$/i, "");
+  const payload = stringifyFcmData({ ...data, type: data.type || "CUSTOM" });
+  const message = buildProductionFcmMessage({
+    token: row.token,
+    title,
+    body,
+    data: payload,
+    platform: row.platform,
+  });
   try {
-    await messaging.send({
-      token: row.token,
-      notification: { title, body },
-      data,
-      android: {
-        priority: "high",
-        notification: {
-          channelId: "retweet_messages",
-          sound: androidSound,
-        },
-      },
-      apns: {
-        payload: {
-          aps: {
-            sound: apnsSoundValue(sound),
-            badge: 1,
-            alert: { title, body },
-          },
-        },
-      },
-    });
+    await messaging.send(message);
     return true;
   } catch (e: unknown) {
     const code = (e as { code?: string })?.code;
@@ -119,12 +99,12 @@ export async function sendPushToUser(
   title: string,
   body: string,
   data: FcmDataPayload = {},
-): Promise<{ sent: number; failed: number }> {
+): Promise<{ sent: number; failed: number; noTokens: boolean }> {
   const messaging = await getMessaging();
-  if (!messaging) return { sent: 0, failed: 0 };
+  if (!messaging) return { sent: 0, failed: 0, noTokens: false };
 
   const rows = await listPushTokensForUser(userId);
-  if (!rows.length) return { sent: 0, failed: 0 };
+  if (!rows.length) return { sent: 0, failed: 0, noTokens: true };
 
   let sent = 0;
   let failed = 0;
@@ -133,7 +113,7 @@ export async function sendPushToUser(
     if (ok) sent++;
     else failed++;
   }
-  return { sent, failed };
+  return { sent, failed, noTokens: false };
 }
 
 export async function sendNewChatMessagePush(opts: {
@@ -160,7 +140,6 @@ export async function sendNewChatMessagePush(opts: {
   }).catch(e => console.warn("[fcm] message push failed", e));
 }
 
-/** إشعار اجتماعي (إعجاب، متابعة، تعليق…) — يُستدعى من deliverNotification */
 export async function sendInAppNotificationPush(
   notif: Pick<
     Notification,

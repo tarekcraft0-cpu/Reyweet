@@ -194,6 +194,12 @@ function patchIosEmbeddedCapConfig() {
   if (deps["@capacitor/keyboard"] && !capJson.packageClassList.includes("KeyboardPlugin")) {
     capJson.packageClassList.push("KeyboardPlugin");
   }
+  if (
+    deps["@capacitor/push-notifications"] &&
+    !capJson.packageClassList.includes("PushNotificationsPlugin")
+  ) {
+    capJson.packageClassList.push("PushNotificationsPlugin");
+  }
   fs.writeFileSync(iosCapJson, JSON.stringify(capJson, null, 2) + "\n", "utf8");
   console.log(
     `  ✓ ios/App/App/capacitor.config.json (plugins: ${capJson.packageClassList.length})`,
@@ -204,15 +210,27 @@ function ensureCapacitorIosPods() {
   const podfile = path.join(root, "ios", "App", "Podfile");
   if (!fs.existsSync(podfile)) return;
   let pod = fs.readFileSync(podfile, "utf8");
-  const keyboardLine =
-    "  pod 'CapacitorKeyboard', :path => '../../node_modules/@capacitor/keyboard'";
-  if (!pod.includes("CapacitorKeyboard")) {
-    pod = pod.replace(
-      /pod 'CapacitorCordova'[^\n]+\n/,
-      (m) => `${m}${keyboardLine}\n`,
-    );
+  let changed = false;
+  const inserts = [
+    {
+      name: "CapacitorKeyboard",
+      line: "  pod 'CapacitorKeyboard', :path => '../../node_modules/@capacitor/keyboard'",
+    },
+    {
+      name: "CapacitorPushNotifications",
+      line:
+        "  pod 'CapacitorPushNotifications', :path => '../../node_modules/@capacitor/push-notifications'",
+    },
+  ];
+  for (const { name, line } of inserts) {
+    if (!pod.includes(name)) {
+      pod = pod.replace(/pod 'CapacitorCordova'[^\n]+\n/, m => `${m}${line}\n`);
+      changed = true;
+    }
+  }
+  if (changed) {
     fs.writeFileSync(podfile, pod, "utf8");
-    console.log("  ✓ Podfile (+ CapacitorKeyboard)");
+    console.log("  ✓ Podfile (+ CapacitorKeyboard / PushNotifications)");
   }
 }
 

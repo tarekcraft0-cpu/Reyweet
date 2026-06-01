@@ -9,6 +9,19 @@ const PERMISSION_ASKED_KEY = "retweet_push_permission_asked_v1";
 let nativeListenersBound = false;
 let webMessagingBound = false;
 let lastRegisteredToken: string | null = null;
+let resumeBound = false;
+
+export type InAppPushDetail = {
+  title: string;
+  body: string;
+  data?: Record<string, unknown>;
+};
+
+function dispatchInAppPush(detail: InAppPushDetail): void {
+  if (typeof window === "undefined") return;
+  if (document.visibilityState !== "visible") return;
+  window.dispatchEvent(new CustomEvent("retweet-push-received", { detail }));
+}
 
 function openFromPayload(data?: Record<string, unknown>): void {
   try {
@@ -25,10 +38,23 @@ function platformForNative(): PushPlatform {
   return "web";
 }
 
-async function registerToken(token: string, platform: PushPlatform): Promise<void> {
-  if (!token || token === lastRegisteredToken) return;
+async function registerToken(
+  token: string,
+  platform: PushPlatform,
+  forceServer = false,
+): Promise<void> {
+  if (!token) return;
+  if (!forceServer && token === lastRegisteredToken) return;
   const r = await apiRegisterPushToken(token, platform);
   if (r.ok) lastRegisteredToken = token;
+}
+
+function bindResumeSync(): void {
+  if (resumeBound || typeof document === "undefined") return;
+  resumeBound = true;
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") void syncPushRegistration();
+  });
 }
 
 function bindNativePushListeners(): void {
@@ -37,7 +63,7 @@ function bindNativePushListeners(): void {
 
   void PushNotifications.addListener("registration", reg => {
     const token = reg.value?.trim();
-    if (token) void registerToken(token, platformForNative());
+    if (token) void registerToken(token, platformForNative(), true);
   });
 
   void PushNotifications.addListener("registrationError", err => {
@@ -50,17 +76,21 @@ function bindNativePushListeners(): void {
   });
 
   void PushNotifications.addListener("pushNotificationReceived", notification => {
-    const data = notification.data as Record<string, unknown> | undefined;
-    const t = String(data?.type || "").toUpperCase();
-    if (document.visibilityState === "visible" && (t === "MESSAGE" || t === "message")) {
-      return;
-    }
+    const data = (notification.data || {}) as Record<string, unknown>;
+    const title =
+      notification.title?.trim() ||
+      String(data.title || data.notification_title || "Reyweet");
+    const body =
+      notification.body?.trim() ||
+      String(data.body || data.notification_body || "");
+    dispatchInAppPush({ title, body, data });
   });
 }
 
 async function initNativePush(): Promise<void> {
   if (!isNativeCapacitorShell()) return;
   bindNativePushListeners();
+  bindResumeSync();
 
   let perm = await PushNotifications.checkPermissions();
   if (perm.receive === "prompt") {
@@ -122,15 +152,18 @@ async function initWebPush(): Promise<void> {
     vapidKey: cfg.vapidKey,
     serviceWorkerRegistration: registration,
   });
-  if (token) await registerToken(token, "web");
+  if (token) await registerToken(token, "web", true);
 
   if (!webMessagingBound) {
     webMessagingBound = true;
     onMessage(messaging, payload => {
-      if (document.visibilityState === "visible") return;
       const data = payload.data as Record<string, unknown> | undefined;
-      const title = payload.notification?.title || "رسالة جديدة";
-      const body = payload.notification?.body || "";
+      const title = payload.notification?.title || String(data?.title || "Reyweet");
+      const body = payload.notification?.body || String(data?.body || "");
+      if (document.visibilityState === "visible") {
+        dispatchInAppPush({ title, body, data });
+        return;
+      }
       if (Notification.permission === "granted") {
         const n = new Notification(title, { body, data: data as NotificationOptions["data"] });
         n.onclick = () => {
@@ -152,9 +185,27 @@ async function initWebPush(): Promise<void> {
       openFromPayload(msg);
     }
   });
+
+  bindResumeSync();
 }
 
-/** يُستدعى بعد تسجيل الدخول — يطلب الإذن أول مرة ويسجّل FCM token */
+/** إعادة تسجيل التوكن — عند فتح التطبيق أو بعد تحديث FCM */
+export async function syncPushRegistration(force = false): Promise<void> {
+  try {
+    if (isNativeCapacitorShell()) {
+      const perm = await PushNotifications.checkPermissions();
+      if (perm.receive !== "granted") return;
+      if (force) lastRegisteredToken = null;
+      await PushNotifications.register();
+      return;
+    }
+    if (force) lastRegisteredToken = null;
+    await initWebPush();
+  } catch (e) {
+    console.warn("[push] sync failed", e);
+  }
+}
+
 export async function initPushNotifications(): Promise<void> {
   try {
     if (isNativeCapacitorShell()) {

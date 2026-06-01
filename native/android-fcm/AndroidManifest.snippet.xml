@@ -1,0 +1,11 @@
+<!-- داخل <application> بعد إنشاء مشروع Android (npx cap add android) -->
+<service
+    android:name=".push.RetweetFirebaseMessagingService"
+    android:exported="false">
+    <intent-filter>
+        <action android:name="com.google.firebase.MESSAGING_EVENT" />
+    </intent-filter>
+</service>
+
+<!-- POST_NOTIFICATIONS لـ Android 13+ -->
+<uses-permission android:name="android.permission.POST_NOTIFICATIONS" />

@@ -77,6 +77,7 @@ import { GuestBrowseProfilePrompt } from "./GuestBrowseProfilePrompt";
 import { NotificationsPanel } from "./NotificationsPanel";
 import { ReportStatusScreen } from "./moderation/ReportStatusScreen";
 import { NotificationBanner } from "./NotificationBanner";
+import { InAppPushToast } from "./InAppPushToast";
 import { PerfHUD } from "./dev/PerfHUD";
 import { Avatar } from "./Avatar";
 import { AccountSwitcherSheet } from "./rsocial/AccountSwitcherSheet";
@@ -134,7 +135,10 @@ export function App() {
 
   useEffect(() => {
     if (!currentUser || isGuest) return;
-    void import("@/lib/pushNotifications").then(m => m.initPushNotifications());
+    void import("@/lib/pushNotifications").then(m => {
+      void m.initPushNotifications();
+      void m.syncPushRegistration();
+    });
     return () => {
       void import("@/lib/pushNotifications").then(m => m.teardownPushNotifications());
     };
@@ -1267,6 +1271,7 @@ export function App() {
           {switchFailToast}
         </div>
       )}
+      {currentUser && !isGuest && <InAppPushToast />}
       {!storyFullscreen && !chatOccupiesShell && !postImmersiveMode && !settingsImmersive && <NotificationBanner />}
       <PerfHUD />
       {!hideAppHeader && (
