@@ -1,4 +1,5 @@
 import { APP_COLUMN_MAX_PX } from "@/hooks/useSlideDismissBack";
+import { isNativeCapacitorShell } from "@/lib/apiUrlPolicy";
 import { isPointerOnPhysicalChatBackEdge } from "@/lib/edgeSwipeDismiss";
 
 /** عرض افتراضي عند غياب window أو أثناء انتقال الصفحة */
@@ -18,7 +19,9 @@ export function readSafeViewportWidth(): number {
     const vv = window.visualViewport?.width;
     const raw = Number(vv ?? window.innerWidth);
     if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_LAYOUT_WIDTH_PX;
-    return Math.min(Math.max(Math.round(raw), MIN_LAYOUT_WIDTH_PX), APP_COLUMN_MAX_PX);
+    const w = Math.max(MIN_LAYOUT_WIDTH_PX, Math.round(raw));
+    if (isNativeCapacitorShell()) return w;
+    return Math.min(w, APP_COLUMN_MAX_PX);
   } catch {
     return DEFAULT_LAYOUT_WIDTH_PX;
   }
@@ -86,7 +89,9 @@ export function readSafeStackCapPx(
         ? fallbackCapRef.current
         : 0;
     const base = fromRect && fromRect > 0 ? fromRect : fromRef > 0 ? fromRef : readSafeViewportWidth();
-    return Math.max(MIN_LAYOUT_WIDTH_PX, Math.min(Math.round(base), APP_COLUMN_MAX_PX));
+    const w = Math.max(MIN_LAYOUT_WIDTH_PX, Math.round(base));
+    if (isNativeCapacitorShell()) return w;
+    return Math.min(w, APP_COLUMN_MAX_PX);
   } catch {
     return readSafeViewportWidth();
   }

@@ -81,6 +81,7 @@ import { chatHapticLight, chatHapticSuccess } from "@/lib/chatHaptics";
 import { useChatKeyboardInsets } from "@/hooks/useChatKeyboardInsets";
 import { chatComposerBottomPadding } from "@/hooks/useVisualViewportLayout";
 import { isNativeCapacitorShell } from "@/lib/apiUrlPolicy";
+import { resetNativeChatInboxLayout } from "@/lib/nativeChatInboxLayout";
 import { compressChatMediaFile } from "@/lib/chatMediaCompress";
 import { isOwnChatMessage, resolveActiveViewerId } from "@/lib/chatViewer";
 import { messageContent, normalizeChatRecord } from "@/lib/chatNormalize";
@@ -2208,6 +2209,7 @@ export function ChatScreen({
       const layers = stackLayers();
       snapChatNavInboxRest(layers);
       snapStackLayersToInboxRest(layers);
+      resetNativeChatInboxLayout(layers);
     },
     [stackLayers, onExitNavRevealProgress],
   );
@@ -2498,11 +2500,12 @@ export function ChatScreen({
     }
     if (!openChat && !stackClosingId) {
       applyStackLayerTransforms(0, false);
+      if (chatTabActive) resetNativeChatInboxLayout(stackLayers());
     } else {
       snapChatNavInboxRest(stackLayers(), stackCapRef.current);
     }
     clearChatStackCssProgress();
-  }, [stackLayers, applyStackLayerTransforms, openChat, stackClosingId]);
+  }, [stackLayers, applyStackLayerTransforms, openChat, stackClosingId, chatTabActive]);
 
   useLayoutEffect(() => {
     const el = stackInboxRef.current;
@@ -2972,16 +2975,8 @@ export function ChatScreen({
   useLayoutEffect(() => {
     if (!chatTabActive || openChat || stackClosingId) return;
     resetStackToInboxRest();
-    if (!isNativeCapacitorShell()) return;
-    const panel = stackInboxRef.current?.closest<HTMLElement>('[data-tab-panel="chat"]');
-    if (panel) panel.style.transform = "translate3d(0, 0, 0)";
-    const scene = stackInboxRef.current?.parentElement;
-    if (scene?.classList.contains("chat-stack-scene")) {
-      scene.style.width = "100%";
-      scene.style.maxWidth = "100%";
-      scene.style.transform = "none";
-    }
-  }, [chatTabActive, openChat, stackClosingId, resetStackToInboxRest]);
+    resetNativeChatInboxLayout(stackLayers());
+  }, [chatTabActive, openChat, stackClosingId, resetStackToInboxRest, stackLayers]);
 
   useEffect(() => {
     if (!chatTabActive || !isNativeCapacitorShell()) return;
@@ -2989,9 +2984,22 @@ export function ChatScreen({
       if (document.visibilityState !== "visible" || openChat || stackClosingId) return;
       resetStackToInboxRest();
     };
+    const onResize = () => {
+      if (openChat || stackClosingId) return;
+      stackCapRef.current = readSafeViewportWidth();
+      resetNativeChatInboxLayout(stackLayers());
+    };
     document.addEventListener("visibilitychange", onVisible);
-    return () => document.removeEventListener("visibilitychange", onVisible);
-  }, [chatTabActive, openChat, stackClosingId, resetStackToInboxRest]);
+    window.addEventListener("resize", onResize);
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", onResize);
+    }
+    return () => {
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("resize", onResize);
+      window.visualViewport?.removeEventListener("resize", onResize);
+    };
+  }, [chatTabActive, openChat, stackClosingId, resetStackToInboxRest, stackLayers]);
 
   useEffect(() => {
     const onRing = (e: Event) => {
@@ -3712,7 +3720,7 @@ export function ChatScreen({
         </div>
       )}
       <div
-        dir="ltr"
+        dir={isRtl ? "rtl" : "ltr"}
         className="chat-stack-scene relative flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col overflow-hidden bg-background"
       >
         {chatInbox}

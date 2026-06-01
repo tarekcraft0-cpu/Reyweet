@@ -150,7 +150,15 @@ export function snapChatNavInboxRest(layers: ChatNavLayerRefs, widthPx?: number)
         (typeof window !== "undefined" ? window.innerWidth : 390),
     );
     const { room } = chatNavOpenTransforms(0, w);
-    layers.roomEl.style.transform = roomEmpty ? "none" : room === "none" ? "translate3d(100%, 0, 0)" : room;
+    layers.roomEl.style.left = "0";
+    layers.roomEl.style.right = "0";
+    layers.roomEl.style.width = "100%";
+    layers.roomEl.style.maxWidth = "100%";
+    layers.roomEl.style.transform = roomEmpty
+      ? "none"
+      : room === "none"
+        ? "translate3d(100%, 0, 0)"
+        : room;
     layers.roomEl.style.transformOrigin = "";
     layers.roomEl.style.transition = "none";
     layers.roomEl.style.visibility = roomEmpty ? "hidden" : "";

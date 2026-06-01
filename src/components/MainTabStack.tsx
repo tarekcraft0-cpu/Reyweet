@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { TabActiveContext } from "@/lib/tabActiveContext";
+import { isNativeCapacitorShell } from "@/lib/apiUrlPolicy";
 import { PAGER_TAB_CHAIN, type PagerTab } from "./MainTabPager";
 
 const TAB_AXIS_LOCK_PX = 10;
@@ -140,6 +141,19 @@ export function MainTabStack({
     setDragIndex(null);
     setAnimating(false);
   }, [activeTab]);
+
+  useLayoutEffect(() => {
+    if (!isNativeCapacitorShell() || activeTab !== "chat" || dragIndex != null) return;
+    const host = containerRef.current;
+    if (!host) return;
+    const panel = host.querySelector<HTMLElement>('[data-tab-panel="chat"]');
+    if (!panel) return;
+    panel.style.transform = "translate3d(0, 0, 0)";
+    panel.style.width = "100%";
+    panel.style.maxWidth = "none";
+    panel.style.marginLeft = "0";
+    panel.style.marginRight = "0";
+  }, [activeTab, dragIndex, settledIndex]);
 
   const displayIndex =
     dragIndex != null ? clamp(dragIndex, 0, TAB_COUNT - 1) : settledIndex;

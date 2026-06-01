@@ -1,5 +1,6 @@
 import { useCallback, useRef, type ReactNode } from "react";
 import { useBottomNavSheet } from "@/hooks/useBottomNavSheet";
+import { isNativeCapacitorShell } from "@/lib/apiUrlPolicy";
 import { BottomNavDragContext } from "@/lib/bottomNavDragContext";
 import { BOTTOM_NAV_TAB_COUNT } from "@/lib/bottomNavConfig";
 import { BottomNavTabRow } from "./BottomNavTabRow";
@@ -44,7 +45,10 @@ export function BottomNavSheet({
         dir="ltr"
         role="navigation"
         aria-label="شريط التنقل"
-        className="pointer-events-none fixed inset-x-0 bottom-0 z-[90] mx-auto flex w-full max-w-md justify-center px-4"
+        className={
+          "pointer-events-none fixed inset-x-0 bottom-0 z-[90] mx-auto flex w-full justify-center px-4 " +
+          (isNativeCapacitorShell() ? "max-w-none" : "max-w-md")
+        }
         style={{
           paddingBottom: "max(12px, var(--sab))",
         }}

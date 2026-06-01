@@ -51,6 +51,7 @@ export function snapStackLayersToInboxRest(layers: StackLayerRefs): void {
     layers.inboxEl.style.transformOrigin = "";
     layers.inboxEl.style.transition = "none";
     layers.inboxEl.style.willChange = "auto";
+    layers.inboxEl.dataset.inboxAtRest = "true";
   }
   if (layers.roomEl) {
     layers.roomEl.style.visibility = "";

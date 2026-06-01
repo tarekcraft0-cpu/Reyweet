@@ -502,30 +502,46 @@ html.retweet-native-shell [data-floating-nav-host] {
   max-width: none;
 }
 
-html.retweet-native-shell [data-tab-panel="chat"] {
-  width: 100%;
-  max-width: none;
-  inset-inline: 0;
+html.retweet-native-shell [data-tab-panel="chat"],
+html.retweet-native-shell [data-tab-panel="chat"] .tab-panel-scroll {
+  width: 100% !important;
+  max-width: none !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  inset-inline: 0 !important;
+  transform: translate3d(0, 0, 0) !important;
+}
+
+html.retweet-native-shell [data-tab-panel="chat"][data-chat-inbox-settled="true"] {
+  transform: none !important;
 }
 
 html.retweet-native-shell .chat-stack-scene {
-  contain: none;
-  width: 100%;
-  max-width: none;
-  margin-inline: 0;
-  inset-inline: 0;
+  contain: none !important;
+  width: 100% !important;
+  max-width: none !important;
+  margin-inline: 0 !important;
+  inset-inline: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  transform: none !important;
 }
 
 html.retweet-native-shell .chat-inbox-pane,
 html.retweet-native-shell .chat-inbox-scroll {
-  width: 100%;
-  max-width: none;
-  margin-inline: 0;
-  inset-inline: 0;
+  width: 100% !important;
+  max-width: none !important;
+  margin-inline: 0 !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  inset-inline: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
 }
 
 html.retweet-native-shell .chat-inbox-pane[data-inbox-at-rest="true"] {
   transform: none !important;
+  translate: none !important;
 }
 
 html.retweet-native-shell .chat-room-viewport {
