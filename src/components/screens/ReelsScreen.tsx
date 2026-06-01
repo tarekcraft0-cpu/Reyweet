@@ -16,7 +16,6 @@ import {
   useCurrentUser,
   useIsGuestSelector,
   usePosts,
-  useReelsPosts,
   useAppSelector,
   useAppState,
   userById,
@@ -47,6 +46,14 @@ import { PostOptionsMenu, CommentOptionsMenu } from "../PostOptionsMenu";
 import { VerifiedMarkForUser } from "../VerifiedBadge";
 import { isReelFeedPost, normalizePostMedia, type NormalizedPostMedia } from "@/lib/postMedia";
 import { REEL_SAFE_CONTENT_RATIO } from "@/lib/reelsSpec";
+import { useReelsFeed } from "@/hooks/useReelsFeed";
+import {
+  apiAddReelComment,
+  apiFetchReelComments,
+  apiRecordReelView,
+  apiToggleReelLike,
+  reelsApiEnabled,
+} from "@/lib/reelsApi";
 
 /* ═══════════════════════════════════════
    ReelMediaPlayer — مشغّل الفيديو بملء الشاشة
@@ -126,7 +133,9 @@ const ReelMediaPlayer = memo(function ReelMediaPlayer({
   /** فيديوهات مُعالَجة على الخادم (9:16) — ملء الشاشة؛ غير ذلك contain بدون تشويه */
   const fillFrame =
     !!media.videoUrl &&
-    (/\/media\/videos\//.test(media.videoUrl) || media.videoUrl.includes(".mp4"));
+    (/\/media\/videos\//.test(media.videoUrl) ||
+      /\/uploads\/reels\//.test(media.videoUrl) ||
+      media.videoUrl.includes(".mp4"));
 
   return (
     <div
@@ -305,7 +314,6 @@ export const ReelsScreen = memo(function ReelsScreen({
   useScreenPerf("ReelsScreen", { active: isTabActive });
   const t = useT();
   const me = currentUser!;
-  const allReels = useReelsPosts(me.id, me.blocked ?? []);
 
   const guestBlock = () => {
     if (!isGuest) return false;
@@ -314,6 +322,18 @@ export const ReelsScreen = memo(function ReelsScreen({
   };
 
   const [tab, setTab] = useState<"all" | "friends">("all");
+  const {
+    reels,
+    useApi: reelsUseApi,
+    loading: reelsLoading,
+    hasMore: reelsHasMore,
+    refresh: refreshReelsFeed,
+    loadMore: loadMoreReels,
+    patchReelMeta,
+    getLikeCount,
+    getCommentCount,
+    isLiked: isReelLiked,
+  } = useReelsFeed(me.id, me.blocked ?? [], me.following ?? [], tab);
   const [sharePost, setSharePost] = useState<Post | null>(null);
   const [commentsFor, setCommentsFor] = useState<Post | null>(null);
   const [commentDraft, setCommentDraft] = useState("");
@@ -357,7 +377,8 @@ export const ReelsScreen = memo(function ReelsScreen({
   useEffect(() => {
     if (!isTabActive) return;
     refreshFromServer();
-  }, [refreshFromServer, isTabActive]);
+    void refreshReelsFeed();
+  }, [refreshFromServer, refreshReelsFeed, isTabActive]);
 
   /* منع overscroll على الصفحة — فقط أثناء عرض تبويب الريلز */
   useEffect(() => {
@@ -379,6 +400,7 @@ export const ReelsScreen = memo(function ReelsScreen({
       const dy = (e.changedTouches[0]?.clientY ?? pullRef.current.y0) - pullRef.current.y0;
       if (el.scrollTop <= 0 && dy > 72) {
         refreshFromServer();
+        void refreshReelsFeed();
         setReelPullHint(true);
         window.setTimeout(() => setReelPullHint(false), 1200);
       }
@@ -389,13 +411,25 @@ export const ReelsScreen = memo(function ReelsScreen({
       el.removeEventListener("touchstart", onStart);
       el.removeEventListener("touchend", onEnd);
     };
-  }, [refreshFromServer]);
-
-  const reels = tab === "friends"
-    ? allReels.filter(p => me.following.includes(p.userId))
-    : allReels;
+  }, [refreshFromServer, refreshReelsFeed]);
 
   const reelIdSetKey = useMemo(() => reels.map(r => r.id).sort().join("|"), [reels]);
+
+  const handleReelLike = useCallback(
+    async (postId: string) => {
+      if (reelsUseApi && reelsApiEnabled()) {
+        const res = await apiToggleReelLike(postId);
+        if (res.ok) {
+          patchReelMeta(postId, { likedByMe: res.liked, likesCount: res.likesCount });
+          return;
+        }
+      }
+      toggleLike(postId);
+    },
+    [reelsUseApi, patchReelMeta, toggleLike],
+  );
+
+  const viewedReelsRef = useRef<Set<string>>(new Set());
 
   const activeReelIdx = useMemo(() => {
     if (!activeReelId || reels.length === 0) return 0;
@@ -445,6 +479,23 @@ export const ReelsScreen = memo(function ReelsScreen({
     /* إلغاء Hold عند تغيير الريل */
     setHoldPaused(false);
   }, [activeReelId]);
+
+  useEffect(() => {
+    if (!isTabActive || !activeReelId || !reelsUseApi) return;
+    if (viewedReelsRef.current.has(activeReelId)) return;
+    viewedReelsRef.current.add(activeReelId);
+    void apiRecordReelView(activeReelId).then(res => {
+      if (res.ok && res.viewsCount != null) {
+        patchReelMeta(activeReelId, { viewsCount: res.viewsCount });
+      }
+    });
+  }, [activeReelId, isTabActive, reelsUseApi, patchReelMeta]);
+
+  useEffect(() => {
+    if (!reelsUseApi || !reelsHasMore) return;
+    const idx = reels.findIndex(r => r.id === activeReelId);
+    if (idx >= 0 && idx >= reels.length - 3) void loadMoreReels();
+  }, [activeReelId, reels, reelsUseApi, reelsHasMore, loadMoreReels]);
 
   /* Snap to nearest */
   const snapToNearestReel = useCallback(
@@ -536,6 +587,13 @@ export const ReelsScreen = memo(function ReelsScreen({
 
   const effectiveSoundOn = soundOn && soundUnlocked;
 
+  const nextPreloadVideoUrl = useMemo(() => {
+    const next = reels[activeReelIdx + 1];
+    if (!next) return null;
+    const media = normalizePostMedia(next);
+    return media.hasVideo ? media.videoUrl : null;
+  }, [reels, activeReelIdx]);
+
   /* Double Tap Like */
   const handleDoubleTap = useCallback(
     (postId: string, x: number, y: number) => {
@@ -543,18 +601,30 @@ export const ReelsScreen = memo(function ReelsScreen({
       const post = reels.find(r => r.id === postId);
       if (!post) return;
       /* إضافة لايك دائماً عند Double Tap (مثل Instagram) */
-      if (!post.likes.includes(me.id)) toggleLike(postId);
+      if (!isReelLiked(post)) void handleReelLike(postId);
       try {
         (navigator as unknown as { vibrate?: (p: number) => void }).vibrate?.(15);
       } catch { /* ignore */ }
       setHeartBurst({ id: postId, x, y });
       window.setTimeout(() => setHeartBurst(prev => (prev?.id === postId ? null : prev)), 800);
     },
-    [reels, me.id, toggleLike, isGuest],
+    [reels, isReelLiked, handleReelLike, isGuest],
   );
 
   return (
     <div className="relative flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-black text-white overscroll-none">
+      {nextPreloadVideoUrl ? (
+        <video
+          key={nextPreloadVideoUrl}
+          src={nextPreloadVideoUrl}
+          preload="auto"
+          muted
+          playsInline
+          className="pointer-events-none fixed h-px w-px opacity-0"
+          aria-hidden
+          tabIndex={-1}
+        />
+      ) : null}
 
       {/* ── Top Bar (Instagram-like) ── */}
       <div
@@ -656,8 +726,10 @@ export const ReelsScreen = memo(function ReelsScreen({
           );
           const friendReposter = friendReposterId ? users.find(x => x.id === friendReposterId) : null;
           const media = normalizePostMedia(r);
-          const liked = r.likes.includes(me.id);
+          const liked = isReelLiked(r);
           const reposted = r.reposts.includes(me.id);
+          const likeCount = getLikeCount(r);
+          const commentCount = getCommentCount(r);
           const notes = visibleMediaNotes(state, "post", r.id, me.id).slice(0, 8);
           const isActive = isTabActive && activeReelId === r.id;
 
@@ -720,7 +792,7 @@ export const ReelsScreen = memo(function ReelsScreen({
               >
                 {/* Like */}
                 <SideActionButton
-                  onClick={() => { if (guestBlock()) return; toggleLike(r.id); }}
+                  onClick={() => { if (guestBlock()) return; void handleReelLike(r.id); }}
                   label="إعجاب"
                   icon={
                     <Heart
@@ -730,17 +802,28 @@ export const ReelsScreen = memo(function ReelsScreen({
                       style={{ filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.6))" }}
                     />
                   }
-                  count={r.likes.length}
+                  count={likeCount}
                   active={liked}
                   activeColor="text-rose-500"
                 />
 
                 {/* Comment */}
                 <SideActionButton
-                  onClick={() => setCommentsFor(r)}
+                  onClick={() => {
+                    setCommentsFor(r);
+                    if (reelsUseApi && reelsApiEnabled()) {
+                      void apiFetchReelComments(r.id).then(res => {
+                        if (res.ok) {
+                          setCommentsFor(prev =>
+                            prev && prev.id === r.id ? { ...prev, comments: res.comments } : prev,
+                          );
+                        }
+                      });
+                    }
+                  }}
                   label="تعليقات"
                   icon={<MessageCircle size={30} strokeWidth={1.75} style={{ filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.6))" }} />}
-                  count={r.comments.length}
+                  count={commentCount}
                 />
 
                 {/* Repost */}
@@ -993,10 +1076,24 @@ export const ReelsScreen = memo(function ReelsScreen({
             {!isGuest ? (
               <form
                 className="flex gap-2 px-4 pt-2 pb-2 border-t border-white/10"
-                onSubmit={e => {
+                onSubmit={async e => {
                   e.preventDefault();
-                  if (!commentDraft.trim()) return;
-                  addComment(commentsFor.id, commentDraft);
+                  if (!commentDraft.trim() || !commentsFor) return;
+                  const draft = commentDraft.trim();
+                  if (reelsUseApi && reelsApiEnabled()) {
+                    const res = await apiAddReelComment(commentsFor.id, draft);
+                    if (res.ok) {
+                      patchReelMeta(commentsFor.id, { commentsCount: res.commentsCount });
+                      addComment(commentsFor.id, draft);
+                      setCommentsFor({
+                        ...commentsFor,
+                        comments: [...commentsFor.comments, res.comment],
+                      });
+                      setCommentDraft("");
+                      return;
+                    }
+                  }
+                  addComment(commentsFor.id, draft);
                   setCommentDraft("");
                 }}
               >

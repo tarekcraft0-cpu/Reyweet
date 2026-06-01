@@ -4,6 +4,13 @@ import {
   formatReelMaxSizeError,
 } from "./reelsSpec";
 import { apiBackendEnabled, apiUploadMedia, ensureApiRuntimeConfig, getApiToken } from "./apiBackend";
+import {
+  apiUploadReel,
+  normalizeReelMediaUrls,
+  reelPublicToPost,
+  reelsApiEnabled,
+} from "./reelsApi";
+import type { Post } from "./types";
 import { isVideoMediaRef } from "./postMedia";
 
 function uploadTimeoutMs(file: File): number {
@@ -86,6 +93,24 @@ export function captureReelCoverFromVideo(
       { once: true },
     );
   });
+}
+
+/** رفع كامل عبر POST /v1/reels/upload (فيديو + بيانات على الخادم) */
+export async function publishReelViaApi(
+  file: File,
+  caption: string,
+  meId: string,
+): Promise<{ ok: true; post: Post } | { ok: false; error: string }> {
+  const check = await validateReelVideoFile(file);
+  if (!check.ok) return check;
+  if (!reelsApiEnabled()) {
+    return { ok: false, error: "الخادم غير متصل" };
+  }
+  await ensureApiRuntimeConfig();
+  const up = await apiUploadReel(file, caption);
+  if (!up.ok) return up;
+  const post = reelPublicToPost(normalizeReelMediaUrls(up.reel), meId);
+  return { ok: true, post };
 }
 
 export async function uploadReelVideo(

@@ -3,6 +3,7 @@ import { Trash2 } from "lucide-react";
 import { useApp } from "@/lib/store";
 import { useT } from "@/lib/i18n";
 import type { Post } from "@/lib/types";
+import { apiDeleteReel, reelsApiEnabled } from "@/lib/reelsApi";
 
 export function PostOptionsMenu({
   post,
@@ -46,10 +47,17 @@ export function PostOptionsMenu({
         type="button"
         role="menuitem"
         className="flex w-full flex-row items-center gap-2 px-4 py-2.5 text-start text-destructive hover:bg-destructive/10"
-        onClick={() => {
+        onClick={async () => {
           const label =
             post.type === "tweet" ? "حذف هذه التغريدة؟" : post.type === "reel" ? "حذف هذا الريل؟" : "حذف هذا المنشور؟";
           if (!window.confirm(label)) return;
+          if (post.type === "reel" && reelsApiEnabled()) {
+            const del = await apiDeleteReel(post.id);
+            if (!del.ok) {
+              window.alert(del.error);
+              return;
+            }
+          }
           deletePost(post.id);
           onDeleted?.();
           onClose();

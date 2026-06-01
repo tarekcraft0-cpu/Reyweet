@@ -177,6 +177,13 @@ app.use("/media", (_req, res, next) => {
   next();
 }, express.static(path.join(DATA_ROOT, "media"), { maxAge: "7d", immutable: true }));
 
+app.use("/uploads", (_req, res, next) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+  res.acceptRanges("bytes");
+  next();
+}, express.static(path.join(DATA_ROOT, "uploads"), { maxAge: "7d", immutable: true }));
+
 app.get("/health", async (_req, res) => {
   let dbOk = false;
   let usersCount = 0;
@@ -1949,6 +1956,8 @@ function logListenUrls(p: number, host: string) {
 }
 
 await initDatabase();
+const { initReelsSubsystem } = await import("./routes/reelsRoutes.js");
+await initReelsSubsystem();
 
 const { registerVerificationRoutes } = await import("./routes/verificationRoutes.js");
 registerVerificationRoutes(app, authMiddleware, broadcastProfileUpdated);
@@ -1959,6 +1968,8 @@ const { registerSecurityRoutes } = await import("./routes/securityRoutes.js");
 registerSecurityRoutes(app, authMiddleware);
 const { registerPushRoutes } = await import("./routes/pushRoutes.js");
 registerPushRoutes(app, authMiddleware);
+const { registerReelsRoutes } = await import("./routes/reelsRoutes.js");
+registerReelsRoutes(app, authMiddleware);
 if (isSmtpConfigured()) {
   const smtpCheck = await verifySmtpConnection();
   if (smtpCheck.ok) {

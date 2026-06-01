@@ -22,6 +22,7 @@ export function isRenderableMediaUrl(s: string | undefined | null): boolean {
     t.startsWith("https://") ||
     t.startsWith("blob:") ||
     t.startsWith("/media/") ||
+    t.startsWith("/uploads/") ||
     t.startsWith("/stickers/") ||
     t.startsWith("/app/")
   );
@@ -87,6 +88,7 @@ function getMediaResolveBase(): string {
 function isServerMediaPath(path: string): boolean {
   return (
     path.startsWith("/media/") ||
+    path.startsWith("/uploads/") ||
     path.startsWith("/stickers/") ||
     path.startsWith("/public/")
   );

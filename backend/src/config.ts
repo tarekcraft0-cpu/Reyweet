@@ -12,6 +12,10 @@ export const DB_DIR = path.join(DATA_ROOT, "db");
 export const MEDIA_DIR = path.join(DATA_ROOT, "media");
 export const MEDIA_IMAGES_DIR = path.join(MEDIA_DIR, "images");
 export const MEDIA_VIDEOS_DIR = path.join(MEDIA_DIR, "videos");
+/** ريلز مرفوعة — فيديو + مصغرات (بيانات فقط في db/reels.json) */
+export const UPLOADS_DIR = path.join(DATA_ROOT, "uploads");
+export const REELS_UPLOAD_DIR = path.join(UPLOADS_DIR, "reels");
+export const REELS_THUMBNAILS_DIR = path.join(REELS_UPLOAD_DIR, "thumbnails");
 export const SNAPSHOTS_DIR = path.join(DATA_ROOT, "snapshots");
 
 export const PORT = Number(trimEnv("PORT", "3000"));

@@ -13,7 +13,12 @@ import {
   REEL_VIDEO_MAXRATE,
   REEL_WIDTH,
 } from "../../../src/lib/reelsSpec.js";
-import { MEDIA_IMAGES_DIR, MEDIA_VIDEOS_DIR } from "../config.js";
+import {
+  MEDIA_IMAGES_DIR,
+  MEDIA_VIDEOS_DIR,
+  REELS_THUMBNAILS_DIR,
+  REELS_UPLOAD_DIR,
+} from "../config.js";
 
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
@@ -53,18 +58,39 @@ function probeVideoFps(inputPath: string): Promise<number> {
   });
 }
 
+export type ReelVideoStorageTarget = "media" | "uploads";
+
+function reelOutputDirs(target: ReelVideoStorageTarget) {
+  if (target === "uploads") {
+    return {
+      videosDir: REELS_UPLOAD_DIR,
+      postersDir: REELS_THUMBNAILS_DIR,
+      videoUrl: (name: string) => `/uploads/reels/${name}`,
+      posterUrl: (name: string) => `/uploads/reels/thumbnails/${name}`,
+    };
+  }
+  return {
+    videosDir: MEDIA_VIDEOS_DIR,
+    postersDir: MEDIA_IMAGES_DIR,
+    videoUrl: (name: string) => mediaPublicUrl("videos", name),
+    posterUrl: (name: string) => mediaPublicUrl("images", name),
+  };
+}
+
 /** ترميز ريل: MP4 H.264 + AAC، 1080×1920، 30–60fps، ~8–12 Mbps */
 export async function compressAndSaveReelVideo(
   inputPath: string,
+  target: ReelVideoStorageTarget = "media",
 ): Promise<{ url: string; path: string; posterUrl: string; posterPath: string }> {
-  await fs.mkdir(MEDIA_VIDEOS_DIR, { recursive: true });
-  await fs.mkdir(MEDIA_IMAGES_DIR, { recursive: true });
+  const dirs = reelOutputDirs(target);
+  await fs.mkdir(dirs.videosDir, { recursive: true });
+  await fs.mkdir(dirs.postersDir, { recursive: true });
 
   const id = randomUUID();
   const outName = `${id}.mp4`;
-  const outPath = path.join(MEDIA_VIDEOS_DIR, outName);
+  const outPath = path.join(dirs.videosDir, outName);
   const posterName = `${id}-cover.webp`;
-  const posterPath = path.join(MEDIA_IMAGES_DIR, posterName);
+  const posterPath = path.join(dirs.postersDir, posterName);
 
   const targetFps = await probeVideoFps(inputPath);
 
@@ -106,7 +132,7 @@ export async function compressAndSaveReelVideo(
       .save(outPath);
   });
 
-  const posterTmp = path.join(MEDIA_VIDEOS_DIR, "_tmp", `${id}-poster.jpg`);
+  const posterTmp = path.join(dirs.videosDir, "_tmp", `${id}-poster.jpg`);
   await fs.mkdir(path.dirname(posterTmp), { recursive: true });
 
   await new Promise<void>((resolve, reject) => {
@@ -125,9 +151,9 @@ export async function compressAndSaveReelVideo(
   }
 
   return {
-    url: mediaPublicUrl("videos", outName),
+    url: dirs.videoUrl(outName),
     path: outPath,
-    posterUrl: mediaPublicUrl("images", posterName),
+    posterUrl: dirs.posterUrl(posterName),
     posterPath,
   };
 }

@@ -64,7 +64,7 @@ export function isVideoMediaRef(s?: string | null): boolean {
   const t = s.trim();
   if (t.startsWith("data:video/")) return true;
   if (/\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(t)) return true;
-  return t.includes("/media/videos/");
+  return t.includes("/media/videos/") || t.includes("/uploads/reels/");
 }
 
 /** يفصل صورة الغلاف عن رابط الفيديو (منشورات قديمة تخزّن الفيديو في image) */

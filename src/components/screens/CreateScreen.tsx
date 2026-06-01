@@ -19,6 +19,7 @@ import {
   captureReelCoverFromVideo,
   uploadReelCoverImage,
   uploadReelVideo,
+  publishReelViaApi,
   validateReelVideoFile,
 } from "@/lib/reelMedia";
 import { REEL_ACCEPT_VIDEO, REEL_MAX_UPLOAD_MB } from "@/lib/reelsSpec";
@@ -254,6 +255,18 @@ export function CreateScreen({
       let resolvedVideo = "";
 
       if (pickedFile) {
+        const viaApi = await publishReelViaApi(pickedFile, text, currentUser.id);
+        if (viaApi.ok) {
+          setPublishing(false);
+          createPost(viaApi.post);
+          onClose();
+          return;
+        }
+        if (viaApi.error !== "الخادم غير متصل") {
+          setPublishing(false);
+          alert(viaApi.error);
+          return;
+        }
         const uploaded = await uploadReelVideo(pickedFile);
         if (!uploaded.ok) {
           setPublishing(false);
