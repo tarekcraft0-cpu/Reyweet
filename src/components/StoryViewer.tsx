@@ -27,6 +27,7 @@ import { ShareSheet } from "./ShareSheet";
 import { NoteReplySheet } from "./NoteReplySheet";
 import { StoryStickerLayer } from "./story/StoryStickerLayer";
 import { VerifiedMarkForUser } from "./VerifiedBadge";
+import { getUserEntitlements } from "@/lib/verificationEntitlements";
 import { normalizeStoryMedia } from "@/lib/storyMedia";
 import { lockStoryFullscreen } from "@/lib/storyChrome";
 import { useStoryPlayback } from "@/hooks/useStoryPlayback";
@@ -913,6 +914,7 @@ export const StoryViewer = memo(function StoryViewer({
       <StoryViewsSheet
         open={userId === me.id && ownViewsOpen}
         story={cur}
+        showAnalytics={getUserEntitlements(me).hasStoryAnalytics}
         onClose={() => setOwnViewsOpen(false)}
         onOpenProfile={onOpenProfile}
         onDelete={handleDeleteCurrentStory}

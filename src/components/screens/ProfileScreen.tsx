@@ -279,8 +279,16 @@ export function ProfileScreen({
     () => sortProfilePostsNewestFirst(state.posts.filter(p => postByProfileAuthor(p) && isReelFeedPost(p))),
     [state.posts, postByProfileAuthor],
   );
-  const tabPosts =
+  const tabPostsRaw =
     tab === "all" ? myAllFeed : tab === "tweets" ? myTweets : tab === "reposts" ? myReposts : myReels;
+  const tabPosts = useMemo(() => {
+    const usr = userById(state, userId);
+    const pin = usr?.pinnedPostId?.trim();
+    if (!pin) return tabPostsRaw;
+    const pinned = tabPostsRaw.find(p => p.id === pin);
+    if (!pinned) return tabPostsRaw;
+    return [pinned, ...tabPostsRaw.filter(p => p.id !== pin)];
+  }, [tabPostsRaw, userId, state.users]);
 
   const publicChannels = useMemo(() => {
     const usr = userById(state, userId);

@@ -1,7 +1,10 @@
 import { useId } from "react";
 import { useApp } from "@/lib/store";
 import type { User } from "@/lib/types";
-import { isVerifiedBadgeActive } from "@/lib/verificationEntitlements";
+import {
+  isPendingReviewBadgeVisible,
+  isVerifiedBadgeActive,
+} from "@/lib/verificationEntitlements";
 
 /**
  * شارة توثيق إنستغرام: شكل وردة بثماني زوايا، زرقاء صلبة.
@@ -218,11 +221,31 @@ export function SupportOfficialVerifiedBadge({
   );
 }
 
-/** شارة التوثيق — مؤسس → تطبيق → دعم → توثيق أزرق */
+/** شارة «قيد المراجعة» بعد الدفع وقبل الموافقة */
+export function PendingReviewBadge({
+  className = "",
+}: {
+  className?: string;
+}) {
+  return (
+    <span
+      className={
+        "inline-flex shrink-0 items-center rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold leading-none text-amber-800 dark:text-amber-200 " +
+        className
+      }
+      title="طلب التوثيق قيد المراجعة"
+    >
+      قيد المراجعة
+    </span>
+  );
+}
+
+/** شارة التوثيق — مؤسس → تطبيق → دعم → توثيق أزرق (أو قيد المراجعة) */
 export function VerifiedMarkForUser({
   user,
   size = 16,
   className,
+  showPendingIfQueued = true,
 }: {
   user: Pick<
     User,
@@ -232,9 +255,13 @@ export function VerifiedMarkForUser({
     | "appOfficialVerified"
     | "supportOfficialVerified"
     | "verificationBadgeColor"
+    | "verificationStatus"
+    | "isSubscribed"
+    | "subscriptionExpiresAt"
   >;
   size?: number;
   className?: string;
+  showPendingIfQueued?: boolean;
 }) {
   if (user.founderVerified) {
     return <FounderVerifiedBadge size={size} className={className} title="منشئ التطبيق — الحساب الرسمي" />;
@@ -244,6 +271,9 @@ export function VerifiedMarkForUser({
   }
   if (user.supportOfficialVerified) {
     return <SupportOfficialVerifiedBadge size={size} className={className} title="حساب الدعم الرسمي — موثّق" />;
+  }
+  if (showPendingIfQueued && isPendingReviewBadgeVisible(user)) {
+    return <PendingReviewBadge className={className} />;
   }
   if (!isVerifiedBadgeActive(user)) return null;
   const color = user.verificationBadgeColor === "pink" ? "pink" : "blue";

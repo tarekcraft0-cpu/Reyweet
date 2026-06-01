@@ -1,6 +1,8 @@
 /** باقات اشتراك التوثيق — الأسعار بالدولار شهرياً */
 export type VerificationTierId = "verified_starter" | "verified_plus" | "verified_max";
 
+export type ExclusiveStickerPack = "none" | "basic" | "full";
+
 export type VerificationTier = {
   id: VerificationTierId;
   plan: string;
@@ -13,6 +15,26 @@ export type VerificationTier = {
   storyExpiryHours: number[];
   canUseAnimatedAvatar: boolean;
   canPickBadgeColor: boolean;
+  /** 0–3 — أعلى = أولوية في البحث */
+  searchRankBoost: number;
+  exclusiveStickers: ExclusiveStickerPack;
+  hasStoryLinkSticker: boolean;
+  hasStoryAnalytics: boolean;
+  hasScheduledPosts: boolean;
+  hasQuickReplies: boolean;
+  maxQuickReplies: number;
+  canPinPost: boolean;
+  canRestrictComments: boolean;
+  canRestrictDm: boolean;
+  /** ساعات مراجعة الطلب (وعد تسويقي) */
+  reviewPriorityHours: number;
+  canResubmitOnReject: boolean;
+  showPendingReviewBadge: boolean;
+  hasVerifiedAvatarFrame: boolean;
+  hasExclusiveChatTheme: boolean;
+  usernameReserveDays: number;
+  reelsPriorityBoost: boolean;
+  hasUnlimitedDrafts: boolean;
 };
 
 export const VERIFICATION_TIERS: VerificationTier[] = [
@@ -24,16 +46,40 @@ export const VERIFICATION_TIERS: VerificationTier[] = [
     badgeAr: "للبدء",
     perksAr: [
       "طلب توثيق يُرسل لفريق الدعم",
-      "شارة توثيق بعد الموافقة",
-      "ستوري حتى 45 ثانية",
-      "منشورات حتى 500 حرف",
-      "مدة ستوري 24 ساعة",
+      "شارة توثيق بعد الموافقة (بحث، شات، تعليقات، ريلز)",
+      "افتار متحرك (GIF)",
+      "إطار ذهبي حول الصورة في الستوري والنوت",
+      "شارة «قيد المراجعة» بعد الدفع",
+      "ستيكرز حصرية للموثّقين (حزمة أساسية)",
+      "ردود سريعة جاهزة في الرسائل (٣ قوالب)",
+      "أولوية خفيفة في نتائج البحث",
+      "ستوري حتى 45 ثانية · منشورات 500 حرف · 24 ساعة",
+      "مراجعة خلال 72 ساعة · إعادة طلب مجانية عند الرفض",
+      "حجز اسم المستخدم 7 أيام بعد انتهاء الاشتراك",
     ],
     storyMaxDuration: 45,
     postCharacterLimit: 500,
     storyExpiryHours: [24],
-    canUseAnimatedAvatar: false,
+    canUseAnimatedAvatar: true,
     canPickBadgeColor: false,
+    searchRankBoost: 1,
+    exclusiveStickers: "basic",
+    hasStoryLinkSticker: false,
+    hasStoryAnalytics: false,
+    hasScheduledPosts: false,
+    hasQuickReplies: true,
+    maxQuickReplies: 3,
+    canPinPost: false,
+    canRestrictComments: false,
+    canRestrictDm: false,
+    reviewPriorityHours: 72,
+    canResubmitOnReject: true,
+    showPendingReviewBadge: true,
+    hasVerifiedAvatarFrame: true,
+    hasExclusiveChatTheme: false,
+    usernameReserveDays: 7,
+    reelsPriorityBoost: false,
+    hasUnlimitedDrafts: false,
   },
   {
     id: "verified_plus",
@@ -43,17 +89,42 @@ export const VERIFICATION_TIERS: VerificationTier[] = [
     badgeAr: "الأكثر اختياراً",
     perksAr: [
       "كل مزايا التوثيق الأساسي",
-      "افتار متحرك (GIF)",
-      "اختيار لون شارة التوثيق",
-      "ستوري حتى 60 ثانية",
-      "مدة ستوري حتى 48 ساعة",
-      "منشورات حتى 750 حرف",
+      "اختيار لون شارة التوثيق (أزرق / وردي)",
+      "تثبيت منشور واحد في البروفايل",
+      "رابط قابل للنقر في الستوري",
+      "إحصائيات مشاهدات الستوري",
+      "ستيكرز حصرية كاملة + مسودات غير محدودة",
+      "ثيم شات ذهبي حصري",
+      "تقييد التعليقات على منشوراتك",
+      "ردود سريعة حتى 8 قوالب",
+      "أولوية أعلى في البحث والريلز",
+      "ستوري 60 ث · 48 ساعة · منشورات 750 حرف",
+      "مراجعة خلال 48 ساعة",
+      "حجز اسم المستخدم 14 يوماً",
     ],
     storyMaxDuration: 60,
     postCharacterLimit: 750,
     storyExpiryHours: [24, 48],
     canUseAnimatedAvatar: true,
     canPickBadgeColor: true,
+    searchRankBoost: 2,
+    exclusiveStickers: "full",
+    hasStoryLinkSticker: true,
+    hasStoryAnalytics: true,
+    hasScheduledPosts: false,
+    hasQuickReplies: true,
+    maxQuickReplies: 8,
+    canPinPost: true,
+    canRestrictComments: true,
+    canRestrictDm: false,
+    reviewPriorityHours: 48,
+    canResubmitOnReject: true,
+    showPendingReviewBadge: true,
+    hasVerifiedAvatarFrame: true,
+    hasExclusiveChatTheme: true,
+    usernameReserveDays: 14,
+    reelsPriorityBoost: true,
+    hasUnlimitedDrafts: true,
   },
   {
     id: "verified_max",
@@ -63,17 +134,38 @@ export const VERIFICATION_TIERS: VerificationTier[] = [
     badgeAr: "أقصى مزايا",
     perksAr: [
       "كل مزايا توثيق بلس",
-      "ستوري حتى 60 ثانية",
-      "مدة ستوري حتى 72 ساعة",
-      "منشورات حتى 1000 حرف",
-      "أولوية في مراجعة الطلب",
+      "جدولة نشر المنشورات والستوري",
+      "تقييد الرسائل من غير المتابعين",
+      "ردود سريعة حتى 15 قالباً",
+      "أقصى أولوية في البحث والريلز ومراجعة الطلب",
+      "ستوري 60 ث · 72 ساعة · منشورات 1000 حرف",
+      "مراجعة خلال 24 ساعة",
       "دعم أسرع من فريق التوثيق",
+      "حجز اسم المستخدم 30 يوماً بعد انتهاء الاشتراك",
     ],
     storyMaxDuration: 60,
     postCharacterLimit: 1000,
     storyExpiryHours: [24, 48, 72],
     canUseAnimatedAvatar: true,
     canPickBadgeColor: true,
+    searchRankBoost: 3,
+    exclusiveStickers: "full",
+    hasStoryLinkSticker: true,
+    hasStoryAnalytics: true,
+    hasScheduledPosts: true,
+    hasQuickReplies: true,
+    maxQuickReplies: 15,
+    canPinPost: true,
+    canRestrictComments: true,
+    canRestrictDm: true,
+    reviewPriorityHours: 24,
+    canResubmitOnReject: true,
+    showPendingReviewBadge: true,
+    hasVerifiedAvatarFrame: true,
+    hasExclusiveChatTheme: true,
+    usernameReserveDays: 30,
+    reelsPriorityBoost: true,
+    hasUnlimitedDrafts: true,
   },
 ];
 
@@ -92,7 +184,11 @@ export function getVerificationTier(plan?: string | null): VerificationTier {
 
 export function tierLimitsFromPlan(plan?: string | null): Pick<
   VerificationTier,
-  "storyMaxDuration" | "postCharacterLimit" | "storyExpiryHours" | "canUseAnimatedAvatar" | "canPickBadgeColor"
+  | "storyMaxDuration"
+  | "postCharacterLimit"
+  | "storyExpiryHours"
+  | "canUseAnimatedAvatar"
+  | "canPickBadgeColor"
 > {
   const t = getVerificationTier(plan);
   return {
@@ -102,4 +198,9 @@ export function tierLimitsFromPlan(plan?: string | null): Pick<
     canUseAnimatedAvatar: t.canUseAnimatedAvatar,
     canPickBadgeColor: t.canPickBadgeColor,
   };
+}
+
+/** مزايا الباقة كاملة — للصلاحيات في الواجهة */
+export function tierFeaturesFromPlan(plan?: string | null): VerificationTier {
+  return getVerificationTier(plan);
 }

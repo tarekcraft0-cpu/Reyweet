@@ -1,8 +1,8 @@
 import { Check } from "lucide-react";
 import {
-  CHAT_WALLPAPER_THEMES,
   chatWallpaperAssetUrl,
   chatWallpaperLabel,
+  chatWallpaperThemesForUser,
   type ChatWallpaperId,
 } from "@/lib/chatWallpaperThemes";
 
@@ -12,14 +12,17 @@ export function ChatThemePickerSheet({
   language,
   onSelect,
   onClose,
+  hasExclusiveChatTheme = false,
 }: {
   open: boolean;
   selectedId: ChatWallpaperId;
   language: string;
   onSelect: (id: ChatWallpaperId) => void;
   onClose: () => void;
+  hasExclusiveChatTheme?: boolean;
 }) {
   if (!open) return null;
+  const themes = chatWallpaperThemesForUser(hasExclusiveChatTheme);
 
   return (
     <div
@@ -47,9 +50,10 @@ export function ChatThemePickerSheet({
         </div>
         <div className="no-scrollbar overflow-y-auto px-4 py-4 pb-[max(1rem,var(--sab))]">
           <div className="grid grid-cols-2 gap-3">
-            {CHAT_WALLPAPER_THEMES.map(theme => {
+            {themes.map(theme => {
               const selected = theme.id === selectedId;
               const previewUrl = theme.imagePath ? chatWallpaperAssetUrl(theme.imagePath) : null;
+              const isVerifiedGold = theme.id === "verified_gold";
               return (
                 <button
                   key={theme.id}
@@ -71,6 +75,8 @@ export function ChatThemePickerSheet({
                         style={{ backgroundColor: `rgba(0,0,0,${theme.overlayOpacity ?? 0.38})` }}
                       />
                     </>
+                  ) : isVerifiedGold ? (
+                    <div className="absolute inset-0 bg-gradient-to-br from-amber-500 via-[#0095F6] to-[#FF2D55]" />
                   ) : (
                     <div className="absolute inset-0 bg-gradient-to-br from-zinc-200 to-zinc-400 dark:from-zinc-700 dark:to-zinc-900" />
                   )}

@@ -110,6 +110,17 @@ export function StoryStickerLayer({
           {sk.kind === "quiz" && (
             <QuizSticker sk={sk} storyId={story.id} meId={me.id} isOwn={isOwn} answerStoryQuiz={answerStoryQuiz} />
           )}
+          {sk.kind === "link" && (
+            <a
+              href={sk.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-full bg-white text-[#0095F6] px-4 py-2 text-sm font-bold shadow-lg border-2 border-white/90"
+              onClick={e => e.stopPropagation()}
+            >
+              {sk.label} ↑
+            </a>
+          )}
           {sk.kind === "slider" && (
             <SliderSticker
               sk={sk}

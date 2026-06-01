@@ -1,6 +1,7 @@
 import type { User } from "./types";
+import { searchVerifiedBoostRank } from "./verificationEntitlements";
 
-/** ترتيب نتائج البحث — المطابقة التامة لليوزر أولاً */
+/** ترتيب نتائج البحث — المطابقة أولاً ثم أولوية الموثّقين */
 export function rankUsersBySearchQuery(users: User[], query: string): User[] {
   const q = query.trim().toLowerCase();
   if (!q) return users;
@@ -21,6 +22,15 @@ export function rankUsersBySearchQuery(users: User[], query: string): User[] {
     const ra = rank(a);
     const rb = rank(b);
     if (ra !== rb) return ra - rb;
+    const vb = searchVerifiedBoostRank(b) - searchVerifiedBoostRank(a);
+    if (vb !== 0) return vb;
     return a.username.localeCompare(b.username, undefined, { sensitivity: "base" });
   });
+}
+
+/** ترتيب موجز لقائمة موثّقين */
+export function sortUsersVerifiedFirst(users: User[]): User[] {
+  return [...users].sort(
+    (a, b) => searchVerifiedBoostRank(b) - searchVerifiedBoostRank(a),
+  );
 }

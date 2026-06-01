@@ -58,8 +58,20 @@ export function registerVerificationRoutes(
 ): void {
   app.get("/v1/subscription/status", authMiddleware, async (req, res) => {
     const userId = (req as AuthedReq).userId;
-    const user = await getUserById(userId);
+    let user = await getUserById(userId);
     if (!user) return res.status(404).json({ error: "not found" });
+    const exp = user.subscriptionExpiresAt?.trim();
+    const expMs = exp ? Date.parse(exp) : NaN;
+    if (user.isSubscribed && Number.isFinite(expMs) && expMs < Date.now()) {
+      const tier = getVerificationTier(user.subscriptionPlan);
+      const patch: Partial<UserRow> = { isSubscribed: false };
+      if (tier.usernameReserveDays > 0) {
+        const until = new Date();
+        until.setDate(until.getDate() + tier.usernameReserveDays);
+        patch.usernameReservedUntil = until.toISOString();
+      }
+      user = (await updateUser(userId, patch)) ?? user;
+    }
     return res.json(entitlementsPayload(user));
   });
 
@@ -188,10 +200,12 @@ export function registerVerificationRoutes(
       return res.json({ ok: true, pending: true, ...entitlementsPayload(user) });
     }
 
+    const wasRejected = user.verificationStatus === "rejected";
     const next = await updateUser(userId, {
       verificationStatus: "pending",
       verificationRequestedAt: new Date().toISOString(),
       verificationRejectReason: undefined,
+      ...(wasRejected ? { verificationResubmitUsed: true } : {}),
     });
     if (!next) return res.status(404).json({ error: "not found" });
     broadcastProfileUpdated(next);
@@ -235,6 +249,14 @@ export function registerVerificationRoutes(
     const userId = (req as AuthedReq).userId;
     if (!isPlatformAdmin(userId)) return res.status(403).json({ error: "غير مصرح" });
     const pending = (await listUsers()).filter(u => u.verificationStatus === "pending");
+    pending.sort((a, b) => {
+      const ta = getVerificationTier(a.subscriptionPlan).reviewPriorityHours;
+      const tb = getVerificationTier(b.subscriptionPlan).reviewPriorityHours;
+      if (ta !== tb) return ta - tb;
+      const at = Date.parse(a.verificationRequestedAt || "") || 0;
+      const bt = Date.parse(b.verificationRequestedAt || "") || 0;
+      return at - bt;
+    });
     return res.json({
       requests: pending.map(u => ({
         ...userRowToVerificationPayload(u),

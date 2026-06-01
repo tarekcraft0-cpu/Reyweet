@@ -13,6 +13,8 @@ type Props = {
   onClose: () => void;
   onOpenProfile?: (id: ID) => void;
   onDelete?: () => void;
+  /** إحصائيات متقدمة — توثيق بلس+ */
+  showAnalytics?: boolean;
 };
 
 export function StoryViewsSheet({
@@ -21,6 +23,7 @@ export function StoryViewsSheet({
   onClose,
   onOpenProfile,
   onDelete,
+  showAnalytics = false,
 }: Props) {
   const users = useAppSelector(s => s.users);
   const [sheetY, setSheetY] = useState(0);
@@ -149,6 +152,24 @@ export function StoryViewsSheet({
         <h2 className="px-4 pb-2 text-center text-[15px] font-semibold text-white">
           المشاهدات · {viewers.length}
         </h2>
+        {showAnalytics ? (
+          <div className="mx-4 mb-2 grid grid-cols-3 gap-2 rounded-xl bg-white/5 p-2 text-center text-[11px] text-white/80">
+            <div>
+              <div className="font-bold text-white tabular-nums">{viewers.length}</div>
+              <div>مشاهدات</div>
+            </div>
+            <div>
+              <div className="font-bold text-white tabular-nums">{story.likes?.length ?? 0}</div>
+              <div>إعجابات</div>
+            </div>
+            <div>
+              <div className="font-bold text-white tabular-nums">
+                {story.stickers?.length ?? 0}
+              </div>
+              <div>ملصقات</div>
+            </div>
+          </div>
+        ) : null}
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-2 [-webkit-overflow-scrolling:touch]">
           {viewers.length === 0 ? (
             <p className="py-12 text-center text-sm text-white/45">لا مشاهدات بعد</p>

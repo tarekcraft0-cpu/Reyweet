@@ -51,6 +51,15 @@ export interface User {
   storyMaxDuration?: number;
   storyExpiryOptions?: number[];
   postCharacterLimit?: number;
+  verificationResubmitUsed?: boolean;
+  /** منشور مثبت في أعلى البروفايل (توثيق بلس+) */
+  pinnedPostId?: string;
+  /** منع التعليقات على منشوراتك */
+  restrictComments?: boolean;
+  /** رسائل من غير المتابعين فقط كطلبات (ماكس) */
+  restrictDmFromNonFollowers?: boolean;
+  /** حجز اسم المستخدم بعد انتهاء الاشتراك */
+  usernameReservedUntil?: string;
   /** توثيق منشئ التطبيق — شارة مميزة غير التوثيق الأزرق العادي */
   founderVerified?: boolean;
   /** نص الملاحظة الرسمية (تُعرض في إطار خارج البايو) */
@@ -174,6 +183,15 @@ export type StorySticker =
       emoji: string;
       label: string;
       ratings?: Record<ID, number>;
+    }
+  | {
+      id: ID;
+      kind: "link";
+      x: number;
+      y: number;
+      rotation?: number;
+      url: string;
+      label: string;
     };
 
 export interface StoryItem {

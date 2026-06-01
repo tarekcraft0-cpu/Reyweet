@@ -112,8 +112,15 @@ export function PostDetail({ post: postProp, onBack, onOpenProfile, onOpenChat, 
 
   if (!author) return null;
 
+  const commentsClosed =
+    author.restrictComments === true && post.userId !== me.id;
+
   const submitComment = () => {
     if (guestBlock()) return;
+    if (commentsClosed) {
+      window.alert("صاحب المنشور عطّل التعليقات");
+      return;
+    }
     const text = comment.trim();
     if (!text) return;
     addComment(post.id, text);
@@ -339,8 +346,9 @@ export function PostDetail({ post: postProp, onBack, onOpenProfile, onOpenChat, 
                 <Avatar name={u?.username || "?"} src={u?.avatar} size={28} />
               </button>
               <div className="min-w-0 flex-1">
-                <button type="button" className="font-semibold" onClick={() => startTransition(() => u && onOpenProfile(u.id, returnCtx(true)))}>
+                <button type="button" className="font-semibold inline-flex items-center gap-1" onClick={() => startTransition(() => u && onOpenProfile(u.id, returnCtx(true)))}>
                   @{u?.username}
+                  {u ? <VerifiedMarkForUser user={u} size={13} /> : null}
                 </button>{" "}
                 <span dir="auto" className="break-words">
                   {c.text}
@@ -375,6 +383,11 @@ export function PostDetail({ post: postProp, onBack, onOpenProfile, onOpenChat, 
       />
       </div>
 
+      {commentsClosed ? (
+        <p className="shrink-0 border-t border-border px-4 py-3 text-center text-sm text-muted-foreground pb-[max(0.75rem,var(--sab))]">
+          التعليقات معطّلة على هذا المنشور
+        </p>
+      ) : (
       <form
         onSubmit={e => {
           e.preventDefault();
@@ -396,6 +409,7 @@ export function PostDetail({ post: postProp, onBack, onOpenProfile, onOpenChat, 
           {t("send")}
         </button>
       </form>
+      )}
     </div>
     </SlideDismissShell>
   );

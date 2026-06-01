@@ -1639,6 +1639,9 @@ const patchProfileSchema = z.object({
   isPrivate: z.boolean().optional(),
   email: z.string().email().optional(),
   phone: z.string().max(24).optional(),
+  pinnedPostId: z.string().max(128).optional(),
+  restrictComments: z.boolean().optional(),
+  restrictDmFromNonFollowers: z.boolean().optional(),
 });
 
 function broadcastProfileUpdated(user: UserRow): void {
@@ -1704,6 +1707,26 @@ app.patch("/v1/me/profile", authMiddleware, async (req, res) => {
     const phoneErr = validateOptionalPhone(d.phone);
     if (phoneErr) return res.status(400).json({ error: phoneErr });
     patch.phone = normalizePhone(d.phone) || undefined;
+  }
+  const { getUserEntitlements } = await import("../../src/lib/verificationEntitlements.js");
+  const ent = getUserEntitlements(cur);
+  if (d.pinnedPostId !== undefined) {
+    if (d.pinnedPostId && !ent.canPinPost) {
+      return res.status(403).json({ error: "تثبيت المنشور متاح في باقة بلس وماكس" });
+    }
+    patch.pinnedPostId = d.pinnedPostId.trim() || undefined;
+  }
+  if (d.restrictComments !== undefined) {
+    if (d.restrictComments && !ent.canRestrictComments) {
+      return res.status(403).json({ error: "تقييد التعليقات متاح في باقة بلس وماكس" });
+    }
+    patch.restrictComments = d.restrictComments === true;
+  }
+  if (d.restrictDmFromNonFollowers !== undefined) {
+    if (d.restrictDmFromNonFollowers && !ent.canRestrictDm) {
+      return res.status(403).json({ error: "تقييد الرسائل متاح في باقة ماكس" });
+    }
+    patch.restrictDmFromNonFollowers = d.restrictDmFromNonFollowers === true;
   }
 
   const user = await updateUser(userId, patch);

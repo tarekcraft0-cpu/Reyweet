@@ -17,6 +17,7 @@ import { getUserEntitlements } from "@/lib/verificationEntitlements";
 import { apiAdminMe } from "@/lib/verificationApi";
 import { VerificationSubscriptionSheet } from "../verification/VerificationSubscriptionSheet";
 import { VerificationRequestPanel } from "../verification/VerificationRequestPanel";
+import { VerificationPerksSettings } from "../verification/VerificationPerksSettings";
 import { VerificationBadgeColorPicker } from "../verification/VerificationBadgeColorPicker";
 import { AdminVerificationPanel } from "../verification/AdminVerificationPanel";
 import { ModerationDashboard } from "../admin/ModerationDashboard";
@@ -1147,6 +1148,7 @@ export function SettingsScreen({
               }}
             >
               <VerificationRequestPanel onNeedSubscription={openSubscriptionSheetFromVerify} />
+              <VerificationPerksSettings onNeedSubscription={openSubscriptionSheetFromVerify} />
               <VerificationBadgeColorPicker />
             </div>
           </AppErrorBoundaryLocal>

@@ -85,6 +85,11 @@ export function VerificationRequestPanel({ onNeedSubscription }: Props) {
             {currentUser.verificationRejectReason
               ? `: ${currentUser.verificationRejectReason}`
               : ""}
+            {ent.canRequestVerification
+              ? " — يمكنك إعادة التقديم مرة واحدة مجاناً."
+              : currentUser.verificationResubmitUsed
+                ? " — استُخدمت إعادة التقديم المجانية."
+                : ""}
           </span>
         </div>
       ) : null}

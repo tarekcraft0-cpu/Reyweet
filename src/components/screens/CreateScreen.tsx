@@ -677,7 +677,12 @@ export function CreateScreen({
 
       {type === "story" && (
         <div className="space-y-3">
-          <StoryCreationStickers stickers={storyStickers} setStickers={setStoryStickers} />
+          <StoryCreationStickers
+            stickers={storyStickers}
+            setStickers={setStoryStickers}
+            exclusivePack={getUserEntitlements(me).exclusiveStickers}
+            hasStoryLink={getUserEntitlements(me).hasStoryLinkSticker}
+          />
           <div className="space-y-2">
             <div className="flex gap-2">
               <button

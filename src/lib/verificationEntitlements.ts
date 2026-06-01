@@ -3,15 +3,20 @@ export type VerificationStatus = "none" | "pending" | "approved" | "rejected";
 
 export type VerificationBadgeColor = "blue" | "pink";
 
-import { tierLimitsFromPlan, type VerificationTierId } from "./verificationTiers";
+import {
+  tierFeaturesFromPlan,
+  tierLimitsFromPlan,
+  type VerificationTierId,
+  type ExclusiveStickerPack,
+} from "./verificationTiers";
 
-export type { VerificationTierId };
+export type { VerificationTierId, ExclusiveStickerPack };
 
 /** خطة قديمة — تُعامل كماكس */
 export const VERIFICATION_SUBSCRIPTION_PLAN = "verified_monthly";
 export const VERIFICATION_SUBSCRIPTION_PRICE_USD = 3;
 
-export { VERIFICATION_TIERS, getVerificationTier } from "./verificationTiers";
+export { VERIFICATION_TIERS, getVerificationTier, tierFeaturesFromPlan } from "./verificationTiers";
 
 export interface VerificationUserFields {
   verified?: boolean;
@@ -23,10 +28,15 @@ export interface VerificationUserFields {
   subscriptionExpiresAt?: string;
   verificationStatus?: VerificationStatus;
   verificationBadgeColor?: VerificationBadgeColor;
+  verificationResubmitUsed?: boolean;
   canUseAnimatedAvatar?: boolean;
   storyMaxDuration?: number;
   storyExpiryOptions?: number[];
   postCharacterLimit?: number;
+  pinnedPostId?: string;
+  restrictComments?: boolean;
+  restrictDmFromNonFollowers?: boolean;
+  usernameReservedUntil?: string;
 }
 
 export interface UserEntitlements {
@@ -39,6 +49,25 @@ export interface UserEntitlements {
   storyExpiryHoursOptions: number[];
   postCharacterLimit: number;
   canRequestVerification: boolean;
+  showPendingReviewBadge: boolean;
+  searchRankBoost: number;
+  exclusiveStickers: ExclusiveStickerPack;
+  hasStoryLinkSticker: boolean;
+  hasStoryAnalytics: boolean;
+  hasScheduledPosts: boolean;
+  hasQuickReplies: boolean;
+  maxQuickReplies: number;
+  canPinPost: boolean;
+  canRestrictComments: boolean;
+  canRestrictDm: boolean;
+  reviewPriorityHours: number;
+  canResubmitOnReject: boolean;
+  hasVerifiedAvatarFrame: boolean;
+  hasExclusiveChatTheme: boolean;
+  usernameReserveDays: number;
+  reelsPriorityBoost: boolean;
+  hasUnlimitedDrafts: boolean;
+  canPickBadgeColor: boolean;
 }
 
 function isExemptAccount(user: VerificationUserFields): boolean {
@@ -53,7 +82,6 @@ function isExemptAccount(user: VerificationUserFields): boolean {
 export function isVerifiedBadgeActive(user: VerificationUserFields): boolean {
   if (user.verificationStatus === "rejected") return false;
   if (user.verificationStatus === "approved" && user.verified === true) return true;
-  /** ترحيل العملاء القدامى: موثّق + مشترك قبل نظام الطلبات */
   if (user.verified === true && user.isSubscribed === true) return true;
   return false;
 }
@@ -65,6 +93,13 @@ export function hasActiveSubscription(user: VerificationUserFields, now = Date.n
   if (!exp) return true;
   const t = Date.parse(exp);
   return Number.isFinite(t) && t > now;
+}
+
+export function isPendingReviewBadgeVisible(user: VerificationUserFields): boolean {
+  if (isExemptAccount(user)) return false;
+  if (isVerifiedBadgeActive(user)) return false;
+  if (!hasActiveSubscription(user)) return false;
+  return user.verificationStatus === "pending";
 }
 
 export function getUserEntitlements(user: VerificationUserFields, now = Date.now()): UserEntitlements {
@@ -80,7 +115,7 @@ export function getUserEntitlements(user: VerificationUserFields, now = Date.now
 
   const isVerified = exempt || isVerifiedBadgeActive(user) || user.founderVerified === true;
   const isSubscribed = exempt || hasActiveSubscription(user, now);
-  const tier = tierLimitsFromPlan(user.subscriptionPlan);
+  const tier = tierFeaturesFromPlan(user.subscriptionPlan);
   const premiumActive = isVerified || isSubscribed;
   const storyMax =
     user.storyMaxDuration ?? (premiumActive ? tier.storyMaxDuration : 30);
@@ -94,6 +129,8 @@ export function getUserEntitlements(user: VerificationUserFields, now = Date.now
         ? tier.storyExpiryHours
         : [24];
 
+  const subscribedOrExempt = isSubscribed || exempt;
+
   return {
     isVerified,
     isSubscribed,
@@ -101,12 +138,38 @@ export function getUserEntitlements(user: VerificationUserFields, now = Date.now
     verificationBadgeColor: user.verificationBadgeColor === "pink" ? "pink" : "blue",
     canUseAnimatedAvatar:
       exempt ||
-      (isVerified && tier.canUseAnimatedAvatar && user.canUseAnimatedAvatar !== false),
+      (subscribedOrExempt && tier.canUseAnimatedAvatar && user.canUseAnimatedAvatar !== false),
     storyMaxDurationSec: Math.min(60, Math.max(30, storyMax)),
     storyExpiryHoursOptions: expiryOpts.length ? expiryOpts : [24],
     postCharacterLimit: postLimit,
     canRequestVerification:
-      isSubscribed && !isVerified && status !== "pending" && status !== "rejected",
+      isSubscribed &&
+      !isVerified &&
+      status !== "pending" &&
+      (status !== "rejected" ||
+        (tier.canResubmitOnReject && user.verificationResubmitUsed !== true)),
+    showPendingReviewBadge:
+      tier.showPendingReviewBadge && isPendingReviewBadgeVisible(user),
+    searchRankBoost: premiumActive ? tier.searchRankBoost : 0,
+    exclusiveStickers: premiumActive ? tier.exclusiveStickers : "none",
+    hasStoryLinkSticker: premiumActive && tier.hasStoryLinkSticker,
+    hasStoryAnalytics: premiumActive && tier.hasStoryAnalytics,
+    hasScheduledPosts: premiumActive && tier.hasScheduledPosts,
+    hasQuickReplies: premiumActive && tier.hasQuickReplies,
+    maxQuickReplies: premiumActive ? tier.maxQuickReplies : 0,
+    canPinPost: premiumActive && tier.canPinPost,
+    canRestrictComments: premiumActive && tier.canRestrictComments,
+    canRestrictDm: premiumActive && tier.canRestrictDm,
+    reviewPriorityHours: tier.reviewPriorityHours,
+    canResubmitOnReject: tier.canResubmitOnReject,
+    hasVerifiedAvatarFrame:
+      exempt || isVerified || (premiumActive && tier.hasVerifiedAvatarFrame),
+    hasExclusiveChatTheme: premiumActive && tier.hasExclusiveChatTheme,
+    usernameReserveDays: premiumActive ? tier.usernameReserveDays : 0,
+    reelsPriorityBoost: premiumActive && tier.reelsPriorityBoost,
+    hasUnlimitedDrafts: premiumActive && tier.hasUnlimitedDrafts,
+    canPickBadgeColor:
+      exempt || (isVerified && tier.canPickBadgeColor),
   };
 }
 
@@ -130,14 +193,25 @@ export function isAnimatedAvatarUrl(url: string): boolean {
   return u.endsWith(".gif") || u.startsWith("data:image/gif") || u.includes("image/gif");
 }
 
+/** ترتيب بحث — موثّقون أولاً عند تعادل المطابقة */
+export function searchVerifiedBoostRank(user: VerificationUserFields): number {
+  const ent = getUserEntitlements(user);
+  return ent.searchRankBoost;
+}
+
 export const DEFAULT_USER_VERIFICATION_FIELDS = {
   verified: false,
   isSubscribed: false,
   subscriptionPlan: "",
   verificationStatus: "none" as VerificationStatus,
   verificationBadgeColor: "blue" as VerificationBadgeColor,
+  verificationResubmitUsed: false,
   canUseAnimatedAvatar: false,
   storyMaxDuration: 30,
   storyExpiryOptions: [24],
   postCharacterLimit: 300,
+  pinnedPostId: "",
+  restrictComments: false,
+  restrictDmFromNonFollowers: false,
+  usernameReservedUntil: "",
 };

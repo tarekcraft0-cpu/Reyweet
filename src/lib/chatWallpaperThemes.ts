@@ -1,7 +1,7 @@
 import type { Chat } from "@/lib/types";
 import { chatMergeKey } from "@/lib/dmChatId";
 
-export type ChatWallpaperId = "default" | "monstera";
+export type ChatWallpaperId = "default" | "monstera" | "verified_gold";
 
 export type ChatWallpaperTheme = {
   id: ChatWallpaperId;
@@ -22,7 +22,20 @@ export const CHAT_WALLPAPER_THEMES: ChatWallpaperTheme[] = [
     imagePath: "chat-themes/monstera.png",
     overlayOpacity: 0.38,
   },
+  {
+    id: "verified_gold",
+    labelAr: "ذهبي موثّق ✦",
+    labelEn: "Verified Gold",
+    overlayOpacity: 0.42,
+  },
 ];
+
+/** ثيمات متاحة حسب الاشتراك */
+export function chatWallpaperThemesForUser(hasExclusiveChatTheme: boolean): ChatWallpaperTheme[] {
+  return CHAT_WALLPAPER_THEMES.filter(
+    t => t.id !== "verified_gold" || hasExclusiveChatTheme,
+  );
+}
 
 const STORAGE_KEY = "retweet_chat_wallpapers_v1";
 

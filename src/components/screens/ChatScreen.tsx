@@ -102,6 +102,9 @@ import { EXTENDED_REACTION_EMOJIS } from "@/lib/reactionEmojiGrid";
 import { isStickerImageContent, isStickerVideoContent } from "@/lib/stickerUtils";
 import { renderMentionHashtagNodes, createMentionRenderer } from "@/lib/renderMentionHashtagText";
 import { MentionComposerField } from "../MentionComposerField";
+import { ChatQuickRepliesBar } from "../chat/ChatQuickRepliesBar";
+import { VerifiedMarkForUser } from "../VerifiedBadge";
+import { getUserEntitlements } from "@/lib/verificationEntitlements";
 import { Mic, Image as ImageIcon, Sticker, Phone, Video, MicOff, MonitorUp, X, Plus, ArrowRight, Settings as SettingsIcon, Check, Camera, Search, Square, Megaphone, Users, LogOut, AtSign, MoreVertical, ChevronLeft, Reply, Forward, Copy, Trash2, Flag, MoreHorizontal, ChevronRight, Pin, Play, Pause, Star, Bell, BellOff, Mail, Send, PenLine, SquarePen, MessageCirclePlus, Smile, Lock, Palette } from "lucide-react";
 import { PoolGame } from "../games/PoolGame";
 import {
@@ -1801,8 +1804,9 @@ const ChatListRowWithPeek = memo(function ChatListRowWithPeek({
           >
             <div className="flex min-w-0 items-center gap-1.5">
               {c.isChannel && <Megaphone size={12} className="shrink-0 text-muted-foreground" aria-hidden />}
-              <span className={"min-w-0 truncate text-[16px] leading-tight " + (hasUnread ? "font-bold text-foreground" : "font-semibold text-foreground")}>
+              <span className={"min-w-0 truncate text-[16px] leading-tight inline-flex items-center gap-1 " + (hasUnread ? "font-bold text-foreground" : "font-semibold text-foreground")}>
                 {c.isGroup || c.isChannel ? c.name || "Group" : displayNameFromUsername(other?.username || displayName)}
+                {!c.isGroup && !c.isChannel && other ? <VerifiedMarkForUser user={other} size={12} /> : null}
               </span>
               {isListPinned && <Pin size={11} className="shrink-0 text-amber-500" aria-hidden />}
               {isMuted && <BellOff size={11} className="shrink-0 text-muted-foreground/60" aria-hidden />}
@@ -5030,10 +5034,12 @@ function ChatRoom({
   const dmDir = chatDmLayoutDir(lang);
   const dmRtl = chatDmIsRtl(lang);
   const activeWallpaper = useMemo(() => getChatWallpaperTheme(wallpaperId), [wallpaperId]);
+  const isVerifiedGoldWallpaper = wallpaperId === "verified_gold";
   const chatWallpaperUrl = activeWallpaper.imagePath
     ? chatWallpaperAssetUrl(activeWallpaper.imagePath)
     : null;
-  const chromeOnWallpaper = !!chatWallpaperUrl && !isQuranChannel;
+  const chromeOnWallpaper =
+    !isQuranChannel && (!!chatWallpaperUrl || isVerifiedGoldWallpaper);
   const wallpaperIconClass = "text-white/85 hover:bg-white/10 active:bg-white/15 transition-colors";
   const igDmSurfaceStyle = useMemo(() => {
     if (chromeOnWallpaper) return undefined;
@@ -5973,13 +5979,20 @@ function ChatRoom({
         : {})}
     >
       <div {...edgeStripProps} data-chat-nav-back-edge aria-label="سحب للرجوع من الحافة اليمنى" />
-      {chromeOnWallpaper && chatWallpaperUrl ? (
+      {chromeOnWallpaper ? (
         <>
-          <div
-            className="pointer-events-none fixed inset-0 z-[208] mx-auto w-full max-w-md bg-cover bg-center bg-no-repeat"
-            style={{ backgroundImage: `url(${chatWallpaperUrl})` }}
-            aria-hidden
-          />
+          {chatWallpaperUrl ? (
+            <div
+              className="pointer-events-none fixed inset-0 z-[208] mx-auto w-full max-w-md bg-cover bg-center bg-no-repeat"
+              style={{ backgroundImage: `url(${chatWallpaperUrl})` }}
+              aria-hidden
+            />
+          ) : isVerifiedGoldWallpaper ? (
+            <div
+              className="pointer-events-none fixed inset-0 z-[208] mx-auto w-full max-w-md bg-gradient-to-br from-amber-600/80 via-[#0095F6]/70 to-[#FF2D55]/60"
+              aria-hidden
+            />
+          ) : null}
           <div
             className="pointer-events-none fixed inset-0 z-[208] mx-auto w-full max-w-md"
             style={{ backgroundColor: `rgba(0,0,0,${activeWallpaper.overlayOpacity ?? 0.4})` }}
@@ -6104,6 +6117,7 @@ function ChatRoom({
             <div className="flex items-center gap-1.5 truncate text-sm font-semibold">
               {chat.isChannel && <Megaphone size={14} />}
               <span className="truncate">{useIgDm && isDmRoom ? `@${other?.username || "?"}` : title}</span>
+              {isDmRoom && other ? <VerifiedMarkForUser user={other} size={14} /> : null}
               {isDmRoom && (chat.streak?.streakCount ?? 0) > 0 && (
                 <StreakBadge streak={chat.streak!} compact />
               )}
@@ -6920,6 +6934,7 @@ function ChatRoom({
               : "bg-transparent"
           }
         >
+          <ChatQuickRepliesBar me={me} onPick={t => setText(prev => (prev ? `${prev} ${t}` : t))} />
           {replyingTo && (
             <ChatComposerReplyBar
               isQuran={isQuranChannel}
@@ -7568,6 +7583,7 @@ function ChatRoom({
         open={showChatThemePicker}
         selectedId={wallpaperId}
         language={lang}
+        hasExclusiveChatTheme={getUserEntitlements(me).hasExclusiveChatTheme}
         onClose={() => setShowChatThemePicker(false)}
         onSelect={id => {
           setWallpaperId(id);

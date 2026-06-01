@@ -39,6 +39,8 @@ import {
 } from "./MainTabPanels";
 import { apiBackendEnabled, getApiToken } from "@/lib/apiBackend";
 import { isNativeCapacitorShell } from "@/lib/apiUrlPolicy";
+import { getUserEntitlements } from "@/lib/verificationEntitlements";
+import { useScheduledPostsPublisher } from "./verification/VerificationPerksSettings";
 import { logAuthRoute } from "@/lib/authRouteDebug";
 import { isGuestUserId } from "@/lib/guestUser";
 import { PROFILE_RETURN_POST_KEY, type ProfileReturnContext } from "@/lib/types";
@@ -129,7 +131,17 @@ export function App() {
     exitGuestBrowseMode,
     joinGroupByInviteCode,
     logout,
+    createPost,
   } = useAppActions();
+
+  const scheduleEnt = currentUser ? getUserEntitlements(currentUser) : null;
+  useScheduledPostsPublisher(
+    currentUser?.id,
+    text => {
+      createPost({ type: "post", text });
+    },
+    !!scheduleEnt?.hasScheduledPosts,
+  );
 
   useEffect(() => startPerfSession(), []);
 

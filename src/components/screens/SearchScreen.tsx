@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useApp, userById, trendingHashtags } from "@/lib/store";
-import { rankUsersBySearchQuery } from "@/lib/searchRank";
+import { rankUsersBySearchQuery, sortUsersVerifiedFirst } from "@/lib/searchRank";
+import { isVerifiedBadgeActive } from "@/lib/verificationEntitlements";
+import { VerifiedMarkForUser } from "../VerifiedBadge";
 import { notifyGuestActionBlocked } from "@/lib/guestBlocked";
 import { useT } from "@/lib/i18n";
 import type { Post, ProfileReturnContext, User } from "@/lib/types";
@@ -58,6 +60,7 @@ export function SearchScreen({
   const [openPostId, setOpenPostId] = useState<string | null>(null);
   const [focusCommentsOnOpen, setFocusCommentsOnOpen] = useState(false);
   const [sharePost, setSharePost] = useState<Post | null>(null);
+  const [discoverTab, setDiscoverTab] = useState<"search" | "verified">("search");
   const searchSeqRef = useRef(0);
   const me = currentUser!;
   const qq = q.trim();
@@ -155,6 +158,17 @@ export function SearchScreen({
 
   const tags = trendingHashtags(state);
 
+  const verifiedAccounts = useMemo(() => {
+    const list = state.users.filter(
+      u =>
+        u.id !== me.id &&
+        !isGuestUserId(u.id) &&
+        !isBlockedBetween(me, u) &&
+        isVerifiedBadgeActive(u),
+    );
+    return sortUsersVerifiedFirst(list);
+  }, [state.users, me]);
+
   const explorePool = useMemo(
     () =>
       state.posts.filter(p => {
@@ -207,7 +221,64 @@ export function SearchScreen({
         </div>
       </div>
 
-      {q === "" && tags.length > 0 && (
+      {q === "" ? (
+        <div className="mt-3 flex gap-2 px-4">
+          <button
+            type="button"
+            onClick={() => setDiscoverTab("search")}
+            className={
+              "flex-1 rounded-full py-2 text-sm font-semibold " +
+              (discoverTab === "search"
+                ? "bg-zinc-900 text-white dark:bg-zinc-100 dark:text-zinc-900"
+                : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300")
+            }
+          >
+            استكشاف
+          </button>
+          <button
+            type="button"
+            onClick={() => setDiscoverTab("verified")}
+            className={
+              "flex-1 rounded-full py-2 text-sm font-semibold " +
+              (discoverTab === "verified"
+                ? "bg-[#0095F6] text-white"
+                : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300")
+            }
+          >
+            حسابات موثّقة
+          </button>
+        </div>
+      ) : null}
+
+      {q === "" && discoverTab === "verified" ? (
+        <div className="space-y-2 px-4 mt-4">
+          <h3 className="text-xs text-muted-foreground">حسابات موثّقة على Retweet</h3>
+          {verifiedAccounts.length === 0 ? (
+            <p className="text-xs text-muted-foreground py-2">لا توجد حسابات موثّقة بعد</p>
+          ) : null}
+          {verifiedAccounts.map(u => (
+            <button
+              key={u.id}
+              type="button"
+              onClick={() => onOpenProfile(u.id)}
+              className="w-full flex items-center gap-3 p-2 hover:bg-secondary rounded-2xl"
+            >
+              <Avatar name={u.username} src={u.avatar} />
+              <div className="min-w-0 text-start flex-1">
+                <div className="flex items-center gap-1 truncate text-sm font-semibold">
+                  {userDisplayName(u)}
+                  <VerifiedMarkForUser user={u} size={14} />
+                </div>
+                <div className="truncate text-xs text-muted-foreground" dir="ltr">
+                  @{u.username}
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {q === "" && tags.length > 0 && discoverTab === "search" && (
         <div className="mt-4 divide-y divide-zinc-100 dark:divide-zinc-800 border-t border-zinc-100">
           {tags.slice(0, 12).map(([tag, n], i) => (
             <button
@@ -247,7 +318,7 @@ export function SearchScreen({
         <span className="text-xs bg-white/20 px-2 py-1 rounded-full">LIVE</span>
       </button>
 
-      {qq ? (
+      {(qq || (q === "" && discoverTab === "search" && accountList.length > 0)) ? (
       <div className="space-y-2 px-4 mt-4">
         <h3 className="text-xs text-muted-foreground">
           {qq ? "نتائج البحث" : "حسابات جديدة"}
@@ -264,7 +335,10 @@ export function SearchScreen({
           <button key={u.id} type="button" onClick={() => onOpenProfile(u.id)} className="w-full flex items-center gap-3 p-2 hover:bg-secondary rounded-2xl">
             <Avatar name={u.username} src={u.avatar} />
             <div className="min-w-0 text-start">
-              <div className="truncate text-sm font-semibold">{userDisplayName(u)}</div>
+              <div className="flex items-center gap-1 truncate text-sm font-semibold">
+                {userDisplayName(u)}
+                <VerifiedMarkForUser user={u} size={14} />
+              </div>
               <div className="truncate text-xs text-muted-foreground" dir="ltr">@{u.username}</div>
               {u.bio ? <div className="text-xs text-muted-foreground line-clamp-1 mt-0.5">{u.bio}</div> : null}
             </div>

@@ -44,6 +44,7 @@ import {
 } from "lucide-react";
 import { PostOptionsMenu, CommentOptionsMenu } from "../PostOptionsMenu";
 import { VerifiedMarkForUser } from "../VerifiedBadge";
+import { isVerifiedBadgeActive } from "@/lib/verificationEntitlements";
 import { isReelFeedPost, normalizePostMedia, type NormalizedPostMedia } from "@/lib/postMedia";
 import { REEL_SAFE_CONTENT_RATIO } from "@/lib/reelsSpec";
 import { useReelsFeed } from "@/hooks/useReelsFeed";
@@ -323,7 +324,7 @@ export const ReelsScreen = memo(function ReelsScreen({
 
   const [tab, setTab] = useState<"all" | "friends">("all");
   const {
-    reels,
+    reels: reelsFeed,
     useApi: reelsUseApi,
     loading: reelsLoading,
     hasMore: reelsHasMore,
@@ -334,6 +335,15 @@ export const ReelsScreen = memo(function ReelsScreen({
     getCommentCount,
     isLiked: isReelLiked,
   } = useReelsFeed(me.id, me.blocked ?? [], me.following ?? [], tab);
+  const reels = useMemo(() => {
+    return [...reelsFeed].sort((a, b) => {
+      const ua = users.find(u => u.id === a.userId);
+      const ub = users.find(u => u.id === b.userId);
+      const va = ua && isVerifiedBadgeActive(ua) ? 1 : 0;
+      const vb = ub && isVerifiedBadgeActive(ub) ? 1 : 0;
+      return vb - va;
+    });
+  }, [reelsFeed, users]);
   const [sharePost, setSharePost] = useState<Post | null>(null);
   const [commentsFor, setCommentsFor] = useState<Post | null>(null);
   const [commentDraft, setCommentDraft] = useState("");

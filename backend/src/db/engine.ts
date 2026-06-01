@@ -43,6 +43,11 @@ export type UserRow = {
   storyMaxDuration?: number;
   storyExpiryOptions?: number[];
   postCharacterLimit?: number;
+  verificationResubmitUsed?: boolean;
+  pinnedPostId?: string;
+  restrictComments?: boolean;
+  restrictDmFromNonFollowers?: boolean;
+  usernameReservedUntil?: string;
   /** مصادقة ثنائية — كود بريد عند كل تسجيل دخول */
   twoFactorEnabled?: boolean;
   /** أجهزة موثوقة بعد التحقق بالبريد */
@@ -355,7 +360,14 @@ export async function usernameExists(username: string, excludeId?: string): Prom
     return true;
   }
   const users = await listUsers();
-  return users.some(x => x.id !== excludeId && x.username.toLowerCase() === u);
+  const now = Date.now();
+  return users.some(x => {
+    if (x.id === excludeId) return false;
+    if (x.username.toLowerCase() !== u) return false;
+    const reservedUntil = x.usernameReservedUntil ? Date.parse(x.usernameReservedUntil) : 0;
+    if (Number.isFinite(reservedUntil) && reservedUntil > now) return true;
+    return true;
+  });
 }
 
 /** بحث جزئي عن حسابات (يوزر، إيميل، جوال) — أحدث التسجيلات أولاً عند التعادل */
@@ -390,6 +402,12 @@ export async function searchUsers(query: string, limit = 40): Promise<UserRow[]>
     const ra = rank(au, ad);
     const rb = rank(bu, bd);
     if (ra !== rb) return ra - rb;
+    const va = a.verified === true ? 1 : 0;
+    const vb = b.verified === true ? 1 : 0;
+    if (vb !== va) return vb - va;
+    const sa = a.isSubscribed === true ? 1 : 0;
+    const sb = b.isSubscribed === true ? 1 : 0;
+    if (sb !== sa) return sb - sa;
     const ta = Date.parse(a.createdAt) || 0;
     const tb = Date.parse(b.createdAt) || 0;
     if (tb !== ta) return tb - ta;

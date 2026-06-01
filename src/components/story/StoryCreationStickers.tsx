@@ -10,8 +10,11 @@ import {
   Hash,
   ListOrdered,
   SlidersHorizontal,
+  Link2,
+  Sparkles,
   X,
 } from "lucide-react";
+import type { ExclusiveStickerPack } from "@/lib/verificationTiers";
 
 const nid = () => Math.random().toString(36).slice(2, 11);
 
@@ -38,12 +41,21 @@ function TrayBtn({ icon: Icon, label, onClick }: { icon: typeof BarChart2; label
   );
 }
 
+const VERIFIED_STICKER_LABELS = {
+  basic: ["✓ موثّق", "★ مميز", "🔥"],
+  full: ["✓ موثّق", "★ مميز", "🔥", "💎 VIP", "⚡", "🎯"],
+} as const;
+
 export function StoryCreationStickers({
   stickers,
   setStickers,
+  exclusivePack = "none",
+  hasStoryLink = false,
 }: {
   stickers: StorySticker[];
   setStickers: React.Dispatch<React.SetStateAction<StorySticker[]>>;
+  exclusivePack?: ExclusiveStickerPack;
+  hasStoryLink?: boolean;
 }) {
   const { state, currentUser } = useApp();
   const me = currentUser!;
@@ -66,6 +78,7 @@ export function StoryCreationStickers({
   const [hashtag, setHashtag] = useState({ tag: "ستوري" });
   const [quiz, setQuiz] = useState({ question: "", o0: "", o1: "", o2: "", o3: "", correct: 0 });
   const [slider, setSlider] = useState({ emoji: "❤️", label: "مودك؟" });
+  const [linkDraft, setLinkDraft] = useState({ url: "https://", label: "اضغط هنا" });
 
   const mentionChoices = state.users.filter(u => u.id !== me.id).slice(0, 40);
 
@@ -203,6 +216,41 @@ export function StoryCreationStickers({
         </button>
       </div>
     );
+  } else if (sheet === "link") {
+    sheetBody = (
+      <div className="space-y-2">
+        <input
+          value={linkDraft.label}
+          onChange={e => setLinkDraft(s => ({ ...s, label: e.target.value }))}
+          placeholder="نص الزر"
+          className="w-full bg-zinc-800 rounded-xl px-3 py-2 text-sm text-white outline-none"
+        />
+        <input
+          value={linkDraft.url}
+          onChange={e => setLinkDraft(s => ({ ...s, url: e.target.value }))}
+          placeholder="https://..."
+          className="w-full bg-zinc-800 rounded-xl px-3 py-2 text-sm text-white outline-none"
+          dir="ltr"
+        />
+        <button
+          type="button"
+          className="w-full bg-[#0095F6] text-white rounded-xl py-2.5 font-semibold text-sm"
+          onClick={() => {
+            const url = linkDraft.url.trim();
+            if (!url.startsWith("http")) return;
+            push({
+              id: nid(),
+              kind: "link",
+              ...p,
+              url,
+              label: linkDraft.label.trim() || "زيارة الرابط",
+            });
+          }}
+        >
+          إضافة الرابط
+        </button>
+      </div>
+    );
   } else if (sheet === "slider") {
     sheetBody = (
       <div className="space-y-2">
@@ -228,7 +276,36 @@ export function StoryCreationStickers({
           <TrayBtn icon={Hash} label="هاشتاق" onClick={() => setSheet("hashtag")} />
           <TrayBtn icon={ListOrdered} label="اختبار" onClick={() => setSheet("quiz")} />
           <TrayBtn icon={SlidersHorizontal} label="منزلق" onClick={() => setSheet("slider")} />
+          {hasStoryLink ? (
+            <TrayBtn icon={Link2} label="رابط" onClick={() => setSheet("link")} />
+          ) : null}
         </div>
+        {exclusivePack !== "none" ? (
+          <div className="mt-2 border-t border-white/10 pt-2">
+            <p className="text-[9px] text-amber-300/90 text-center mb-1.5 flex items-center justify-center gap-1">
+              <Sparkles size={10} /> ملصقات موثّقين
+            </p>
+            <div className="flex flex-wrap justify-center gap-1.5">
+              {VERIFIED_STICKER_LABELS[exclusivePack === "full" ? "full" : "basic"].map(label => (
+                <button
+                  key={label}
+                  type="button"
+                  className="rounded-full bg-white/15 px-2.5 py-1 text-xs font-bold text-white border border-amber-400/40"
+                  onClick={() =>
+                    push({
+                      id: nid(),
+                      kind: "hashtag",
+                      ...nextPlacement(stickers.length),
+                      tag: label.replace(/\s/g, ""),
+                    })
+                  }
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
         {stickers.length > 0 && (
           <button type="button" className="w-full mt-2 text-xs text-red-300 py-1" onClick={() => setStickers([])}>
             مسح كل الملصقات ({stickers.length})

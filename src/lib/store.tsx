@@ -813,6 +813,12 @@ export function normalizePersistedAppState(merged: AppState): AppState {
     storyMaxDuration: typeof u.storyMaxDuration === "number" ? u.storyMaxDuration : 30,
     storyExpiryOptions: Array.isArray(u.storyExpiryOptions) && u.storyExpiryOptions.length > 0 ? u.storyExpiryOptions : [24],
     postCharacterLimit: typeof u.postCharacterLimit === "number" && u.postCharacterLimit > 0 ? u.postCharacterLimit : 300,
+    verificationResubmitUsed: u.verificationResubmitUsed === true,
+    pinnedPostId: typeof u.pinnedPostId === "string" ? u.pinnedPostId : undefined,
+    restrictComments: u.restrictComments === true,
+    restrictDmFromNonFollowers: u.restrictDmFromNonFollowers === true,
+    usernameReservedUntil:
+      typeof u.usernameReservedUntil === "string" ? u.usernameReservedUntil : undefined,
     founderVerified: u.founderVerified === true,
     founderOfficialLabel:
       typeof u.founderOfficialLabel === "string" ? u.founderOfficialLabel : undefined,
@@ -3423,6 +3429,8 @@ export function AppProvider({
       if (!s.currentUserId || isGuestUserId(s.currentUserId)) return s;
       const post = s.posts.find((p) => p.id === postId);
       if (!post) return s;
+      const author = s.users.find(u => u.id === post.userId);
+      if (author?.restrictComments && post.userId !== s.currentUserId) return s;
       const c: Comment = {
         id: optimisticId,
         userId: s.currentUserId,
