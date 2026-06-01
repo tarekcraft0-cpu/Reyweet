@@ -2120,7 +2120,7 @@ export function ChatScreen({
     (p: number, animate: boolean) => {
       try {
         const layers = stackLayers();
-        if (p <= 0.001 && !openChat && !stackClosingId) {
+        if (!openChat && !stackClosingId && p < 0.03) {
           snapChatNavInboxRest(layers);
           return;
         }
@@ -2972,6 +2972,25 @@ export function ChatScreen({
   useLayoutEffect(() => {
     if (!chatTabActive || openChat || stackClosingId) return;
     resetStackToInboxRest();
+    if (!isNativeCapacitorShell()) return;
+    const panel = stackInboxRef.current?.closest<HTMLElement>('[data-tab-panel="chat"]');
+    if (panel) panel.style.transform = "translate3d(0, 0, 0)";
+    const scene = stackInboxRef.current?.parentElement;
+    if (scene?.classList.contains("chat-stack-scene")) {
+      scene.style.width = "100%";
+      scene.style.maxWidth = "100%";
+      scene.style.transform = "none";
+    }
+  }, [chatTabActive, openChat, stackClosingId, resetStackToInboxRest]);
+
+  useEffect(() => {
+    if (!chatTabActive || !isNativeCapacitorShell()) return;
+    const onVisible = () => {
+      if (document.visibilityState !== "visible" || openChat || stackClosingId) return;
+      resetStackToInboxRest();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
   }, [chatTabActive, openChat, stackClosingId, resetStackToInboxRest]);
 
   useEffect(() => {
@@ -3692,7 +3711,10 @@ export function ChatScreen({
           </div>
         </div>
       )}
-      <div className="chat-stack-scene relative flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col overflow-hidden bg-background">
+      <div
+        dir="ltr"
+        className="chat-stack-scene relative flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col overflow-hidden bg-background"
+      >
         {chatInbox}
         <ChatStackRoomGestureShell
           roomRef={stackRoomRef}

@@ -59,15 +59,19 @@ const KeepAlivePanel = memo(function KeepAlivePanel({
   /** عند التوقف: تبويب واحد فقط — يمنع ظهور ريلز الأسود خلف الرئيسية/البحث */
   const showPanel = isDragging ? near : isSettled;
 
+  const panelTransform =
+    isSettled && dragIndex == null ? "translate3d(0, 0, 0)" : `translate3d(${offset}%, 0, 0)`;
+
   return (
     <div
+      data-tab-panel={tabId}
       className={
-        "absolute inset-0 flex min-h-0 flex-col " +
+        "absolute inset-0 flex min-h-0 w-full max-w-full flex-col " +
         (tabId === "reels" ? "bg-black " : "bg-background ") +
         (animate ? "will-change-transform" : "")
       }
       style={{
-        transform: `translate3d(${offset}%, 0, 0)`,
+        transform: panelTransform,
         transition:
           animate && isSettled
             ? `transform ${TAB_TRANSITION_MS}ms ${TAB_EASE}`

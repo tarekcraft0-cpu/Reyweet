@@ -62,20 +62,17 @@ export function chatNavCompleteMs(pullPx: number, widthPx: number): number {
 }
 
 /** t: 0 = مغلق (غرفة خارج الشاشة يميناً)، 1 = مفتوح */
-export function chatNavOpenTransforms(t: number, widthPx: number) {
-  const w = chatNavWidth(widthPx);
+export function chatNavOpenTransforms(t: number, _widthPx: number) {
   const p = Math.max(0, Math.min(1, t));
   /** نسبة مئوية — تطابق عرض الحاوية دائماً (يمنع فراغاً على iOS عند اختلاف cap عن العرض الفعلي) */
   const room =
     p >= 0.999
       ? "none"
       : `translate3d(${(100 * (1 - p)).toFixed(4)}%, 0, 0)`;
-  /** القائمة تبقى بعرض الشاشة عند الراحة — parallax خفيف فقط أثناء الفتح */
-  const inboxTx =
-    p <= 0.001 || p >= 0.999 ? 0 : Math.round(-w * 0.05 * (1 - p));
+  /** القائمة لا تتحرك أفقياً — parallax كان يُسبب انزياحاً ظاهراً على iOS/RTL */
   return {
     room,
-    inbox: inboxTx === 0 ? "none" : `translate3d(${inboxTx}px, 0, 0)`,
+    inbox: "none",
   };
 }
 
@@ -123,8 +120,10 @@ export function applyChatNavOpenTransforms(
     layers.inboxEl.style.transform = inbox;
     layers.inboxEl.style.transformOrigin = "";
     layers.inboxEl.style.transition = transition;
+    delete layers.inboxEl.dataset.inboxAtRest;
   }
   if (layers.roomEl) {
+    layers.roomEl.style.visibility = "";
     layers.roomEl.style.transform = room;
     layers.roomEl.style.transition = transition;
     layers.roomEl.style.removeProperty("--retweet-chat-room-radius");
@@ -137,18 +136,24 @@ export function snapChatNavInboxRest(layers: ChatNavLayerRefs, widthPx?: number)
     layers.inboxEl.style.transform = "none";
     layers.inboxEl.style.transformOrigin = "";
     layers.inboxEl.style.transition = "none";
+    layers.inboxEl.style.left = "0";
+    layers.inboxEl.style.right = "0";
+    layers.inboxEl.style.width = "100%";
+    layers.inboxEl.style.maxWidth = "100%";
+    layers.inboxEl.dataset.inboxAtRest = "true";
   }
   if (layers.roomEl) {
+    const roomEmpty = layers.roomEl.childElementCount === 0;
     const w = chatNavWidth(
       widthPx ??
         layers.roomEl.parentElement?.clientWidth ??
         (typeof window !== "undefined" ? window.innerWidth : 390),
     );
     const { room } = chatNavOpenTransforms(0, w);
-    layers.roomEl.style.transform = room === "none" ? "translate3d(100%, 0, 0)" : room;
+    layers.roomEl.style.transform = roomEmpty ? "none" : room === "none" ? "translate3d(100%, 0, 0)" : room;
     layers.roomEl.style.transformOrigin = "";
     layers.roomEl.style.transition = "none";
-    layers.roomEl.style.visibility = "";
+    layers.roomEl.style.visibility = roomEmpty ? "hidden" : "";
     layers.roomEl.style.opacity = "";
     layers.roomEl.style.pointerEvents = "none";
     layers.roomEl.style.removeProperty("--retweet-chat-room-radius");
