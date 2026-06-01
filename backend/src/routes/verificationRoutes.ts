@@ -12,16 +12,17 @@ import {
   createStripeCheckoutSession,
   createVerificationPaymentIntent,
   isStripeConfigured,
+  paymentIntentPlan,
   stripePublishableKey,
   verifyStripeCheckoutSession,
   verifyStripePaymentIntent,
 } from "../lib/stripeBilling.js";
+import { getVerificationTier, VERIFICATION_TIERS } from "../lib/verificationTiers.js";
 import {
   getUserEntitlements,
   hasActiveSubscription,
   isAnimatedAvatarUrl,
   isVerifiedBadgeActive,
-  VERIFICATION_SUBSCRIPTION_PLAN,
   VERIFICATION_SUBSCRIPTION_PRICE_USD,
 } from "../../../src/lib/verificationEntitlements.js";
 
@@ -36,16 +37,17 @@ function entitlementsPayload(user: UserRow) {
 }
 
 function applyApprovedVerification(user: UserRow): Partial<UserRow> {
+  const tier = getVerificationTier(user.subscriptionPlan);
   return {
     verified: true,
     verificationStatus: "approved",
     verificationRejectReason: undefined,
-    canUseAnimatedAvatar: true,
-    storyMaxDuration: 60,
-    storyExpiryOptions: [24, 48, 72],
-    postCharacterLimit: 1000,
+    canUseAnimatedAvatar: tier.canUseAnimatedAvatar,
+    storyMaxDuration: tier.storyMaxDuration,
+    storyExpiryOptions: tier.storyExpiryHours,
+    postCharacterLimit: tier.postCharacterLimit,
     isSubscribed: true,
-    subscriptionPlan: user.subscriptionPlan || VERIFICATION_SUBSCRIPTION_PLAN,
+    subscriptionPlan: tier.plan,
   };
 }
 
@@ -67,18 +69,32 @@ export function registerVerificationRoutes(
       publishableKey: stripePublishableKey() || null,
       priceUsd: VERIFICATION_SUBSCRIPTION_PRICE_USD,
       currency: "usd",
+      tiers: VERIFICATION_TIERS.map(t => ({
+        id: t.id,
+        plan: t.plan,
+        priceUsd: t.priceUsd,
+        nameAr: t.nameAr,
+        perksAr: t.perksAr,
+      })),
     });
+  });
+
+  const paymentIntentSchema = z.object({
+    tier: z.string().max(64).optional(),
   });
 
   app.post("/v1/subscription/stripe/payment-intent", authMiddleware, async (req, res) => {
     const userId = (req as AuthedReq).userId;
-    const r = await createVerificationPaymentIntent(userId);
+    const parsed = paymentIntentSchema.safeParse(req.body ?? {});
+    const tier = parsed.success ? parsed.data.tier : undefined;
+    const r = await createVerificationPaymentIntent(userId, tier);
     if (!r.ok) return res.status(503).json({ error: r.error, configured: false });
     return res.json({
       ok: true,
       clientSecret: r.clientSecret,
       publishableKey: r.publishableKey,
       amountUsd: r.amountUsd,
+      plan: r.plan,
     });
   });
 
@@ -87,6 +103,7 @@ export function registerVerificationRoutes(
     receipt: z.string().max(8000).optional(),
     transactionId: z.string().max(256).optional(),
     paymentIntentId: z.string().max(256).optional(),
+    tier: z.string().max(64).optional(),
   });
 
   app.post("/v1/subscription/confirm", authMiddleware, async (req, res) => {
@@ -94,7 +111,8 @@ export function registerVerificationRoutes(
     const parsed = confirmSchema.safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: "بيانات غير صالحة" });
 
-    const { platform, receipt, transactionId, paymentIntentId } = parsed.data;
+    const { platform, receipt, transactionId, paymentIntentId, tier: tierHint } = parsed.data;
+    let resolvedPlan: string | undefined = tierHint?.trim() || undefined;
     const allowDev =
       platform === "dev" &&
       (process.env.SEED_DEMO === "1" || process.env.NODE_ENV !== "production");
@@ -110,6 +128,8 @@ export function registerVerificationRoutes(
       } else if (piId.startsWith("pi_")) {
         const v = await verifyStripePaymentIntent(piId, userId);
         if (!v.ok) return res.status(402).json({ error: v.error });
+        const fromPi = await paymentIntentPlan(piId);
+        if (fromPi) resolvedPlan = fromPi;
       } else {
         const sess = await verifyStripeCheckoutSession(piId, userId);
         if (!sess.ok) {
@@ -130,7 +150,7 @@ export function registerVerificationRoutes(
       return res.status(403).json({ error: "غير مصرح" });
     }
 
-    const user = await activateSubscriptionAndQueueVerification(userId);
+    const user = await activateSubscriptionAndQueueVerification(userId, resolvedPlan);
     if (!user) return res.status(404).json({ error: "not found" });
     broadcastProfileUpdated(user);
     return res.json({

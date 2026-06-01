@@ -1,5 +1,5 @@
-import { isPointerInChatDismissStartZone, isPointerOnDismissEdge, type DismissGestureProfile } from "@/lib/edgeSwipeDismiss";
-
+import { isChatNavBackEdge } from "@/lib/chatNavStack";
+import { CHAT_EDGE_SWIPE_HIT_PX, isPointerOnDismissEdge, type DismissGestureProfile } from "@/lib/edgeSwipeDismiss";
 /**
  * طبقة سحب للخلف — يُسجَّل كل SlideDismissShell / غرفة محادثة.
  * يعادل تهيئة GestureBinding / pointerRouter في Flutter.
@@ -52,16 +52,14 @@ function installDocumentRouter() {
     const root = layer.getContainer();
     if (!root || !root.contains(e.target as Node)) return;
     const rect = root.getBoundingClientRect();
-    const profile =
-      root.dataset.chatDismissRtl === "1" ? "chat" : (layer.dismissProfile ?? "app");
+    const profile = layer.dismissProfile ?? "app";
     if (isInteractiveTarget(e.target)) return;
     if (document.documentElement.dataset.chatThreadOpen === "1" && profile === "app") return;
     if (
       profile === "chat"
-        ? !isPointerInChatDismissStartZone(e.clientX, rect, e.target)
+        ? !isChatNavBackEdge(e.clientX, rect, CHAT_EDGE_SWIPE_HIT_PX)
         : !isPointerOnDismissEdge(e.clientX, rect, profile)
-    ) {
-      return;
+    ) {      return;
     }
     activePointerId = e.pointerId;
     activeLayerId = layer.id;
@@ -81,8 +79,18 @@ function installDocumentRouter() {
   const onUp = (e: PointerEvent) => {
     if (activePointerId == null || e.pointerId !== activePointerId) return;
     const layer = layers.find(L => L.id === activeLayerId);
+    const pid = activePointerId;
     activePointerId = null;
     activeLayerId = null;
+    layer?.onPointerUp(e);
+  };
+
+  const onCancel = (e: PointerEvent) => {
+    if (activePointerId == null || e.pointerId !== activePointerId) return;
+    const layer = layers.find(L => L.id === activeLayerId);
+    activePointerId = null;
+    activeLayerId = null;
+    /** Safari iOS: pointercancel بعد pointerup — لا تُنهِ الإيماءة مرتين */
     layer?.onPointerUp(e);
   };
 
@@ -94,7 +102,7 @@ function installDocumentRouter() {
   document.addEventListener("pointerdown", onDown, { capture: true, passive: false });
   document.addEventListener("pointermove", onMove, { capture: true, passive: false });
   document.addEventListener("pointerup", onUp, { capture: true });
-  document.addEventListener("pointercancel", onUp, { capture: true });
+  document.addEventListener("pointercancel", onCancel, { capture: true });
   window.addEventListener("blur", resetActivePointer);
   document.addEventListener("visibilitychange", resetActivePointer);
 }

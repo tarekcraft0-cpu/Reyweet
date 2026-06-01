@@ -1,7 +1,8 @@
-import React, { useEffect, useMemo, useState, type ComponentType, type ReactNode } from "react";
+import React, { useCallback, useEffect, useMemo, useState, type ComponentType, type ReactNode } from "react";
 import { useApp, userById } from "@/lib/store";
 import type { User } from "@/lib/types";
-import { ensureApiTokenMatchesUser } from "@/lib/accountSessions";
+import { ensureApiTokenMatchesUser, listAccountSessions } from "@/lib/accountSessions";
+import { displayNameFromUsername } from "@/lib/rsocialUi";
 import { isGuestUserId } from "@/lib/guestUser";
 import {
   apiBackendEnabled,
@@ -14,7 +15,7 @@ import {
 import { VERCEL_SITE_URL } from "@/lib/apiUrlPolicy";
 import { getUserEntitlements } from "@/lib/verificationEntitlements";
 import { apiAdminMe } from "@/lib/verificationApi";
-import { VerificationSubscriptionScreen } from "../verification/VerificationSubscriptionScreen";
+import { VerificationSubscriptionSheet } from "../verification/VerificationSubscriptionSheet";
 import { VerificationRequestPanel } from "../verification/VerificationRequestPanel";
 import { VerificationBadgeColorPicker } from "../verification/VerificationBadgeColorPicker";
 import { AdminVerificationPanel } from "../verification/AdminVerificationPanel";
@@ -39,6 +40,7 @@ import {
   BadgeCheck,
   Bell,
   Bookmark,
+  ChevronLeft,
   ChevronRight,
   Clock,
   Globe,
@@ -50,6 +52,7 @@ import {
   LogOut,
   MessageCircle,
   Moon,
+  X,
   Shield,
   ShieldCheck,
   Smartphone,
@@ -64,14 +67,12 @@ import { RSocialAvatar } from "../rsocial/RSocialAvatar";
 import { SlideDismissBackButton } from "../SlideDismissShell";
 import { writeDeviceTheme } from "@/lib/deviceTheme";
 import { StoriesArchiveScreen } from "./StoriesArchiveScreen";
-import { BottomDismissSheet } from "../BottomDismissSheet";
 
 type SubView =
   | null
   | "accountInfo"
   | "changePwd"
   | "verify"
-  | "subscription"
   | "adminVerify"
   | "adminModeration"
   | "saved"
@@ -87,6 +88,8 @@ const PRIVACY_POLICY_URL = `${VERCEL_SITE_URL}/privacy.html`;
 function SectionGap() {
   return <div className="h-2 shrink-0 bg-background" aria-hidden />;
 }
+
+const accountsCenterCardClass = "overflow-hidden rounded-2xl border border-border bg-card";
 
 function SectionTitle({ children }: { children: ReactNode }) {
   return (
@@ -173,6 +176,42 @@ function SettingsRow({
     );
   }
   return <div className={className}>{body}</div>;
+}
+
+function AccountsCenterRow({
+  icon: Icon,
+  label,
+  subtitle,
+  onClick,
+}: {
+  icon: ComponentType<{ size?: number; className?: string; strokeWidth?: number }>;
+  label: string;
+  subtitle?: string;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full min-h-[62px] items-center gap-3 px-4 py-3 text-start transition-colors active:bg-accent"
+    >
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-secondary/70">
+        <Icon size={20} strokeWidth={1.6} className="text-foreground" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[15px] font-medium text-foreground">{label}</span>
+        {subtitle ? (
+          <span className="mt-0.5 block truncate text-xs text-muted-foreground">{subtitle}</span>
+        ) : null}
+      </span>
+      <ChevronRight
+        size={18}
+        strokeWidth={2}
+        className="shrink-0 text-muted-foreground rtl:rotate-180"
+        aria-hidden
+      />
+    </button>
+  );
 }
 
 function DeleteAccountPanel({
@@ -364,50 +403,166 @@ function SettingsHeader({
   title,
   onBack,
   navScope = "shell",
+  showBack = true,
 }: {
   title: string;
   onBack: () => void;
   /** shell = إغلاق الإعدادات بانزلاق؛ local = رجوع داخل القائمة فقط */
   navScope?: "shell" | "local";
+  showBack?: boolean;
 }) {
   return (
     <div
       dir="rtl"
-      className="sticky top-0 z-30 flex flex-row items-center gap-3 border-b border-border bg-background px-2 py-3 pt-[max(0.5rem,var(--sat))] [padding-inline-start:max(0.5rem,var(--sal))] [padding-inline-end:max(0.5rem,var(--sar))]"
+      className="sticky top-0 z-[10001] isolate flex flex-row items-center gap-3 border-b border-border bg-background px-2 py-3 pt-[max(0.5rem,var(--sat))] [padding-inline-start:max(0.5rem,var(--sal))] [padding-inline-end:max(0.5rem,var(--sar))]"
     >
-      <SlideDismissBackButton
-        navScope={navScope}
-        onDismiss={onBack}
-        className="relative z-40 shrink-0 rounded-full p-2 text-foreground active:bg-accent"
-        aria-label="رجوع"
-      >
-        <ArrowRight size={24} strokeWidth={1.75} />
-      </SlideDismissBackButton>
+      {showBack ? (
+        <SlideDismissBackButton
+          navScope={navScope}
+          onDismiss={onBack}
+          className="relative z-[10001] shrink-0 rounded-full p-2 text-foreground active:bg-accent"
+          aria-label="رجوع"
+        >
+          <ArrowRight size={24} strokeWidth={1.75} className="pointer-events-none" />
+        </SlideDismissBackButton>
+      ) : (
+        <span className="w-10 shrink-0" aria-hidden />
+      )}
       <h1 className="min-w-0 flex-1 truncate text-center text-[17px] font-semibold text-foreground px-2">{title}</h1>
       <span className="w-10 shrink-0" aria-hidden />
     </div>
   );
 }
 
+type SecurityView =
+  | "menu"
+  | "changePassword"
+  | "twoFactor"
+  | "verificationSelfie"
+  | "savedLogin"
+  | "whereLoggedIn"
+  | "comingSoon";
+
+function SecurityMenuRow({
+  label,
+  onClick,
+  trailing,
+}: {
+  label: string;
+  onClick?: () => void;
+  trailing?: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full min-h-[52px] items-center gap-3 border-b border-border px-4 py-3.5 text-start transition-colors last:border-b-0 active:bg-accent"
+    >
+      <span className="min-w-0 flex-1 text-[16px] font-normal text-foreground">{label}</span>
+      <span className="flex shrink-0 items-center gap-2">
+        {trailing}
+        <ChevronRight size={18} strokeWidth={2} className="text-muted-foreground" aria-hidden />
+      </span>
+    </button>
+  );
+}
+
+function SecurityScreenShell({
+  title,
+  onBack,
+  children,
+}: {
+  title: string;
+  onBack: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div className="settings-screen-root min-h-full w-full overflow-x-hidden bg-background text-foreground pb-10" dir="ltr">
+      <div className="sticky top-0 z-[10001] isolate bg-background px-4 pt-[max(0.75rem,var(--sat))] pb-3">
+        <SlideDismissBackButton
+          navScope="local"
+          onDismiss={onBack}
+          className="relative z-[10001] mb-1 inline-flex h-11 w-11 items-center justify-center rounded-full text-foreground hover:bg-accent"
+          aria-label="Back"
+        >
+          <ChevronLeft size={24} strokeWidth={2} className="pointer-events-none" />
+        </SlideDismissBackButton>
+        <h1 className="text-[32px] font-bold leading-tight tracking-tight text-foreground">{title}</h1>
+      </div>
+      <div className="px-4 pb-6">{children}</div>
+    </div>
+  );
+}
+
+function SecurityDarkInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <input
+      {...props}
+      className={
+        "w-full rounded-xl border border-border bg-input px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground " +
+        (props.className ?? "")
+      }
+    />
+  );
+}
+
 function SecuritySettingsPanel({ onBack }: { onBack: () => void }) {
+  const { currentUser, changeOwnPassword } = useApp();
+  const t = useT();
+  const me = currentUser!;
+  const [view, setView] = useState<SecurityView>("menu");
+  const [comingSoonTitle, setComingSoonTitle] = useState("");
   const [summary, setSummary] = useState<SecuritySummary | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [oldP, setOldP] = useState("");
+  const [newP, setNewP] = useState("");
   const [pwd, setPwd] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
+  const needsSecurityData = view === "twoFactor" || view === "whereLoggedIn";
+
   useEffect(() => {
+    if (!needsSecurityData) return;
     void (async () => {
       setLoading(true);
-      const r = await apiGetSecurity();
-      if (r.ok) setSummary(r.data);
-      setLoading(false);
+      try {
+        const r = await apiGetSecurity();
+        if (r.ok && r.data) setSummary(r.data);
+      } catch {
+        /* ignore network/runtime errors in settings UI */
+      } finally {
+        setLoading(false);
+      }
     })();
-  }, []);
+  }, [needsSecurityData]);
 
   const refresh = async () => {
-    const r = await apiGetSecurity();
-    if (r.ok) setSummary(r.data);
+    try {
+      const r = await apiGetSecurity();
+      if (r.ok && r.data) setSummary(r.data);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const openComingSoon = (title: string) => {
+    setComingSoonTitle(title);
+    setView("comingSoon");
+  };
+
+  const submitChangePassword = async () => {
+    setBusy(true);
+    setMsg(null);
+    const r = await changeOwnPassword(oldP, newP);
+    setBusy(false);
+    if (!r.ok) {
+      setMsg(r.error || t("pwdChangeFailed"));
+      return;
+    }
+    setMsg(t("pwdChanged"));
+    setOldP("");
+    setNewP("");
   };
 
   const toggle2fa = async (enabled: boolean) => {
@@ -425,7 +580,7 @@ function SecuritySettingsPanel({ onBack }: { onBack: () => void }) {
     }
     setSummary(r.data);
     setPwd("");
-    setMsg(enabled ? "تم تفعيل المصادقة الثنائية" : "تم إيقاف المصادقة الثنائية");
+    setMsg(enabled ? "تم تفعيل التحقق بخطوتين" : "تم إيقاف التحقق بخطوتين");
   };
 
   const revokeDevices = async () => {
@@ -447,83 +602,261 @@ function SecuritySettingsPanel({ onBack }: { onBack: () => void }) {
     await refresh();
   };
 
-  return (
-    <div className="settings-screen-root min-h-full w-full overflow-x-hidden bg-background pb-10" dir="rtl">
-      <SettingsHeader title="الأمان" onBack={onBack} navScope="local" />
-      <div className="mx-4 mt-4 space-y-4">
-        {loading && <p className="text-sm text-muted-foreground">جاري التحميل…</p>}
-        {summary && (
-          <>
-            <SettingsCard>
-              <div className="px-4 py-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-foreground">المصادقة الثنائية</p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      كود بريد عند كل تسجيل دخول
-                    </p>
-                  </div>
-                  <IgToggle
-                    on={summary.twoFactorEnabled}
-                    onToggle={() => void toggle2fa(!summary.twoFactorEnabled)}
-                  />
-                </div>
-              </div>
-            </SettingsCard>
+  const savedAccounts = useMemo(() => {
+    const seen = new Set<string>();
+    const rows = listAccountSessions().filter(s => {
+      const key = s.userId + "|" + s.username.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      seen.add(s.userId);
+      seen.add(s.username.toLowerCase());
+      return true;
+    });
+    if (!rows.some(s => s.userId === me.id)) {
+      rows.unshift({
+        userId: me.id,
+        token: "",
+        username: me.username,
+        email: me.email ?? "",
+        avatar: me.avatar,
+      });
+    }
+    return rows;
+  }, [me.id, me.username, me.email, me.avatar]);
 
-            <p className="text-xs leading-relaxed text-muted-foreground px-1">
-              عند الدخول من <strong>جهاز جديد</strong> يُرسل كود تحقق إلى بريدك تلقائياً (حتى بدون تفعيل
-              المصادقة الثنائية). بعد إدخال الكود يُوثَّق الجهاز.
+  if (view === "changePassword") {
+    return (
+      <SecurityScreenShell title="Change password" onBack={() => setView("menu")}>
+        <p className="mt-2 text-[14px] leading-5 text-muted-foreground">
+          Enter your current password, then choose a new one.
+        </p>
+        <div className="mt-4 space-y-3">
+          <SecurityDarkInput
+            value={oldP}
+            onChange={e => setOldP(e.target.value)}
+            type="password"
+            placeholder={t("pwdCurrent")}
+            autoComplete="current-password"
+          />
+          <SecurityDarkInput
+            value={newP}
+            onChange={e => setNewP(e.target.value)}
+            type="password"
+            placeholder={t("pwdNew")}
+            autoComplete="new-password"
+          />
+          <button
+            type="button"
+            disabled={busy || !oldP.trim() || !newP.trim()}
+            onClick={() => void submitChangePassword()}
+            className="w-full rounded-xl bg-[#0095F6] py-3 text-sm font-semibold text-white disabled:opacity-50"
+          >
+            {t("save")}
+          </button>
+          {msg ? (
+            <p className={`text-sm ${msg.includes("تعذر") || msg.includes("غير") || msg.includes("Failed") ? "text-red-400" : "text-emerald-400"}`}>
+              {msg}
             </p>
+          ) : null}
+        </div>
+      </SecurityScreenShell>
+    );
+  }
 
-            <div className="space-y-2">
-              <input
-                value={pwd}
-                onChange={e => setPwd(e.target.value)}
-                type="password"
-                placeholder="كلمة المرور الحالية"
-                className="w-full rounded-xl border border-border bg-input px-4 py-3 text-sm text-foreground"
-                autoComplete="current-password"
-              />
+  if (view === "twoFactor") {
+    return (
+      <SecurityScreenShell title="Two-factor authentication" onBack={() => setView("menu")}>
+        <p className="mt-2 text-[14px] leading-5 text-muted-foreground">
+          Add an extra layer of security with an email code at each sign-in.
+        </p>
+        <div className="mt-4 space-y-4">
+          {loading ? <p className="text-sm text-muted-foreground">Loading…</p> : null}
+          {!loading && summary ? (
+            <div className="overflow-hidden rounded-2xl border border-border bg-card px-4 py-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[16px] font-medium text-foreground">Two-factor authentication</p>
+                  <p className="mt-1 text-[13px] text-muted-foreground">Email code on every login</p>
+                </div>
+                <IgToggle
+                  on={!!summary.twoFactorEnabled}
+                  onToggle={() => void toggle2fa(!summary.twoFactorEnabled)}
+                />
+              </div>
             </div>
+          ) : null}
+          <SecurityDarkInput
+            value={pwd}
+            onChange={e => setPwd(e.target.value)}
+            type="password"
+            placeholder={t("pwdCurrent")}
+            autoComplete="current-password"
+          />
+          {msg ? (
+            <p className={`text-sm ${msg.includes("تعذر") || msg.includes("غير") ? "text-red-400" : "text-emerald-400"}`}>
+              {msg}
+            </p>
+          ) : null}
+        </div>
+      </SecurityScreenShell>
+    );
+  }
 
-            <SettingsCard>
-              <div className="px-4 py-3">
-                <p className="text-sm font-semibold text-foreground flex items-center gap-2">
+  if (view === "verificationSelfie") {
+    return (
+      <SecurityScreenShell title="Verification selfie" onBack={() => setView("menu")}>
+        <div className="mt-8 flex flex-col items-center gap-4 px-4 text-center">
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-secondary">
+            <UserCircle size={36} className="text-muted-foreground" />
+          </div>
+          <p className="text-[18px] font-semibold text-foreground">لا تزال تحت الصنع</p>
+          <p className="text-[14px] leading-6 text-muted-foreground">
+            ميزة التحقق بالصورة الشخصية قيد التطوير حالياً وستتوفر قريباً.
+          </p>
+        </div>
+      </SecurityScreenShell>
+    );
+  }
+
+  if (view === "savedLogin") {
+    return (
+      <SecurityScreenShell title="Saved login" onBack={() => setView("menu")}>
+        <p className="mt-2 text-[14px] leading-5 text-muted-foreground">
+          Accounts saved on this device that can sign in to your profile.
+        </p>
+        <div className={accountsCenterCardClass}>
+          {savedAccounts.length === 0 ? (
+            <p className="px-4 py-6 text-center text-sm text-muted-foreground">No saved accounts on this device.</p>
+          ) : (
+            savedAccounts.map((s, i) => (
+              <div
+                key={s.userId}
+                className={
+                  "flex items-center gap-3 px-4 py-3.5 " +
+                  (i < savedAccounts.length - 1 ? "border-b border-border" : "")
+                }
+              >
+                <RSocialAvatar name={s.username} src={s.avatar} size={44} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-[16px] font-medium text-foreground">
+                    {displayNameFromUsername(s.username)}
+                  </p>
+                  <p className="truncate text-[13px] text-muted-foreground">@{s.username}</p>
+                  {s.email ? <p className="truncate text-[12px] text-muted-foreground/80">{s.email}</p> : null}
+                </div>
+                {s.userId === me.id ? (
+                  <span className="shrink-0 rounded-full bg-[#0095F6]/20 px-2.5 py-1 text-[11px] font-semibold text-[#0095F6]">
+                    Active
+                  </span>
+                ) : (
+                  <span className="shrink-0 rounded-full bg-secondary px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+                    Saved
+                  </span>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      </SecurityScreenShell>
+    );
+  }
+
+  if (view === "whereLoggedIn") {
+    return (
+      <SecurityScreenShell title="Where you&apos;re logged in" onBack={() => setView("menu")}>
+        <p className="mt-2 text-[14px] leading-5 text-muted-foreground">
+          Devices and browsers currently trusted for your account.
+        </p>
+        <div className="mt-4 space-y-4">
+          {loading ? <p className="text-sm text-muted-foreground">Loading…</p> : null}
+          {!loading && summary ? (
+            <>
+              <div className="overflow-hidden rounded-2xl border border-border bg-card px-4 py-4">
+                <p className="text-[16px] font-medium text-foreground flex items-center gap-2">
                   <Smartphone className="h-4 w-4" />
-                  أجهزة موثوقة ({summary.trustedDeviceCount})
+                  Trusted devices ({summary.trustedDeviceCount ?? 0})
                 </p>
-                {summary.trustedDevices.length > 0 ? (
-                  <ul className="mt-2 space-y-1.5">
-                    {summary.trustedDevices.map((d, i) => (
-                      <li key={i} className="text-xs text-muted-foreground">
-                        {d.label} · آخر دخول{" "}
-                        {new Date(d.lastSeenAt).toLocaleDateString("ar")}
+                {(summary.trustedDevices ?? []).length > 0 ? (
+                  <ul className="mt-3 space-y-2">
+                    {(summary.trustedDevices ?? []).map((d, i) => (
+                      <li key={i} className="text-[13px] text-muted-foreground">
+                        {d.label} · Last seen {new Date(d.lastSeenAt).toLocaleDateString()}
                       </li>
                     ))}
                   </ul>
                 ) : (
-                  <p className="mt-1 text-xs text-muted-foreground">لا توجد أجهزة موثوقة بعد</p>
+                  <p className="mt-2 text-[13px] text-muted-foreground">No trusted devices yet.</p>
                 )}
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void revokeDevices()}
-                  className="mt-3 w-full rounded-xl border border-red-500/30 bg-red-500/10 py-2.5 text-sm font-semibold text-red-400 disabled:opacity-50"
-                >
-                  إزالة جميع الأجهزة الموثوقة
-                </button>
               </div>
-            </SettingsCard>
-          </>
-        )}
-        {msg && (
-          <p className={`text-sm px-1 ${msg.includes("تعذر") || msg.includes("غير") ? "text-red-400" : "text-emerald-400"}`}>
-            {msg}
-          </p>
-        )}
+              <SecurityDarkInput
+                value={pwd}
+                onChange={e => setPwd(e.target.value)}
+                type="password"
+                placeholder={t("pwdCurrent")}
+                autoComplete="current-password"
+              />
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void revokeDevices()}
+                className="w-full rounded-xl border border-red-500/30 bg-red-500/10 py-2.5 text-sm font-semibold text-red-400 disabled:opacity-50"
+              >
+                Remove all trusted devices
+              </button>
+            </>
+          ) : null}
+          {msg ? (
+            <p className={`text-sm ${msg.includes("تعذر") || msg.includes("غير") ? "text-red-400" : "text-emerald-400"}`}>
+              {msg}
+            </p>
+          ) : null}
+        </div>
+      </SecurityScreenShell>
+    );
+  }
+
+  if (view === "comingSoon") {
+    return (
+      <SecurityScreenShell title={comingSoonTitle} onBack={() => setView("menu")}>
+        <div className="mt-8 flex flex-col items-center gap-4 px-4 text-center">
+          <p className="text-[18px] font-semibold text-foreground">Coming soon</p>
+          <p className="text-[14px] leading-6 text-muted-foreground">{t("comingSoonPanel")}</p>
+        </div>
+      </SecurityScreenShell>
+    );
+  }
+
+  return (
+    <SecurityScreenShell title="Password and security" onBack={onBack}>
+      <p className="mt-4 text-[17px] font-bold leading-snug text-foreground">Login & recovery</p>
+      <p className="mt-1.5 text-[14px] leading-5 text-muted-foreground">
+        Manage your passwords, login preferences and recovery methods.
+      </p>
+      <div className={`mt-3 ${accountsCenterCardClass}`}>
+        <SecurityMenuRow label="Change password" onClick={() => { setMsg(null); setView("changePassword"); }} />
+        <SecurityMenuRow label="Two-factor authentication" onClick={() => { setMsg(null); setPwd(""); setView("twoFactor"); }} />
+        <SecurityMenuRow label="Verification selfie" onClick={() => setView("verificationSelfie")} />
+        <SecurityMenuRow label="Saved login" onClick={() => setView("savedLogin")} />
       </div>
-    </div>
+
+      <p className="mt-6 text-[17px] font-bold leading-snug text-foreground">Security checks</p>
+      <p className="mt-1.5 text-[14px] leading-5 text-muted-foreground">
+        Review security issues by running checks across apps, devices and emails sent.
+      </p>
+      <div className={`mt-3 ${accountsCenterCardClass}`}>
+        <SecurityMenuRow label="Where you&apos;re logged in" onClick={() => { setMsg(null); setPwd(""); setView("whereLoggedIn"); }} />
+        <SecurityMenuRow
+          label="Recent emails"
+          onClick={() => openComingSoon("Recent emails")}
+          trailing={
+            <span className="flex h-5 w-5 items-center justify-center rounded-md bg-gradient-to-br from-[#f58529] via-[#dd2a7b] to-[#8134af] text-[10px] font-bold text-white">
+              IG
+            </span>
+          }
+        />
+        <SecurityMenuRow label="Security Checkup" onClick={() => openComingSoon("Security Checkup")} />
+      </div>
+    </SecurityScreenShell>
   );
 }
 
@@ -556,7 +889,68 @@ export function SettingsScreen({
   const t = useT();
   const me = currentUser!;
   const [subView, setSubView] = useState<SubView>(null);
+  const [subViewReturnToAccountsCenter, setSubViewReturnToAccountsCenter] = useState(false);
   const [accountsCenterOpen, setAccountsCenterOpen] = useState(false);
+  const [subscriptionSheetOpen, setSubscriptionSheetOpen] = useState(false);
+  const subscriptionReturnToAccountsCenterRef = React.useRef(false);
+
+  const openSubViewFromAccountsCenter = useCallback((view: SubView) => {
+    setAccountsCenterOpen(false);
+    setSubViewReturnToAccountsCenter(true);
+    setSubView(view);
+  }, []);
+
+  const closeSubView = useCallback(() => {
+    const returnToAccountsCenter = subViewReturnToAccountsCenter;
+    setSubView(null);
+    setSubViewReturnToAccountsCenter(false);
+    setSubscriptionSheetOpen(false);
+    subscriptionReturnToAccountsCenterRef.current = false;
+    if (returnToAccountsCenter) setAccountsCenterOpen(true);
+  }, [subViewReturnToAccountsCenter]);
+
+  /** غير المشترك: شيت الباقات فقط — بدون شاشة التوثيق القديمة */
+  const openVerificationFlow = useCallback(
+    (fromAccountsCenter = false) => {
+      const ent = getUserEntitlements(me);
+      if (!ent.isSubscribed && !ent.isVerified) {
+        subscriptionReturnToAccountsCenterRef.current = fromAccountsCenter;
+        if (fromAccountsCenter) {
+          setAccountsCenterOpen(false);
+          setSubViewReturnToAccountsCenter(false);
+        }
+        setSubscriptionSheetOpen(true);
+        return;
+      }
+      if (fromAccountsCenter) openSubViewFromAccountsCenter("verify");
+      else setSubView("verify");
+    },
+    [me, openSubViewFromAccountsCenter],
+  );
+
+  const openSubscriptionSheetFromVerify = useCallback(() => {
+    subscriptionReturnToAccountsCenterRef.current = false;
+    setSubscriptionSheetOpen(true);
+  }, []);
+
+  const closeSubscriptionSheet = useCallback(() => {
+    setSubscriptionSheetOpen(false);
+    if (subscriptionReturnToAccountsCenterRef.current) {
+      subscriptionReturnToAccountsCenterRef.current = false;
+      setAccountsCenterOpen(true);
+      return;
+    }
+    if (subView === "verify" && !getUserEntitlements(me).isSubscribed) {
+      closeSubView();
+    }
+  }, [subView, me, closeSubView]);
+  const [accountsCenterDragY, setAccountsCenterDragY] = useState(0);
+  const [accountsCenterDragging, setAccountsCenterDragging] = useState(false);
+  const accountsCenterDragRef = React.useRef<{
+    pointerId: number | null;
+    startY: number;
+    dragging: boolean;
+  }>({ pointerId: null, startY: 0, dragging: false });
   const [oldP, setOldP] = useState("");
   const [newP, setNewP] = useState("");
   const [isAdmin, setIsAdmin] = useState(false);
@@ -631,10 +1025,18 @@ export function SettingsScreen({
       return;
     }
     alert(t("pwdChanged"));
-    setSubView(null);
+    closeSubView();
     setOldP("");
     setNewP("");
   };
+
+  useEffect(() => {
+    if (!accountsCenterOpen) {
+      setAccountsCenterDragY(0);
+      setAccountsCenterDragging(false);
+      accountsCenterDragRef.current = { pointerId: null, startY: 0, dragging: false };
+    }
+  }, [accountsCenterOpen]);
 
   const subTitle = (k: SubView): string => {
     if (k === "adminModeration") return "لوحة الإشراف";
@@ -643,7 +1045,6 @@ export function SettingsScreen({
       accountInfo: "accountInfo",
       changePwd: "changePwd",
       verify: "verifyAccount",
-      subscription: "verifyAccount",
       adminVerify: "verifyAccount",
       saved: "saved",
       archive: "archive",
@@ -659,7 +1060,7 @@ export function SettingsScreen({
     return (
       <DeleteAccountPanel
         me={me}
-        onBack={() => setSubView(null)}
+        onBack={closeSubView}
         onDone={() => {
           logout();
           onBack();
@@ -669,38 +1070,30 @@ export function SettingsScreen({
   }
 
   if (subView === "saved") {
-    return <PlaceholderPanel title={t("saved")} hint={t("savedHint")} onBack={() => setSubView(null)} />;
+    return <PlaceholderPanel title={t("saved")} hint={t("savedHint")} onBack={closeSubView} />;
   }
   if (subView === "archive") {
-    return <StoriesArchiveScreen onBack={() => setSubView(null)} />;
+    return <StoriesArchiveScreen onBack={closeSubView} />;
   }
   if (subView === "timeManagement") {
-    return <PlaceholderPanel title={t("timeManagement")} hint={t("timeMgmtHint")} onBack={() => setSubView(null)} />;
+    return <PlaceholderPanel title={t("timeManagement")} hint={t("timeMgmtHint")} onBack={closeSubView} />;
   }
   if (subView === "notifications") {
-    return <PlaceholderPanel title={t("notificationsSettings")} hint={t("comingSoonPanel")} onBack={() => setSubView(null)} />;
+    return <PlaceholderPanel title={t("notificationsSettings")} hint={t("comingSoonPanel")} onBack={closeSubView} />;
   }
 
   if (subView === "security") {
-    return <SecuritySettingsPanel onBack={() => setSubView(null)} />;
-  }
-
-  if (subView === "subscription") {
-    return (
-      <VerificationSubscriptionScreen
-        onBack={() => setSubView("verify")}
-        onSubscribed={() => setSubView("verify")}
-      />
-    );
+    return <SecuritySettingsPanel onBack={closeSubView} />;
   }
 
   if (subView) {
     return (
+      <>
       <div className="settings-screen-root min-h-full w-full overflow-x-hidden bg-background pb-10" dir="rtl">
-        <SettingsHeader title={subTitle(subView)} onBack={() => setSubView(null)} navScope="local" />
+        <SettingsHeader title={subTitle(subView)} onBack={closeSubView} navScope="local" />
 
         {subView === "accountInfo" && (
-          <AccountInfoPanel me={me} updateProfile={updateProfile} onSaved={() => setSubView(null)} />
+          <AccountInfoPanel me={me} updateProfile={updateProfile} onSaved={closeSubView} />
         )}
 
         {subView === "changePwd" && (
@@ -741,7 +1134,7 @@ export function SettingsScreen({
                 const dy = e.clientY - d.startY;
                 if (dy > 120) {
                   d.dragging = false;
-                  setSubView(null);
+                  closeSubView();
                 }
               }}
               onPointerUp={e => {
@@ -753,7 +1146,7 @@ export function SettingsScreen({
                 if (d.pointerId === e.pointerId) d.dragging = false;
               }}
             >
-              <VerificationRequestPanel onNeedSubscription={() => setSubView("subscription")} />
+              <VerificationRequestPanel onNeedSubscription={openSubscriptionSheetFromVerify} />
               <VerificationBadgeColorPicker />
             </div>
           </AppErrorBoundaryLocal>
@@ -804,12 +1197,23 @@ export function SettingsScreen({
           </div>
         )}
       </div>
+
+      <VerificationSubscriptionSheet
+        open={subscriptionSheetOpen}
+        onClose={closeSubscriptionSheet}
+        onSubscribed={() => {
+          setSubscriptionSheetOpen(false);
+          subscriptionReturnToAccountsCenterRef.current = false;
+          if (subView !== "verify") setSubView("verify");
+        }}
+      />
+      </>
     );
   }
 
   return (
     <div className="settings-screen-root min-h-full w-full max-w-full overflow-x-hidden bg-background pb-10" dir="rtl">
-      <SettingsHeader title={t("settingsActivity")} onBack={onBack} navScope="local" />
+      <SettingsHeader title={t("settingsActivity")} onBack={onBack} navScope="local" showBack={!accountsCenterOpen} />
 
       <SettingsCard>
         <SettingsRow
@@ -820,101 +1224,183 @@ export function SettingsScreen({
         />
       </SettingsCard>
 
-      <BottomDismissSheet
-        open={accountsCenterOpen}
-        onClose={() => setAccountsCenterOpen(false)}
-        title={t("accountsCenter")}
-        subtitle={t("accountsCenterDesc")}
-        zIndex={140}
-      >
-        <div dir="rtl" className="pb-2 pt-1">
-          <SettingsCard>
-            {onOpenAccounts ? (
-              <SettingsRow
-                icon={Users}
-                label={t("activeAccountsAdd")}
-                chevron
-                onClick={() => {
-                  setAccountsCenterOpen(false);
-                  onOpenAccounts();
-                }}
-              />
-            ) : null}
-            {getUserEntitlements(me).isVerified ? (
-              <SettingsRow
-                icon={BadgeCheck}
-                label={t("verifiedAccount")}
-                chevron
-                onClick={() => {
-                  setAccountsCenterOpen(false);
-                  setSubView("verify");
-                }}
-              />
-            ) : (
-              <SettingsRow
-                icon={BadgeCheck}
-                label="Get Verified"
-                chevron
-                onClick={() => {
-                  setAccountsCenterOpen(false);
-                  setSubView("verify");
-                }}
-              />
-            )}
-            <SettingsRow
-              icon={UserCircle}
-              label={t("accountInfo")}
-              chevron
-              onClick={() => {
+      {accountsCenterOpen && (
+        <div className="fixed inset-0 z-[10100] bg-black/50">
+          <div
+            className="absolute inset-x-0 bottom-0 top-[max(0.75rem,var(--sat))] mx-auto flex w-full max-w-md flex-col overflow-hidden rounded-t-[28px] border border-border bg-background text-foreground shadow-2xl"
+            style={{
+              transform: `translate3d(0, ${Math.max(0, accountsCenterDragY)}px, 0)`,
+              transition: accountsCenterDragging ? "none" : "transform 220ms cubic-bezier(0.22, 1, 0.36, 1)",
+            }}
+            onPointerDown={e => {
+              if (e.pointerType === "mouse" && e.button !== 0) return;
+              const target = e.target as HTMLElement | null;
+              if (!target?.closest("[data-accounts-center-drag-handle]")) return;
+              accountsCenterDragRef.current = {
+                pointerId: e.pointerId,
+                startY: e.clientY - accountsCenterDragY,
+                dragging: true,
+              };
+              setAccountsCenterDragging(true);
+              try {
+                e.currentTarget.setPointerCapture(e.pointerId);
+              } catch {
+                /* ignore */
+              }
+            }}
+            onPointerMove={e => {
+              const d = accountsCenterDragRef.current;
+              if (!d.dragging || d.pointerId !== e.pointerId) return;
+              const dy = Math.max(0, e.clientY - d.startY);
+              setAccountsCenterDragY(dy);
+            }}
+            onPointerUp={e => {
+              const d = accountsCenterDragRef.current;
+              if (!d.dragging || d.pointerId !== e.pointerId) return;
+              d.dragging = false;
+              setAccountsCenterDragging(false);
+              if (accountsCenterDragY > 140) {
                 setAccountsCenterOpen(false);
-                setSubView("accountInfo");
-              }}
-            />
-            <SettingsRow
-              icon={KeyRound}
-              label={t("changePwd")}
-              chevron
-              onClick={() => {
-                setAccountsCenterOpen(false);
-                setSubView("changePwd");
-              }}
-            />
-            {apiBackendEnabled() ? (
-              <SettingsRow
-                icon={ShieldCheck}
-                label="الأمان والمصادقة الثنائية"
-                chevron
-                onClick={() => {
-                  setAccountsCenterOpen(false);
-                  setSubView("security");
-                }}
-              />
-            ) : null}
-            {isAdmin ? (
-              <SettingsRow
-                icon={BadgeCheck}
-                label="لوحة طلبات التوثيق"
-                chevron
-                onClick={() => {
-                  setAccountsCenterOpen(false);
-                  setSubView("adminVerify");
-                }}
-              />
-            ) : null}
-            {isModerator ? (
-              <SettingsRow
-                icon={Shield}
-                label="لوحة الإشراف والبلاغات"
-                chevron
-                onClick={() => {
-                  setAccountsCenterOpen(false);
-                  setSubView("adminModeration");
-                }}
-              />
-            ) : null}
-          </SettingsCard>
+              } else {
+                setAccountsCenterDragY(0);
+              }
+              try {
+                e.currentTarget.releasePointerCapture(e.pointerId);
+              } catch {
+                /* ignore */
+              }
+            }}
+            onPointerCancel={e => {
+              const d = accountsCenterDragRef.current;
+              if (d.pointerId !== e.pointerId) return;
+              d.dragging = false;
+              setAccountsCenterDragging(false);
+              setAccountsCenterDragY(0);
+            }}
+          >
+            <div data-accounts-center-drag-handle className="shrink-0 px-4 pb-3 pt-4">
+              <div className="mx-auto mb-3 h-1.5 w-14 rounded-full bg-muted-foreground/30" />
+              <div className="relative text-center">
+                <button
+                  type="button"
+                  className="absolute start-0 top-0 rounded-full p-2 text-foreground hover:bg-accent"
+                  onClick={() => {
+                    setAccountsCenterOpen(false);
+                    setSubViewReturnToAccountsCenter(false);
+                  }}
+                  aria-label="إغلاق"
+                >
+                  <X size={22} />
+                </button>
+                <p className="text-sm font-semibold text-muted-foreground">Retweet</p>
+                <h3 className="mt-2 text-[34px] font-bold leading-none text-foreground">Accounts Center</h3>
+                <p className="mx-auto mt-3 max-w-[92%] text-sm leading-6 text-muted-foreground">
+                  Manage your connected experiences and account settings across Retweet.
+                </p>
+              </div>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-5">
+              <div className={accountsCenterCardClass}>
+                <AccountsCenterRow
+                  icon={UserCircle}
+                  label="Profiles and personal details"
+                  subtitle="2 profiles"
+                  onClick={() => openSubViewFromAccountsCenter("accountInfo")}
+                />
+              </div>
+
+              <div className={`mt-3 ${accountsCenterCardClass}`}>
+                <AccountsCenterRow
+                  icon={ShieldCheck}
+                  label="Password and security"
+                  onClick={() =>
+                    openSubViewFromAccountsCenter(apiBackendEnabled() ? "security" : "changePwd")
+                  }
+                />
+                <AccountsCenterRow
+                  icon={UsersRound}
+                  label="Connected experiences"
+                  onClick={() => openSubViewFromAccountsCenter("closeFriends")}
+                />
+                <AccountsCenterRow
+                  icon={Info}
+                  label="Your information and permissions"
+                  onClick={() => openSubViewFromAccountsCenter("accountInfo")}
+                />
+                <AccountsCenterRow
+                  icon={Bell}
+                  label="Ad preferences"
+                  onClick={() => openSubViewFromAccountsCenter("notifications")}
+                />
+                <AccountsCenterRow
+                  icon={Bookmark}
+                  label="Retweet Pay"
+                  onClick={() => openSubViewFromAccountsCenter("saved")}
+                />
+                <AccountsCenterRow
+                  icon={BadgeCheck}
+                  label="Subscriptions"
+                  onClick={() => openVerificationFlow(true)}
+                />
+              </div>
+
+              {onOpenAccounts ? (
+                <div className={`mt-3 ${accountsCenterCardClass}`}>
+                  <AccountsCenterRow
+                    icon={Users}
+                    label="Manage accounts"
+                    onClick={() => {
+                      setAccountsCenterOpen(false);
+                      setSubViewReturnToAccountsCenter(false);
+                      onOpenAccounts();
+                    }}
+                  />
+                </div>
+              ) : null}
+
+              <p className="mt-6 text-[26px] font-bold leading-none text-foreground">More from Retweet</p>
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  className="rounded-2xl border border-border bg-card px-4 py-5 text-start transition-colors active:bg-accent"
+                  onClick={() => openVerificationFlow(true)}
+                >
+                  <BadgeCheck size={24} className="mb-3 text-blue-400" />
+                  <div className="text-sm font-semibold text-foreground">Retweet Verified</div>
+                </button>
+                <button
+                  type="button"
+                  className="rounded-2xl border border-border bg-card px-4 py-5 text-start transition-colors active:bg-accent"
+                  onClick={() => openSubViewFromAccountsCenter("timeManagement")}
+                >
+                  <Globe size={24} className="mb-3 text-sky-300" />
+                  <div className="text-sm font-semibold text-foreground">AI Glasses</div>
+                </button>
+              </div>
+
+              {isAdmin || isModerator ? (
+                <div className={`mt-4 ${accountsCenterCardClass}`}>
+                  {isAdmin ? (
+                    <AccountsCenterRow
+                      icon={BadgeCheck}
+                      label="لوحة طلبات التوثيق"
+                      onClick={() => openSubViewFromAccountsCenter("adminVerify")}
+                    />
+                  ) : null}
+                  {isModerator ? (
+                    <AccountsCenterRow
+                      icon={Shield}
+                      label="لوحة الإشراف والبلاغات"
+                      onClick={() => openSubViewFromAccountsCenter("adminModeration")}
+                    />
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          </div>
         </div>
-      </BottomDismissSheet>
+      )}
 
       <SectionGap />
       <SectionTitle>{t("howYouUseApp")}</SectionTitle>
@@ -1079,6 +1565,16 @@ export function SettingsScreen({
           onConfirm={() => toggleBlockWithSync(unblockTarget.id)}
         />
       )}
+
+      <VerificationSubscriptionSheet
+        open={subscriptionSheetOpen}
+        onClose={closeSubscriptionSheet}
+        onSubscribed={() => {
+          setSubscriptionSheetOpen(false);
+          subscriptionReturnToAccountsCenterRef.current = false;
+          setSubView("verify");
+        }}
+      />
     </div>
   );
 }

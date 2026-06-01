@@ -89,14 +89,18 @@ function PaymentForm({ amountUsd, onPaid }: PayFormProps) {
   );
 }
 
+import { getVerificationTier, type VerificationTierId } from "@/lib/verificationTiers";
+
 type Props = {
   onPaid: (result: PurchaseResult) => void;
+  tierId?: VerificationTierId;
 };
 
-export function StripeVerificationPay({ onPaid }: Props) {
+export function StripeVerificationPay({ onPaid, tierId = "verified_plus" }: Props) {
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [publishableKey, setPublishableKey] = useState<string | null>(null);
-  const [amountUsd, setAmountUsd] = useState(4);
+  const fallbackUsd = getVerificationTier(tierId).priceUsd;
+  const [amountUsd, setAmountUsd] = useState(fallbackUsd);
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -108,7 +112,7 @@ export function StripeVerificationPay({ onPaid }: Props) {
         setLoading(false);
         return;
       }
-      const r = await apiStripePaymentIntent(token);
+      const r = await apiStripePaymentIntent(token, tierId);
       setLoading(false);
       if (!r.ok) {
         setLoadErr(r.error);
@@ -118,7 +122,7 @@ export function StripeVerificationPay({ onPaid }: Props) {
       setPublishableKey(r.publishableKey);
       setAmountUsd(r.amountUsd);
     })();
-  }, []);
+  }, [tierId]);
 
   if (loading) {
     return (

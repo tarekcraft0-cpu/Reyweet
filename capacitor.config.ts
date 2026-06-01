@@ -14,6 +14,9 @@ const config: CapacitorConfig = {
       /** body = يتقلص محتوى الويب فوق الكيبورد (شريط الكتابة يلتصق تلقائياً) */
       resize: "body",
     },
+    PushNotifications: {
+      presentationOptions: ["badge", "sound", "alert"],
+    },
   },
   ios: {
     contentInset: "never",

@@ -83,6 +83,27 @@ export async function ingestDirectMessage(senderId: string, d: PostMessageInput)
       const chat = snap?.chats?.find(c => c.id === row.chatId && (c.isGroup || c.isChannel));
       if (!chat?.members?.length) return;
       broadcastGroupMessageInstant(row, chat.members, senderId);
+      void (async () => {
+        try {
+          const { sendNewChatMessagePush } = await import("./fcmAdmin.js");
+          const { messagePreview } = await import("./messageDelivery.js");
+          const preview = messagePreview(clientMsg as import("../../../src/lib/types.js").Message);
+          const groupName = chat.name?.trim() || "مجموعة";
+          for (const uid of chat.members) {
+            if (uid === senderId) continue;
+            await sendNewChatMessagePush({
+              recipientUserId: uid,
+              senderUserId: senderId,
+              chatId: row.chatId,
+              preview,
+              isGroup: true,
+              groupName,
+            });
+          }
+        } catch (e) {
+          console.warn("[push] group notify failed", e);
+        }
+      })();
       await deliverGroupMessageToMembers(row, chat.members, senderId).catch(e => {
         // eslint-disable-next-line no-console
         console.warn("[messages] group snapshot persist failed", e);
@@ -99,6 +120,22 @@ export async function ingestDirectMessage(senderId: string, d: PostMessageInput)
   });
 
   if (row.receiverId) {
+    void (async () => {
+      try {
+        const { sendNewChatMessagePush } = await import("./fcmAdmin.js");
+        const { messagePreview } = await import("./messageDelivery.js");
+        const preview = messagePreview(clientMsg as import("../../../src/lib/types.js").Message);
+        await sendNewChatMessagePush({
+          recipientUserId: row.receiverId!,
+          senderUserId: senderId,
+          chatId: row.chatId,
+          preview,
+        });
+      } catch (e) {
+        console.warn("[push] dm notify failed", e);
+      }
+    })();
+
     void deliverIncomingDirectMessage(row).catch(e => {
       // eslint-disable-next-line no-console
       console.warn("[messages] snapshot persist failed", e);

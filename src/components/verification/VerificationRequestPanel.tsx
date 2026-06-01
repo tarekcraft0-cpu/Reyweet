@@ -109,7 +109,7 @@ export function VerificationRequestPanel({ onNeedSubscription }: Props) {
           onClick={onNeedSubscription}
           className="w-full rounded-xl border border-[#0095F6] py-2.5 text-sm font-semibold text-[#0095F6]"
         >
-          اشترك أولاً ($4/شهر)
+          اختر باقة الاشتراك (من $1/شهر)
         </button>
       ) : null}
     </div>

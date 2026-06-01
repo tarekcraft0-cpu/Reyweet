@@ -1957,6 +1957,8 @@ const { registerGameRoutes } = await import("./routes/gameRoutes.js");
 registerGameRoutes(app, authMiddleware);
 const { registerSecurityRoutes } = await import("./routes/securityRoutes.js");
 registerSecurityRoutes(app, authMiddleware);
+const { registerPushRoutes } = await import("./routes/pushRoutes.js");
+registerPushRoutes(app, authMiddleware);
 if (isSmtpConfigured()) {
   const smtpCheck = await verifySmtpConnection();
   if (smtpCheck.ok) {

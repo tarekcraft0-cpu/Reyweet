@@ -171,4 +171,33 @@
 
   document.addEventListener("touchend", endTouch, { capture: true, passive: true });
   document.addEventListener("touchcancel", endTouch, { capture: true, passive: true });
+
+  /** قبل React — ضبط --sat حتى لا يظهر الهيدر تحت النوتش */
+  function syncSafeAreaEarly() {
+    try {
+      var root = document.documentElement;
+      var host = document.body || root;
+      var probe = document.createElement("div");
+      probe.style.cssText =
+        "position:fixed;visibility:hidden;pointer-events:none;padding-top:env(safe-area-inset-top)";
+      host.appendChild(probe);
+      var envTop = parseFloat(getComputedStyle(probe).paddingTop) || 0;
+      probe.remove();
+      var swiftTop =
+        parseFloat(getComputedStyle(root).getPropertyValue("--retweet-safe-top")) || 0;
+      var top = Math.max(envTop, swiftTop);
+      if (/iPhone|iPad|iPod/i.test(navigator.userAgent || "")) {
+        var longSide = Math.max(screen.width, screen.height);
+        if (top < 20) top = Math.max(top, longSide >= 812 ? 47 : 20);
+      }
+      root.style.setProperty("--sat", top + "px");
+      root.style.setProperty("--sab", "env(safe-area-inset-bottom, 0px)");
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
+  syncSafeAreaEarly();
+  document.addEventListener("DOMContentLoaded", syncSafeAreaEarly);
+  window.addEventListener("retweet-safe-area-change", syncSafeAreaEarly, { passive: true });
 })();

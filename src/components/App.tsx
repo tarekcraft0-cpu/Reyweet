@@ -131,6 +131,31 @@ export function App() {
   } = useAppActions();
 
   useEffect(() => startPerfSession(), []);
+
+  useEffect(() => {
+    if (!currentUser || isGuest) return;
+    void import("@/lib/pushNotifications").then(m => m.initPushNotifications());
+    return () => {
+      void import("@/lib/pushNotifications").then(m => m.teardownPushNotifications());
+    };
+  }, [currentUser?.id, isGuest]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const chatId = params.get("openChat")?.trim();
+      if (!chatId) return;
+      setOpenChatId(chatId);
+      setTab("chat");
+      params.delete("openChat");
+      const next = `${window.location.pathname}${params.toString() ? `?${params}` : ""}${window.location.hash}`;
+      window.history.replaceState(null, "", next);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const t = useT();
   const [banInfo, setBanInfo] = useState<BanInfo | null>(null);
   const [banPresentation, setBanPresentation] = useState<"gate" | "overlay" | null>(null);
@@ -885,20 +910,38 @@ export function App() {
     setRestorePostContext(null);
   }, []);
 
+  /** يُزامِن activeChatId مع openChatId — منع إعادة فتح المحادثة بعد سحب الخروج */
+  const onActiveChatChange = useCallback((chatId: string | null) => {
+    setActiveChatId(chatId);
+    if (!chatId) setOpenChatId(null);
+  }, []);
+
   const onChatExitNavRevealProgress = useCallback((progress: number | null) => {
     const nextActive = progress != null;
-    if (nextActive !== chatExitNavActiveRef.current) {
-      chatExitNavActiveRef.current = nextActive;
-      setChatExitNavActive(nextActive);
+    if (nextActive) {
+      if (!chatExitNavActiveRef.current) {
+        chatExitNavActiveRef.current = true;
+        setChatExitNavActive(true);
+      }
+      return;
     }
     try {
-      if (!nextActive) {
-        document.documentElement.style.removeProperty(NAV_HIDE_PROGRESS_CSS_VAR);
-        document.documentElement.style.removeProperty(CHAT_DISMISS_ROOM_TX_VAR);
-      }
+      document.documentElement.style.setProperty(CHAT_DISMISS_ROOM_TX_VAR, "0px");
     } catch {
       /* ignore */
     }
+    if (chatExitNavActiveRef.current) {
+      chatExitNavActiveRef.current = false;
+      setChatExitNavActive(false);
+    }
+    requestAnimationFrame(() => {
+      try {
+        document.documentElement.style.removeProperty(NAV_HIDE_PROGRESS_CSS_VAR);
+        document.documentElement.style.removeProperty(CHAT_DISMISS_ROOM_TX_VAR);
+      } catch {
+        /* ignore */
+      }
+    });
   }, []);
 
   const openQuranChat = useCallback(() => {
@@ -1018,7 +1061,7 @@ export function App() {
           onThreadOpen={setChatThreadOpen}
           onHideBottomNav={setChatHideBottomNav}
           onExitNavRevealProgress={onChatExitNavRevealProgress}
-          onActiveChatChange={setActiveChatId}
+          onActiveChatChange={onActiveChatChange}
           resumeThreadToProfileUserId={resumeProfileUserId}
           onExitThreadToProfile={onExitThreadToProfile}
           chatImmersiveMode={chatImmersive}
@@ -1044,6 +1087,7 @@ export function App() {
     resumeProfileUserId,
     onExitThreadToProfile,
     onChatExitNavRevealProgress,
+    onActiveChatChange,
     settingsImmersive,
     profilePanel,
     viewProfileId,
@@ -1125,11 +1169,14 @@ export function App() {
   /** أثناء سحب الخروج: الشريط يتحرك أفقياً مع لوحة المحادثة (ليس من تحت لأعلى) */
   const chatImmersiveMode =
     tab === "chat" && chatThreadOpen && !chatExitNavActive;
+  /** ثبات تخطيط الشاشة أثناء سحب الخروج — بدون ظهور SafeArea أو وميض */
+  const chatOccupiesShell = tab === "chat" && (chatThreadOpen || chatExitNavActive);
   const postImmersiveMode = postDetailOpen;
   const immersiveOverlay = chatImmersiveMode || postImmersiveMode;
 
   const pagerEnabled =
     !chatImmersiveMode &&
+    !chatExitNavActive &&
     !storyFullscreen &&
     !profileOverlayUserId &&
     !settingsImmersive &&
@@ -1185,7 +1232,7 @@ export function App() {
       }
       {...nativeNoSelectCaptureHandlers}
     >
-      {!immersiveOverlay && !settingsImmersive && !storyFullscreen && <SafeAreaTop />}
+      {!chatOccupiesShell && !postImmersiveMode && !settingsImmersive && !storyFullscreen && <SafeAreaTop />}
       {guestToast && (
         <div className="fixed left-3 right-3 top-[max(0.75rem,var(--sat,0px))] z-[500] mx-auto max-w-md rounded-2xl border border-border bg-card px-4 py-3 text-start text-sm shadow-lg">
           سجّل الدخول أو أنشئ حساباً لاستخدام هذه الميزة (إعجاب، رسائل، متابعة…).
@@ -1196,7 +1243,7 @@ export function App() {
           {switchFailToast}
         </div>
       )}
-      {!storyFullscreen && !immersiveOverlay && !settingsImmersive && <NotificationBanner />}
+      {!storyFullscreen && !chatOccupiesShell && !postImmersiveMode && !settingsImmersive && <NotificationBanner />}
       <PerfHUD />
       {!hideAppHeader && (
       <header

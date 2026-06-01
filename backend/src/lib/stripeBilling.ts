@@ -1,11 +1,21 @@
 import type { UserRow } from "../db/engine.js";
 import { getUserById, updateUser } from "../db/engine.js";
+import { isVerifiedBadgeActive } from "../../../src/lib/verificationEntitlements.js";
 import {
-  isVerifiedBadgeActive,
-  VERIFICATION_SUBSCRIPTION_PLAN,
-} from "../../../src/lib/verificationEntitlements.js";
+  getVerificationTier,
+  type VerificationTierId,
+  VERIFICATION_TIERS,
+} from "./verificationTiers.js";
 
-const VERIFIED_PRICE_CENTS = 400;
+function tierFromId(tier?: string | null): VerificationTierId {
+  const id = tier?.trim();
+  if (VERIFICATION_TIERS.some(t => t.id === id)) return id as VerificationTierId;
+  return "verified_plus";
+}
+
+function tierPriceCents(tierId: VerificationTierId): number {
+  return getVerificationTier(tierId).priceUsd * 100;
+}
 
 function stripeSecret(): string | null {
   return process.env.STRIPE_SECRET_KEY?.trim() || null;
@@ -72,10 +82,14 @@ async function getOrCreateStripeCustomer(user: UserRow): Promise<string | null> 
 /** PaymentIntent شهري — يدعم البطاقة وApple Pay عبر Payment Element */
 export async function createVerificationPaymentIntent(
   userId: string,
+  tierRaw?: string | null,
 ): Promise<
-  | { ok: true; clientSecret: string; publishableKey: string; amountUsd: number }
+  | { ok: true; clientSecret: string; publishableKey: string; amountUsd: number; plan: string }
   | { ok: false; error: string }
 > {
+  const tierId = tierFromId(tierRaw);
+  const tier = getVerificationTier(tierId);
+  const amountCents = tierPriceCents(tierId);
   const publishableKey = stripePublishableKey();
   if (!publishableKey) return { ok: false, error: "STRIPE_PUBLISHABLE_KEY غير مُعدّ" };
 
@@ -86,13 +100,14 @@ export async function createVerificationPaymentIntent(
   if (!customerId) return { ok: false, error: "تعذر إنشاء عميل الدفع" };
 
   const body = new URLSearchParams({
-    amount: String(VERIFIED_PRICE_CENTS),
+    amount: String(amountCents),
     currency: "usd",
     customer: customerId,
     "automatic_payment_methods[enabled]": "true",
     "metadata[userId]": userId,
-    "metadata[plan]": VERIFICATION_SUBSCRIPTION_PLAN,
-    description: "Retweet Verified — اشتراك شهري",
+    "metadata[plan]": tier.plan,
+    "metadata[tier]": tierId,
+    description: `Retweet Verified — ${tier.nameAr}`,
   });
 
   const pi = await stripeApi<{ client_secret: string; id: string; status: string }>(
@@ -108,8 +123,19 @@ export async function createVerificationPaymentIntent(
     ok: true,
     clientSecret: pi.data.client_secret,
     publishableKey,
-    amountUsd: VERIFIED_PRICE_CENTS / 100,
+    amountUsd: amountCents / 100,
+    plan: tier.plan,
   };
+}
+
+export async function paymentIntentPlan(
+  paymentIntentId: string,
+): Promise<string | null> {
+  const pi = await stripeApi<{
+    metadata?: { plan?: string; tier?: string };
+  }>("GET", `/payment_intents/${encodeURIComponent(paymentIntentId)}`);
+  if (!pi.ok) return null;
+  return pi.data.metadata?.plan?.trim() || pi.data.metadata?.tier?.trim() || null;
 }
 
 export async function verifyStripePaymentIntent(
@@ -154,14 +180,20 @@ export async function verifyStripeCheckoutSession(
 /** تفعيل الاشتراك وإرسال طلب التوثيق للمراجعة */
 export async function activateSubscriptionAndQueueVerification(
   userId: string,
+  planRaw?: string | null,
 ): Promise<UserRow | null> {
   const cur = await getUserById(userId);
   if (!cur) return null;
 
+  const tier = getVerificationTier(planRaw || cur.subscriptionPlan);
   let user = await updateUser(userId, {
     isSubscribed: true,
-    subscriptionPlan: VERIFICATION_SUBSCRIPTION_PLAN,
+    subscriptionPlan: tier.plan,
     subscriptionExpiresAt: addMonthIso(),
+    storyMaxDuration: tier.storyMaxDuration,
+    postCharacterLimit: tier.postCharacterLimit,
+    storyExpiryOptions: tier.storyExpiryHours,
+    canUseAnimatedAvatar: tier.canUseAnimatedAvatar,
   });
   if (!user) return null;
 

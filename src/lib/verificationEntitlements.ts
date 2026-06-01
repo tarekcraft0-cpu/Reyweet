@@ -3,8 +3,15 @@ export type VerificationStatus = "none" | "pending" | "approved" | "rejected";
 
 export type VerificationBadgeColor = "blue" | "pink";
 
+import { tierLimitsFromPlan, type VerificationTierId } from "./verificationTiers";
+
+export type { VerificationTierId };
+
+/** خطة قديمة — تُعامل كماكس */
 export const VERIFICATION_SUBSCRIPTION_PLAN = "verified_monthly";
-export const VERIFICATION_SUBSCRIPTION_PRICE_USD = 4;
+export const VERIFICATION_SUBSCRIPTION_PRICE_USD = 3;
+
+export { VERIFICATION_TIERS, getVerificationTier } from "./verificationTiers";
 
 export interface VerificationUserFields {
   verified?: boolean;
@@ -73,14 +80,18 @@ export function getUserEntitlements(user: VerificationUserFields, now = Date.now
 
   const isVerified = exempt || isVerifiedBadgeActive(user) || user.founderVerified === true;
   const isSubscribed = exempt || hasActiveSubscription(user, now);
-  const storyMax = user.storyMaxDuration ?? (isVerified ? 60 : 30);
-  const postLimit = user.postCharacterLimit ?? (isVerified ? 1000 : 300);
+  const tier = tierLimitsFromPlan(user.subscriptionPlan);
+  const premiumActive = isVerified || isSubscribed;
+  const storyMax =
+    user.storyMaxDuration ?? (premiumActive ? tier.storyMaxDuration : 30);
+  const postLimit =
+    user.postCharacterLimit ?? (premiumActive ? tier.postCharacterLimit : 300);
   const rawExpiry = Array.isArray(user.storyExpiryOptions) ? user.storyExpiryOptions : [];
   const expiryOpts =
-    rawExpiry.length && isVerified
-      ? rawExpiry.filter(h => [24, 48, 72].includes(h))
-      : isVerified
-        ? [24, 48, 72]
+    rawExpiry.length && premiumActive
+      ? rawExpiry.filter(h => tier.storyExpiryHours.includes(h))
+      : premiumActive
+        ? tier.storyExpiryHours
         : [24];
 
   return {
@@ -88,7 +99,9 @@ export function getUserEntitlements(user: VerificationUserFields, now = Date.now
     isSubscribed,
     verificationStatus: status,
     verificationBadgeColor: user.verificationBadgeColor === "pink" ? "pink" : "blue",
-    canUseAnimatedAvatar: exempt || (isVerified && (user.canUseAnimatedAvatar !== false)),
+    canUseAnimatedAvatar:
+      exempt ||
+      (isVerified && tier.canUseAnimatedAvatar && user.canUseAnimatedAvatar !== false),
     storyMaxDurationSec: Math.min(60, Math.max(30, storyMax)),
     storyExpiryHoursOptions: expiryOpts.length ? expiryOpts : [24],
     postCharacterLimit: postLimit,

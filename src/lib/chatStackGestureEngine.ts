@@ -44,6 +44,23 @@ export function clearChatStackCssProgress(): void {
   clearChatDismissRoomTx();
 }
 
+/** بعد اكتمال سحب الخروج — القائمة فقط؛ لا تلمس transform الغرفة (تبقى خارج الشاشة) */
+export function snapStackLayersToInboxRest(layers: StackLayerRefs): void {
+  if (layers.inboxEl) {
+    layers.inboxEl.style.transform = "none";
+    layers.inboxEl.style.transformOrigin = "";
+    layers.inboxEl.style.transition = "none";
+    layers.inboxEl.style.willChange = "auto";
+  }
+  if (layers.roomEl) {
+    layers.roomEl.style.transition = "none";
+    layers.roomEl.style.willChange = "auto";
+    layers.roomEl.style.removeProperty("--retweet-chat-room-radius");
+    layers.roomEl.style.removeProperty("--retweet-chat-dismiss-pull");
+  }
+  clearChatStackCssProgress();
+}
+
 /** يحرّك الشريط السفلي عمودياً — فقط عند فتح المحادثة من القائمة (ليس سحب الخروج) */
 export function syncStackNavHideProgress(progress: number | null): void {
   if (typeof document === "undefined") return;

@@ -16,18 +16,22 @@ import {
   useSlideDismissBack,
   APP_COLUMN_MAX_PX,
   SLIDE_DISMISS_MS,
-  SLIDE_DISMISS_EASE,
-  isDocumentRtl,
 } from "@/hooks/useSlideDismissBack";
-import { chatDismissReleaseTarget, isChatDismissSwipeDelta } from "@/lib/edgeSwipeDismiss";
+import { useChatSwipeBack, type ChatSwipeBackPhase } from "@/hooks/useChatSwipeBack";
+import { animateChatScrollToBottom, type ChatScrollIntroHandle } from "@/lib/chatScrollIntro";
 import {
-  applyCloseStackTransforms,
-  applyOpenStackTransforms,
-  chatStackOpenReleaseTarget,
-  CHAT_STACK_OPEN_FRACTION,
+  applyChatNavDismissTransforms,
+  applyChatNavOpenTransforms,
+  CHAT_NAV_MS,
+  chatNavCompleteMs,
+  chatNavReleaseTarget,
+  snapChatNavInboxRest,
+} from "@/lib/chatNavStack";
+import {
   CHAT_STACK_PROGRESS_VAR,
   clearChatStackCssProgress,
   publishChatStackCssProgress,
+  snapStackLayersToInboxRest,
   syncStackNavHideProgress,
 } from "@/lib/chatStackGestureEngine";
 import {
@@ -137,6 +141,8 @@ const PREVIEW_MAX = 96;
 const APP_TOP_BAR_BELOW_SAFE_AREA = "3.5rem";
 /** يقرأها App.tsx (header/nav) أثناء سحب الرجوع من المحادثة — 0…1 */
 export const CHAT_DISMISS_PULL_CSS_VAR = "--retweet-chat-dismiss-pull";
+/** لا نظهر صفحة الخلفية/شريطها قبل سحب ملحوظ من المحادثة */
+const CHAT_EXIT_NAV_REVEAL_THRESHOLD = 0.18;
 /** ارتفاع شريط الرأس — يُستثنى من حافة السحب اليمنى حتى لا تغطي زر الرجوع */
 const CHAT_ROOM_HEADER_EDGE_INSET_PX = 72;
 export { CHAT_STACK_PROGRESS_VAR } from "@/lib/chatStackGestureEngine";
@@ -1051,30 +1057,15 @@ const ChatListRowWithPeek = memo(function ChatListRowWithPeek({
   me,
   onOpenChat,
   onOpenProfile,
-  onStackDrag,
-  onStackDragEnd,
-  onStackChromeHide,
-  onStackChromeShow,
   onRowOpenCommit,
   onPrefetchChat,
-  onStackGestureArm,
 }: {
   chat: Chat;
   me: { id: string };
   onOpenChat: (id: string) => void;
   onOpenProfile: (id: string) => void;
-  onStackDrag?: (chatId: string, px: number, vx?: number) => void;
-  onStackDragEnd?: (chatId: string, px: number, vx?: number) => void;
-  /** بداية سحب فتح المحادثة — إخفاء الشريط السفلي فوراً */
-  onStackChromeHide?: () => void;
-  /** إلغاء سحب قصير — إعادة الشريط السفلي */
-  onStackChromeShow?: () => void;
-  /** مسار واحد لإنهاء السحب/النقر — يمنع فتح مكرر */
-  onRowOpenCommit?: (chatId: string, px: number, mode: "tap" | "swipe-end") => void;
-  /** يبدأ جلب الرسائل عند اللمس — قبل فتح الغرفة */
+  onRowOpenCommit?: (chatId: string) => void;
   onPrefetchChat?: (chatId: string) => void;
-  /** يحرّر قفل سحب عالق قبل لمسة جديدة */
-  onStackGestureArm?: () => void;
 }) {
   const {
     openOrCreateChat,
@@ -1137,29 +1128,19 @@ const ChatListRowWithPeek = memo(function ChatListRowWithPeek({
   const cameraPeekArmedRef = useRef(false);
   const cameraDownRef = useRef<{ x0: number; y0: number; pointerId: number; downAt: number } | null>(null);
   const cameraBtnRef = useRef<HTMLButtonElement | null>(null);
-  const rowOpenDownRef = useRef<{ x0: number; y0: number; pointerId: number; downAt: number } | null>(null);
-  const rowOpenArmedRef = useRef(false);
-  const rowOpenLastPullRef = useRef(0);
-  const rowOpenVelocityRef = useRef(0);
-  const rowOpenMoveSampleRef = useRef({ x: 0, t: 0 });
-  const rowPointerEndedRef = useRef(false);
   const rowOpenCommittedRef = useRef(false);
   const rowShellRef = useRef<HTMLDivElement>(null);
   const chatRowOpenId = openChatIdFor(c, me.id);
 
-  const commitRowOpen = useCallback(
-    (px: number, mode: "tap" | "swipe-end") => {
-      if (rowOpenCommittedRef.current) return;
-      rowOpenCommittedRef.current = true;
-      window.setTimeout(() => {
-        rowOpenCommittedRef.current = false;
-      }, 450);
-      if (onRowOpenCommit) onRowOpenCommit(chatRowOpenId, px, mode);
-      else if (mode === "tap") startTransition(() => onOpenChat(chatRowOpenId));
-      else onStackDragEnd?.(chatRowOpenId, px, rowOpenVelocityRef.current);
-    },
-    [onRowOpenCommit, onOpenChat, onStackDragEnd, chatRowOpenId],
-  );
+  const openChatFromRowTap = useCallback(() => {
+    if (rowOpenCommittedRef.current) return;
+    rowOpenCommittedRef.current = true;
+    window.setTimeout(() => {
+      rowOpenCommittedRef.current = false;
+    }, 450);
+    if (onRowOpenCommit) onRowOpenCommit(chatRowOpenId);
+    else startTransition(() => onOpenChat(chatRowOpenId));
+  }, [onRowOpenCommit, onOpenChat, chatRowOpenId]);
 
   const setRowPressedVisual = (pressed: boolean) => {
     const el = rowShellRef.current;
@@ -1346,7 +1327,6 @@ const ChatListRowWithPeek = memo(function ChatListRowWithPeek({
       clearCameraLongPress();
       const down = cameraDownRef.current;
       cameraDownRef.current = null;
-      const armed = cameraPeekArmedRef.current;
       cameraPeekArmedRef.current = false;
       try {
         if (e.currentTarget.hasPointerCapture(e.pointerId)) {
@@ -1355,21 +1335,6 @@ const ChatListRowWithPeek = memo(function ChatListRowWithPeek({
       } catch {
         /* ignore */
       }
-      if (armed) {
-        const px = peekRef.current;
-        const cap = capWidth();
-        peekRef.current = 0;
-        setPeekPx(0);
-        if (cap > 0 && px >= cap * PEEK_OPEN_CHAT_FRACTION) {
-          if (onRowOpenCommit) onRowOpenCommit(chatRowOpenId, px, "swipe-end");
-          else onStackDragEnd?.(chatRowOpenId, px);
-        } else if (cap > 0 && px > 0) {
-          onStackDragEnd?.(chatRowOpenId, 0);
-        } else if (cap > 0 && px < cap * PEEK_CAMERA_TAP_FRACTION && down && Date.now() - down.downAt < 520) {
-          setInstagramCameraOpen(true);
-        }
-        return;
-      }
       if (!down) return;
       const duration = Date.now() - down.downAt;
       const distSq = (e.clientX - down.x0) ** 2 + (e.clientY - down.y0) ** 2;
@@ -1377,7 +1342,7 @@ const ChatListRowWithPeek = memo(function ChatListRowWithPeek({
         setInstagramCameraOpen(true);
       }
     },
-    [clearCameraLongPress, onRowOpenCommit, onStackDragEnd, chatRowOpenId],
+    [clearCameraLongPress],
   );
 
   const onCameraPointerDown = (e: React.PointerEvent<HTMLButtonElement>) => {
@@ -1401,187 +1366,6 @@ const ChatListRowWithPeek = memo(function ChatListRowWithPeek({
         /* ignore */
       }
     }, CAMERA_LONG_PRESS_MS);
-  };
-
-  const rowOpenPullPx = (e: React.PointerEvent) => {
-    const down = rowOpenDownRef.current;
-    if (!down) return 0;
-    /** سحب يسار→يمين فقط — يتبع الإصبع */
-    return Math.max(0, e.clientX - down.x0);
-  };
-
-  const onRowOpenPointerDown = (e: React.PointerEvent) => {
-    if (e.button !== 0) return;
-    e.stopPropagation();
-    onStackGestureArm?.();
-    rowPointerEndedRef.current = false;
-    rowOpenCommittedRef.current = false;
-    setRowPressedVisual(true);
-    rowOpenDownRef.current = {
-      x0: e.clientX,
-      y0: e.clientY,
-      pointerId: e.pointerId,
-      downAt: Date.now(),
-    };
-    onPrefetchChat?.(chatRowOpenId);
-    rowOpenArmedRef.current = false;
-    try {
-      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    } catch {
-      /* ignore */
-    }
-  };
-
-  const onRowOpenPointerMove = (e: React.PointerEvent) => {
-    const down = rowOpenDownRef.current;
-    if (!down || down.pointerId !== e.pointerId) return;
-    const dx = e.clientX - down.x0;
-    const dy = e.clientY - down.y0;
-    if (dx < -6) {
-      if (rowOpenArmedRef.current) {
-        rowOpenArmedRef.current = false;
-        rowOpenDownRef.current = null;
-        setRowPressedVisual(false);
-        commitRowOpen(rowOpenLastPullRef.current, "swipe-end");
-      }
-      return;
-    }
-    const pull = rowOpenPullPx(e);
-    if (!rowOpenArmedRef.current) {
-      if (pull < ROW_OPEN_ARM_PX || dx <= 0) return;
-      if (Math.abs(dy) > Math.abs(dx) * 1.2 && dy * dy > 64) {
-        rowOpenDownRef.current = null;
-        setRowPressedVisual(false);
-        return;
-      }
-      rowOpenArmedRef.current = true;
-      setRowPressedVisual(false);
-      rowOpenVelocityRef.current = 0;
-      rowOpenMoveSampleRef.current = { x: e.clientX, t: performance.now() };
-      onStackChromeHide?.();
-      try {
-        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-      } catch {
-        /* ignore */
-      }
-    }
-    if (rowOpenArmedRef.current) {
-      if (Math.abs(dy) > Math.abs(dx) * 1.2 && dy * dy > 64) {
-        rowOpenArmedRef.current = false;
-        rowOpenDownRef.current = null;
-        setRowPressedVisual(false);
-        const abortPx = rowOpenLastPullRef.current;
-        commitRowOpen(abortPx, "swipe-end");
-        return;
-      }
-      if (e.cancelable) e.preventDefault();
-    }
-    const cap = capWidth();
-    const px = Math.max(0, Math.min(cap, pull));
-    rowOpenLastPullRef.current = px;
-    const now = performance.now();
-    const dt = now - rowOpenMoveSampleRef.current.t;
-    if (dt > 0 && dt < 100) {
-      rowOpenVelocityRef.current = (e.clientX - rowOpenMoveSampleRef.current.x) / dt;
-    }
-    rowOpenMoveSampleRef.current = { x: e.clientX, t: now };
-    onStackDrag?.(openChatIdFor(c, me.id), px, rowOpenVelocityRef.current);
-  };
-
-  const onRowOpenPointerEnd = (e: React.PointerEvent) => {
-    if (rowPointerEndedRef.current) return;
-    rowPointerEndedRef.current = true;
-    window.setTimeout(() => {
-      rowPointerEndedRef.current = false;
-    }, 420);
-
-    const down = rowOpenDownRef.current;
-    rowOpenDownRef.current = null;
-    const armed = rowOpenArmedRef.current;
-    rowOpenArmedRef.current = false;
-    setRowPressedVisual(false);
-    try {
-      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-    } catch {
-      /* ignore */
-    }
-    if (armed && down) {
-      const cap = capWidth();
-      const pull = rowOpenPullPx(e);
-      const px = Math.max(0, Math.min(cap, pull));
-      const vx = rowOpenVelocityRef.current;
-      rowOpenLastPullRef.current = px;
-      commitRowOpen(px, "swipe-end");
-      return;
-    }
-    if (!down || down.pointerId !== e.pointerId) return;
-    const dx = e.clientX - down.x0;
-    const dy = e.clientY - down.y0;
-    if (Math.hypot(dx, dy) < ROW_TAP_MAX_MOVE_PX) {
-      try {
-        navigator.vibrate?.(8);
-      } catch {
-        /* ignore */
-      }
-      commitRowOpen(0, "tap");
-    } else {
-      onStackChromeShow?.();
-    }
-  };
-
-  const onRowOpenPointerCancel = (e?: React.PointerEvent) => {
-    const down = rowOpenDownRef.current;
-    if (e && down && down.pointerId !== e.pointerId) return;
-    const wasArmed = rowOpenArmedRef.current;
-    const px = rowOpenLastPullRef.current;
-    rowOpenDownRef.current = null;
-    rowOpenArmedRef.current = false;
-    rowOpenLastPullRef.current = 0;
-    rowOpenVelocityRef.current = 0;
-    setRowPressedVisual(false);
-    if (wasArmed) {
-      commitRowOpen(px, "swipe-end");
-    } else if (down && !rowOpenCommittedRef.current) {
-      const holdMs = Date.now() - down.downAt;
-      if (holdMs < 600) commitRowOpen(0, "tap");
-      else onStackChromeShow?.();
-    } else {
-      onStackChromeShow?.();
-    }
-  };
-
-  const onCameraPointerMove = (e: React.PointerEvent<HTMLButtonElement>) => {
-    const down = cameraDownRef.current;
-    if (!down) return;
-    const dxCam = e.clientX - down.x0;
-    const openPull = Math.max(0, dxCam);
-
-    if (!cameraPeekArmedRef.current) {
-      if (dxCam < -6) return;
-      if (openPull >= CAMERA_EARLY_PULL_PX) {
-        clearCameraLongPress();
-        cameraPeekArmedRef.current = true;
-        const cap = capWidth();
-        const v = Math.max(0, Math.min(cap, openPull));
-        peekRef.current = v;
-        onStackDrag?.(chatRowOpenId, v);
-        try {
-          navigator.vibrate?.(6);
-        } catch {
-          /* ignore */
-        }
-        return;
-      }
-      const dx = e.clientX - down.x0;
-      const dy = e.clientY - down.y0;
-      if (dy * dy > 85 * 85 && dy * dy > dx * dx * 8) clearCameraLongPress();
-      return;
-    }
-
-    const cap = capWidth();
-    const v = Math.max(0, Math.min(cap, openPull));
-    peekRef.current = v;
-    onStackDrag?.(chatRowOpenId, v);
   };
 
   return (
@@ -1986,19 +1770,26 @@ const ChatListRowWithPeek = memo(function ChatListRowWithPeek({
             )}
           </div>
 
-          {/* [B] Name + preview — Center, swipe-to-open */}
+          {/* [B] Name + preview — tap to open */}
           <button
             type="button"
-            className="flex min-w-0 flex-1 touch-none flex-col justify-center gap-[5px] text-start outline-none select-none active:opacity-90"
-            style={{ paddingTop: "16px", paddingBottom: "16px", paddingInlineEnd: "8px", touchAction: "none" }}
-            onPointerDown={onRowOpenPointerDown}
-            onPointerMove={onRowOpenPointerMove}
-            onPointerUp={onRowOpenPointerEnd}
-            onPointerCancel={onRowOpenPointerCancel}
+            className="flex min-w-0 flex-1 flex-col justify-center gap-[5px] text-start outline-none select-none active:opacity-90"
+            style={{ paddingTop: "16px", paddingBottom: "16px", paddingInlineEnd: "8px" }}
+            onPointerDown={() => {
+              onPrefetchChat?.(chatRowOpenId);
+            }}
+            onTouchStart={() => {
+              onPrefetchChat?.(chatRowOpenId);
+            }}
             onClick={e => {
               e.stopPropagation();
-              if (skipAvatarClickRef.current || rowOpenArmedRef.current) return;
-              if (!rowOpenCommittedRef.current) commitRowOpen(0, "tap");
+              if (skipAvatarClickRef.current) return;
+              try {
+                navigator.vibrate?.(8);
+              } catch {
+                /* ignore */
+              }
+              openChatFromRowTap();
             }}
           >
             <div className="flex min-w-0 items-center gap-1.5">
@@ -2055,7 +1846,6 @@ const ChatListRowWithPeek = memo(function ChatListRowWithPeek({
               className="flex h-10 w-10 shrink-0 touch-manipulation items-center justify-center rounded-full text-muted-foreground transition active:scale-90 hover:bg-secondary"
               style={{ touchAction: "none" }}
               onPointerDown={e => { e.stopPropagation(); onCameraPointerDown(e); }}
-              onPointerMove={onCameraPointerMove}
               onPointerUp={finishCameraGesture}
               onPointerCancel={finishCameraGesture}
             >
@@ -2279,9 +2069,14 @@ export function ChatScreen({
   /** محادثة السحب الحالية — ref فقط أثناء الإصبع (لا يُركّب ChatRoom حتى commit) */
   const stackDragPreviewIdRef = useRef<string | null>(null);
   const stackDragVisualStartedRef = useRef(false);
-  const lastRoomDismissTxRef = useRef(0);
+  const lastRoomDismissPullRef = useRef(0);
   const stackNavDismissProgressRef = useRef(-1);
   const beginCloseChatThreadRef = useRef<(closingKey: string) => void>(() => {});
+  /** يمنع useLayoutEffect من إعادة ضبط transforms أثناء إنهاء الإغلاق */
+  const stackDismissFinalizingRef = useRef(false);
+  /** true بعد commit الإغلاق — يمنع snap-back لحظي للمحادثة */
+  const stackCloseCommitRef = useRef(false);
+  const stackSnapBackTimerRef = useRef<number | null>(null);
   const [stackGestureLocked, setStackGestureLocked] = useState(false);
   /** سحب خروج نشط — يبقي إيماءة الإغلاق مفعّلة حتى لو انخفض stackProgress أثناء السحب */
   const [stackRoomDismissDragging, setStackRoomDismissDragging] = useState(false);
@@ -2329,7 +2124,7 @@ export function ChatScreen({
           cap = readSafeStackCapPx(stackInboxRef.current, stackCapRef);
           stackCapRef.current = cap;
         }
-        applyOpenStackTransforms(p, cap, stackLayers(), animate, stackTapTransitionRef.current);
+        applyChatNavOpenTransforms(p, cap, stackLayers(), animate);
       } catch (err) {
         console.warn("[chat-stack-transform]", err);
       }
@@ -2337,57 +2132,63 @@ export function ChatScreen({
     [stackLayers],
   );
 
-  /** سحب خروج المحادثة: tx سالب = يمين→يسار — الغرفة تخرج يميناً */
-  const applyRoomCloseDrag = useCallback((tx: number, animate: boolean) => {
-    try {
-      let cap = stackCapRef.current;
-      if (!(cap > 0)) {
-        cap = readSafeStackCapPx(stackRoomRef.current ?? stackInboxRef.current, stackCapRef);
-        stackCapRef.current = cap;
-      }
-      const clampedTx = Math.max(-cap, Math.min(0, Number.isFinite(tx) ? tx : 0));
-      if (!animate && clampedTx === lastRoomDismissTxRef.current) return;
-      lastRoomDismissTxRef.current = clampedTx;
-      const { inboxEl, roomEl } = stackLayers();
-      if (!animate && inboxEl) inboxEl.style.willChange = "transform";
-      if (!animate && roomEl) roomEl.style.willChange = "transform";
-      const { progress, dismissPull } = applyCloseStackTransforms(clampedTx, cap, { inboxEl, roomEl }, animate);
-      stackProgressRef.current = progress;
-      if (typeof document !== "undefined") {
-        document.documentElement.style.setProperty(
-          CHAT_DISMISS_PULL_CSS_VAR,
-          String(Math.max(0, Math.min(1, dismissPull))),
-        );
-      }
-      if (animate) {
-        if (inboxEl) inboxEl.style.willChange = "auto";
-        if (roomEl) roomEl.style.willChange = "auto";
-        setStackProgress(progress);
-      }
-      stackRoomDriveRef.current = "close";
-      stackRoomDismissRef.current = true;
-      publishChatStackCssProgress(progress);
-      if (stackRoomDismissRef.current && dismissPull > 0.001) {
-        if (animate || Math.abs(progress - stackNavDismissProgressRef.current) > 0.012) {
-          stackNavDismissProgressRef.current = progress;
-          onExitNavRevealProgress?.(1);
+  /** سحب رجوع: pullPx موجب — الغرفة فقط تخرج يساراً، القائمة ثابتة */
+  const applyNavDismissPull = useCallback(
+    (pullPx: number, animate: boolean, durationMs = CHAT_NAV_MS) => {
+      try {
+        let cap = stackCapRef.current;
+        if (!(cap > 0)) {
+          cap = readSafeStackCapPx(stackRoomRef.current ?? stackInboxRef.current, stackCapRef);
+          stackCapRef.current = cap;
         }
-      } else if (stackRoomDismissRef.current && dismissPull <= 0.001 && !animate) {
-        onExitNavRevealProgress?.(null);
+        const clamped = Math.max(0, Math.min(cap, Number.isFinite(pullPx) ? pullPx : 0));
+        if (stackCloseCommitRef.current && clamped < cap * 0.5) return;
+        if (!animate && clamped === lastRoomDismissPullRef.current) return;
+        lastRoomDismissPullRef.current = clamped;
+        const { inboxEl, roomEl } = stackLayers();
+        if (!animate && roomEl) roomEl.style.willChange = "transform";
+        const { progress, dismissPull } = applyChatNavDismissTransforms(
+          clamped,
+          cap,
+          { inboxEl, roomEl },
+          animate,
+          durationMs,
+        );
+        stackProgressRef.current = progress;
+        if (typeof document !== "undefined") {
+          document.documentElement.style.setProperty(
+            CHAT_DISMISS_PULL_CSS_VAR,
+            String(Math.max(0, Math.min(1, dismissPull))),
+          );
+        }
+        if (animate && roomEl) roomEl.style.willChange = "auto";
+        stackRoomDriveRef.current = "close";
+        stackRoomDismissRef.current = true;
+        if (dismissPull > 0.001) {
+          if (animate || Math.abs(1 - progress - stackNavDismissProgressRef.current) > 0.012) {
+            stackNavDismissProgressRef.current = 1 - progress;
+            if (dismissPull >= CHAT_EXIT_NAV_REVEAL_THRESHOLD) {
+              onExitNavRevealProgress?.(progress);
+            } else {
+              onExitNavRevealProgress?.(null);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("[chat-nav-dismiss]", err);
+        stackRoomDismissRef.current = false;
+        stackRoomDriveRef.current = "idle";
       }
-    } catch (err) {
-      console.warn("[chat-room-close-drag]", err);
-      stackRoomDismissRef.current = false;
-      stackRoomDriveRef.current = "idle";
-    }
-  }, [onExitNavRevealProgress, stackLayers]);
+    },
+    [onExitNavRevealProgress, stackLayers],
+  );
 
   const resetStackToInboxRest = useCallback(
     (opts?: { animate?: boolean }) => {
       stackProgressRef.current = 0;
       stackDragPreviewIdRef.current = null;
       stackDragVisualStartedRef.current = false;
-      lastRoomDismissTxRef.current = 0;
+      lastRoomDismissPullRef.current = 0;
       stackNavDismissProgressRef.current = -1;
       setStackProgress(0);
       setStackSpring(!!opts?.animate);
@@ -2451,69 +2252,62 @@ export function ChatScreen({
   );
 
   const syncStackProgressFromRoom = useCallback(
-    (tx: number, phase: "move" | "end" | "start" = "move") => {
-      if (tx > 0 && phase !== "end") return;
-      /** محادثة مفتوحة: سحب الرجوع من الغرفة له الأولوية — لا يحجبه قفل المكدس */
+    (pullPx: number, phase: ChatSwipeBackPhase = "move", velocityX = 0) => {
+      if (stackCloseCommitRef.current && phase === "end" && pullPx < 8) return;
+      if (phase === "end" && pullPx < 8 && lastRoomDismissPullRef.current > 24) {
+        pullPx = lastRoomDismissPullRef.current;
+      }
       if (openChat) {
         const cap = Math.max(260, stackCapRef.current);
         if (phase === "start" || phase === "move") {
           if (phase === "start") {
+            stackCloseCommitRef.current = false;
+            if (stackSnapBackTimerRef.current != null) {
+              window.clearTimeout(stackSnapBackTimerRef.current);
+              stackSnapBackTimerRef.current = null;
+            }
             setStackRoomDismissDragging(true);
-            lastRoomDismissTxRef.current = 0;
+            lastRoomDismissPullRef.current = 0;
             stackNavDismissProgressRef.current = -1;
+            onExitNavRevealProgress?.(null);
           }
           stackRoomDriveRef.current = "close";
           stackRoomDismissRef.current = true;
-          applyRoomCloseDrag(tx, false);
+          applyNavDismissPull(pullPx, false);
           return;
         }
-        setStackRoomDismissDragging(false);
-        lastRoomDismissTxRef.current = 0;
-        stackNavDismissProgressRef.current = -1;
-        const closing = chatDismissReleaseTarget(tx, cap, 0) !== 0;
+        const closing = chatNavReleaseTarget(pullPx, cap, velocityX) > 0;
         if (closing) {
-          beginCloseChatThreadRef.current(resolveOpenChatId(openChat));
+          if (stackSnapBackTimerRef.current != null) {
+            window.clearTimeout(stackSnapBackTimerRef.current);
+            stackSnapBackTimerRef.current = null;
+          }
+          setStackRoomDismissDragging(false);
+          applyNavDismissPull(pullPx, false);
           return;
         }
+        if (stackCloseCommitRef.current) return;
+        setStackRoomDismissDragging(false);
+        stackNavDismissProgressRef.current = -1;
         stackRoomDriveRef.current = "idle";
         stackRoomDismissRef.current = false;
         setStackSpring(true);
-        applyRoomCloseDrag(0, true);
-        window.setTimeout(() => {
+        applyNavDismissPull(0, true);
+        if (stackSnapBackTimerRef.current != null) {
+          window.clearTimeout(stackSnapBackTimerRef.current);
+        }
+        stackSnapBackTimerRef.current = window.setTimeout(() => {
+          stackSnapBackTimerRef.current = null;
           setStackSpring(false);
           stackRoomDriveRef.current = "idle";
           stackRoomDismissRef.current = false;
           setStackRoomDismissDragging(false);
           onExitNavRevealProgress?.(null);
-        }, SLIDE_DISMISS_MS);
+        }, CHAT_NAV_MS);
         return;
       }
-      if (stackTransitionLockRef.current || stackSwipeOpeningRef.current || stackGestureLocked) return;
-      if (stackOpenDragRef.current) return;
-      if (stackDragChatId && !openChat) return;
-      if (phase === "start" || phase === "move") {
-        stackRoomDriveRef.current = "close";
-        stackRoomDismissRef.current = true;
-        applyRoomCloseDrag(tx, false);
-        return;
-      }
-      const cap = Math.max(260, stackCapRef.current);
-      const closing = chatDismissReleaseTarget(tx, cap, 0) !== 0;
-      if (!closing) {
-        stackRoomDriveRef.current = "idle";
-        stackRoomDismissRef.current = false;
-      }
-      setStackSpring(true);
-      applyRoomCloseDrag(closing ? -cap : 0, true);
-      window.setTimeout(() => {
-        setStackSpring(false);
-        if (!closing) {
-          stackRoomDriveRef.current = "idle";
-          stackRoomDismissRef.current = false;
-        }
-      }, SLIDE_DISMISS_MS);
     },
-    [stackDragChatId, openChat, stackGestureLocked, applyRoomCloseDrag, onExitNavRevealProgress],
+    [openChat, applyNavDismissPull, onExitNavRevealProgress],
   );
 
   const releaseChatChromeAfterGesture = useCallback(() => {
@@ -2545,44 +2339,10 @@ export function ChatScreen({
     [chats, me.id],
   );
 
-  const flushPendingStackDrag = useCallback(() => {
-    if (stackDragFrameRef.current) {
-      cancelAnimationFrame(stackDragFrameRef.current);
-      stackDragFrameRef.current = 0;
-    }
-    const pending = pendingStackDragRef.current;
-    if (!pending) return;
-    pendingStackDragRef.current = null;
-    const { chatId, px } = pending;
-    if (stackListGestureCommitRef.current || stackTransitionLockRef.current) return;
-    stackOpenDragRef.current = true;
-    stackRoomDriveRef.current = "open";
-    stackRoomDismissRef.current = false;
-    if (!stackDragVisualStartedRef.current) {
-      stackDragVisualStartedRef.current = true;
-      setStackClosingId(null);
-      setStackSpring(false);
-      hideStackChrome();
-    }
-    const canonical = resolveOpenChatId(chatId);
-    stackDragPreviewIdRef.current = canonical;
-    let cap = stackCapRef.current;
-    if (!(cap > 0)) {
-      cap = readSafeStackCapPx(stackInboxRef.current, stackCapRef);
-      stackCapRef.current = cap;
-    }
-    const progress = cap > 0 ? px / cap : 0;
-    publishStackProgressVisual(progress, false);
-  }, [
-    resolveOpenChatId,
-    publishStackProgressVisual,
-    hideStackChrome,
-  ]);
-
   const isChatThreadFullyOpen = useCallback(
     (id: string) =>
-      openChat === id && !stackDragChatId && !stackClosingId && stackProgressRef.current >= 0.98,
-    [openChat, stackDragChatId, stackClosingId],
+      openChat === id && !stackClosingId && stackProgressRef.current >= 0.98,
+    [openChat, stackClosingId],
   );
 
   const releaseStackTransitionLock = useCallback(() => {
@@ -2594,166 +2354,45 @@ export function ChatScreen({
     setStackGestureLocked(false);
   }, []);
 
-  const commitStackOpen = useCallback(
-    (targetId: string) => {
-      const canonical = resolveOpenChatId(targetId);
-      if (isChatThreadFullyOpen(canonical)) {
-        releaseStackTransitionLock();
-        return;
-      }
-      if (stackTransitionLockRef.current && stackNavTargetRef.current !== canonical) return;
-
-      const progress = stackProgressRef.current;
-      const sameThread =
-        stackDragChatId === canonical ||
-        stackDragPreviewIdRef.current === canonical ||
-        openChat === canonical ||
-        stackNavTargetRef.current === canonical;
-
-      stackTransitionLockRef.current = true;
-      stackListGestureCommitRef.current = true;
-      stackNavTargetRef.current = canonical;
-      stackOpenDragRef.current = false;
-      stackDragPreviewIdRef.current = null;
-      stackDragVisualStartedRef.current = false;
-      stackSwipeOpeningRef.current = false;
-      stackRoomDriveRef.current = "open";
-      stackRoomDismissRef.current = false;
-      setStackGestureLocked(true);
-      setStackClosingId(null);
-      if (sameThread && progress >= 0.98) {
-        ++stackNavGenerationRef.current;
-        flushSync(() => {
-          stackProgressRef.current = 1;
-          setStackProgress(1);
-          setStackDragChatId(null);
-          setStackSpring(false);
-          setOpenChat(canonical);
-        });
-        onActiveChatChange?.(canonical);
-        if (typeof document !== "undefined") {
-          document.documentElement.style.setProperty(CHAT_STACK_PROGRESS_VAR, "1");
-        }
-        applyStackLayerTransforms(1, false);
-        syncStackNavHideProgress(null);
-        onExitNavRevealProgress?.(null);
-        releaseStackTransitionLock();
-        requestStackRoomScrollBottom();
-        return;
-      }
-
-      const gen = ++stackNavGenerationRef.current;
-      const startProgress = Math.max(progress, 0);
-      flushSync(() => {
-        setOpenChat(canonical);
-        setStackDragChatId(null);
-        setStackSpring(true);
-        stackProgressRef.current = startProgress;
-        setStackProgress(startProgress);
-      });
-      onActiveChatChange?.(canonical);
-      applyStackLayerTransforms(startProgress, false);
-      publishStackProgressVisual(1, true, true);
-      window.setTimeout(() => {
-        if (gen !== stackNavGenerationRef.current) return;
-        flushSync(() => {
-          stackProgressRef.current = 1;
-          setStackProgress(1);
-          setStackSpring(false);
-        });
-        if (typeof document !== "undefined") {
-          document.documentElement.style.setProperty(CHAT_STACK_PROGRESS_VAR, "1");
-        }
-        applyStackLayerTransforms(1, false);
-        syncStackNavHideProgress(null);
-        onExitNavRevealProgress?.(null);
-        stackRoomDriveRef.current = "idle";
-        releaseStackTransitionLock();
-        requestStackRoomScrollBottom();
-      }, SLIDE_DISMISS_MS);
-    },
-    [
-      resolveOpenChatId,
-      isChatThreadFullyOpen,
-      openChat,
-      stackDragChatId,
-      publishStackProgressVisual,
-      applyStackLayerTransforms,
-      onActiveChatChange,
-      onExitNavRevealProgress,
-      releaseStackTransitionLock,
-      requestStackRoomScrollBottom,
-    ],
-  );
-
-  const cancelStackDrag = useCallback(() => {
-    flushPendingStackDrag();
-    stackDragPreviewIdRef.current = null;
-    stackDragVisualStartedRef.current = false;
-    stackOpenDragRef.current = false;
-    if (!stackDragChatId && !openChat && stackProgressRef.current < 0.02) {
-      releaseStackTransitionLock();
-      releaseChatChromeAfterGesture();
-      return;
-    }
-    const gen = ++stackNavGenerationRef.current;
-    stackTransitionLockRef.current = true;
-    stackNavTargetRef.current = null;
-    setStackGestureLocked(true);
-    stackListGestureCommitRef.current = true;
-    setStackSpring(true);
-    publishStackProgressVisual(0, true, true);
-    window.setTimeout(() => {
-      if (gen !== stackNavGenerationRef.current) return;
-      flushSync(() => {
-        setStackDragChatId(null);
-        setStackClosingId(null);
-        setOpenChat(null);
-      });
-      resetStackToInboxRest();
-      releaseChatChromeAfterGesture();
-      showStackChrome();
-      onActiveChatChange?.(null);
-      releaseStackTransitionLock();
-    }, SLIDE_DISMISS_MS);
-  }, [
-    flushPendingStackDrag,
-    stackDragChatId,
-    openChat,
-    publishStackProgressVisual,
-    resetStackToInboxRest,
-    showStackChrome,
-    releaseStackTransitionLock,
-    releaseChatChromeAfterGesture,
-    onActiveChatChange,
-  ]);
-
   const openChatDirect = useCallback(
     (id: string) => {
-      const canonical = resolveOpenChatId(id);
-      if (isChatThreadFullyOpen(canonical)) return;
-      if (stackDragChatId) {
-        commitStackOpen(canonical);
+      if (stackClosingId || stackDismissFinalizingRef.current || stackRoomDriveRef.current === "close") {
         return;
       }
-
-      void loadChatMessages(canonical);
+      const canonical = resolveOpenChatId(id);
+      if (isChatThreadFullyOpen(canonical)) return;
 
       ++stackNavGenerationRef.current;
-      stackTransitionLockRef.current = true;
-      stackListGestureCommitRef.current = true;
+      stackNavTargetRef.current = canonical;
+      stackTapTransitionRef.current = false;
       stackOpenDragRef.current = false;
       stackSwipeOpeningRef.current = false;
       stackRoomDriveRef.current = "idle";
       stackRoomDismissRef.current = false;
-      stackNavTargetRef.current = canonical;
-      stackTapTransitionRef.current = false;
+      stackListGestureCommitRef.current = false;
+      stackTransitionLockRef.current = false;
       setStackGestureLocked(false);
       setStackClosingId(null);
       setStackDragChatId(null);
       stackDragPreviewIdRef.current = null;
       stackDragVisualStartedRef.current = false;
-      hideStackChrome();
+      stackCloseCommitRef.current = false;
+      if (stackSnapBackTimerRef.current != null) {
+        window.clearTimeout(stackSnapBackTimerRef.current);
+        stackSnapBackTimerRef.current = null;
+      }
+      const { roomEl } = stackLayers();
+      if (roomEl) {
+        roomEl.style.visibility = "";
+        roomEl.style.opacity = "";
+        roomEl.style.pointerEvents = "";
+      }
+
+      let cap = stackCapRef.current;
+      if (!(cap > 0)) {
+        cap = readSafeStackCapPx(stackInboxRef.current, stackCapRef);
+        stackCapRef.current = cap;
+      }
 
       flushSync(() => {
         setOpenChat(canonical);
@@ -2763,22 +2402,23 @@ export function ChatScreen({
       });
       onActiveChatChange?.(canonical);
 
-      applyStackLayerTransforms(1, false);
+      applyChatNavOpenTransforms(1, cap, stackLayers(), false);
       publishChatStackCssProgress(1);
       syncStackNavHideProgress(null);
       onExitNavRevealProgress?.(null);
       releaseStackTransitionLock();
       requestStackRoomScrollBottom();
+      startTransition(() => {
+        void loadChatMessages(canonical);
+      });
     },
     [
       resolveOpenChatId,
       isChatThreadFullyOpen,
-      commitStackOpen,
-      stackDragChatId,
+      stackClosingId,
       loadChatMessages,
-      hideStackChrome,
+      stackLayers,
       onActiveChatChange,
-      applyStackLayerTransforms,
       onExitNavRevealProgress,
       releaseStackTransitionLock,
       requestStackRoomScrollBottom,
@@ -2792,72 +2432,44 @@ export function ChatScreen({
     [loadChatMessages, resolveOpenChatId],
   );
 
-  /** إغلاق المحادثة المفتوحة — مسار بسيط بدون portal */
   const closeOpenChat = useCallback(() => {
     ++stackNavGenerationRef.current;
+    stackCloseCommitRef.current = false;
+    if (stackSnapBackTimerRef.current != null) {
+      window.clearTimeout(stackSnapBackTimerRef.current);
+      stackSnapBackTimerRef.current = null;
+    }
     setOpenChat(null);
     setStackDragChatId(null);
     setStackClosingId(null);
     stackTapTransitionRef.current = false;
     stackChromeHiddenRef.current = false;
     setStackChromeHidden(false);
+    onActiveChatChange?.(null);
+    onConsumedInitialChat?.();
     releaseStackTransitionLock();
     resetStackToInboxRest();
     onExitNavRevealProgress?.(null);
-    onActiveChatChange?.(null);
-  }, [releaseStackTransitionLock, resetStackToInboxRest, onExitNavRevealProgress, onActiveChatChange]);
+  }, [
+    releaseStackTransitionLock,
+    resetStackToInboxRest,
+    onExitNavRevealProgress,
+    onActiveChatChange,
+    onConsumedInitialChat,
+  ]);
 
-  /** يحرّر سحب/قفل عالق قبل لمسة جديدة أو عند مغادرة التبويب */
+  /** يحرّر قفل/انتقال عالق عند مغادرة التبويب */
   const releaseStuckStackListGesture = useCallback(() => {
     ++stackNavGenerationRef.current;
-    flushPendingStackDrag();
-    pendingStackDragRef.current = null;
-    if (stackDragFrameRef.current) {
-      cancelAnimationFrame(stackDragFrameRef.current);
-      stackDragFrameRef.current = 0;
-    }
-    stackOpenVelocityRef.current = 0;
     if (openChat && stackProgressRef.current >= 0.98) {
       releaseStackTransitionLock();
       return;
     }
-    setStackDragChatId(null);
-    setStackClosingId(null);
-    stackDragPreviewIdRef.current = null;
-    stackDragVisualStartedRef.current = false;
-    releaseStackTransitionLock();
-    if (stackProgressRef.current > 0.02) {
+    if (stackTapTransitionRef.current) {
       resetStackToInboxRest();
-    }
-    releaseChatChromeAfterGesture();
-    showStackChrome();
-  }, [
-    openChat,
-    flushPendingStackDrag,
-    releaseStackTransitionLock,
-    resetStackToInboxRest,
-    releaseChatChromeAfterGesture,
-    showStackChrome,
-  ]);
-
-  /** قبل لمسة جديدة: فك أقفال عالقة فقط — دون إعادة ضبط كامل للمكدس */
-  const armStackListGesture = useCallback(() => {
-    if (stackDragFrameRef.current) {
-      cancelAnimationFrame(stackDragFrameRef.current);
-      stackDragFrameRef.current = 0;
-    }
-    pendingStackDragRef.current = null;
-    if (openChat && stackProgressRef.current >= 0.98) return;
-    if (stackListGestureCommitRef.current || stackTransitionLockRef.current) {
       releaseStackTransitionLock();
     }
-    if (!openChat && stackProgressRef.current > 0.02 && stackProgressRef.current < 0.98) {
-      ++stackNavGenerationRef.current;
-      setStackDragChatId(null);
-      setStackClosingId(null);
-      resetStackToInboxRest();
-      releaseChatChromeAfterGesture();
-    }
+    releaseChatChromeAfterGesture();
   }, [
     openChat,
     releaseStackTransitionLock,
@@ -2866,56 +2478,17 @@ export function ChatScreen({
   ]);
 
   const handleRowOpenCommit = useCallback(
-    (chatId: string, px: number, mode: "tap" | "swipe-end") => {
-      flushPendingStackDrag();
-      if (stackListGestureCommitRef.current) {
-        if (openChat && stackProgressRef.current >= 0.98) return;
-        ++stackNavGenerationRef.current;
-        releaseStackTransitionLock();
-      }
-      if (stackTransitionLockRef.current) {
+    (chatId: string) => {
+      if (stackListGestureCommitRef.current && openChat && stackProgressRef.current >= 0.98) return;
+      if (stackTransitionLockRef.current && !stackTapTransitionRef.current) {
         const p = stackProgressRef.current;
         if (openChat && p >= 0.98) return;
-        if (!openChat && p > 0.03 && p < 0.98) {
-          releaseStackTransitionLock();
-        } else if (p <= 0.03) {
-          releaseStackTransitionLock();
-        } else {
-          return;
-        }
-      }
-      const canonical = resolveOpenChatId(chatId);
-      if (mode === "tap") {
-        stackOpenDragRef.current = false;
-        stackSwipeOpeningRef.current = false;
-        const hadDragPreview = !!(stackDragChatId || stackDragPreviewIdRef.current);
-        stackDragPreviewIdRef.current = null;
-        stackDragVisualStartedRef.current = false;
+        if (p > 0.03 && p < 0.98) return;
         releaseStackTransitionLock();
-        if (hadDragPreview) {
-          commitStackOpen(canonical);
-          return;
-        }
-        openChatDirect(canonical);
-        return;
       }
-      const cap = stackCapRef.current;
-      const vx = stackOpenVelocityRef.current;
-      stackOpenVelocityRef.current = 0;
-      const { commit } = chatStackOpenReleaseTarget(px, cap, vx);
-      if (commit) commitStackOpen(canonical);
-      else cancelStackDrag();
+      openChatDirect(resolveOpenChatId(chatId));
     },
-    [
-      flushPendingStackDrag,
-      commitStackOpen,
-      cancelStackDrag,
-      openChatDirect,
-      openChat,
-      resolveOpenChatId,
-      stackDragChatId,
-      releaseStackTransitionLock,
-    ],
+    [openChatDirect, openChat, resolveOpenChatId, releaseStackTransitionLock],
   );
 
   useLayoutEffect(() => {
@@ -2946,6 +2519,7 @@ export function ChatScreen({
   useLayoutEffect(() => {
     if (showGroupSettings) return;
     if (
+      stackDismissFinalizingRef.current ||
       stackOpenDragRef.current ||
       stackDragChatId ||
       stackClosingId ||
@@ -3019,6 +2593,7 @@ export function ChatScreen({
   const [gameType, setGameType] = useState<"billiards" | "football">("billiards");
   useEffect(() => {
     if (!initialChatId) return;
+    if (stackClosingId || stackRoomDismissDragging) return;
     const found = findChatByOpenId(chats, initialChatId, me.id);
     const id = found ? openChatIdFor(found, me.id) : initialChatId;
     if (openChat === id) {
@@ -3027,7 +2602,17 @@ export function ChatScreen({
       return;
     }
     openChatDirect(id);
-  }, [initialChatId, onConsumedInitialChat, chats, me.id, openChatDirect, openChat, syncStackProgress]);
+  }, [
+    initialChatId,
+    onConsumedInitialChat,
+    chats,
+    me.id,
+    openChatDirect,
+    openChat,
+    syncStackProgress,
+    stackClosingId,
+    stackRoomDismissDragging,
+  ]);
 
   /** بعد دمج DM قديم: openChat يبقى id عشوائي — نحدّثه لـ dm:… */
   useEffect(() => {
@@ -3073,13 +2658,19 @@ export function ChatScreen({
   }, [chats, me.id, openChatDirect]);
 
   useEffect(() => {
-    const exitingChatBySwipe = stackRoomDismissDragging || !!stackClosingId;
+    const exitingChatBySwipe =
+      stackRoomDismissDragging || !!stackClosingId || stackRoomDriveRef.current === "close";
     const fullyOpen =
-      !!openChat && !stackDragChatId && !stackClosingId && stackProgressRef.current >= 0.98;
-    const threadImmersive = fullyOpen && !exitingChatBySwipe;
-    const hideBottomNav = threadImmersive || showCreate != null;
+      !!openChat &&
+      !stackDragChatId &&
+      !stackClosingId &&
+      !stackRoomDismissDragging &&
+      stackProgressRef.current >= 0.98;
+    /** ثبات تخطيط الشاشة طوال سحب الخروج — لا وميض SafeArea/الشريط السفلي */
+    const threadImmersive = (!!openChat || exitingChatBySwipe) && !showCreate;
+    const hideBottomNav = (fullyOpen && !exitingChatBySwipe) || showCreate != null;
     if (typeof document !== "undefined") {
-      if (fullyOpen || stackClosingId) {
+      if (fullyOpen || stackClosingId || exitingChatBySwipe) {
         document.documentElement.dataset.chatThreadOpen = "1";
       } else {
         delete document.documentElement.dataset.chatThreadOpen;
@@ -3087,7 +2678,7 @@ export function ChatScreen({
     }
     onThreadOpen?.(threadImmersive);
     onHideBottomNav?.(hideBottomNav);
-    if (fullyOpen) {
+    if (fullyOpen && !exitingChatBySwipe) {
       syncStackNavHideProgress(null);
       onExitNavRevealProgress?.(null);
     }
@@ -3121,124 +2712,97 @@ export function ChatScreen({
         window.clearTimeout(stackCloseTimerRef.current);
         stackCloseTimerRef.current = null;
       }
+      if (stackSnapBackTimerRef.current != null) {
+        window.clearTimeout(stackSnapBackTimerRef.current);
+        stackSnapBackTimerRef.current = null;
+      }
+      stackCloseCommitRef.current = true;
       ++stackNavGenerationRef.current;
       stackTransitionLockRef.current = true;
       setStackGestureLocked(true);
       stackOpenDragRef.current = false;
       stackRoomDriveRef.current = "close";
       stackRoomDismissRef.current = true;
+      /** فوراً — يمنع initialChatId من إعادة فتح المحادثة أثناء أنيميشن الإغلاق */
+      onActiveChatChange?.(null);
+      onConsumedInitialChat?.();
       setStackClosingId(closingKey);
       setStackDragChatId(null);
-      const cap = Math.max(260, stackCapRef.current);
       setStackSpring(true);
-      applyRoomCloseDrag(-cap, true);
-      window.setTimeout(() => {
-        setOpenChat(null);
-        onActiveChatChange?.(null);
-        setStackClosingId(null);
-        setStackSpring(false);
+
+      const cap = Math.max(260, stackCapRef.current);
+      const targetPull = cap;
+      const startPull = lastRoomDismissPullRef.current;
+      const alreadyOffscreen = startPull >= targetPull - 12;
+      const completeMs = chatNavCompleteMs(startPull, cap);
+      const { inboxEl, roomEl } = stackLayers();
+      if (inboxEl) inboxEl.style.transition = "none";
+      if (roomEl) roomEl.style.transition = "none";
+      if (!alreadyOffscreen) {
+        applyNavDismissPull(startPull, false);
+        void roomEl?.offsetWidth;
+        applyNavDismissPull(targetPull, true, completeMs);
+      } else {
+        applyNavDismissPull(targetPull, false);
+      }
+
+      const settleMs = alreadyOffscreen ? 32 : completeMs + 16;
+      stackCloseTimerRef.current = window.setTimeout(() => {
+        stackCloseTimerRef.current = null;
+        stackDismissFinalizingRef.current = true;
+
+        const { inboxEl, roomEl } = stackLayers();
+        if (roomEl) {
+          roomEl.style.visibility = "hidden";
+          roomEl.style.opacity = "0";
+          roomEl.style.pointerEvents = "none";
+        }
+
         stackProgressRef.current = 0;
-        setStackProgress(0);
+        stackDragPreviewIdRef.current = null;
+        stackDragVisualStartedRef.current = false;
+        lastRoomDismissPullRef.current = 0;
+        stackNavDismissProgressRef.current = -1;
         stackRoomDriveRef.current = "idle";
         stackRoomDismissRef.current = false;
-        lastRoomDismissTxRef.current = 0;
-        stackNavDismissProgressRef.current = -1;
-        setStackRoomDismissDragging(false);
+        setStackProgress(0);
+        setStackSpring(false);
+
+        snapChatNavInboxRest({ inboxEl, roomEl });
+        snapStackLayersToInboxRest({ inboxEl, roomEl });
+        syncStackNavHideProgress(null);
         onExitNavRevealProgress?.(null);
-        clearChatStackCssProgress();
         if (typeof document !== "undefined") {
           document.documentElement.style.removeProperty(CHAT_DISMISS_PULL_CSS_VAR);
         }
-        applyStackLayerTransforms(0, false);
+
+        setOpenChat(null);
+        setStackClosingId(null);
+        setStackGestureLocked(false);
+        setStackRoomDismissDragging(false);
         showStackChrome();
         releaseStackTransitionLock();
-      }, SLIDE_DISMISS_MS);
+
+        requestAnimationFrame(() => {
+          applyStackLayerTransforms(0, false);
+          stackDismissFinalizingRef.current = false;
+          stackCloseCommitRef.current = false;
+        });
+      }, settleMs);
     },
     [
       stackClosingId,
-      applyStackLayerTransforms,
-      applyRoomCloseDrag,
-      onExitNavRevealProgress,
+      applyNavDismissPull,
+      stackLayers,
       onActiveChatChange,
+      onConsumedInitialChat,
+      onExitNavRevealProgress,
+      applyStackLayerTransforms,
       showStackChrome,
       releaseStackTransitionLock,
     ],
   );
   beginCloseChatThreadRef.current = beginCloseChatThread;
-
-  const applyStackDragVisual = useCallback(
-    (chatId: string, px: number) => {
-      if (stackSwipeOpeningRef.current) return;
-      if (stackListGestureCommitRef.current || stackTransitionLockRef.current) {
-        if (!stackOpenDragRef.current && stackProgressRef.current < 0.98) {
-          releaseStackTransitionLock();
-          stackListGestureCommitRef.current = false;
-        } else {
-          return;
-        }
-      }
-      stackOpenDragRef.current = true;
-      stackRoomDriveRef.current = "open";
-      stackRoomDismissRef.current = false;
-      if (!stackDragVisualStartedRef.current) {
-        stackDragVisualStartedRef.current = true;
-        setStackClosingId(null);
-        setStackSpring(false);
-        hideStackChrome();
-      }
-      const canonical = resolveOpenChatId(chatId);
-      stackDragPreviewIdRef.current = canonical;
-      let cap = stackCapRef.current;
-      if (!(cap > 0)) {
-        cap = readSafeStackCapPx(stackInboxRef.current, stackCapRef);
-        stackCapRef.current = cap;
-      }
-      const progress = cap > 0 ? px / cap : 0;
-      publishStackProgressVisual(progress, false);
-    },
-    [
-      resolveOpenChatId,
-      publishStackProgressVisual,
-      hideStackChrome,
-      releaseStackTransitionLock,
-    ],
-  );
-
-  const onStackDrag = useCallback(
-    (chatId: string, px: number, vx = 0) => {
-      if (Number.isFinite(vx)) stackOpenVelocityRef.current = vx;
-      pendingStackDragRef.current = { chatId, px, vx };
-      if (stackDragFrameRef.current) return;
-      const tick = () => {
-        stackDragFrameRef.current = 0;
-        const pending = pendingStackDragRef.current;
-        if (!pending) return;
-        pendingStackDragRef.current = null;
-        applyStackDragVisual(pending.chatId, pending.px);
-        if (pendingStackDragRef.current) {
-          stackDragFrameRef.current = requestAnimationFrame(tick);
-        }
-      };
-      stackDragFrameRef.current = requestAnimationFrame(tick);
-    },
-    [applyStackDragVisual],
-  );
-
-  useEffect(
-    () => () => {
-      if (stackDragFrameRef.current) cancelAnimationFrame(stackDragFrameRef.current);
-    },
-    [],
-  );
-
-  const onStackDragEnd = useCallback(
-    (chatId: string, px: number, vx?: number) => {
-      flushPendingStackDrag();
-      if (Number.isFinite(vx)) stackOpenVelocityRef.current = vx ?? 0;
-      handleRowOpenCommit(chatId, px, "swipe-end");
-    },
-    [flushPendingStackDrag, handleRowOpenCommit],
-  );
 
   useLayoutEffect(() => {
     if (!openChat) {
@@ -3272,14 +2836,13 @@ export function ChatScreen({
     };
   }, []);
 
-  /** منع التعليق بنصف انتقال بعد pointercancel أو فقدان اللمس */
+  /** منع التعليق بنصف انتقال فتح بالنقر */
   useEffect(() => {
     const recoverHalfOpen = () => {
-      flushPendingStackDrag();
-      if (openChat || stackListGestureCommitRef.current) return;
-      const p = stackProgressRef.current;
-      if (p > 0.03 && p < 0.97 && (stackDragChatId || stackDragPreviewIdRef.current)) {
-        cancelStackDrag();
+      if (openChat || !stackTapTransitionRef.current) return;
+      if (stackProgressRef.current > 0.03 && stackProgressRef.current < 0.97) {
+        resetStackToInboxRest();
+        releaseStackTransitionLock();
       }
     };
     document.addEventListener("pointercancel", recoverHalfOpen, true);
@@ -3288,52 +2851,9 @@ export function ChatScreen({
       document.removeEventListener("pointercancel", recoverHalfOpen, true);
       window.removeEventListener("blur", recoverHalfOpen);
     };
-  }, [openChat, stackDragChatId, cancelStackDrag, flushPendingStackDrag]);
+  }, [openChat, resetStackToInboxRest, releaseStackTransitionLock]);
 
-  /** إذا علِق القفل أو السحب بنصف شاشة — إنهاء تلقائي (لا أثناء سحب نشط) */
-  useEffect(() => {
-    if (stackOpenDragRef.current || stackListGestureCommitRef.current) return;
-    const previewId = stackDragPreviewIdRef.current || stackDragChatId;
-    const stuck =
-      (stackGestureLocked && !openChat && stackProgressRef.current < 0.98) ||
-      (!!previewId && !openChat && stackProgressRef.current > 0.03 && stackProgressRef.current < 0.97);
-    if (!stuck) return;
-    const t = window.setTimeout(() => {
-      if (stackOpenDragRef.current || stackListGestureCommitRef.current) return;
-      if (openChat && stackProgressRef.current >= 0.98) {
-        releaseStackTransitionLock();
-        return;
-      }
-      const id = stackDragPreviewIdRef.current || stackDragChatId;
-      const p = stackProgressRef.current;
-      if (!id || p <= 0.03) {
-        releaseStackTransitionLock();
-        resetStackToInboxRest();
-        releaseChatChromeAfterGesture();
-        return;
-      }
-      if (p >= 0.97) {
-        commitStackOpen(id);
-        return;
-      }
-      if (p > 0.03 && p < 0.97) {
-        cancelStackDrag();
-      }
-    }, 220);
-    return () => window.clearTimeout(t);
-  }, [
-    stackGestureLocked,
-    stackDragChatId,
-    openChat,
-    stackProgress,
-    commitStackOpen,
-    cancelStackDrag,
-    releaseStackTransitionLock,
-    resetStackToInboxRest,
-    releaseChatChromeAfterGesture,
-  ]);
-
-  const activeStackChatId = openChat ?? stackDragChatId ?? stackClosingId ?? null;
+  const activeStackChatId = openChat ?? stackClosingId ?? null;
   const stackChatRaw = activeStackChatId ? findChatByOpenId(chats, activeStackChatId, me.id) : null;
   const stackChat = useMemo(
     () => (stackChatRaw ? normalizeChatRecord(stackChatRaw) : null),
@@ -3374,13 +2894,8 @@ export function ChatScreen({
   /** معاينة الغرفة أثناء السحب — المحادثة لا تُعتبر «مفتوحة» حتى commit */
   const stackRoomPreviewOnly = !!stackDragChatId && !openChat;
   /** يُعطّل سحب/زر الرجوع أثناء فتح المحادثة — لا أثناء سحب الخروج */
-  const chatRoomDismissBlocked =
-    stackRoomPreviewOnly ||
-    !!stackDragChatId ||
-    stackTapTransitionRef.current;
-  /** الغرفة: scroll لأسفل فقط بعد اكتمال الفتح — لا أثناء السحب أو الانتقال */
-  const stackRoomForceScrollBottom =
-    !!openChat && !stackDragChatId && stackProgress >= 0.98 && !stackTapTransitionRef.current;
+  const chatRoomDismissBlocked = stackRoomPreviewOnly || !!stackDragChatId;
+  const stackRoomForceScrollBottom = !!openChat && !stackDragChatId && !stackClosingId;
 
   useEffect(() => {
     if (!openChat || stackClosingId || stackDragChatId || stackTapTransitionRef.current) return;
@@ -3408,6 +2923,7 @@ export function ChatScreen({
   useLayoutEffect(() => {
     if (!openChat || !stackChat || stackProgressRef.current < 0.5) return;
     if (
+      stackDismissFinalizingRef.current ||
       stackOpenDragRef.current ||
       stackRoomDismissRef.current ||
       stackRoomDriveRef.current === "close"
@@ -3594,6 +3110,10 @@ export function ChatScreen({
         window.clearTimeout(stackCloseTimerRef.current);
         stackCloseTimerRef.current = null;
       }
+      if (stackSnapBackTimerRef.current != null) {
+        window.clearTimeout(stackSnapBackTimerRef.current);
+        stackSnapBackTimerRef.current = null;
+      }
     },
     [],
   );
@@ -3603,15 +3123,14 @@ export function ChatScreen({
     stackRoomDismissDragging ||
     stackClosingId ||
     stackRoomDriveRef.current === "close";
-  /** يختفي شريط البحث/النوتات فقط بعد اكتمال الفتح — أثناء السحب تبقى كل العناصر mounted وتتحرك مع اللوحة */
-  const hideInboxTopChrome =
-    !!openChat && !exitingChatBySwipe && !stackDragChatId && stackProgress >= 0.99;
-  const showInboxSubChrome = !hideInboxTopChrome || exitingChatBySwipe || !!stackDragChatId;
-  const showInboxComposeIcon = showInboxSubChrome;
-  const showInboxRequestsIcon = showInboxSubChrome;
-  const showInboxChatTitle = showInboxSubChrome;
-  const showInboxNotesStrip = showInboxSubChrome;
-  const hideInboxChrome = hideInboxTopChrome && !showInboxNotesStrip;
+  /** عناصر القائمة تبقى mounted دائماً — يمنع قفز التخطيط أثناء سحب الخروج (Instagram-style) */
+  const hideInboxTopChrome = false;
+  const showInboxSubChrome = true;
+  const showInboxComposeIcon = true;
+  const showInboxRequestsIcon = true;
+  const showInboxChatTitle = true;
+  const showInboxNotesStrip = true;
+  const hideInboxChrome = false;
   const stackDragProgress =
     stackChatOpenKey &&
     (openChat === stackChatOpenKey ||
@@ -3680,8 +3199,7 @@ export function ChatScreen({
         data-no-tab-swipe
       >
       {/* Top area: Instagram Direct structure. No profile avatar here. */}
-      {!hideInboxTopChrome && (
-        <div className="shrink-0 px-4 pb-2 pt-[max(0.75rem,max(0.75rem, var(--sat)))]">
+      <div className="shrink-0 px-4 pb-2 pt-[max(0.75rem,max(0.75rem, var(--sat)))]">
           <div className="mb-3 flex items-center justify-end">
             {showInboxComposeIcon && (
               <button
@@ -3715,10 +3233,9 @@ export function ChatScreen({
             />
           </label>
         </div>
-      )}
 
       {/* Guest banner */}
-      {isGuest && !hideInboxChrome && (
+      {isGuest && (
         <p className="mx-3 mb-1.5 rounded-xl border border-amber-300/50 bg-amber-50 dark:bg-amber-900/20 px-3 py-1.5 text-center text-[12.5px] text-amber-800 dark:text-amber-200">
           {isRtl ? "وضع الزائر — سجّل الدخول لاستخدام الرسائل" : "Guest mode — log in to use messaging"}
         </p>
@@ -3732,8 +3249,7 @@ export function ChatScreen({
             [Username label]
           The speech bubble has a small downward triangle tail.
           ══════════════════════════════════════════════════ */}
-      {showInboxNotesStrip && (
-        <div className="shrink-0">
+      <div className="shrink-0">
           {/* Scrollable notes strip */}
           <div
             className="no-scrollbar flex overflow-x-auto overscroll-x-contain gap-3 px-4 pb-2"
@@ -3864,15 +3380,13 @@ export function ChatScreen({
           {/* Divider */}
           <div className="h-px bg-zinc-100 dark:bg-zinc-800 mx-0" />
         </div>
-      )}
 
       {/* ══════════════════════════════════════════════════
           SECTION 3 — MESSAGES SUB-HEADER
           RTL: "المحادثات" on FAR RIGHT, "الطلبات" on FAR LEFT
           (dir="rtl" reverses the flex-row order)
           ══════════════════════════════════════════════════ */}
-      {showInboxChatTitle && (
-        <div className="flex items-center justify-between px-4 pt-3 pb-1.5">
+      <div className="flex items-center justify-between px-4 pt-3 pb-1.5">
           <span className="text-[15px] font-bold text-zinc-900 dark:text-zinc-50">
             {isRtl ? "المحادثات" : "Chats"}
           </span>
@@ -3890,7 +3404,6 @@ export function ChatScreen({
                 : "Requests"}
           </button>
         </div>
-      )}
 
       {/* ══════════════════════════════════════════════════
           SECTION 4 — CONVERSATION LIST
@@ -3910,13 +3423,8 @@ export function ChatScreen({
                 me={me}
                 onOpenChat={openChatDirect}
                 onOpenProfile={onOpenProfile}
-                onStackDrag={onStackDrag}
-                onStackDragEnd={onStackDragEnd}
-                onStackChromeHide={hideStackChrome}
-                onStackChromeShow={showStackChrome}
                 onRowOpenCommit={handleRowOpenCommit}
                 onPrefetchChat={prefetchChatMessages}
-                onStackGestureArm={armStackListGesture}
               />
             )}
           />
@@ -4189,6 +3697,7 @@ export function ChatScreen({
               forceScrollToBottom={stackRoomForceScrollBottom}
               onStackProgress={openChat ? syncStackProgressFromRoom : undefined}
               onAnimatedBack={openChat ? handleStackRoomAnimatedBack : undefined}
+              dismissCommitRef={stackCloseCommitRef}
               onBack={openChat ? closeOpenChat : () => {}}
               onCall={
                 openChat
@@ -4656,6 +4165,7 @@ function ChatRoom({
   forceScrollToBottom = false,
   onStackProgress,
   onAnimatedBack,
+  dismissCommitRef,
 }: {
   chat: Chat;
   onBack: () => void;
@@ -4667,8 +4177,9 @@ function ChatRoom({
   stackFullyOpen?: boolean;
   roomDismissBlocked?: boolean;
   forceScrollToBottom?: boolean;
-  onStackProgress?: (tx: number, phase?: "move" | "end" | "start") => void;
+  onStackProgress?: (pullPx: number, phase?: ChatSwipeBackPhase, velocityX?: number) => void;
   onAnimatedBack?: () => boolean;
+  dismissCommitRef?: React.RefObject<boolean>;
 }) {
   useProfiledRender("ChatRoom");
   const {
@@ -4935,6 +4446,9 @@ function ChatRoom({
 
   /** false عندما يمرّر المستخدم لأعلى لقراءة قديم — لا نعيده للأسفل تلقائياً عند وصول رسالة جديدة */
   const stickToBottomRef = useRef(true);
+  const introScrollHandleRef = useRef<ChatScrollIntroHandle | null>(null);
+  const introScrollActiveRef = useRef(false);
+  const introDoneForChatRef = useRef<string | null>(null);
 
   const syncComposerDockHeight = useCallback(() => {
     const el = composerRef.current;
@@ -4949,32 +4463,65 @@ function ChatRoom({
     }
   }, []);
 
-  const scrollMessagesToBottom = useCallback(() => {
+  const cancelIntroScroll = useCallback(() => {
+    introScrollHandleRef.current?.cancel();
+    introScrollHandleRef.current = null;
+    introScrollActiveRef.current = false;
+  }, []);
+
+  const scrollMessagesToBottom = useCallback(
+    (opts?: { instant?: boolean }) => {
+      const el = messagesScrollRef.current;
+      if (!el) return;
+      if (introScrollActiveRef.current && !opts?.instant) return;
+      syncComposerDockHeight();
+      const top = Math.max(0, el.scrollHeight - el.clientHeight);
+      const dist = top - el.scrollTop;
+      if (dist < 2) return;
+      try {
+        el.scrollTo({ top, behavior: "instant" });
+      } catch {
+        el.scrollTop = top;
+      }
+    },
+    [syncComposerDockHeight],
+  );
+
+  const runIntroScrollToBottom = useCallback(() => {
     const el = messagesScrollRef.current;
-    if (!el) return;
+    if (!el || displayMessages.length === 0) return;
+    if (introDoneForChatRef.current === chat.id) return;
+    introDoneForChatRef.current = chat.id;
+    cancelIntroScroll();
     syncComposerDockHeight();
-    const top = Math.max(0, el.scrollHeight - el.clientHeight);
-    const dist = top - el.scrollTop;
-    if (dist < 2) return;
-    try {
-      el.scrollTo({ top, behavior: "instant" });
-    } catch {
-      el.scrollTop = top;
-    }
-  }, [syncComposerDockHeight]);
+    introScrollActiveRef.current = true;
+    stickToBottomRef.current = true;
+    introScrollHandleRef.current = animateChatScrollToBottom(el, {
+      minMs: 280,
+      maxMs: 540,
+      onDone: () => {
+        introScrollActiveRef.current = false;
+        introScrollHandleRef.current = null;
+        scrollMessagesToBottom({ instant: true });
+      },
+    });
+  }, [chat.id, displayMessages.length, cancelIntroScroll, syncComposerDockHeight, scrollMessagesToBottom]);
 
   const scrollBottomRafRef = useRef(0);
   const scrollBottomTimerRef = useRef(0);
   const scheduleScrollToBottom = useCallback(
-    (opts?: { afterMs?: number }) => {
+    (opts?: { afterMs?: number; instant?: boolean }) => {
       if (!stickToBottomRef.current) return;
+      if (introScrollActiveRef.current && !opts?.instant) return;
       cancelAnimationFrame(scrollBottomRafRef.current);
-      scrollBottomRafRef.current = requestAnimationFrame(() => scrollMessagesToBottom());
+      scrollBottomRafRef.current = requestAnimationFrame(() =>
+        scrollMessagesToBottom({ instant: opts?.instant ?? true }),
+      );
       if (opts?.afterMs != null && opts.afterMs > 0) {
         if (scrollBottomTimerRef.current) window.clearTimeout(scrollBottomTimerRef.current);
         scrollBottomTimerRef.current = window.setTimeout(() => {
           scrollBottomTimerRef.current = 0;
-          scrollMessagesToBottom();
+          scrollMessagesToBottom({ instant: opts?.instant ?? true });
         }, opts.afterMs);
       }
     },
@@ -5280,69 +4827,101 @@ function ChatRoom({
     const el = messagesScrollRef.current;
     if (!el) return;
     const ro = new ResizeObserver(() => {
+      if (introScrollActiveRef.current) return;
       if (!forceScrollToBottom && !stickToBottomRef.current) return;
-      scheduleScrollToBottom();
+      scheduleScrollToBottom({ instant: true });
     });
     ro.observe(el);
     return () => ro.disconnect();
   }, [chat.id, scheduleScrollToBottom, forceScrollToBottom]);
 
   useLayoutEffect(() => {
+    cancelIntroScroll();
+    introDoneForChatRef.current = null;
     stickToBottomRef.current = true;
     const el = messagesScrollRef.current;
     if (!el) return;
-    // تعطيل مؤقت للـ scroll-behavior لضمان القفز الفوري بدون أنيميشن
-    const prev = el.style.scrollBehavior;
-    el.style.scrollBehavior = "auto";
-    el.scrollTop = el.scrollHeight;
-    el.style.scrollBehavior = prev;
-  }, [chat.id]);
+    el.scrollTop = 0;
+  }, [chat.id, cancelIntroScroll]);
 
   useLayoutEffect(() => {
-    if (!embedInStack || !forceScrollToBottom) return;
+    if (!embedInStack) return;
     const onViewportChange = () => {
-      if (stickToBottomRef.current) scrollMessagesToBottom();
+      if (stickToBottomRef.current && !introScrollActiveRef.current) {
+        scrollMessagesToBottom({ instant: true });
+      }
     };
-    const onScrollBottom = () => scrollMessagesToBottom();
-    onViewportChange();
+    const onScrollBottom = () => scrollMessagesToBottom({ instant: true });
     window.addEventListener("resize", onViewportChange);
     window.addEventListener("retweet-chat-scroll-bottom", onScrollBottom);
     return () => {
       window.removeEventListener("resize", onViewportChange);
       window.removeEventListener("retweet-chat-scroll-bottom", onScrollBottom);
     };
-  }, [embedInStack, forceScrollToBottom, scrollMessagesToBottom]);
+  }, [embedInStack, scrollMessagesToBottom]);
 
   useLayoutEffect(() => {
-    if (!forceScrollToBottom) return;
-    stickToBottomRef.current = true;
-    scrollMessagesToBottom();
-    const id = requestAnimationFrame(() => scrollMessagesToBottom());
-    return () => cancelAnimationFrame(id);
-  }, [forceScrollToBottom, scrollMessagesToBottom]);
+    const roomReady = embedInStack ? forceScrollToBottom : true;
+    if (!roomReady) return;
+    if (introDoneForChatRef.current === chat.id) {
+      if (stickToBottomRef.current) scrollMessagesToBottom({ instant: true });
+      return;
+    }
+    if (displayMessages.length === 0) return;
+    introDoneForChatRef.current = chat.id;
+    if (embedInStack) {
+      stickToBottomRef.current = true;
+      scrollMessagesToBottom({ instant: true });
+      return;
+    }
+    runIntroScrollToBottom();
+  }, [
+    embedInStack,
+    forceScrollToBottom,
+    chat.id,
+    displayMessages.length,
+    scrollMessagesToBottom,
+    runIntroScrollToBottom,
+  ]);
 
   useLayoutEffect(() => {
     if (messageContext) return;
-    if (!forceScrollToBottom && !stickToBottomRef.current) return;
     const count = displayMessages.length;
     const prev = scrollAnchorRef.current;
     const isNewChat = prev.chatId !== chat.id;
     scrollAnchorRef.current = { chatId: chat.id, msgCount: count };
-    if (isNewChat) stickToBottomRef.current = true;
-    if (!isNewChat && !forceScrollToBottom && count === prev.msgCount) return;
+    if (isNewChat) {
+      stickToBottomRef.current = true;
+      return;
+    }
+    if (introScrollActiveRef.current) return;
+    if (!forceScrollToBottom && !stickToBottomRef.current) return;
+    if (!forceScrollToBottom && count === prev.msgCount) return;
     stickToBottomRef.current = true;
-    scheduleScrollToBottom();
+    scheduleScrollToBottom({ instant: true });
     return () => {
       cancelAnimationFrame(scrollBottomRafRef.current);
       if (scrollBottomTimerRef.current) window.clearTimeout(scrollBottomTimerRef.current);
     };
-  }, [chat.id, displayMessages.length, messageContext, scheduleScrollToBottom, forceScrollToBottom]);
+  }, [
+    chat.id,
+    displayMessages.length,
+    messageContext,
+    scheduleScrollToBottom,
+    forceScrollToBottom,
+  ]);
+
+  useEffect(() => () => cancelIntroScroll(), [cancelIntroScroll]);
 
   const onMessagesScroll = useCallback(() => {
     const el = messagesScrollRef.current;
     if (!el) return;
     const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
     stickToBottomRef.current = dist < 72;
+    if (introScrollActiveRef.current && dist > 96) {
+      cancelIntroScroll();
+      introDoneForChatRef.current = chat.id;
+    }
 
     // عند التمرير للأعلى وبلوغ الـ 20% العلوية — نوسّع النافذة
     if (el.scrollTop < el.scrollHeight * 0.20 && !isLoadingOlderRef.current && hasOlderMessages) {
@@ -5360,7 +4939,7 @@ function ChatRoom({
         });
       });
     }
-  }, [hasOlderMessages, loadChatMessages, chat.id]);
+  }, [hasOlderMessages, loadChatMessages, chat.id, cancelIntroScroll]);
 
   const VANISH_PULL_NEED = 120;
   /** ارتفاع النطاق من أسفل منطقة التمرير لبدء سحب الوضع المخفي */
@@ -6141,14 +5720,16 @@ function ChatRoom({
     window.setTimeout(() => setSendPulse(false), 280);
     window.setTimeout(() => setComposerMicCooldown(false), 480);
     stickToBottomRef.current = true;
+    cancelIntroScroll();
+    introDoneForChatRef.current = chat.id;
     syncComposerDockHeight();
-    scrollMessagesToBottom();
+    scrollMessagesToBottom({ instant: true });
     requestAnimationFrame(() => {
       syncComposerDockHeight();
-      scrollMessagesToBottom();
-      requestAnimationFrame(scrollMessagesToBottom);
+      scrollMessagesToBottom({ instant: true });
+      requestAnimationFrame(() => scrollMessagesToBottom({ instant: true }));
     });
-  }, [readComposerBody, replyingTo, dispatchSend, clearComposer, syncComposerDockHeight, scrollMessagesToBottom]);
+  }, [readComposerBody, replyingTo, dispatchSend, clearComposer, syncComposerDockHeight, scrollMessagesToBottom, cancelIntroScroll, chat.id]);
 
   const edgeSwipeBackBlocked = useMemo(
     () =>
@@ -6178,29 +5759,33 @@ function ChatRoom({
     ],
   );
 
-  const {
-    containerRef: chatSwipeColumnRef,
-    panelStyle: chatPanelStyle,
-    requestDismiss: requestChatDismiss,
-    edgeStripProps,
-    panelSwipeProps,
-  } = useSlideDismissBack({
+  const stackSwipeBack = useChatSwipeBack({
+    enabled: embedInStack && stackFullyOpen,
+    blocked: edgeSwipeBackBlocked || roomDismissBlocked,
+    dismissCommitRef,
+    onPull: (pullPx, phase, velocityX) => onStackProgress?.(pullPx, phase, velocityX),
     onDismiss: () => {
-      if (embedInStack && onAnimatedBack?.()) return;
+      if (onAnimatedBack?.()) return;
       onBack();
     },
-    blocked: edgeSwipeBackBlocked || (embedInStack && roomDismissBlocked),
-    enabled: true,
-    dismissPullCssVar: CHAT_DISMISS_PULL_CSS_VAR,
-    stackProgressCssVar: embedInStack ? CHAT_STACK_PROGRESS_VAR : undefined,
-    embedInStack,
-    panelSwipeDismiss: true,
-    dismissGesture: "chat",
-    onStackProgress,
-    resetKey: `${chat.id}-${embedInStack ? "stack" : "solo"}`,
-    edgeTopInsetPx: CHAT_ROOM_HEADER_EDGE_INSET_PX,
-    edgeBottomInsetPx: 0,
+    resetKey: `${chat.id}-stack`,
   });
+
+  const soloDismiss = useSlideDismissBack({
+    onDismiss: () => onBack(),
+    blocked: edgeSwipeBackBlocked,
+    enabled: !embedInStack,
+    dismissPullCssVar: CHAT_DISMISS_PULL_CSS_VAR,
+    resetKey: `${chat.id}-solo`,
+    dismissCommitRef,
+  });
+
+  const chatSwipeColumnRef = embedInStack ? stackSwipeBack.containerRef : soloDismiss.containerRef;
+  const edgeStripProps = embedInStack ? stackSwipeBack.edgeStripProps : soloDismiss.edgeStripProps;
+  const requestChatDismiss = embedInStack ? stackSwipeBack.requestDismiss : soloDismiss.requestDismiss;
+  const chatPanelStyle = embedInStack ? { transform: "none", transition: "none" } : soloDismiss.panelStyle;
+  const panelDismissTouchStyle = embedInStack ? stackSwipeBack.panelSwipeProps.style : soloDismiss.panelSwipeProps.style;
+  const panelSwipeProps = embedInStack ? stackSwipeBack.panelSwipeProps : soloDismiss.panelSwipeProps;
 
   const chatDismissCtx = useMemo(
     () => ({
@@ -6223,14 +5808,13 @@ function ChatRoom({
     onBack();
   }, [embedInStack, onAnimatedBack, onBack]);
 
-  const chatEdgeSwipeOnly = false;
+
   const {
-    onPointerDown: panelDismissDown,
-    onPointerMove: panelDismissMove,
-    onPointerUp: panelDismissUp,
-    onPointerCancel: panelDismissCancel,
+    onPointerDownCapture: panelDismissDown,
+    onPointerMoveCapture: panelDismissMove,
+    onPointerUpCapture: panelDismissUp,
+    onPointerCancelCapture: panelDismissCancel,
     onLostPointerCapture: panelDismissLostCapture,
-    style: panelDismissTouchStyle,
   } = panelSwipeProps;
 
   const [roomEntered, setRoomEntered] = useState(embedInStack);
@@ -6275,7 +5859,6 @@ function ChatRoom({
     <div
       ref={chatSwipeColumnRef}
       data-chat-swipe-column
-      data-chat-dismiss-rtl="1"
       className={
         (embedInStack
           ? "chat-room-viewport relative flex h-full min-h-0 w-full flex-col overflow-hidden overscroll-none pointer-events-auto touch-manipulation "
@@ -6303,17 +5886,17 @@ function ChatRoom({
                 ...(useIgDm && dmPalette && !chromeOnWallpaper ? igDmSurfaceStyle : {}),
               }
       }
-      {...(chatEdgeSwipeOnly
-        ? {}
-        : {
+      {...(panelDismissDown
+        ? {
             onPointerDownCapture: panelDismissDown,
             onPointerMoveCapture: panelDismissMove,
             onPointerUpCapture: panelDismissUp,
             onPointerCancelCapture: panelDismissCancel,
             onLostPointerCapture: panelDismissLostCapture,
-          })}
+          }
+        : {})}
     >
-      {!embedInStack && <div {...edgeStripProps} data-chat-back-edge aria-label="سحب للرجوع من اليمين" />}
+      <div {...edgeStripProps} data-chat-nav-back-edge aria-label="سحب للرجوع من الحافة اليمنى" />
       {chromeOnWallpaper && chatWallpaperUrl ? (
         <>
           <div

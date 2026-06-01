@@ -92,7 +92,7 @@ function isMessageRequest(state: AppState, recipientId: string, senderId: string
   return sender.isPrivate === true;
 }
 
-function messagePreview(msg: Message): string {
+export function messagePreview(msg: Message): string {
   if (msg.type === "text") {
     return msg.content.length > 160 ? `${msg.content.slice(0, 160)}…` : msg.content;
   }

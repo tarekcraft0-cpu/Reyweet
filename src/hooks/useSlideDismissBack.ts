@@ -1,7 +1,8 @@
-import { startTransition, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { blurActiveElement, runNavigationDismiss } from "@/lib/navigationDismiss";
 import { registerPointerBackLayer } from "@/lib/globalPointerBackRouter";
 import {
+  CHAT_DISMISS_COMMIT_FRACTION,
   CHAT_EDGE_SWIPE_HIT_PX,
   chatDismissClampTx,
   chatDismissOffscreenTx,
@@ -94,6 +95,8 @@ export type UseSlideDismissBackOptions = {
   dismissGesture?: DismissGestureProfile;
   /** انزلاق عند فتح اللوحة (مثل إعدادات / تعديل البروفايل) */
   animateOnMount?: boolean;
+  /** embedInStack: true بعد commit إغلاق المحادثة — يمنع snap-back */
+  dismissCommitRef?: RefObject<boolean>;
 };
 
 export function useSlideDismissBack({
@@ -110,6 +113,7 @@ export function useSlideDismissBack({
   panelSwipeDismiss = false,
   dismissGesture = "app",
   animateOnMount = false,
+  dismissCommitRef,
 }: UseSlideDismissBackOptions) {
   const dismissProfile = dismissGesture;
   const dismissRtl = dismissProfile === "chat" ? true : isDocumentRtl();
@@ -138,6 +142,10 @@ export function useSlideDismissBack({
   const velocityRef = useRef(0);
   const moveSampleRef = useRef({ x: 0, t: 0 });
   const dismissingRef = useRef(false);
+  /** أقصى سحب خروج خلال الإيماءة — iOS Safari قد يفقد آخر إطار قبل pointerup */
+  const maxDismissTxRef = useRef(0);
+  /** منع pointerup/pointercancel المزدوج (Safari iOS) */
+  const gestureFinishedIdsRef = useRef<Set<number>>(new Set());
   const rafRef = useRef<number | null>(null);
   const pendingTxRef = useRef<number | null>(null);
   const enabledRef = useRef(enabled);
@@ -192,13 +200,16 @@ export function useSlideDismissBack({
   const flushTx = useCallback(
     (tx: number, phase: "move" | "end" = "move") => {
       liveTxRef.current = tx;
+      if (dismissProfile === "chat" && tx < maxDismissTxRef.current) {
+        maxDismissTxRef.current = tx;
+      }
       if (embedInStack) {
         notifyStackProgress(tx, phase);
         return;
       }
       setSlideTx(tx);
     },
-    [embedInStack, notifyStackProgress],
+    [embedInStack, notifyStackProgress, dismissProfile],
   );
 
   const scheduleTx = useCallback(
@@ -237,18 +248,16 @@ export function useSlideDismissBack({
   const finishDismiss = useCallback(() => {
     if (dismissingRef.current) return;
     dismissingRef.current = true;
+    if (embedInStack && dismissCommitRef) dismissCommitRef.current = true;
     blurActiveElement();
     cancelScheduledTx();
     const target = dismissOffscreenTx();
     if (embedInStack) {
       setSlideSpring(true);
       flushTx(target, "end");
+      /** المكدس يُغلق عبر onStackProgress → beginCloseChatThread — لا onDismiss مرة ثانية */
       window.setTimeout(() => {
-        try {
-          runNavigationDismiss(() => onDismissRef.current());
-        } finally {
-          dismissingRef.current = false;
-        }
+        dismissingRef.current = false;
       }, SLIDE_DISMISS_MS);
       return;
     }
@@ -261,7 +270,7 @@ export function useSlideDismissBack({
         dismissingRef.current = false;
       }
     }, SLIDE_DISMISS_MS);
-  }, [embedInStack, flushTx, cancelScheduledTx, dismissOffscreenTx]);
+  }, [embedInStack, flushTx, cancelScheduledTx, dismissOffscreenTx, dismissCommitRef]);
 
   const requestDismiss = useCallback(
     (opts?: { immediate?: boolean }): boolean => {
@@ -288,6 +297,7 @@ export function useSlideDismissBack({
   );
 
   const snapBack = useCallback(() => {
+    if (embedInStack && dismissCommitRef?.current) return;
     cancelScheduledTx();
     setSlideSpring(true);
     if (embedInStack) {
@@ -297,10 +307,12 @@ export function useSlideDismissBack({
     }
     liveTxRef.current = 0;
     window.setTimeout(() => setSlideSpring(false), SLIDE_DISMISS_MS);
-  }, [embedInStack, flushTx, cancelScheduledTx]);
+  }, [embedInStack, flushTx, cancelScheduledTx, dismissCommitRef]);
 
   useEffect(() => {
     dismissingRef.current = false;
+    maxDismissTxRef.current = 0;
+    gestureFinishedIdsRef.current.clear();
     cancelScheduledTx();
     liveTxRef.current = 0;
     if (!embedInStack) {
@@ -402,6 +414,7 @@ export function useSlideDismissBack({
     (pointerId: number, startX: number, startY: number, fromPanel: boolean, fromEdge: boolean) => {
       setSlideSpring(false);
       velocityRef.current = 0;
+      maxDismissTxRef.current = liveTxRef.current;
       moveSampleRef.current = { x: startX, t: performance.now() };
       dragRef.current = {
         pointerId,
@@ -419,12 +432,15 @@ export function useSlideDismissBack({
   /** يعادل onHorizontalDragEnd — إطلاق السحب وتحديد الإغلاق أو الارتداد */
   const finishDragGesture = useCallback(
     (pointerId: number) => {
+      if (gestureFinishedIdsRef.current.has(pointerId)) return;
       if (edgePendingRef.current?.pointerId === pointerId) {
         clearPanelPending();
         return;
       }
       const d = dragRef.current;
       if (d.pointerId === null || d.pointerId !== pointerId) return;
+      gestureFinishedIdsRef.current.add(pointerId);
+      window.setTimeout(() => gestureFinishedIdsRef.current.delete(pointerId), 900);
       dragRef.current = {
         pointerId: null,
         startX: 0,
@@ -439,24 +455,35 @@ export function useSlideDismissBack({
         flushTx(pendingTxRef.current);
         pendingTxRef.current = null;
       }
+      if (embedInStack && dismissCommitRef?.current) return;
       if (!enabledRef.current || blockedRef.current) {
         snapBack();
         return;
       }
-      const tx = liveTxRef.current;
-      const w = widthRef.current;
-      const target =
+      const w = Math.max(260, widthRef.current);
+      let tx = liveTxRef.current;
+      if (dismissProfile === "chat") {
+        tx = Math.min(tx, maxDismissTxRef.current);
+      }
+      let target =
         dismissProfile === "chat"
           ? chatDismissReleaseTarget(tx, w, velocityRef.current)
           : dismissReleaseTargetTx(tx, w, dismissRtl, dismissProfile);
+      if (dismissProfile === "chat" && target === 0) {
+        const threshold = Math.max(w * CHAT_DISMISS_COMMIT_FRACTION, 56);
+        if (tx <= -threshold * 0.82 || maxDismissTxRef.current <= -threshold * 0.82) {
+          target = chatDismissOffscreenTx(w);
+        }
+      }
       velocityRef.current = 0;
+      maxDismissTxRef.current = 0;
       if (target !== 0) {
         finishDismiss();
-      } else {
+      } else if (!(embedInStack && dismissCommitRef?.current)) {
         snapBack();
       }
     },
-    [finishDismiss, snapBack, cancelScheduledTx, flushTx, clearPanelPending, dismissProfile, dismissRtl],
+    [finishDismiss, snapBack, cancelScheduledTx, flushTx, clearPanelPending, dismissProfile, dismissRtl, embedInStack, dismissCommitRef],
   );
 
   /** يعادل onHorizontalDragUpdate — تحديث إزاحة السحب الأفقي */
@@ -624,6 +651,7 @@ export function useSlideDismissBack({
 
   const onPanelPointerCancel = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
+      if (gestureFinishedIdsRef.current.has(e.pointerId)) return;
       clearPanelPending();
       if (dragRef.current.pointerId === e.pointerId) {
         finishDragGesture(e.pointerId);
@@ -700,7 +728,11 @@ export function useSlideDismissBack({
         onPointerCancelCapture: onPanelPointerCancel,
         onLostPointerCapture: onPanelPointerCancel,
         style: {
-          touchAction: (dismissProfile === "chat" ? "pan-y pinch-zoom" : "pan-y") as const,
+          touchAction: (dismissProfile === "chat"
+            ? isDragging
+              ? "none"
+              : "pan-y pinch-zoom"
+            : "pan-y") as React.CSSProperties["touchAction"],
         },
       }
     : {};

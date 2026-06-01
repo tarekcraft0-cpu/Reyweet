@@ -67,8 +67,6 @@ export const HomeScreen = memo(function HomeScreen({
   const [sheetCommentDraft, setSheetCommentDraft] = useState("");
   const [feedTick, setFeedTick] = useState(0);
   const headerRef = useRef<HTMLDivElement>(null);
-  /** ثابت — قياس ديناميكي يسبب حلقة layout مع virtualizer (#185) */
-  const headerHeight = 280;
   const loadMoreBusyRef = useRef(false);
   const [pullHint, setPullHint] = useState(false);
   const touchRef = useRef({ y0: 0, active: false });
@@ -275,7 +273,7 @@ export const HomeScreen = memo(function HomeScreen({
         <VirtualizedHomeFeed
           posts={feed}
           scrollRef={tabScrollRef}
-          headerOffsetPx={headerHeight}
+          headerOffsetPx={0}
           feedHasMore={feedHasMore}
           onLoadMore={handleLoadMore}
           feedActions={feedActions}

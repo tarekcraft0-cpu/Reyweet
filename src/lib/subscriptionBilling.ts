@@ -26,8 +26,12 @@ export async function finalizePaidSubscription(
   return { ok: false, error: r.error };
 }
 
+import type { VerificationTierId } from "./verificationTiers";
+
 /** بدء اشتراك التوثيق — دفع حقيقي (Stripe على الويب، متجر على الجوال) */
-export async function purchaseVerifiedSubscription(): Promise<PurchaseResult> {
+export async function purchaseVerifiedSubscription(
+  tierId: VerificationTierId = "verified_plus",
+): Promise<PurchaseResult> {
   const token = getApiToken();
   if (!apiBackendEnabled() || !token) {
     return { ok: false, error: "الخادم غير متصل" };
@@ -42,7 +46,7 @@ export async function purchaseVerifiedSubscription(): Promise<PurchaseResult> {
     return purchaseViaStore(token, "google");
   }
 
-  const intent = await apiStripePaymentIntent(token);
+  const intent = await apiStripePaymentIntent(token, tierId);
   if (intent.ok) {
     return { ok: false, error: "USE_EMBEDDED_STRIPE" };
   }

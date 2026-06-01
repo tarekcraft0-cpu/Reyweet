@@ -40,11 +40,16 @@ export async function apiStripePublicConfig(
 
 export async function apiStripePaymentIntent(
   token: string,
+  tierId?: string,
 ): Promise<
-  | { ok: true; clientSecret: string; publishableKey: string; amountUsd: number }
+  | { ok: true; clientSecret: string; publishableKey: string; amountUsd: number; plan?: string }
   | { ok: false; error: string }
 > {
-  const res = await apiFetch("/v1/subscription/stripe/payment-intent", { method: "POST", token });
+  const res = await apiFetch("/v1/subscription/stripe/payment-intent", {
+    method: "POST",
+    token,
+    body: tierId ? JSON.stringify({ tier: tierId }) : undefined,
+  });
   const data = (await res.json().catch(() => ({}))) as {
     clientSecret?: string;
     publishableKey?: string;
@@ -58,7 +63,8 @@ export async function apiStripePaymentIntent(
     ok: true,
     clientSecret: data.clientSecret,
     publishableKey: data.publishableKey,
-    amountUsd: data.amountUsd ?? 4,
+    amountUsd: data.amountUsd ?? 2,
+    plan: (data as { plan?: string }).plan,
   };
 }
 

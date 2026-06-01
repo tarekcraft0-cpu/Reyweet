@@ -68,7 +68,7 @@ const dict = {
     groupSharedMedia: "الوسائط المشتركة",
     chatRowLongPressHint: "اضغط مطولاً على المحادثة للخيارات (تثبيت، كتم، حذف)",
     settingsActivity: "الإعدادات والنشاط",
-    accountsCenter: "مركز الحسابات",
+    accountsCenter: "إدارة الحساب",
     accountsCenterDesc: "إدارة تجربتك عبر Retweet بحساباتك المرتبطة.",
     activeAccountsAdd: "الحسابات النشطة / إضافة حساب",
     verifyAccount: "توثيق الحساب",

@@ -793,7 +793,7 @@ export function ProfileScreen({
               onClick={() => onEdit?.()}
               className="flex-1 touch-manipulation bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 py-2.5 rounded-xl font-semibold text-sm transition active:scale-[0.98] active:opacity-90"
             >
-              {t("edit")}
+              Edit Profile
             </button>
             <button onClick={shareProfile} className="flex-1 bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 py-2.5 rounded-xl font-semibold text-sm">Share Profile</button>
           </div>

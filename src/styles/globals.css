@@ -34,11 +34,6 @@
   height: auto;
 }
 
-/** أثناء سحب خروج المحادثة — الشريط يظهر فقط في الشريط المكشوف من القائمة (يمين) */
-[data-floating-nav-host][data-chat-exit-nav-drive="true"] {
-  clip-path: inset(0 0 0 calc(var(--retweet-chat-dismiss-pull, 0) * 100%));
-}
-
 /* إخفاء شريط التمرير في جميع المتصفحات */
 .hide-scrollbar {
   -ms-overflow-style: none;  /* Internet Explorer 10+ */
@@ -106,6 +101,9 @@
 .chat-room-stack {
   min-height: 0;
   max-height: 100dvh;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+  transform: translateZ(0);
 }
 
 html.retweet-native-shell .chat-room-stack {
@@ -622,11 +620,15 @@ html.retweet-overscroll-lock body {
   box-shadow: calc(-1 * var(--retweet-chat-dismiss-pull, 0) * 14px) 0
     calc(var(--retweet-chat-dismiss-pull, 0) * 32px) rgba(0, 0, 0, calc(var(--retweet-chat-dismiss-pull, 0) * 0.2));
   will-change: transform;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
 }
 
 .chat-inbox-pane {
   transform-origin: center right;
   will-change: transform;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
 }
 
 /* لوحات التطبيق (تنبيهات، إعدادات، …) */
