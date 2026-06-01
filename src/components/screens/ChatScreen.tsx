@@ -2119,17 +2119,22 @@ export function ChatScreen({
   const applyStackLayerTransforms = useCallback(
     (p: number, animate: boolean) => {
       try {
+        const layers = stackLayers();
+        if (p <= 0.001 && !openChat && !stackClosingId) {
+          snapChatNavInboxRest(layers);
+          return;
+        }
         let cap = stackCapRef.current;
         if (!(cap > 0)) {
           cap = readSafeStackCapPx(stackInboxRef.current, stackCapRef);
           stackCapRef.current = cap;
         }
-        applyChatNavOpenTransforms(p, cap, stackLayers(), animate);
+        applyChatNavOpenTransforms(p, cap, layers, animate);
       } catch (err) {
         console.warn("[chat-stack-transform]", err);
       }
     },
-    [stackLayers],
+    [stackLayers, openChat, stackClosingId],
   );
 
   /** سحب رجوع: pullPx موجب — الغرفة فقط تخرج يساراً، القائمة ثابتة */
@@ -2200,17 +2205,11 @@ export function ChatScreen({
       if (typeof document !== "undefined") {
         document.documentElement.style.removeProperty(CHAT_DISMISS_PULL_CSS_VAR);
       }
-      const { inboxEl, roomEl } = stackLayers();
-      if (inboxEl) {
-        inboxEl.style.transformOrigin = "";
-      }
-      if (roomEl) {
-        roomEl.style.removeProperty("--retweet-chat-room-radius");
-        roomEl.style.removeProperty("--retweet-chat-dismiss-pull");
-      }
-      applyStackLayerTransforms(0, !!opts?.animate);
+      const layers = stackLayers();
+      snapChatNavInboxRest(layers);
+      snapStackLayersToInboxRest(layers);
     },
-    [applyStackLayerTransforms, onExitNavRevealProgress],
+    [stackLayers, onExitNavRevealProgress],
   );
 
   const publishStackProgressVisual = useCallback(
@@ -2497,7 +2496,9 @@ export function ChatScreen({
     } catch {
       stackCapRef.current = DEFAULT_LAYOUT_WIDTH_PX;
     }
-  }, []);
+    snapChatNavInboxRest(stackLayers());
+    clearChatStackCssProgress();
+  }, [stackLayers]);
 
   useLayoutEffect(() => {
     const el = stackInboxRef.current;
@@ -2784,7 +2785,8 @@ export function ChatScreen({
         releaseStackTransitionLock();
 
         requestAnimationFrame(() => {
-          applyStackLayerTransforms(0, false);
+          snapChatNavInboxRest(stackLayers());
+          clearChatStackCssProgress();
           stackDismissFinalizingRef.current = false;
           stackCloseCommitRef.current = false;
         });
@@ -3188,14 +3190,14 @@ export function ChatScreen({
   const chatInbox = (
     <div
       ref={stackInboxRef}
-      dir={isRtl ? "rtl" : "ltr"}
-      className="chat-inbox-pane no-scrollbar relative z-[1] flex min-h-0 flex-1 flex-col overflow-hidden overscroll-none bg-background [transform:translateZ(0)]"
+      className="chat-inbox-pane no-scrollbar relative z-[1] flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col overflow-hidden overscroll-none bg-background [transform:translateZ(0)]"
       data-no-tab-swipe
       style={stackInboxPointerEvents ? { pointerEvents: stackInboxPointerEvents } : undefined}
     >
       <div
         ref={inboxListScrollRef}
-        className="chat-inbox-scroll no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain"
+        dir={isRtl ? "rtl" : "ltr"}
+        className="chat-inbox-scroll no-scrollbar min-h-0 w-full min-w-0 flex-1 overflow-y-auto overscroll-contain"
         data-no-tab-swipe
       >
       {/* Top area: Instagram Direct structure. No profile avatar here. */}
@@ -3680,7 +3682,7 @@ export function ChatScreen({
           </div>
         </div>
       )}
-      <div className="chat-stack-scene relative flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
+      <div className="chat-stack-scene relative flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col overflow-hidden bg-background">
         {chatInbox}
         <ChatStackRoomGestureShell
           roomRef={stackRoomRef}

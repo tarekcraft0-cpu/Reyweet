@@ -66,10 +66,12 @@ export function chatNavOpenTransforms(t: number, widthPx: number) {
   const w = chatNavWidth(widthPx);
   const p = Math.max(0, Math.min(1, t));
   const roomTx = Math.round(w * (1 - p));
-  const inboxTx = Math.round(-w * 0.05 * (1 - p));
+  /** القائمة تبقى بعرض الشاشة عند الراحة — parallax خفيف فقط أثناء الفتح */
+  const inboxTx =
+    p <= 0.001 || p >= 0.999 ? 0 : Math.round(-w * 0.05 * (1 - p));
   return {
     room: `translate3d(${roomTx}px, 0, 0)`,
-    inbox: `translate3d(${inboxTx}px, 0, 0)`,
+    inbox: inboxTx === 0 ? "none" : `translate3d(${inboxTx}px, 0, 0)`,
   };
 }
 

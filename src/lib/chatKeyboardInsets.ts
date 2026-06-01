@@ -30,6 +30,37 @@ function readNativeKeyboardInsetFromCss(): number {
   return Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0;
 }
 
+/** مع resize:body — كم تقلص body فعلياً (يتأخر عن الكيبورد بإطار أو أكثر) */
+function readBodyShrinkPx(): number {
+  if (typeof document === "undefined" || !document.body) return 0;
+  const layoutH = window.innerHeight;
+  const bodyH = document.body.getBoundingClientRect().height;
+  return Math.max(0, Math.round(layoutH - bodyH));
+}
+
+/**
+ * iOS: يرفع شريط الكتابة فور keyboardWillShow قبل أن يلحق resize:body.
+ * extraLift = ارتفاع الكيبورد − ما تقلصه body (→ 0 عند الالتقاء).
+ */
+function applyComposerKeyboardLift(): void {
+  if (typeof document === "undefined") return;
+  const root = document.documentElement;
+  if (!root.classList.contains("retweet-kb-body-resize")) {
+    root.style.setProperty("--retweet-composer-kb-lift", "0px");
+    return;
+  }
+  const kb = Math.max(nativeKeyboardPx, readNativeKeyboardInsetFromCss());
+  if (kb < 8) {
+    root.style.setProperty("--retweet-composer-kb-lift", "0px");
+    return;
+  }
+  const extraLift = Math.max(0, Math.round(kb - readBodyShrinkPx()));
+  root.style.setProperty(
+    "--retweet-composer-kb-lift",
+    extraLift < 3 ? "0px" : `${extraLift}px`,
+  );
+}
+
 export function readChatKeyboardSnapshot(): ChatKeyboardSnapshot {
   if (typeof window === "undefined") {
     return { keyboardInset: 0, vvHeight: 0, vvOffsetTop: 0, open: false };
@@ -85,6 +116,7 @@ function applyChatKeyboardCss() {
     ? "calc(4px + var(--chat-composer-h, 72px))"
     : "calc(8px + var(--chat-composer-h, 72px))";
   root.style.setProperty("--chat-scroll-padding-bottom", scrollPad);
+  applyComposerKeyboardLift();
   return snap;
 }
 
@@ -118,11 +150,13 @@ async function ensureNativeKeyboardBridge() {
 
     const onShow = (info: { keyboardHeight?: number }) => {
       nativeKeyboardPx = Math.max(0, Math.round(info.keyboardHeight ?? 0));
+      applyComposerKeyboardLift();
       applyChatKeyboardCss();
       dispatchKeyboardSync();
     };
     const onHide = () => {
       nativeKeyboardPx = 0;
+      applyComposerKeyboardLift();
       applyChatKeyboardCss();
       dispatchKeyboardSync();
     };
@@ -184,6 +218,7 @@ export function mountChatKeyboardEngine(): () => void {
     root.style.removeProperty("--vv-offset-top");
     root.style.removeProperty("--chat-sab-effective");
     root.style.removeProperty("--chat-scroll-padding-bottom");
+    root.style.removeProperty("--retweet-composer-kb-lift");
     root.classList.remove("chat-keyboard-open");
     applyChatKeyboardCss();
   };

@@ -9,6 +9,7 @@ import WebKit
 class RetweetBridgeViewController: CAPBridgeViewController, WKUIDelegate, WKNavigationDelegate {
     private weak var configuredWebView: WKWebView?
     private var menuHideObserver: NSObjectProtocol?
+    private var keyboardFrameObservers: [NSObjectProtocol] = []
     private var lastSyncedKeyboardInset: CGFloat = -1
 
     private static let noSelectInjectScript: String = """
@@ -80,12 +81,17 @@ class RetweetBridgeViewController: CAPBridgeViewController, WKUIDelegate, WKNavi
         if let obs = menuHideObserver {
             NotificationCenter.default.removeObserver(obs)
         }
+        for obs in keyboardFrameObservers {
+            NotificationCenter.default.removeObserver(obs)
+        }
+        keyboardFrameObservers.removeAll()
     }
 
     override func capacitorDidLoad() {
         super.capacitorDidLoad()
         applyGlobalTextMenuGuards()
         applyWebViewGuards()
+        observeKeyboardFrameChanges()
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -110,6 +116,26 @@ class RetweetBridgeViewController: CAPBridgeViewController, WKUIDelegate, WKNavi
         let kbFrame = view.keyboardLayoutGuide.layoutFrame
         guard kbFrame.height > 0.5 else { return 0 }
         return max(0, view.bounds.maxY - kbFrame.minY)
+    }
+
+    /** مزامنة ارتفاع الكيبورد مع كل إطار من أنيميشن iOS (قبل اكتمال resize:body) */
+    private func observeKeyboardFrameChanges() {
+        if !keyboardFrameObservers.isEmpty { return }
+        let names: [Notification.Name] = [
+            UIResponder.keyboardWillChangeFrameNotification,
+            UIResponder.keyboardWillShowNotification,
+            UIResponder.keyboardWillHideNotification,
+        ]
+        for name in names {
+            let obs = NotificationCenter.default.addObserver(
+                forName: name,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.syncSafeAreaInsetsToWebView()
+            }
+            keyboardFrameObservers.append(obs)
+        }
     }
 
     /** يمرّر safe area + ارتفاع الكيبورد (لرفع شريط الكتابة فقط — الشاشة تبقى ثابتة) */
