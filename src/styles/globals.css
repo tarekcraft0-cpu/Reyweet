@@ -502,6 +502,17 @@ html.retweet-native-shell [data-floating-nav-host] {
   max-width: none;
 }
 
+html.retweet-native-shell.retweet-chat-tab-active,
+html.retweet-native-shell.retweet-chat-tab-active body,
+html.retweet-native-shell.retweet-chat-tab-active #root,
+html.retweet-native-shell.retweet-chat-inbox-pinned [data-tab-panel="chat"] {
+  width: 100% !important;
+  max-width: none !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  overflow-x: hidden !important;
+}
+
 html.retweet-native-shell [data-tab-panel="chat"],
 html.retweet-native-shell [data-tab-panel="chat"] .tab-panel-scroll {
   width: 100% !important;

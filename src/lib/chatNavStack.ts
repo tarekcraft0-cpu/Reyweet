@@ -117,10 +117,11 @@ export function applyChatNavOpenTransforms(
   const { room, inbox } = chatNavOpenTransforms(t, widthPx);
   const transition = animate ? `transform ${CHAT_NAV_MS}ms ${CHAT_NAV_EASE}` : "none";
   if (layers.inboxEl) {
-    layers.inboxEl.style.transform = inbox;
+    layers.inboxEl.style.transform = "none";
     layers.inboxEl.style.transformOrigin = "";
-    layers.inboxEl.style.transition = transition;
-    delete layers.inboxEl.dataset.inboxAtRest;
+    layers.inboxEl.style.transition = "none";
+    if (t < 0.001) layers.inboxEl.dataset.inboxAtRest = "true";
+    else delete layers.inboxEl.dataset.inboxAtRest;
   }
   if (layers.roomEl) {
     layers.roomEl.style.visibility = "";

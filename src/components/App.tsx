@@ -1236,6 +1236,18 @@ export function App() {
   const showBottomNav = !hideBottomBar || chatExitNavActive;
   const banOverlayActive = !!(banInfo && banPresentation === "overlay" && !isGuest);
   const nativeShell = isNativeCapacitorShell();
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const root = document.documentElement;
+    if (nativeShell && tab === "chat") {
+      root.classList.add("retweet-chat-tab-active");
+    } else {
+      root.classList.remove("retweet-chat-tab-active");
+    }
+    return () => root.classList.remove("retweet-chat-tab-active");
+  }, [tab, nativeShell]);
+
   const appShellHeight = nativeShell
     ? "h-full max-h-full min-h-0"
     : immersiveOverlay || settingsImmersive

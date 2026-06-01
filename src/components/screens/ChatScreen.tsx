@@ -1089,7 +1089,13 @@ const ChatListRowWithPeek = memo(function ChatListRowWithPeek({
   const peekRef = useRef(0);
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
-  const capWidth = () => (typeof window !== "undefined" ? Math.min(window.innerWidth, APP_COLUMN_MAX_PX) : APP_COLUMN_MAX_PX);
+  const capWidth = () => {
+    if (typeof window === "undefined") return APP_COLUMN_MAX_PX;
+    if (isNativeCapacitorShell()) {
+      return Math.round(window.visualViewport?.width ?? window.innerWidth);
+    }
+    return Math.min(window.innerWidth, APP_COLUMN_MAX_PX);
+  };
 
   const otherId = c.isGroup || c.isChannel ? null : c.members.find(id => id !== me.id);
   const other = otherId ? users.find(u => u.id === otherId) : null;
@@ -2131,6 +2137,14 @@ export function ChatScreen({
           stackCapRef.current = cap;
         }
         applyChatNavOpenTransforms(p, cap, layers, animate);
+        if (layers.inboxEl && !openChat) {
+          layers.inboxEl.style.transform = "none";
+          layers.inboxEl.style.transition = "none";
+          if (p < 0.02) layers.inboxEl.dataset.inboxAtRest = "true";
+        }
+        if (isNativeCapacitorShell() && !openChat && p < 0.02) {
+          resetNativeChatInboxLayout(layers);
+        }
       } catch (err) {
         console.warn("[chat-stack-transform]", err);
       }
@@ -2977,6 +2991,21 @@ export function ChatScreen({
     resetStackToInboxRest();
     resetNativeChatInboxLayout(stackLayers());
   }, [chatTabActive, openChat, stackClosingId, resetStackToInboxRest, stackLayers]);
+
+  useLayoutEffect(() => {
+    if (!chatTabActive || !isNativeCapacitorShell() || openChat || stackClosingId) return;
+    let raf1 = 0;
+    let raf2 = 0;
+    const pin = () => resetNativeChatInboxLayout(stackLayers());
+    raf1 = requestAnimationFrame(() => {
+      pin();
+      raf2 = requestAnimationFrame(pin);
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, [chatTabActive, openChat, stackClosingId, stackLayers]);
 
   useEffect(() => {
     if (!chatTabActive || !isNativeCapacitorShell()) return;

@@ -4,7 +4,7 @@ import { CHAT_DISMISS_ROOM_TX_VAR, NAV_HIDE_PROGRESS_CSS_VAR } from "@/hooks/use
 import { snapChatNavInboxRest, type ChatNavLayerRefs } from "./chatNavStack";
 
 const LAYOUT_SELECTORS =
-  '[data-tab-panel="chat"], [data-tab-panel="chat"] .tab-panel-scroll, .chat-stack-scene, .chat-inbox-pane, .chat-inbox-scroll';
+  '#root, #root > .retweet-no-select-pane, [data-tab-panel="chat"], [data-tab-panel="chat"] .tab-panel-scroll, .chat-stack-scene, .chat-inbox-pane, .chat-inbox-scroll, [data-chat-stack-room]';
 
 function pinFullWidth(el: HTMLElement): void {
   el.style.width = "100%";
@@ -48,10 +48,16 @@ export function resetNativeChatInboxLayout(layers?: ChatNavLayerRefs): void {
     layers?.roomEl ?? document.querySelector<HTMLElement>("[data-chat-stack-room]");
   const inbox = layers?.inboxEl ?? document.querySelector<HTMLElement>(".chat-inbox-pane");
   if (inbox || room) {
-    snapChatNavInboxRest({ inboxEl: inbox, roomEl: room });
+    const cap =
+      typeof window !== "undefined"
+        ? Math.round(window.visualViewport?.width ?? window.innerWidth)
+        : undefined;
+    snapChatNavInboxRest({ inboxEl: inbox, roomEl: room }, cap);
   } else if (room && room.childElementCount === 0) {
     room.style.visibility = "hidden";
     room.style.transform = "none";
     room.style.pointerEvents = "none";
   }
+
+  document.documentElement.classList.add("retweet-chat-inbox-pinned");
 }
