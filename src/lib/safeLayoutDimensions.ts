@@ -11,16 +11,36 @@ export const MIN_LAYOUT_WIDTH_PX = 260;
 export const CHAT_RIGHT_EDGE_HIT_PX = 40;
 
 /**
+ * عرض التخطيط على iOS/Capacitor — لا نعتمد على visualViewport وحده (قد يكون أضيق من الشاشة
+ * في WKWebView ويُسبب عموداً ضيقاً ملتصقاً باليسار مع فراغ أبيض على اليمين).
+ */
+export function readNativeLayoutWidth(): number {
+  try {
+    if (typeof window === "undefined") return DEFAULT_LAYOUT_WIDTH_PX;
+    const docW = document.documentElement?.clientWidth;
+    const inner = window.innerWidth;
+    const vv = window.visualViewport?.width;
+    const candidates = [docW, inner, vv].filter(
+      (n): n is number => typeof n === "number" && Number.isFinite(n) && n > 0,
+    );
+    if (!candidates.length) return DEFAULT_LAYOUT_WIDTH_PX;
+    return Math.max(MIN_LAYOUT_WIDTH_PX, Math.round(Math.max(...candidates)));
+  } catch {
+    return DEFAULT_LAYOUT_WIDTH_PX;
+  }
+}
+
+/**
  * عرض الشاشة/العمود بأمان — لا يرمي أثناء الانتقالات أو قبل اكتمال التخطيط.
  */
 export function readSafeViewportWidth(): number {
   try {
     if (typeof window === "undefined") return DEFAULT_LAYOUT_WIDTH_PX;
+    if (isNativeCapacitorShell()) return readNativeLayoutWidth();
     const vv = window.visualViewport?.width;
     const raw = Number(vv ?? window.innerWidth);
     if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_LAYOUT_WIDTH_PX;
     const w = Math.max(MIN_LAYOUT_WIDTH_PX, Math.round(raw));
-    if (isNativeCapacitorShell()) return w;
     return Math.min(w, APP_COLUMN_MAX_PX);
   } catch {
     return DEFAULT_LAYOUT_WIDTH_PX;

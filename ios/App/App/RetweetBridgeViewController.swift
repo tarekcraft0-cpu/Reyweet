@@ -20,10 +20,9 @@ class RetweetBridgeViewController: CAPBridgeViewController, WKUIDelegate, WKNavi
         if(document.body){document.body.setAttribute('data-native-app','1');}
         window.__RETWEET_NO_SELECT_BOOT__=true;
         (function(){
-          var w=Math.round(window.innerWidth||390)+'px';
           [document.documentElement,document.body,document.getElementById('root')].forEach(function(el){
             if(!el)return;
-            el.style.width=w;el.style.maxWidth=w;el.style.marginLeft='0';el.style.marginRight='0';el.style.transform='none';
+            el.style.width='100%';el.style.maxWidth='none';el.style.marginLeft='0';el.style.marginRight='0';el.style.transform='none';
           });
         })();
         (function(){

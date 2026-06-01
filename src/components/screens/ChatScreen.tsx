@@ -3259,8 +3259,10 @@ export function ChatScreen({
   const chatInbox = (
     <div
       ref={stackInboxRef}
+      dir={isRtl ? "rtl" : "ltr"}
       className="chat-inbox-pane no-scrollbar relative z-[1] flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col overflow-x-clip overflow-y-hidden overscroll-none bg-background"
       data-no-tab-swipe
+      data-inbox-at-rest={!openChat && !stackClosingId ? "true" : undefined}
       style={stackInboxPointerEvents ? { pointerEvents: stackInboxPointerEvents } : undefined}
     >
       <div

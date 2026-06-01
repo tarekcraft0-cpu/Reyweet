@@ -46,19 +46,25 @@
 
   function pinNativeViewportWidth() {
     try {
-      var w = Math.round(
-        (window.visualViewport && window.visualViewport.width) || window.innerWidth || 390,
-      );
-      var px = w + "px";
       var nodes = [document.documentElement, document.body, document.getElementById("root")];
       for (var i = 0; i < nodes.length; i++) {
         var el = nodes[i];
         if (!el) continue;
-        el.style.width = px;
-        el.style.maxWidth = px;
+        el.style.width = "100%";
+        el.style.maxWidth = "none";
         el.style.marginLeft = "0";
         el.style.marginRight = "0";
         el.style.transform = "none";
+      }
+      var panels = document.querySelectorAll("[data-tab-panel]");
+      for (var j = 0; j < panels.length; j++) {
+        var p = panels[j];
+        if (p.getAttribute("aria-hidden") === "true") continue;
+        p.style.width = "100%";
+        p.style.maxWidth = "none";
+        p.style.marginLeft = "0";
+        p.style.marginRight = "0";
+        p.style.transform = "translate3d(0, 0, 0)";
       }
     } catch (e) {
       /* ignore */

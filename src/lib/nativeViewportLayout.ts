@@ -3,26 +3,17 @@ import { resetNativeChatInboxLayout } from "./nativeChatInboxLayout";
 
 const NATIVE_APP_ATTR = "data-native-app";
 
-function viewportWidthPx(): number {
-  if (typeof window === "undefined") return 390;
-  const vv = window.visualViewport?.width;
-  const inner = window.innerWidth;
-  const w = Number(vv ?? inner);
-  return Math.max(320, Math.round(Number.isFinite(w) && w > 0 ? w : 390));
-}
-
-function pinElementFullWidth(el: HTMLElement, widthPx: number): void {
-  const w = `${widthPx}px`;
-  el.style.width = w;
-  el.style.maxWidth = w;
-  el.style.minWidth = "100%";
+function pinElementFullWidth(el: HTMLElement): void {
+  el.style.width = "100%";
+  el.style.maxWidth = "none";
+  el.style.minWidth = "0";
   el.style.marginLeft = "0";
   el.style.marginRight = "0";
   el.style.marginInline = "0";
-  el.style.paddingLeft = "0";
-  el.style.paddingRight = "0";
-  el.style.left = "0";
-  el.style.right = "0";
+  el.style.paddingLeft = "";
+  el.style.paddingRight = "";
+  el.style.left = "";
+  el.style.right = "";
   el.style.transform = "none";
   el.style.translate = "none";
   el.style.boxSizing = "border-box";
@@ -40,23 +31,19 @@ export function applyNativeViewportFullBleed(): void {
   html.setAttribute(NATIVE_APP_ATTR, "1");
   body?.setAttribute(NATIVE_APP_ATTR, "1");
 
-  const w = viewportWidthPx();
-  pinElementFullWidth(html, w);
-  if (body) pinElementFullWidth(body, w);
-  if (root) pinElementFullWidth(root, w);
+  pinElementFullWidth(html);
+  if (body) pinElementFullWidth(body);
+  if (root) pinElementFullWidth(root);
 
   const shell = root?.firstElementChild;
   if (shell instanceof HTMLElement) {
-    pinElementFullWidth(shell, w);
+    pinElementFullWidth(shell);
   }
 
   document.querySelectorAll<HTMLElement>("[data-tab-panel]").forEach(panel => {
     if (panel.getAttribute("aria-hidden") === "true") return;
     panel.style.transform = "translate3d(0, 0, 0)";
-    panel.style.width = `${w}px`;
-    panel.style.maxWidth = `${w}px`;
-    panel.style.marginLeft = "0";
-    panel.style.marginRight = "0";
+    pinElementFullWidth(panel);
   });
 
   resetNativeChatInboxLayout();

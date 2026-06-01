@@ -44,9 +44,17 @@ function removeIosPlatform() {
   }
 }
 
+const NATIVE_VIEWPORT_CRITICAL_STYLE = `<style id="retweet-native-viewport-critical">
+html,body,#root{width:100%!important;max-width:none!important;margin:0!important;padding-left:0!important;padding-right:0!important;overflow-x:hidden!important;box-sizing:border-box!important;}
+html[data-native-app="1"] [data-tab-panel],html.retweet-native-shell [data-tab-panel]{width:100%!important;max-width:none!important;margin-left:0!important;margin-right:0!important;transform:translate3d(0,0,0)!important;left:0!important;right:0!important;}
+</style>`;
+
 function injectNativeShellIndex(indexPath) {
   if (!fs.existsSync(indexPath)) return;
   let html = fs.readFileSync(indexPath, "utf8");
+  if (!html.includes("retweet-native-viewport-critical")) {
+    html = html.replace("<head>", `<head>\n${NATIVE_VIEWPORT_CRITICAL_STYLE}`);
+  }
   const bootstrap = `<script src="./native-no-select-bootstrap.js"></script>`;
   if (!html.includes("native-no-select-bootstrap.js")) {
     html = html.replace("</head>", `${bootstrap}\n</head>`);
@@ -54,7 +62,7 @@ function injectNativeShellIndex(indexPath) {
   const apiDebug =
     process.env.CAPACITOR_API_DEBUG === "1" || process.env.NODE_ENV === "development";
   const debugPart = apiDebug ? "window.__RETWEET_API_DEBUG__=true;" : "";
-  const tag = `<script>window.__RETWEET_NATIVE_SHELL__=true;window.__RETWEET_NO_SELECT_BOOT__=true;${debugPart}window.__RETWEET_API_URL__=${JSON.stringify(apiUrl)};document.documentElement.classList.add("retweet-native-shell");window.dispatchEvent(new Event("retweet-api-config-ready"));</script>`;
+  const tag = `<script>window.__RETWEET_NATIVE_SHELL__=true;window.__RETWEET_NO_SELECT_BOOT__=true;${debugPart}window.__RETWEET_API_URL__=${JSON.stringify(apiUrl)};document.documentElement.classList.add("retweet-native-shell");document.documentElement.setAttribute("data-native-app","1");if(document.body)document.body.setAttribute("data-native-app","1");window.dispatchEvent(new Event("retweet-api-config-ready"));</script>`;
   html = html.replace(/<script>window\.__RETWEET[^<]*<\/script>\s*/gi, "");
   html = html.replace(/<html([^>]*)>/i, (m, attrs) => {
     if (/retweet-native-shell/i.test(attrs)) return m;

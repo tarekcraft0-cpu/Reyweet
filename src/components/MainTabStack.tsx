@@ -148,20 +148,19 @@ export function MainTabStack({
   }, [activeTab]);
 
   useLayoutEffect(() => {
-    if (!isNativeCapacitorShell() || activeTab !== "chat") return;
+    if (!isNativeCapacitorShell() || dragIndex != null) return;
     const host = containerRef.current;
     if (!host) return;
-    const panel = host.querySelector<HTMLElement>('[data-tab-panel="chat"]');
-    if (!panel) return;
-    if (dragIndex == null) {
+    host.querySelectorAll<HTMLElement>("[data-tab-panel]").forEach(panel => {
+      if (panel.getAttribute("aria-hidden") === "true") return;
       panel.style.transform = "translate3d(0, 0, 0)";
-    }
-    panel.style.width = "100%";
-    panel.style.maxWidth = "none";
-    panel.style.marginLeft = "0";
-    panel.style.marginRight = "0";
-    panel.style.left = "0";
-    panel.style.right = "0";
+      panel.style.width = "100%";
+      panel.style.maxWidth = "none";
+      panel.style.marginLeft = "0";
+      panel.style.marginRight = "0";
+      panel.style.left = "0";
+      panel.style.right = "0";
+    });
   }, [activeTab, dragIndex, settledIndex]);
 
   const displayIndex =

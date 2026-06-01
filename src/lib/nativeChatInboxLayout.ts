@@ -34,6 +34,10 @@ export function resetNativeChatInboxLayout(layers?: ChatNavLayerRefs): void {
   const chatPanel = document.querySelector<HTMLElement>('[data-tab-panel="chat"]');
   if (chatPanel) {
     chatPanel.style.transform = "translate3d(0, 0, 0)";
+    chatPanel.style.width = "100%";
+    chatPanel.style.maxWidth = "none";
+    chatPanel.style.marginLeft = "0";
+    chatPanel.style.marginRight = "0";
     chatPanel.style.visibility = "visible";
     chatPanel.dataset.chatInboxSettled = "true";
   }
