@@ -25,7 +25,7 @@ export function ChatInboxVirtualList({
   const [margin, setMargin] = useState(scrollMargin);
 
   useLayoutEffect(() => {
-    setMargin(scrollMargin);
+    setMargin(prev => (prev === scrollMargin ? prev : scrollMargin));
   }, [scrollMargin]);
 
   const virtualizer = useVirtualizer({

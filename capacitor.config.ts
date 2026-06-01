@@ -11,8 +11,8 @@ const config: CapacitorConfig = {
   webDir: "dist",
   plugins: {
     Keyboard: {
-      /** body = يتقلص محتوى الويب فوق الكيبورد (شريط الكتابة يلتصق تلقائياً) */
-      resize: "body",
+      /** none على iOS — resize:body + ضبط viewport يسبب حلقة قياس في react-virtual (#185) */
+      resize: "none",
     },
     PushNotifications: {
       presentationOptions: ["badge", "sound", "alert"],

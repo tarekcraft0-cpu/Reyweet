@@ -1,10 +1,10 @@
-import { r as reactExports, a2 as getAugmentedNamespace, S as getDefaultExportFromCjs, W as jsxRuntimeExports, V as React__default, a3 as React } from "./server-DIVRA65s.js";
+import { r as reactExports, a2 as getAugmentedNamespace, S as getDefaultExportFromCjs, W as jsxRuntimeExports, V as React__default, a3 as React } from "./server-DG-COnL2.js";
 import require$$0 from "fs";
 import require$$1 from "url";
-import { n as notImplementedClass, a as notImplemented } from "./worker-entry-3m3-SK4o.js";
+import { n as notImplementedClass, a as notImplemented } from "./worker-entry-UWf-lzxI.js";
 import require$$3 from "http";
 import require$$4 from "https";
-import { r as reactDomExports, R as ReactDOM } from "./router-BdP_5x1M.js";
+import { r as reactDomExports, R as ReactDOM } from "./router-BuZII3iJ.js";
 import require$$0$1 from "util";
 import require$$1$1 from "stream";
 import require$$1$2 from "zlib";
@@ -19667,7 +19667,7 @@ function useProfiledRender(componentName) {
       if (slowRenders.length > 200) slowRenders.shift();
       console.warn(`[perf][slow-render] ${componentName} ${ms.toFixed(1)}ms (>16ms)`);
     }
-  });
+  }, [componentName]);
 }
 function getRenderCounts() {
   return new Map(renderCounts);
@@ -23254,6 +23254,17 @@ function useVirtualizer(options) {
     ...options
   });
 }
+function stableVirtualRowMeasure(element, _entry, instance) {
+  const index2 = instance.indexFromElement(element);
+  const cached2 = instance.measurementsCache[index2]?.size;
+  const estimate = typeof instance.options.estimateSize === "function" ? instance.options.estimateSize(index2) : instance.options.estimateSize;
+  const rect = element.getBoundingClientRect();
+  const h = Math.round(rect.height);
+  const w = Math.round(rect.width);
+  if (h < 8 || w < 8) return cached2 ?? estimate;
+  if (cached2 != null && Math.abs(cached2 - h) <= 2) return cached2;
+  return h;
+}
 function LazyInView({
   children,
   fallback,
@@ -24978,12 +24989,14 @@ const VirtualizedHomeFeed = reactExports.memo(function VirtualizedHomeFeed2({
 }) {
   useProfiledRender("VirtualizedHomeFeed");
   const getScrollElement = reactExports.useCallback(() => scrollRef.current, [scrollRef]);
+  const nativeFixedRowHeight = isNativeCapacitorShell();
   const virtualizer = useVirtualizer({
     count: posts.length,
     getScrollElement,
     estimateSize: () => ESTIMATE_PX,
     overscan: OVERSCAN,
-    getItemKey: (index2) => posts[index2]?.id ?? index2
+    getItemKey: (index2) => posts[index2]?.id ?? index2,
+    ...nativeFixedRowHeight ? {} : { measureElement: stableVirtualRowMeasure }
   });
   const virtualItems = virtualizer.getVirtualItems();
   const lastVisibleIndex = virtualItems[virtualItems.length - 1]?.index ?? -1;
@@ -25008,7 +25021,7 @@ const VirtualizedHomeFeed = reactExports.memo(function VirtualizedHomeFeed2({
           "div",
           {
             "data-index": vi.index,
-            ref: virtualizer.measureElement,
+            ref: nativeFixedRowHeight ? void 0 : virtualizer.measureElement,
             className: "absolute start-0 w-full",
             style: {
               top: 0,
@@ -31524,7 +31537,7 @@ function ChatInboxVirtualList({
   const listRef = reactExports.useRef(null);
   const [margin, setMargin] = reactExports.useState(scrollMargin);
   reactExports.useLayoutEffect(() => {
-    setMargin(scrollMargin);
+    setMargin((prev) => prev === scrollMargin ? prev : scrollMargin);
   }, [scrollMargin]);
   const virtualizer = useVirtualizer({
     count: chats.length,
@@ -31780,14 +31793,14 @@ async function ensureNativeKeyboardBridge() {
   nativeListenersReady = true;
   try {
     const [{ Keyboard }, { Capacitor: Capacitor2 }] = await Promise.all([
-      import("./index-CWDSFoF1.js"),
+      import("./index-C4el4jY3.js"),
       Promise.resolve().then(() => index$1)
     ]);
     if (!Capacitor2.isNativePlatform()) return;
     useNativeKeyboardHeight = true;
     document.documentElement.classList.add("retweet-kb-body-resize");
     try {
-      const { KeyboardResize } = await import("./index-CWDSFoF1.js");
+      const { KeyboardResize } = await import("./index-C4el4jY3.js");
       await Keyboard.setResizeMode({ mode: KeyboardResize.Body });
     } catch {
     }
@@ -60230,12 +60243,12 @@ function App() {
   reactExports.useEffect(() => startPerfSession(), []);
   reactExports.useEffect(() => {
     if (!currentUser || isGuest) return;
-    void import("./pushNotifications-t-zFntOn.js").then((m) => {
+    void import("./pushNotifications-o5ueMnf7.js").then((m) => {
       void m.initPushNotifications();
       void m.syncPushRegistration();
     });
     return () => {
-      void import("./pushNotifications-t-zFntOn.js").then((m) => m.teardownPushNotifications());
+      void import("./pushNotifications-o5ueMnf7.js").then((m) => m.teardownPushNotifications());
     };
   }, [currentUser?.id, isGuest]);
   reactExports.useEffect(() => {

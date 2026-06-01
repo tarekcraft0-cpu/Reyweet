@@ -105,7 +105,7 @@ export function useProfiledRender(componentName: string): void {
       if (slowRenders.length > 200) slowRenders.shift();
       console.warn(`[perf][slow-render] ${componentName} ${ms.toFixed(1)}ms (>16ms)`);
     }
-  });
+  }, [componentName]);
 }
 
 export function getRenderCounts(): Map<string, number> {

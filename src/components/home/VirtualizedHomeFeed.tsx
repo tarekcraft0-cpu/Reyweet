@@ -1,5 +1,7 @@
 import { memo, useCallback, useEffect, useRef, type RefObject } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { isNativeCapacitorShell } from "@/lib/apiUrlPolicy";
+import { stableVirtualRowMeasure } from "@/lib/safeVirtualizerMeasure";
 import { HomeFeedPostItem } from "./HomeFeedPostItem";
 import { HomeFeedActionsProvider } from "@/lib/homeFeedActionsContext";
 import { useProfiledRender } from "@/lib/renderProfiler";
@@ -37,6 +39,8 @@ export const VirtualizedHomeFeed = memo(function VirtualizedHomeFeed({
   useProfiledRender("VirtualizedHomeFeed");
 
   const getScrollElement = useCallback(() => scrollRef.current, [scrollRef]);
+  /** على iOS: measureElement + تغيّر عرض WKWebView = React #185 */
+  const nativeFixedRowHeight = isNativeCapacitorShell();
 
   const virtualizer = useVirtualizer({
     count: posts.length,
@@ -44,6 +48,7 @@ export const VirtualizedHomeFeed = memo(function VirtualizedHomeFeed({
     estimateSize: () => ESTIMATE_PX,
     overscan: OVERSCAN,
     getItemKey: index => posts[index]?.id ?? index,
+    ...(nativeFixedRowHeight ? {} : { measureElement: stableVirtualRowMeasure }),
   });
 
   const virtualItems = virtualizer.getVirtualItems();
@@ -73,7 +78,7 @@ export const VirtualizedHomeFeed = memo(function VirtualizedHomeFeed({
             <div
               key={post.id}
               data-index={vi.index}
-              ref={virtualizer.measureElement}
+              ref={nativeFixedRowHeight ? undefined : virtualizer.measureElement}
               className="absolute start-0 w-full"
               style={{
                 top: 0,
