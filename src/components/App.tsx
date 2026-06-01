@@ -135,11 +135,15 @@ export function App() {
   } = useAppActions();
 
   const scheduleEnt = currentUser ? getUserEntitlements(currentUser) : null;
-  useScheduledPostsPublisher(
-    currentUser?.id,
-    text => {
+  const publishScheduledPost = useCallback(
+    (text: string) => {
       createPost({ type: "post", text });
     },
+    [createPost],
+  );
+  useScheduledPostsPublisher(
+    currentUser?.id,
+    publishScheduledPost,
     !!scheduleEnt?.hasScheduledPosts,
   );
 

@@ -1,10 +1,10 @@
-import { r as reactExports, a2 as getAugmentedNamespace, S as getDefaultExportFromCjs, W as jsxRuntimeExports, V as React__default, a3 as React } from "./server-Cv49EzQk.js";
+import { r as reactExports, a2 as getAugmentedNamespace, S as getDefaultExportFromCjs, W as jsxRuntimeExports, V as React__default, a3 as React } from "./server-0enC4Dc6.js";
 import require$$0 from "fs";
 import require$$1 from "url";
-import { n as notImplementedClass, a as notImplemented } from "./worker-entry-CjZkqde3.js";
+import { n as notImplementedClass, a as notImplemented } from "./worker-entry-DUKg-4v3.js";
 import require$$3 from "http";
 import require$$4 from "https";
-import { r as reactDomExports, R as ReactDOM } from "./router-TfSVVz_L.js";
+import { r as reactDomExports, R as ReactDOM } from "./router-C5696JCB.js";
 import require$$0$1 from "util";
 import require$$1$1 from "stream";
 import require$$1$2 from "zlib";
@@ -19220,233 +19220,6 @@ function useTabActive() {
 function useIsTabActive(tab) {
   return useTabActive() === tab;
 }
-const NAV_HIDE_PROGRESS_CSS_VAR = "--retweet-nav-hide-progress";
-const CHAT_DISMISS_ROOM_TX_VAR = "--retweet-chat-dismiss-room-tx";
-const REELS_NAV_COLLAPSE_PROGRESS_VAR = "--retweet-reels-nav-collapse-progress";
-const DEFAULT_TRAVEL_PX = 72;
-function clamp$2(n, min, max) {
-  return Math.min(max, Math.max(min, n));
-}
-function useBottomNavSheet(options) {
-  const optionsRef = reactExports.useRef(options);
-  optionsRef.current = options;
-  const navRef = reactExports.useRef(null);
-  const travelRef = reactExports.useRef(DEFAULT_TRAVEL_PX);
-  const suppressTapUntilRef = reactExports.useRef(0);
-  const shouldSuppressTap = reactExports.useCallback(() => Date.now() < suppressTapUntilRef.current, []);
-  const measureTravel = reactExports.useCallback(() => {
-    const el = navRef.current;
-    if (!el) return;
-    const h = el.offsetHeight;
-    if (h > 0) travelRef.current = h;
-  }, []);
-  const publishHideProgress = reactExports.useCallback((p) => {
-    document.documentElement.style.setProperty(NAV_HIDE_PROGRESS_CSS_VAR, String(clamp$2(p, 0, 1)));
-  }, []);
-  reactExports.useLayoutEffect(() => {
-    measureTravel();
-    publishHideProgress(0);
-  }, [measureTravel, publishHideProgress]);
-  reactExports.useLayoutEffect(() => {
-    const el = navRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => measureTravel());
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [measureTravel]);
-  reactExports.useEffect(() => {
-    document.documentElement.style.setProperty(REELS_NAV_COLLAPSE_PROGRESS_VAR, "0");
-    return () => {
-      document.documentElement.style.removeProperty(NAV_HIDE_PROGRESS_CSS_VAR);
-      document.documentElement.style.removeProperty(CHAT_DISMISS_ROOM_TX_VAR);
-      document.documentElement.style.removeProperty(REELS_NAV_COLLAPSE_PROGRESS_VAR);
-    };
-  }, []);
-  travelRef.current;
-  const externalDrive = !!optionsRef.current?.externalHideDrive;
-  const navStyle = externalDrive ? {
-    transform: `translate3d(var(${CHAT_DISMISS_ROOM_TX_VAR}, 0px), 0, 0)`,
-    transformOrigin: "50% 100%",
-    transition: "none",
-    willChange: "transform"
-  } : {
-    transform: "translate3d(0, 0, 0)",
-    transformOrigin: "50% 100%",
-    transition: "none",
-    willChange: "auto"
-  };
-  return {
-    navRef,
-    navStyle,
-    shouldSuppressTap
-  };
-}
-const CHAT_STACK_PROGRESS_VAR = "--retweet-chat-stack-progress";
-function clampStackProgress(p) {
-  return Math.max(0, Math.min(1, Number.isFinite(p) ? p : 0));
-}
-function publishChatStackCssProgress(progress) {
-  const clamped = clampStackProgress(progress);
-  if (typeof document !== "undefined") {
-    document.documentElement.style.setProperty(CHAT_STACK_PROGRESS_VAR, String(clamped));
-  }
-  return clamped;
-}
-function clearChatDismissRoomTx() {
-  if (typeof document === "undefined") return;
-  document.documentElement.style.removeProperty(CHAT_DISMISS_ROOM_TX_VAR);
-}
-function clearChatStackCssProgress() {
-  if (typeof document === "undefined") return;
-  document.documentElement.style.removeProperty(CHAT_STACK_PROGRESS_VAR);
-  clearChatDismissRoomTx();
-}
-function snapStackLayersToInboxRest(layers2) {
-  if (layers2.inboxEl) {
-    layers2.inboxEl.style.transform = "none";
-    layers2.inboxEl.style.transformOrigin = "";
-    layers2.inboxEl.style.transition = "none";
-    layers2.inboxEl.style.willChange = "auto";
-    layers2.inboxEl.dataset.inboxAtRest = "true";
-  }
-  if (layers2.roomEl) {
-    layers2.roomEl.style.visibility = "";
-    layers2.roomEl.style.opacity = "";
-    layers2.roomEl.style.pointerEvents = "";
-    layers2.roomEl.style.transition = "none";
-    layers2.roomEl.style.willChange = "auto";
-    layers2.roomEl.style.removeProperty("--retweet-chat-room-radius");
-    layers2.roomEl.style.removeProperty("--retweet-chat-dismiss-pull");
-  }
-  clearChatStackCssProgress();
-}
-function syncStackNavHideProgress(progress) {
-  if (typeof document === "undefined") return;
-  if (progress == null) {
-    document.documentElement.style.removeProperty(NAV_HIDE_PROGRESS_CSS_VAR);
-    return;
-  }
-  document.documentElement.style.setProperty(
-    NAV_HIDE_PROGRESS_CSS_VAR,
-    String(clampStackProgress(progress))
-  );
-}
-const DEFAULT_LAYOUT_WIDTH_PX = 390;
-const MIN_LAYOUT_WIDTH_PX = 260;
-function readNativeLayoutWidth() {
-  try {
-    if (typeof window === "undefined") return DEFAULT_LAYOUT_WIDTH_PX;
-    const vv = window.visualViewport?.width;
-    const docW = document.documentElement?.clientWidth;
-    const inner = window.innerWidth;
-    const candidates = [vv, docW, inner].filter(
-      (n) => typeof n === "number" && Number.isFinite(n) && n > 0
-    );
-    if (!candidates.length) return DEFAULT_LAYOUT_WIDTH_PX;
-    return Math.max(MIN_LAYOUT_WIDTH_PX, Math.round(Math.min(...candidates)));
-  } catch {
-    return DEFAULT_LAYOUT_WIDTH_PX;
-  }
-}
-function readSafeViewportWidth() {
-  try {
-    if (typeof window === "undefined") return DEFAULT_LAYOUT_WIDTH_PX;
-    if (isNativeCapacitorShell()) return readNativeLayoutWidth();
-    const vv = window.visualViewport?.width;
-    const raw = Number(vv ?? window.innerWidth);
-    if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_LAYOUT_WIDTH_PX;
-    const w = Math.max(MIN_LAYOUT_WIDTH_PX, Math.round(raw));
-    return Math.min(w, APP_COLUMN_MAX_PX);
-  } catch {
-    return DEFAULT_LAYOUT_WIDTH_PX;
-  }
-}
-function readSafeContainerRect(el) {
-  try {
-    if (!el || typeof el.getBoundingClientRect !== "function") return null;
-    const r2 = el.getBoundingClientRect();
-    if (!Number.isFinite(r2.width) || r2.width <= 0) return null;
-    return {
-      left: Number.isFinite(r2.left) ? r2.left : 0,
-      top: Number.isFinite(r2.top) ? r2.top : 0,
-      width: r2.width,
-      height: Number.isFinite(r2.height) && r2.height > 0 ? r2.height : 0
-    };
-  } catch {
-    return null;
-  }
-}
-function readSafeStackCapPx(containerEl, fallbackCapRef) {
-  try {
-    const rect = readSafeContainerRect(containerEl);
-    const fromRect = rect?.width;
-    const fromRef = fallbackCapRef?.current && Number.isFinite(fallbackCapRef.current) ? fallbackCapRef.current : 0;
-    const base = fromRect && fromRect > 0 ? fromRect : fromRef > 0 ? fromRef : readSafeViewportWidth();
-    const w = Math.max(MIN_LAYOUT_WIDTH_PX, Math.round(base));
-    if (isNativeCapacitorShell()) return w;
-    return Math.min(w, APP_COLUMN_MAX_PX);
-  } catch {
-    return readSafeViewportWidth();
-  }
-}
-const LAYOUT_SELECTORS = '#root, #root > .retweet-no-select-pane, [data-tab-panel="chat"], [data-tab-panel="chat"] .tab-panel-scroll, .chat-stack-scene, .chat-inbox-pane, .chat-inbox-scroll, [data-chat-stack-room]';
-function pinFullWidth(el) {
-  el.style.width = "100%";
-  el.style.maxWidth = "100%";
-  el.style.minWidth = "0";
-  el.style.boxSizing = "border-box";
-  el.style.marginLeft = "0";
-  el.style.marginRight = "0";
-  el.style.marginInline = "0";
-  el.style.paddingLeft = "";
-  el.style.paddingRight = "";
-  el.style.left = "0";
-  el.style.right = "0";
-  el.style.insetInlineStart = "0";
-  el.style.insetInlineEnd = "0";
-  el.style.transform = "none";
-  el.style.translate = "none";
-  el.style.overflowX = "hidden";
-}
-function resetNativeChatInboxLayout(layers2) {
-  if (!isNativeCapacitorShell() || typeof document === "undefined") return;
-  clearChatStackCssProgress();
-  const root = document.documentElement;
-  root.style.removeProperty(CHAT_DISMISS_ROOM_TX_VAR);
-  root.style.removeProperty(NAV_HIDE_PROGRESS_CSS_VAR);
-  document.querySelectorAll(LAYOUT_SELECTORS).forEach(pinFullWidth);
-  const chatPanel = document.querySelector('[data-tab-panel="chat"]');
-  if (chatPanel) {
-    chatPanel.style.transform = "translate3d(0, 0, 0)";
-    chatPanel.style.width = "100%";
-    chatPanel.style.maxWidth = "none";
-    chatPanel.style.marginLeft = "0";
-    chatPanel.style.marginRight = "0";
-    chatPanel.style.visibility = "visible";
-    chatPanel.dataset.chatInboxSettled = "true";
-  }
-  const scene = document.querySelector(".chat-stack-scene");
-  if (scene) {
-    scene.style.overflow = "hidden";
-    scene.style.contain = "none";
-  }
-  const room = layers2?.roomEl ?? document.querySelector("[data-chat-stack-room]");
-  const inbox = layers2?.inboxEl ?? document.querySelector(".chat-inbox-pane");
-  if (inbox || room) {
-    typeof window !== "undefined" ? readNativeLayoutWidth() : void 0;
-    snapChatNavInboxRest({ inboxEl: inbox, roomEl: room });
-  }
-  if (room) {
-    room.style.transform = "translate3d(100%, 0, 0)";
-    room.style.visibility = "hidden";
-    room.style.pointerEvents = "none";
-  }
-  if (typeof document !== "undefined") {
-    document.body.style.overflowX = "hidden";
-    document.documentElement.style.overflowX = "hidden";
-  }
-  document.documentElement.classList.add("retweet-chat-inbox-pinned");
-}
 const NATIVE_APP_ATTR = "data-native-app";
 function resetNativeDocumentScroll() {
   if (typeof window === "undefined") return;
@@ -19509,23 +19282,42 @@ function applyNativeViewportFullBleed() {
     }
   });
   resetNativeDocumentScroll();
-  resetNativeChatInboxLayout();
 }
 let booted$1 = false;
+let bleedRaf = 0;
+let resizeDebounce = 0;
+let lastBleedWidth = 0;
+function scheduleNativeViewportFullBleed() {
+  if (bleedRaf) cancelAnimationFrame(bleedRaf);
+  bleedRaf = requestAnimationFrame(() => {
+    bleedRaf = 0;
+    const w = typeof window !== "undefined" ? Math.round(window.visualViewport?.width ?? window.innerWidth) : 0;
+    if (w > 0 && lastBleedWidth > 0 && Math.abs(w - lastBleedWidth) < 1) return;
+    if (w > 0) lastBleedWidth = w;
+    applyNativeViewportFullBleed();
+  });
+}
+function scheduleNativeViewportFromResize() {
+  if (resizeDebounce) window.clearTimeout(resizeDebounce);
+  resizeDebounce = window.setTimeout(() => {
+    resizeDebounce = 0;
+    scheduleNativeViewportFullBleed();
+  }, 48);
+}
 function initNativeViewportLayout() {
   if (!isNativeCapacitorShell() || typeof window === "undefined" || booted$1) return;
   booted$1 = true;
-  const run = () => applyNativeViewportFullBleed();
-  run();
-  requestAnimationFrame(run);
-  window.setTimeout(run, 0);
-  window.setTimeout(run, 120);
-  window.setTimeout(run, 400);
-  window.addEventListener("resize", run, { passive: true });
-  window.visualViewport?.addEventListener("resize", run, { passive: true });
-  window.addEventListener("retweet-safe-area-change", run, { passive: true });
+  scheduleNativeViewportFullBleed();
+  window.setTimeout(scheduleNativeViewportFullBleed, 120);
+  window.addEventListener("resize", scheduleNativeViewportFromResize, { passive: true });
+  window.visualViewport?.addEventListener("resize", scheduleNativeViewportFromResize, {
+    passive: true
+  });
+  window.addEventListener("retweet-safe-area-change", scheduleNativeViewportFullBleed, {
+    passive: true
+  });
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") run();
+    if (document.visibilityState === "visible") scheduleNativeViewportFullBleed();
   });
 }
 const nativeViewportLayout = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
@@ -19546,11 +19338,11 @@ const TAB_COUNT = PAGER_TAB_CHAIN.length;
 function tabIndex(tab) {
   return PAGER_TAB_CHAIN.indexOf(tab);
 }
-function clamp$1(n, min, max) {
+function clamp$2(n, min, max) {
   return Math.min(max, Math.max(min, n));
 }
 function indexToTab(i) {
-  return PAGER_TAB_CHAIN[clamp$1(Math.round(i), 0, TAB_COUNT - 1)];
+  return PAGER_TAB_CHAIN[clamp$2(Math.round(i), 0, TAB_COUNT - 1)];
 }
 const KeepAlivePanel = reactExports.memo(function KeepAlivePanel2({
   tabId,
@@ -19633,7 +19425,7 @@ function MainTabStack({
     });
     if (activeTab === "chat") applyNativeViewportFullBleed();
   }, [activeTab, dragIndex, settledIndex]);
-  const displayIndex = dragIndex != null ? clamp$1(dragIndex, 0, TAB_COUNT - 1) : settledIndex;
+  const displayIndex = dragIndex != null ? clamp$2(dragIndex, 0, TAB_COUNT - 1) : settledIndex;
   const markNeighborVisited = reactExports.useCallback((index2) => {
     const lo = Math.floor(index2);
     const hi = Math.ceil(index2);
@@ -19645,7 +19437,7 @@ function MainTabStack({
     });
   }, []);
   const snapToIndex = reactExports.useCallback((i, animate) => {
-    const clamped = clamp$1(Math.round(i), 0, TAB_COUNT - 1);
+    const clamped = clamp$2(Math.round(i), 0, TAB_COUNT - 1);
     const next = PAGER_TAB_CHAIN[clamped];
     setDragIndex(null);
     setAnimating(animate);
@@ -19711,7 +19503,7 @@ function MainTabStack({
       d.lastT = now;
       const w = containerRef.current?.clientWidth ?? 1;
       const delta = (e.clientX - d.startX) / w;
-      const next = clamp$1(d.startIndex - delta, 0, TAB_COUNT - 1);
+      const next = clamp$2(d.startIndex - delta, 0, TAB_COUNT - 1);
       markNeighborVisited(next);
       setDragIndex(next);
     },
@@ -29687,6 +29479,175 @@ function animateChatScrollToBottom(el, opts) {
     }
   };
 }
+const NAV_HIDE_PROGRESS_CSS_VAR = "--retweet-nav-hide-progress";
+const CHAT_DISMISS_ROOM_TX_VAR = "--retweet-chat-dismiss-room-tx";
+const REELS_NAV_COLLAPSE_PROGRESS_VAR = "--retweet-reels-nav-collapse-progress";
+const DEFAULT_TRAVEL_PX = 72;
+function clamp$1(n, min, max) {
+  return Math.min(max, Math.max(min, n));
+}
+function useBottomNavSheet(options) {
+  const optionsRef = reactExports.useRef(options);
+  optionsRef.current = options;
+  const navRef = reactExports.useRef(null);
+  const travelRef = reactExports.useRef(DEFAULT_TRAVEL_PX);
+  const suppressTapUntilRef = reactExports.useRef(0);
+  const shouldSuppressTap = reactExports.useCallback(() => Date.now() < suppressTapUntilRef.current, []);
+  const measureTravel = reactExports.useCallback(() => {
+    const el = navRef.current;
+    if (!el) return;
+    const h = el.offsetHeight;
+    if (h > 0) travelRef.current = h;
+  }, []);
+  const publishHideProgress = reactExports.useCallback((p) => {
+    document.documentElement.style.setProperty(NAV_HIDE_PROGRESS_CSS_VAR, String(clamp$1(p, 0, 1)));
+  }, []);
+  reactExports.useLayoutEffect(() => {
+    measureTravel();
+    publishHideProgress(0);
+  }, [measureTravel, publishHideProgress]);
+  reactExports.useLayoutEffect(() => {
+    const el = navRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(() => measureTravel());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [measureTravel]);
+  reactExports.useEffect(() => {
+    document.documentElement.style.setProperty(REELS_NAV_COLLAPSE_PROGRESS_VAR, "0");
+    return () => {
+      document.documentElement.style.removeProperty(NAV_HIDE_PROGRESS_CSS_VAR);
+      document.documentElement.style.removeProperty(CHAT_DISMISS_ROOM_TX_VAR);
+      document.documentElement.style.removeProperty(REELS_NAV_COLLAPSE_PROGRESS_VAR);
+    };
+  }, []);
+  travelRef.current;
+  const externalDrive = !!optionsRef.current?.externalHideDrive;
+  const navStyle = externalDrive ? {
+    transform: `translate3d(var(${CHAT_DISMISS_ROOM_TX_VAR}, 0px), 0, 0)`,
+    transformOrigin: "50% 100%",
+    transition: "none",
+    willChange: "transform"
+  } : {
+    transform: "translate3d(0, 0, 0)",
+    transformOrigin: "50% 100%",
+    transition: "none",
+    willChange: "auto"
+  };
+  return {
+    navRef,
+    navStyle,
+    shouldSuppressTap
+  };
+}
+const CHAT_STACK_PROGRESS_VAR = "--retweet-chat-stack-progress";
+function clampStackProgress(p) {
+  return Math.max(0, Math.min(1, Number.isFinite(p) ? p : 0));
+}
+function publishChatStackCssProgress(progress) {
+  const clamped = clampStackProgress(progress);
+  if (typeof document !== "undefined") {
+    document.documentElement.style.setProperty(CHAT_STACK_PROGRESS_VAR, String(clamped));
+  }
+  return clamped;
+}
+function clearChatDismissRoomTx() {
+  if (typeof document === "undefined") return;
+  document.documentElement.style.removeProperty(CHAT_DISMISS_ROOM_TX_VAR);
+}
+function clearChatStackCssProgress() {
+  if (typeof document === "undefined") return;
+  document.documentElement.style.removeProperty(CHAT_STACK_PROGRESS_VAR);
+  clearChatDismissRoomTx();
+}
+function snapStackLayersToInboxRest(layers2) {
+  if (layers2.inboxEl) {
+    layers2.inboxEl.style.transform = "none";
+    layers2.inboxEl.style.transformOrigin = "";
+    layers2.inboxEl.style.transition = "none";
+    layers2.inboxEl.style.willChange = "auto";
+    layers2.inboxEl.dataset.inboxAtRest = "true";
+  }
+  if (layers2.roomEl) {
+    layers2.roomEl.style.visibility = "";
+    layers2.roomEl.style.opacity = "";
+    layers2.roomEl.style.pointerEvents = "";
+    layers2.roomEl.style.transition = "none";
+    layers2.roomEl.style.willChange = "auto";
+    layers2.roomEl.style.removeProperty("--retweet-chat-room-radius");
+    layers2.roomEl.style.removeProperty("--retweet-chat-dismiss-pull");
+  }
+  clearChatStackCssProgress();
+}
+function syncStackNavHideProgress(progress) {
+  if (typeof document === "undefined") return;
+  if (progress == null) {
+    document.documentElement.style.removeProperty(NAV_HIDE_PROGRESS_CSS_VAR);
+    return;
+  }
+  document.documentElement.style.setProperty(
+    NAV_HIDE_PROGRESS_CSS_VAR,
+    String(clampStackProgress(progress))
+  );
+}
+const DEFAULT_LAYOUT_WIDTH_PX = 390;
+const MIN_LAYOUT_WIDTH_PX = 260;
+function readNativeLayoutWidth() {
+  try {
+    if (typeof window === "undefined") return DEFAULT_LAYOUT_WIDTH_PX;
+    const vv = window.visualViewport?.width;
+    const docW = document.documentElement?.clientWidth;
+    const inner = window.innerWidth;
+    const candidates = [vv, docW, inner].filter(
+      (n) => typeof n === "number" && Number.isFinite(n) && n > 0
+    );
+    if (!candidates.length) return DEFAULT_LAYOUT_WIDTH_PX;
+    return Math.max(MIN_LAYOUT_WIDTH_PX, Math.round(Math.min(...candidates)));
+  } catch {
+    return DEFAULT_LAYOUT_WIDTH_PX;
+  }
+}
+function readSafeViewportWidth() {
+  try {
+    if (typeof window === "undefined") return DEFAULT_LAYOUT_WIDTH_PX;
+    if (isNativeCapacitorShell()) return readNativeLayoutWidth();
+    const vv = window.visualViewport?.width;
+    const raw = Number(vv ?? window.innerWidth);
+    if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_LAYOUT_WIDTH_PX;
+    const w = Math.max(MIN_LAYOUT_WIDTH_PX, Math.round(raw));
+    return Math.min(w, APP_COLUMN_MAX_PX);
+  } catch {
+    return DEFAULT_LAYOUT_WIDTH_PX;
+  }
+}
+function readSafeContainerRect(el) {
+  try {
+    if (!el || typeof el.getBoundingClientRect !== "function") return null;
+    const r2 = el.getBoundingClientRect();
+    if (!Number.isFinite(r2.width) || r2.width <= 0) return null;
+    return {
+      left: Number.isFinite(r2.left) ? r2.left : 0,
+      top: Number.isFinite(r2.top) ? r2.top : 0,
+      width: r2.width,
+      height: Number.isFinite(r2.height) && r2.height > 0 ? r2.height : 0
+    };
+  } catch {
+    return null;
+  }
+}
+function readSafeStackCapPx(containerEl, fallbackCapRef) {
+  try {
+    const rect = readSafeContainerRect(containerEl);
+    const fromRect = rect?.width;
+    const fromRef = fallbackCapRef?.current && Number.isFinite(fallbackCapRef.current) ? fallbackCapRef.current : 0;
+    const base = fromRect && fromRect > 0 ? fromRect : fromRef > 0 ? fromRef : readSafeViewportWidth();
+    const w = Math.max(MIN_LAYOUT_WIDTH_PX, Math.round(base));
+    if (isNativeCapacitorShell()) return w;
+    return Math.min(w, APP_COLUMN_MAX_PX);
+  } catch {
+    return readSafeViewportWidth();
+  }
+}
 function ChatStackRoomGestureShell({
   roomRef,
   widthCapRef,
@@ -31781,22 +31742,19 @@ function onViewportChange() {
   applyChatKeyboardCss();
   dispatchKeyboardSync();
 }
-async function initNativeKeyboardLayout() {
-  await ensureNativeKeyboardBridge();
-}
 async function ensureNativeKeyboardBridge() {
   if (nativeListenersReady) return;
   nativeListenersReady = true;
   try {
     const [{ Keyboard }, { Capacitor: Capacitor2 }] = await Promise.all([
-      import("./index-gJlssfqe.js"),
+      import("./index-BvskqMyA.js"),
       Promise.resolve().then(() => index$1)
     ]);
     if (!Capacitor2.isNativePlatform()) return;
     useNativeKeyboardHeight = true;
     document.documentElement.classList.add("retweet-kb-body-resize");
     try {
-      const { KeyboardResize } = await import("./index-gJlssfqe.js");
+      const { KeyboardResize } = await import("./index-BvskqMyA.js");
       await Keyboard.setResizeMode({ mode: KeyboardResize.Body });
     } catch {
     }
@@ -31894,6 +31852,64 @@ function useChatKeyboardInsets(enabled) {
 }
 function chatComposerBottomPadding(_keyboardOpen) {
   return "0px";
+}
+const LAYOUT_SELECTORS = '#root, #root > .retweet-no-select-pane, [data-tab-panel="chat"], [data-tab-panel="chat"] .tab-panel-scroll, .chat-stack-scene, .chat-inbox-pane, .chat-inbox-scroll, [data-chat-stack-room]';
+function pinFullWidth(el) {
+  el.style.width = "100%";
+  el.style.maxWidth = "100%";
+  el.style.minWidth = "0";
+  el.style.boxSizing = "border-box";
+  el.style.marginLeft = "0";
+  el.style.marginRight = "0";
+  el.style.marginInline = "0";
+  el.style.paddingLeft = "";
+  el.style.paddingRight = "";
+  el.style.left = "0";
+  el.style.right = "0";
+  el.style.insetInlineStart = "0";
+  el.style.insetInlineEnd = "0";
+  el.style.transform = "none";
+  el.style.translate = "none";
+  el.style.overflowX = "hidden";
+}
+function resetNativeChatInboxLayout(layers2) {
+  if (!isNativeCapacitorShell() || typeof document === "undefined") return;
+  clearChatStackCssProgress();
+  const root = document.documentElement;
+  root.style.removeProperty(CHAT_DISMISS_ROOM_TX_VAR);
+  root.style.removeProperty(NAV_HIDE_PROGRESS_CSS_VAR);
+  document.querySelectorAll(LAYOUT_SELECTORS).forEach(pinFullWidth);
+  const chatPanel = document.querySelector('[data-tab-panel="chat"]');
+  if (chatPanel) {
+    chatPanel.style.transform = "translate3d(0, 0, 0)";
+    chatPanel.style.width = "100%";
+    chatPanel.style.maxWidth = "none";
+    chatPanel.style.marginLeft = "0";
+    chatPanel.style.marginRight = "0";
+    chatPanel.style.visibility = "visible";
+    chatPanel.dataset.chatInboxSettled = "true";
+  }
+  const scene = document.querySelector(".chat-stack-scene");
+  if (scene) {
+    scene.style.overflow = "hidden";
+    scene.style.contain = "none";
+  }
+  const room = layers2?.roomEl ?? document.querySelector("[data-chat-stack-room]");
+  const inbox = layers2?.inboxEl ?? document.querySelector(".chat-inbox-pane");
+  if (inbox || room) {
+    typeof window !== "undefined" ? readNativeLayoutWidth() : void 0;
+    snapChatNavInboxRest({ inboxEl: inbox, roomEl: room });
+  }
+  if (room) {
+    room.style.transform = "translate3d(100%, 0, 0)";
+    room.style.visibility = "hidden";
+    room.style.pointerEvents = "none";
+  }
+  if (typeof document !== "undefined") {
+    document.body.style.overflowX = "hidden";
+    document.documentElement.style.overflowX = "hidden";
+  }
+  document.documentElement.classList.add("retweet-chat-inbox-pinned");
 }
 const MAX_IMAGE_EDGE = 1280;
 const IMAGE_JPEG_QUALITY = 0.82;
@@ -37120,7 +37136,6 @@ function ChatScreen({
         const layers2 = stackLayers();
         if (!openChat && !stackClosingId) {
           snapChatNavInboxRest(layers2, stackCapRef.current);
-          if (isNativeCapacitorShell()) resetNativeChatInboxLayout(layers2);
           return;
         }
         let cap = stackCapRef.current;
@@ -37186,13 +37201,17 @@ function ChatScreen({
   );
   const resetStackToInboxRest = reactExports.useCallback(
     (opts) => {
+      const animate = !!opts?.animate;
+      const hadStackProgress = stackProgressRef.current > 1e-3;
       stackProgressRef.current = 0;
       stackDragPreviewIdRef.current = null;
       stackDragVisualStartedRef.current = false;
       lastRoomDismissPullRef.current = 0;
       stackNavDismissProgressRef.current = -1;
-      setStackProgress(0);
-      setStackSpring(!!opts?.animate);
+      if (hadStackProgress || animate) {
+        setStackProgress(0);
+      }
+      setStackSpring((prev) => prev === animate ? prev : animate);
       stackRoomDriveRef.current = "idle";
       stackRoomDismissRef.current = false;
       clearChatStackCssProgress();
@@ -37494,10 +37513,16 @@ function ChatScreen({
       return;
     }
     if (!openChat && !stackClosingId) {
-      if (stackProgressRef.current > 1e-3) {
-        stackProgressRef.current = 0;
+      if (stackProgressRef.current > 1e-3 || stackSpring) {
+        resetStackToInboxRest();
+      } else {
+        const layers2 = stackLayers();
+        snapChatNavInboxRest(layers2, stackCapRef.current);
+        snapStackLayersToInboxRest(layers2);
+        if (isNativeCapacitorShell() && chatTabActive) {
+          resetNativeChatInboxLayout(layers2);
+        }
       }
-      resetStackToInboxRest();
       return;
     }
     applyStackLayerTransforms(stackProgress, stackSpring);
@@ -37750,7 +37775,9 @@ function ChatScreen({
   reactExports.useLayoutEffect(() => {
     if (!openChat) {
       if (stackClosingId || stackDragChatId) return;
-      resetStackToInboxRest();
+      if (stackProgressRef.current > 1e-3 || stackSpring) {
+        resetStackToInboxRest();
+      }
       return;
     }
     if (stackClosingId || stackDragChatId) return;
@@ -60156,22 +60183,26 @@ function App() {
     createPost
   } = useAppActions();
   const scheduleEnt = currentUser ? getUserEntitlements(currentUser) : null;
-  useScheduledPostsPublisher(
-    currentUser?.id,
+  const publishScheduledPost = reactExports.useCallback(
     (text) => {
       createPost({ type: "post", text });
     },
+    [createPost]
+  );
+  useScheduledPostsPublisher(
+    currentUser?.id,
+    publishScheduledPost,
     !!scheduleEnt?.hasScheduledPosts
   );
   reactExports.useEffect(() => startPerfSession(), []);
   reactExports.useEffect(() => {
     if (!currentUser || isGuest) return;
-    void import("./pushNotifications-CSIPKTat.js").then((m) => {
+    void import("./pushNotifications-CGNqkn8G.js").then((m) => {
       void m.initPushNotifications();
       void m.syncPushRegistration();
     });
     return () => {
-      void import("./pushNotifications-CSIPKTat.js").then((m) => m.teardownPushNotifications());
+      void import("./pushNotifications-CGNqkn8G.js").then((m) => m.teardownPushNotifications());
     };
   }, [currentUser?.id, isGuest]);
   reactExports.useEffect(() => {
@@ -61712,7 +61743,6 @@ function WebAppRoot() {
     clearStaleApiConfig();
     if (isNativeCapacitorShell()) {
       initNativeViewportLayout();
-      void initNativeKeyboardLayout();
     }
     logAuthRoute("webapp-root-mount", {
       apiEnabled: apiBackendEnabled(),

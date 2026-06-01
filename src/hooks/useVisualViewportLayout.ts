@@ -47,7 +47,7 @@ export function useVisualViewportLayout(): VisualViewportLayout {
 
         // re-render React فقط عند تغيّر حالة الكيبورد (مفتوح/مغلق)
         const wasOpen = prevInsetRef.current > 8 || prevOpenRef.current;
-        const isOpen = next.open;
+        const isOpen = next.keyboardInset > 8;
         prevOpenRef.current = isOpen;
         const heightDelta = Math.abs(next.height - prevHeightRef.current);
         prevInsetRef.current = next.keyboardInset;

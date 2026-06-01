@@ -8,7 +8,6 @@ import logo from "@/assets/logo.png";
 import { logAuthRoute } from "@/lib/authRouteDebug";
 import { clearStaleApiConfig, probeHealth } from "@/lib/apiConfig";
 import { isNativeCapacitorShell, isPublicAppHost, isVpsProductionHost } from "@/lib/apiUrlPolicy";
-import { initNativeKeyboardLayout } from "@/lib/chatKeyboardInsets";
 import { initSafeAreaBootstrap } from "@/lib/safeAreaBootstrap";
 import { initNativeViewportLayout } from "@/lib/nativeViewportLayout";
 import { warmGlobalPointerBackRouter } from "@/lib/globalPointerBackRouter";
@@ -43,7 +42,6 @@ export function WebAppRoot() {
     clearStaleApiConfig();
     if (isNativeCapacitorShell()) {
       initNativeViewportLayout();
-      void initNativeKeyboardLayout();
     }
     logAuthRoute("webapp-root-mount", {
       apiEnabled: apiBackendEnabled(),

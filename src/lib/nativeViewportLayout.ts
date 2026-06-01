@@ -1,5 +1,4 @@
 import { isNativeCapacitorShell } from "./apiUrlPolicy";
-import { resetNativeChatInboxLayout } from "./nativeChatInboxLayout";
 
 const NATIVE_APP_ATTR = "data-native-app";
 
@@ -45,7 +44,7 @@ function pinElementFullWidth(el: HTMLElement): void {
   el.style.boxSizing = "border-box";
 }
 
-/** يملأ عرض الشاشة على iOS/Android — يُصلح الفراغ الأبيض على اليمين */
+/** يملأ عرض الشاشة على iOS/Android — لا يعيد ضبط المحادثة (يُستدعى من ChatScreen فقط) */
 export function applyNativeViewportFullBleed(): void {
   if (!isNativeCapacitorShell() || typeof document === "undefined") return;
 
@@ -77,27 +76,50 @@ export function applyNativeViewportFullBleed(): void {
   });
 
   resetNativeDocumentScroll();
-  resetNativeChatInboxLayout();
 }
 
 let booted = false;
+let bleedRaf = 0;
+let resizeDebounce = 0;
+let lastBleedWidth = 0;
+
+function scheduleNativeViewportFullBleed(): void {
+  if (bleedRaf) cancelAnimationFrame(bleedRaf);
+  bleedRaf = requestAnimationFrame(() => {
+    bleedRaf = 0;
+    const w =
+      typeof window !== "undefined"
+        ? Math.round(window.visualViewport?.width ?? window.innerWidth)
+        : 0;
+    if (w > 0 && lastBleedWidth > 0 && Math.abs(w - lastBleedWidth) < 1) return;
+    if (w > 0) lastBleedWidth = w;
+    applyNativeViewportFullBleed();
+  });
+}
+
+function scheduleNativeViewportFromResize(): void {
+  if (resizeDebounce) window.clearTimeout(resizeDebounce);
+  resizeDebounce = window.setTimeout(() => {
+    resizeDebounce = 0;
+    scheduleNativeViewportFullBleed();
+  }, 48);
+}
 
 export function initNativeViewportLayout(): void {
   if (!isNativeCapacitorShell() || typeof window === "undefined" || booted) return;
   booted = true;
 
-  const run = () => applyNativeViewportFullBleed();
+  scheduleNativeViewportFullBleed();
+  window.setTimeout(scheduleNativeViewportFullBleed, 120);
 
-  run();
-  requestAnimationFrame(run);
-  window.setTimeout(run, 0);
-  window.setTimeout(run, 120);
-  window.setTimeout(run, 400);
-
-  window.addEventListener("resize", run, { passive: true });
-  window.visualViewport?.addEventListener("resize", run, { passive: true });
-  window.addEventListener("retweet-safe-area-change", run, { passive: true });
+  window.addEventListener("resize", scheduleNativeViewportFromResize, { passive: true });
+  window.visualViewport?.addEventListener("resize", scheduleNativeViewportFromResize, {
+    passive: true,
+  });
+  window.addEventListener("retweet-safe-area-change", scheduleNativeViewportFullBleed, {
+    passive: true,
+  });
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") run();
+    if (document.visibilityState === "visible") scheduleNativeViewportFullBleed();
   });
 }

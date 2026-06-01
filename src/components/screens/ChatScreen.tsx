@@ -2133,7 +2133,6 @@ export function ChatScreen({
         /** قائمة المحادثات — لا نحرّك الغرفة/القائمة أبداً (يمنع انزياح iOS) */
         if (!openChat && !stackClosingId) {
           snapChatNavInboxRest(layers, stackCapRef.current);
-          if (isNativeCapacitorShell()) resetNativeChatInboxLayout(layers);
           return;
         }
         let cap = stackCapRef.current;
@@ -2202,13 +2201,17 @@ export function ChatScreen({
 
   const resetStackToInboxRest = useCallback(
     (opts?: { animate?: boolean }) => {
+      const animate = !!opts?.animate;
+      const hadStackProgress = stackProgressRef.current > 0.001;
       stackProgressRef.current = 0;
       stackDragPreviewIdRef.current = null;
       stackDragVisualStartedRef.current = false;
       lastRoomDismissPullRef.current = 0;
       stackNavDismissProgressRef.current = -1;
-      setStackProgress(0);
-      setStackSpring(!!opts?.animate);
+      if (hadStackProgress || animate) {
+        setStackProgress(0);
+      }
+      setStackSpring(prev => (prev === animate ? prev : animate));
       stackRoomDriveRef.current = "idle";
       stackRoomDismissRef.current = false;
       clearChatStackCssProgress();
@@ -2552,10 +2555,16 @@ export function ChatScreen({
       return;
     }
     if (!openChat && !stackClosingId) {
-      if (stackProgressRef.current > 0.001) {
-        stackProgressRef.current = 0;
+      if (stackProgressRef.current > 0.001 || stackSpring) {
+        resetStackToInboxRest();
+      } else {
+        const layers = stackLayers();
+        snapChatNavInboxRest(layers, stackCapRef.current);
+        snapStackLayersToInboxRest(layers);
+        if (isNativeCapacitorShell() && chatTabActive) {
+          resetNativeChatInboxLayout(layers);
+        }
       }
-      resetStackToInboxRest();
       return;
     }
     applyStackLayerTransforms(stackProgress, stackSpring);
@@ -2836,7 +2845,9 @@ export function ChatScreen({
   useLayoutEffect(() => {
     if (!openChat) {
       if (stackClosingId || stackDragChatId) return;
-      resetStackToInboxRest();
+      if (stackProgressRef.current > 0.001 || stackSpring) {
+        resetStackToInboxRest();
+      }
       return;
     }
     if (stackClosingId || stackDragChatId) return;

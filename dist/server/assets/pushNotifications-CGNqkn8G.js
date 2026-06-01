@@ -1,15 +1,15 @@
-import { r as registerPlugin, a as apiFetch, i as isNativeCapacitorShell, b as routePushNotificationTap, C as Capacitor } from "./index-Bmkn--fb.js";
-import "./server-Cv49EzQk.js";
+import { r as registerPlugin, a as apiFetch, i as isNativeCapacitorShell, b as routePushNotificationTap, C as Capacitor } from "./index-CtdBBwzG.js";
+import "./server-0enC4Dc6.js";
 import "node:async_hooks";
 import "node:stream/web";
 import "node:stream";
 import "fs";
 import "url";
-import "./worker-entry-CjZkqde3.js";
+import "./worker-entry-DUKg-4v3.js";
 import "node:events";
 import "http";
 import "https";
-import "./router-TfSVVz_L.js";
+import "./router-C5696JCB.js";
 import "util";
 import "stream";
 import "zlib";
@@ -31,7 +31,7 @@ function getPushDeviceId() {
   }
 }
 async function apiRegisterPushToken(token, platform) {
-  const authToken = (await import("./index-Bmkn--fb.js").then((n) => n.c)).getApiToken();
+  const authToken = (await import("./index-CtdBBwzG.js").then((n) => n.c)).getApiToken();
   if (!authToken) return { ok: false, error: "غير مسجّل" };
   const res = await apiFetch("/v1/push/register", {
     method: "POST",
@@ -47,7 +47,7 @@ async function apiRegisterPushToken(token, platform) {
   return { ok: true };
 }
 async function apiUnregisterPushToken(token) {
-  const authToken = (await import("./index-Bmkn--fb.js").then((n) => n.c)).getApiToken();
+  const authToken = (await import("./index-CtdBBwzG.js").then((n) => n.c)).getApiToken();
   if (!authToken) return;
   await apiFetch("/v1/push/register", {
     method: "DELETE",

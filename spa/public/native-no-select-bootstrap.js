@@ -10,6 +10,13 @@
     if (window.__RETWEET_BUNDLE_GUARD__) return;
     window.__RETWEET_BUNDLE_GUARD__ = 1;
     try {
+      if (
+        window.Capacitor &&
+        typeof window.Capacitor.isNativePlatform === "function" &&
+        window.Capacitor.isNativePlatform()
+      ) {
+        return;
+      }
       var q = location.search || "";
       if (/[?&](force|_b|_)=\d+/.test(q)) return;
       var mod = document.querySelector('script[type="module"][src*="/assets/index-"]');
