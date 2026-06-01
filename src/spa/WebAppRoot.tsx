@@ -40,9 +40,6 @@ export function WebAppRoot() {
     warmGlobalPointerBackRouter();
     initSafeAreaBootstrap();
     clearStaleApiConfig();
-    if (isNativeCapacitorShell()) {
-      initNativeViewportLayout();
-    }
     logAuthRoute("webapp-root-mount", {
       apiEnabled: apiBackendEnabled(),
       hasToken: !!getApiToken(),
@@ -99,6 +96,11 @@ export function WebAppRoot() {
       .finally(() => {
         if (!cancelled) {
           setReady(true);
+          if (isNativeCapacitorShell()) {
+            requestAnimationFrame(() => {
+              initNativeViewportLayout();
+            });
+          }
           logAuthRoute("webapp-root-ready", {
             bootUserId: readPersistedAppState().currentUserId,
           });

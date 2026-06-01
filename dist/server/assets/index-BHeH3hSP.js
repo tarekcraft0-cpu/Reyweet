@@ -1,10 +1,10 @@
-import { r as reactExports, a2 as getAugmentedNamespace, S as getDefaultExportFromCjs, W as jsxRuntimeExports, V as React__default, a3 as React } from "./server-0enC4Dc6.js";
+import { r as reactExports, a2 as getAugmentedNamespace, S as getDefaultExportFromCjs, W as jsxRuntimeExports, V as React__default, a3 as React } from "./server-DIVRA65s.js";
 import require$$0 from "fs";
 import require$$1 from "url";
-import { n as notImplementedClass, a as notImplemented } from "./worker-entry-DUKg-4v3.js";
+import { n as notImplementedClass, a as notImplemented } from "./worker-entry-3m3-SK4o.js";
 import require$$3 from "http";
 import require$$4 from "https";
-import { r as reactDomExports, R as ReactDOM } from "./router-C5696JCB.js";
+import { r as reactDomExports, R as ReactDOM } from "./router-BdP_5x1M.js";
 import require$$0$1 from "util";
 import require$$1$1 from "stream";
 import require$$1$2 from "zlib";
@@ -10187,6 +10187,16 @@ function AppProvider({
     if (!me) return "";
     return `${state2.posts?.length ?? 0}:${state2.users?.length ?? 0}:${me.id}:${(me.following ?? []).length}:${state2.posts?.[0]?.id ?? ""}:${state2.posts?.[0]?.createdAt ?? 0}`;
   }, [state2.posts, state2.users, state2.currentUserId]);
+  const homeFeedPostsTouchSig = reactExports.useMemo(() => {
+    const posts = state2.posts ?? [];
+    if (!posts.length) return "0";
+    let sig = String(posts.length);
+    for (let i = 0; i < Math.min(8, posts.length); i++) {
+      const p = posts[i];
+      sig += `|${p.id}:${p.likes?.length ?? 0}:${p.comments?.length ?? 0}:${p.reposts?.length ?? 0}`;
+    }
+    return sig;
+  }, [state2.posts]);
   reactExports.useEffect(() => {
     const me = currentUser;
     if (!me || isGuestUserId(me.id)) {
@@ -10230,7 +10240,7 @@ function AppProvider({
       });
       return changed ? next : prev;
     });
-  }, [state2.posts]);
+  }, [homeFeedPostsTouchSig]);
   const signup = async (data) => {
     const pwdErrFirst = validateNewPasswordPlain(data.password);
     if (pwdErrFirst) return { ok: false, error: pwdErrFirst };
@@ -19281,43 +19291,60 @@ function applyNativeViewportFullBleed() {
       el.style.transform = "translate3d(0, 0, 0)";
     }
   });
-  resetNativeDocumentScroll();
 }
 let booted$1 = false;
 let bleedRaf = 0;
 let resizeDebounce = 0;
+let safeAreaDebounce = 0;
 let lastBleedWidth = 0;
-function scheduleNativeViewportFullBleed() {
+let scrollResetDone = false;
+let bootGraceUntil = 0;
+function scheduleNativeViewportFullBleed(force = false) {
+  if (!force && typeof performance !== "undefined" && performance.now() < bootGraceUntil) return;
   if (bleedRaf) cancelAnimationFrame(bleedRaf);
   bleedRaf = requestAnimationFrame(() => {
     bleedRaf = 0;
     const w = typeof window !== "undefined" ? Math.round(window.visualViewport?.width ?? window.innerWidth) : 0;
-    if (w > 0 && lastBleedWidth > 0 && Math.abs(w - lastBleedWidth) < 1) return;
+    if (!force && w > 0 && lastBleedWidth > 0 && Math.abs(w - lastBleedWidth) < 1) return;
     if (w > 0) lastBleedWidth = w;
     applyNativeViewportFullBleed();
+    if (!scrollResetDone) {
+      scrollResetDone = true;
+      resetNativeDocumentScroll();
+    }
   });
 }
 function scheduleNativeViewportFromResize() {
+  if (typeof performance !== "undefined" && performance.now() < bootGraceUntil) return;
   if (resizeDebounce) window.clearTimeout(resizeDebounce);
   resizeDebounce = window.setTimeout(() => {
     resizeDebounce = 0;
+    scheduleNativeViewportFullBleed();
+  }, 64);
+}
+function scheduleNativeViewportFromSafeArea() {
+  if (typeof performance !== "undefined" && performance.now() < bootGraceUntil) return;
+  if (safeAreaDebounce) window.clearTimeout(safeAreaDebounce);
+  safeAreaDebounce = window.setTimeout(() => {
+    safeAreaDebounce = 0;
     scheduleNativeViewportFullBleed();
   }, 48);
 }
 function initNativeViewportLayout() {
   if (!isNativeCapacitorShell() || typeof window === "undefined" || booted$1) return;
   booted$1 = true;
-  scheduleNativeViewportFullBleed();
-  window.setTimeout(scheduleNativeViewportFullBleed, 120);
+  bootGraceUntil = performance.now() + 900;
+  scheduleNativeViewportFullBleed(true);
+  window.setTimeout(() => scheduleNativeViewportFullBleed(true), 150);
   window.addEventListener("resize", scheduleNativeViewportFromResize, { passive: true });
   window.visualViewport?.addEventListener("resize", scheduleNativeViewportFromResize, {
     passive: true
   });
-  window.addEventListener("retweet-safe-area-change", scheduleNativeViewportFullBleed, {
+  window.addEventListener("retweet-safe-area-change", scheduleNativeViewportFromSafeArea, {
     passive: true
   });
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") scheduleNativeViewportFullBleed();
+    if (document.visibilityState === "visible") scheduleNativeViewportFullBleed(true);
   });
 }
 const nativeViewportLayout = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
@@ -19413,17 +19440,21 @@ function MainTabStack({
     if (!isNativeCapacitorShell() || dragIndex != null) return;
     const host = containerRef.current;
     if (!host) return;
-    host.querySelectorAll("[data-tab-panel]").forEach((panel) => {
-      if (panel.getAttribute("aria-hidden") === "true") return;
-      panel.style.transform = "translate3d(0, 0, 0)";
-      panel.style.width = "100%";
-      panel.style.maxWidth = "100%";
-      panel.style.marginLeft = "0";
-      panel.style.marginRight = "0";
-      panel.style.left = "0";
-      panel.style.right = "0";
+    const tab = activeTab;
+    const id = requestAnimationFrame(() => {
+      host.querySelectorAll("[data-tab-panel]").forEach((panel) => {
+        if (panel.getAttribute("aria-hidden") === "true") return;
+        panel.style.transform = "translate3d(0, 0, 0)";
+        panel.style.width = "100%";
+        panel.style.maxWidth = "100%";
+        panel.style.marginLeft = "0";
+        panel.style.marginRight = "0";
+        panel.style.left = "0";
+        panel.style.right = "0";
+      });
+      if (tab === "chat") applyNativeViewportFullBleed();
     });
-    if (activeTab === "chat") applyNativeViewportFullBleed();
+    return () => cancelAnimationFrame(id);
   }, [activeTab, dragIndex, settledIndex]);
   const displayIndex = dragIndex != null ? clamp$2(dragIndex, 0, TAB_COUNT - 1) : settledIndex;
   const markNeighborVisited = reactExports.useCallback((index2) => {
@@ -19622,7 +19653,7 @@ function useProfiledRender(componentName) {
   useRenderCount(componentName);
   const startRef = reactExports.useRef(0);
   startRef.current = performance.now();
-  reactExports.useEffect(() => {
+  reactExports.useLayoutEffect(() => {
     if (!perfEnabled()) return;
     const ms = performance.now() - startRef.current;
     const prev = renderDurations.get(componentName) ?? { totalMs: 0, count: 0, maxMs: 0 };
@@ -27124,20 +27155,22 @@ const StoryTrayItem = reactExports.memo(function StoryTrayItem2({
   onOpen
 }) {
   const btnRef = reactExports.useRef(null);
-  const [visible, setVisible] = reactExports.useState(false);
+  const nativeShell = isNativeCapacitorShell();
+  const [visible, setVisible] = reactExports.useState(nativeShell);
   const ioRef = reactExports.useRef(null);
   reactExports.useEffect(() => {
+    if (nativeShell) return;
     const el = btnRef.current;
     if (!el) return;
     ioRef.current = new IntersectionObserver(
       (entries) => {
-        if (entries[0]?.isIntersecting) setVisible(true);
+        if (entries[0]?.isIntersecting) setVisible((v) => v ? v : true);
       },
       { rootMargin: "80px" }
     );
     ioRef.current.observe(el);
     return () => ioRef.current?.disconnect();
-  }, []);
+  }, [nativeShell]);
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "button",
     {
@@ -31747,14 +31780,14 @@ async function ensureNativeKeyboardBridge() {
   nativeListenersReady = true;
   try {
     const [{ Keyboard }, { Capacitor: Capacitor2 }] = await Promise.all([
-      import("./index-BvskqMyA.js"),
+      import("./index-CWDSFoF1.js"),
       Promise.resolve().then(() => index$1)
     ]);
     if (!Capacitor2.isNativePlatform()) return;
     useNativeKeyboardHeight = true;
     document.documentElement.classList.add("retweet-kb-body-resize");
     try {
-      const { KeyboardResize } = await import("./index-BvskqMyA.js");
+      const { KeyboardResize } = await import("./index-CWDSFoF1.js");
       await Keyboard.setResizeMode({ mode: KeyboardResize.Body });
     } catch {
     }
@@ -60197,12 +60230,12 @@ function App() {
   reactExports.useEffect(() => startPerfSession(), []);
   reactExports.useEffect(() => {
     if (!currentUser || isGuest) return;
-    void import("./pushNotifications-CGNqkn8G.js").then((m) => {
+    void import("./pushNotifications-t-zFntOn.js").then((m) => {
       void m.initPushNotifications();
       void m.syncPushRegistration();
     });
     return () => {
-      void import("./pushNotifications-CGNqkn8G.js").then((m) => m.teardownPushNotifications());
+      void import("./pushNotifications-t-zFntOn.js").then((m) => m.teardownPushNotifications());
     };
   }, [currentUser?.id, isGuest]);
   reactExports.useEffect(() => {
@@ -60358,7 +60391,7 @@ function App() {
       const path = window.location.pathname + (q ? `?${q}` : "");
       window.history.replaceState({}, "", path);
     })();
-  }, [currentUser, updateProfile]);
+  }, [currentUser?.id, updateProfile]);
   const closeProfileOverlay = reactExports.useCallback(() => {
     setProfileOverlayUserId(null);
   }, []);
@@ -60615,7 +60648,7 @@ function App() {
       }
     } catch {
     }
-  }, [currentUser]);
+  }, [currentUser?.id]);
   reactExports.useEffect(() => {
     const onOpenChat = (e) => {
       const ce = e;
@@ -61163,10 +61196,15 @@ function App() {
     const root = document.documentElement;
     if (nativeShell && tab === "chat") {
       root.classList.add("retweet-chat-tab-active");
-      void Promise.resolve().then(() => nativeViewportLayout).then((m) => m.applyNativeViewportFullBleed());
-    } else {
-      root.classList.remove("retweet-chat-tab-active");
+      const id = requestAnimationFrame(() => {
+        void Promise.resolve().then(() => nativeViewportLayout).then((m) => m.applyNativeViewportFullBleed());
+      });
+      return () => {
+        cancelAnimationFrame(id);
+        root.classList.remove("retweet-chat-tab-active");
+      };
     }
+    root.classList.remove("retweet-chat-tab-active");
     return () => root.classList.remove("retweet-chat-tab-active");
   }, [tab, nativeShell]);
   const appShellHeight = nativeShell ? "h-full max-h-full min-h-0" : immersiveOverlay || settingsImmersive ? "h-dvh max-h-dvh" : "h-dvh max-h-dvh";
@@ -61680,6 +61718,7 @@ function iosStatusBarFallback() {
   if (longSide >= 812) return 47;
   return 20;
 }
+let lastSafeAreaKey = "";
 function syncSafeAreaCssVars() {
   if (typeof document === "undefined") return;
   const root = document.documentElement;
@@ -61699,26 +61738,42 @@ function syncSafeAreaCssVars() {
   if (nativeOrIos && top < 20) {
     top = Math.max(top, iosStatusBarFallback());
   }
+  const key2 = `${top}|${bottom}|${left}|${right}`;
+  if (key2 === lastSafeAreaKey) return;
+  lastSafeAreaKey = key2;
   root.style.setProperty("--sat", `${top}px`);
   root.style.setProperty("--sab", `${bottom}px`);
   root.style.setProperty("--sal", `${left}px`);
   root.style.setProperty("--sar", `${right}px`);
 }
 let booted = false;
+let safeTickRaf = 0;
+let safeTickDebounce = 0;
+function scheduleSafeAreaSync() {
+  if (safeTickRaf) cancelAnimationFrame(safeTickRaf);
+  safeTickRaf = requestAnimationFrame(() => {
+    safeTickRaf = 0;
+    syncSafeAreaCssVars();
+  });
+}
+function scheduleSafeAreaFromResize() {
+  if (safeTickDebounce) window.clearTimeout(safeTickDebounce);
+  safeTickDebounce = window.setTimeout(() => {
+    safeTickDebounce = 0;
+    scheduleSafeAreaSync();
+  }, 64);
+}
 function initSafeAreaBootstrap() {
   if (typeof window === "undefined" || booted) return;
   booted = true;
-  const tick = () => syncSafeAreaCssVars();
-  tick();
-  requestAnimationFrame(tick);
-  window.setTimeout(tick, 0);
-  window.setTimeout(tick, 120);
-  window.setTimeout(tick, 400);
-  window.addEventListener("retweet-safe-area-change", tick, { passive: true });
-  window.addEventListener("resize", tick, { passive: true });
-  window.visualViewport?.addEventListener("resize", tick, { passive: true });
+  scheduleSafeAreaSync();
+  window.setTimeout(scheduleSafeAreaSync, 120);
+  window.setTimeout(scheduleSafeAreaSync, 400);
+  window.addEventListener("retweet-safe-area-change", scheduleSafeAreaFromResize, { passive: true });
+  window.addEventListener("resize", scheduleSafeAreaFromResize, { passive: true });
+  window.visualViewport?.addEventListener("resize", scheduleSafeAreaFromResize, { passive: true });
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") tick();
+    if (document.visibilityState === "visible") scheduleSafeAreaSync();
   });
 }
 function WebAppRoot() {
@@ -61741,9 +61796,6 @@ function WebAppRoot() {
     warmGlobalPointerBackRouter();
     initSafeAreaBootstrap();
     clearStaleApiConfig();
-    if (isNativeCapacitorShell()) {
-      initNativeViewportLayout();
-    }
     logAuthRoute("webapp-root-mount", {
       apiEnabled: apiBackendEnabled(),
       hasToken: !!getApiToken()
@@ -61793,6 +61845,11 @@ function WebAppRoot() {
     }).finally(() => {
       if (!cancelled) {
         setReady(true);
+        if (isNativeCapacitorShell()) {
+          requestAnimationFrame(() => {
+            initNativeViewportLayout();
+          });
+        }
         logAuthRoute("webapp-root-ready", {
           bootUserId: readPersistedAppState().currentUserId
         });

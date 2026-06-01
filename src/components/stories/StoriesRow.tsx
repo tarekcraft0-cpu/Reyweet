@@ -6,6 +6,7 @@ import {
   userById,
   userHasVisibleStories,
 } from "@/lib/store";
+import { isNativeCapacitorShell } from "@/lib/apiUrlPolicy";
 import { equalIdArrays } from "@/lib/useAppSelector";
 import { authorHasUnseenStories, orderStoryTrayUserIds } from "@/lib/storyTray";
 import { notifyGuestActionBlocked } from "@/lib/guestBlocked";
@@ -58,21 +59,23 @@ const StoryTrayItem = memo(function StoryTrayItem({
   onOpen: (origin: DOMRect) => void;
 }) {
   const btnRef = useRef<HTMLButtonElement>(null);
-  const [visible, setVisible] = useState(false);
+  const nativeShell = isNativeCapacitorShell();
+  const [visible, setVisible] = useState(nativeShell);
   const ioRef = useRef<IntersectionObserver | null>(null);
 
   useEffect(() => {
+    if (nativeShell) return;
     const el = btnRef.current;
     if (!el) return;
     ioRef.current = new IntersectionObserver(
       entries => {
-        if (entries[0]?.isIntersecting) setVisible(true);
+        if (entries[0]?.isIntersecting) setVisible(v => (v ? v : true));
       },
       { rootMargin: "80px" },
     );
     ioRef.current.observe(el);
     return () => ioRef.current?.disconnect();
-  }, []);
+  }, [nativeShell]);
 
   return (
     <button

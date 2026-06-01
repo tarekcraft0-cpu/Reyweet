@@ -335,7 +335,7 @@ export function App() {
       const path = window.location.pathname + (q ? `?${q}` : "");
       window.history.replaceState({}, "", path);
     })();
-  }, [currentUser, updateProfile]);
+  }, [currentUser?.id, updateProfile]);
 
   const closeProfileOverlay = useCallback(() => {
     setProfileOverlayUserId(null);
@@ -628,7 +628,7 @@ export function App() {
     } catch {
       /* ignore */
     }
-  }, [currentUser]);
+  }, [currentUser?.id]);
 
   useEffect(() => {
     const onOpenChat = (e: Event) => {
@@ -1258,10 +1258,15 @@ export function App() {
     const root = document.documentElement;
     if (nativeShell && tab === "chat") {
       root.classList.add("retweet-chat-tab-active");
-      void import("@/lib/nativeViewportLayout").then(m => m.applyNativeViewportFullBleed());
-    } else {
-      root.classList.remove("retweet-chat-tab-active");
+      const id = requestAnimationFrame(() => {
+        void import("@/lib/nativeViewportLayout").then(m => m.applyNativeViewportFullBleed());
+      });
+      return () => {
+        cancelAnimationFrame(id);
+        root.classList.remove("retweet-chat-tab-active");
+      };
     }
+    root.classList.remove("retweet-chat-tab-active");
     return () => root.classList.remove("retweet-chat-tab-active");
   }, [tab, nativeShell]);
 

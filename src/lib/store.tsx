@@ -2263,6 +2263,18 @@ export function AppProvider({
     return `${state.posts?.length ?? 0}:${state.users?.length ?? 0}:${me.id}:${(me.following ?? []).length}:${state.posts?.[0]?.id ?? ""}:${state.posts?.[0]?.createdAt ?? 0}`;
   }, [state.posts, state.users, state.currentUserId]);
 
+  /** تفاعلات like/comment — توقيع خفيف بدل مرجع posts الكامل (يمنع حلقة setState على iOS) */
+  const homeFeedPostsTouchSig = useMemo(() => {
+    const posts = state.posts ?? [];
+    if (!posts.length) return "0";
+    let sig = String(posts.length);
+    for (let i = 0; i < Math.min(8, posts.length); i++) {
+      const p = posts[i]!;
+      sig += `|${p.id}:${p.likes?.length ?? 0}:${p.comments?.length ?? 0}:${p.reposts?.length ?? 0}`;
+    }
+    return sig;
+  }, [state.posts]);
+
   useEffect(() => {
     const me = currentUser;
     if (!me || isGuestUserId(me.id)) {
@@ -2308,7 +2320,7 @@ export function AppProvider({
       });
       return changed ? next : prev;
     });
-  }, [state.posts]); // eslint-disable-line -- posts ref tracks like/comment patches
+  }, [homeFeedPostsTouchSig]);
 
   const signup: Ctx["signup"] = async (data) => {
     const pwdErrFirst = validateNewPasswordPlain(data.password);

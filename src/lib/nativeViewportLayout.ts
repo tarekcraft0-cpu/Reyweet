@@ -75,15 +75,18 @@ export function applyNativeViewportFullBleed(): void {
     }
   });
 
-  resetNativeDocumentScroll();
 }
 
 let booted = false;
 let bleedRaf = 0;
 let resizeDebounce = 0;
+let safeAreaDebounce = 0;
 let lastBleedWidth = 0;
+let scrollResetDone = false;
+let bootGraceUntil = 0;
 
-function scheduleNativeViewportFullBleed(): void {
+function scheduleNativeViewportFullBleed(force = false): void {
+  if (!force && typeof performance !== "undefined" && performance.now() < bootGraceUntil) return;
   if (bleedRaf) cancelAnimationFrame(bleedRaf);
   bleedRaf = requestAnimationFrame(() => {
     bleedRaf = 0;
@@ -91,16 +94,30 @@ function scheduleNativeViewportFullBleed(): void {
       typeof window !== "undefined"
         ? Math.round(window.visualViewport?.width ?? window.innerWidth)
         : 0;
-    if (w > 0 && lastBleedWidth > 0 && Math.abs(w - lastBleedWidth) < 1) return;
+    if (!force && w > 0 && lastBleedWidth > 0 && Math.abs(w - lastBleedWidth) < 1) return;
     if (w > 0) lastBleedWidth = w;
     applyNativeViewportFullBleed();
+    if (!scrollResetDone) {
+      scrollResetDone = true;
+      resetNativeDocumentScroll();
+    }
   });
 }
 
 function scheduleNativeViewportFromResize(): void {
+  if (typeof performance !== "undefined" && performance.now() < bootGraceUntil) return;
   if (resizeDebounce) window.clearTimeout(resizeDebounce);
   resizeDebounce = window.setTimeout(() => {
     resizeDebounce = 0;
+    scheduleNativeViewportFullBleed();
+  }, 64);
+}
+
+function scheduleNativeViewportFromSafeArea(): void {
+  if (typeof performance !== "undefined" && performance.now() < bootGraceUntil) return;
+  if (safeAreaDebounce) window.clearTimeout(safeAreaDebounce);
+  safeAreaDebounce = window.setTimeout(() => {
+    safeAreaDebounce = 0;
     scheduleNativeViewportFullBleed();
   }, 48);
 }
@@ -108,18 +125,19 @@ function scheduleNativeViewportFromResize(): void {
 export function initNativeViewportLayout(): void {
   if (!isNativeCapacitorShell() || typeof window === "undefined" || booted) return;
   booted = true;
+  bootGraceUntil = performance.now() + 900;
 
-  scheduleNativeViewportFullBleed();
-  window.setTimeout(scheduleNativeViewportFullBleed, 120);
+  scheduleNativeViewportFullBleed(true);
+  window.setTimeout(() => scheduleNativeViewportFullBleed(true), 150);
 
   window.addEventListener("resize", scheduleNativeViewportFromResize, { passive: true });
   window.visualViewport?.addEventListener("resize", scheduleNativeViewportFromResize, {
     passive: true,
   });
-  window.addEventListener("retweet-safe-area-change", scheduleNativeViewportFullBleed, {
+  window.addEventListener("retweet-safe-area-change", scheduleNativeViewportFromSafeArea, {
     passive: true,
   });
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") scheduleNativeViewportFullBleed();
+    if (document.visibilityState === "visible") scheduleNativeViewportFullBleed(true);
   });
 }

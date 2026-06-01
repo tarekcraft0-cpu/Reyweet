@@ -11,6 +11,7 @@ class RetweetBridgeViewController: CAPBridgeViewController, WKUIDelegate, WKNavi
     private var menuHideObserver: NSObjectProtocol?
     private var keyboardFrameObservers: [NSObjectProtocol] = []
     private var lastSyncedKeyboardInset: CGFloat = -1
+    private var lastSyncedSafeAreaKey: String = ""
 
     private static let noSelectInjectScript: String = """
     (function(){
@@ -171,7 +172,14 @@ class RetweetBridgeViewController: CAPBridgeViewController, WKUIDelegate, WKNavi
             kbInset = 0
         }
         let kbChanged = abs(kbInset - lastSyncedKeyboardInset) > 0.5
+        let areaKey = String(format: "%.1f|%.1f|%.1f|%.1f", i.top, i.bottom, i.left, i.right)
+        let areaChanged = areaKey != lastSyncedSafeAreaKey
+        if !areaChanged && !kbChanged { return }
+        lastSyncedSafeAreaKey = areaKey
         lastSyncedKeyboardInset = kbInset
+
+        let safeAreaEvent = areaChanged ? "try{window.dispatchEvent(new Event('retweet-safe-area-change'));}catch(e){}" : ""
+        let kbEvent = kbChanged ? "try{window.dispatchEvent(new Event('retweet-keyboard-layout-change'));}catch(e){}" : ""
 
         let js = """
         (function(){
@@ -181,8 +189,8 @@ class RetweetBridgeViewController: CAPBridgeViewController, WKUIDelegate, WKNavi
           r.style.setProperty('--retweet-safe-left','\(i.left)px');
           r.style.setProperty('--retweet-safe-right','\(i.right)px');
           r.style.setProperty('--retweet-keyboard-inset','\(kbInset)px');
-          try{window.dispatchEvent(new Event('retweet-safe-area-change'));}catch(e){}
-          \(kbChanged ? "try{window.dispatchEvent(new Event('retweet-keyboard-layout-change'));}catch(e){}" : "")
+          \(safeAreaEvent)
+          \(kbEvent)
         })();
         """
         wv.evaluateJavaScript(js, completionHandler: nil)

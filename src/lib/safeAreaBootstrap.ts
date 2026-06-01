@@ -47,6 +47,8 @@ function iosStatusBarFallback(): number {
   return 20;
 }
 
+let lastSafeAreaKey = "";
+
 export function syncSafeAreaCssVars(): void {
   if (typeof document === "undefined") return;
   const root = document.documentElement;
@@ -75,6 +77,10 @@ export function syncSafeAreaCssVars(): void {
     top = Math.max(top, iosStatusBarFallback());
   }
 
+  const key = `${top}|${bottom}|${left}|${right}`;
+  if (key === lastSafeAreaKey) return;
+  lastSafeAreaKey = key;
+
   root.style.setProperty("--sat", `${top}px`);
   root.style.setProperty("--sab", `${bottom}px`);
   root.style.setProperty("--sal", `${left}px`);
@@ -82,24 +88,38 @@ export function syncSafeAreaCssVars(): void {
 }
 
 let booted = false;
+let safeTickRaf = 0;
+let safeTickDebounce = 0;
+
+function scheduleSafeAreaSync(): void {
+  if (safeTickRaf) cancelAnimationFrame(safeTickRaf);
+  safeTickRaf = requestAnimationFrame(() => {
+    safeTickRaf = 0;
+    syncSafeAreaCssVars();
+  });
+}
+
+function scheduleSafeAreaFromResize(): void {
+  if (safeTickDebounce) window.clearTimeout(safeTickDebounce);
+  safeTickDebounce = window.setTimeout(() => {
+    safeTickDebounce = 0;
+    scheduleSafeAreaSync();
+  }, 64);
+}
 
 /** يضمن أن --sat/--sab صحيحة على iOS/Capacitor حتى لو تأخر Swift bridge */
 export function initSafeAreaBootstrap(): void {
   if (typeof window === "undefined" || booted) return;
   booted = true;
 
-  const tick = () => syncSafeAreaCssVars();
+  scheduleSafeAreaSync();
+  window.setTimeout(scheduleSafeAreaSync, 120);
+  window.setTimeout(scheduleSafeAreaSync, 400);
 
-  tick();
-  requestAnimationFrame(tick);
-  window.setTimeout(tick, 0);
-  window.setTimeout(tick, 120);
-  window.setTimeout(tick, 400);
-
-  window.addEventListener("retweet-safe-area-change", tick, { passive: true });
-  window.addEventListener("resize", tick, { passive: true });
-  window.visualViewport?.addEventListener("resize", tick, { passive: true });
+  window.addEventListener("retweet-safe-area-change", scheduleSafeAreaFromResize, { passive: true });
+  window.addEventListener("resize", scheduleSafeAreaFromResize, { passive: true });
+  window.visualViewport?.addEventListener("resize", scheduleSafeAreaFromResize, { passive: true });
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") tick();
+    if (document.visibilityState === "visible") scheduleSafeAreaSync();
   });
 }

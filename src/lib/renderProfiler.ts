@@ -91,7 +91,7 @@ export function useProfiledRender(componentName: string): void {
   const startRef = useRef(0);
   startRef.current = performance.now();
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!perfEnabled()) return;
     const ms = performance.now() - startRef.current;
     const prev = renderDurations.get(componentName) ?? { totalMs: 0, count: 0, maxMs: 0 };

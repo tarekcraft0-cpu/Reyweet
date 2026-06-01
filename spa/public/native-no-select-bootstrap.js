@@ -51,8 +51,19 @@
   document.documentElement.setAttribute("data-native-app", "1");
   if (document.body) document.body.setAttribute("data-native-app", "1");
 
-  function pinNativeViewportWidth() {
+  var pinRaf = 0;
+  var pinDebounce = 0;
+  var lastPinWidth = 0;
+  var pinScrollDone = false;
+
+  function pinNativeViewportWidth(resetScroll) {
     try {
+      var w = Math.round(
+        (window.visualViewport && window.visualViewport.width) || window.innerWidth || 0,
+      );
+      if (w > 0 && lastPinWidth > 0 && Math.abs(w - lastPinWidth) < 1 && !resetScroll) return;
+      if (w > 0) lastPinWidth = w;
+
       var nodes = [document.documentElement, document.body, document.getElementById("root")];
       for (var i = 0; i < nodes.length; i++) {
         var el = nodes[i];
@@ -77,17 +88,37 @@
         p.style.right = "0";
         p.style.transform = "translate3d(0, 0, 0)";
       }
-      window.scrollTo(0, 0);
-      document.documentElement.scrollLeft = 0;
-      if (document.body) document.body.scrollLeft = 0;
+      if (resetScroll && !pinScrollDone) {
+        pinScrollDone = true;
+        window.scrollTo(0, 0);
+        document.documentElement.scrollLeft = 0;
+        if (document.body) document.body.scrollLeft = 0;
+      }
     } catch (e) {
       /* ignore */
     }
   }
-  pinNativeViewportWidth();
-  window.addEventListener("resize", pinNativeViewportWidth, { passive: true });
+
+  function schedulePinNativeViewport(resetScroll) {
+    if (pinRaf) cancelAnimationFrame(pinRaf);
+    pinRaf = requestAnimationFrame(function () {
+      pinRaf = 0;
+      pinNativeViewportWidth(resetScroll);
+    });
+  }
+
+  function schedulePinFromResize() {
+    if (pinDebounce) clearTimeout(pinDebounce);
+    pinDebounce = setTimeout(function () {
+      pinDebounce = 0;
+      schedulePinNativeViewport(false);
+    }, 64);
+  }
+
+  schedulePinNativeViewport(true);
+  window.addEventListener("resize", schedulePinFromResize, { passive: true });
   if (window.visualViewport) {
-    window.visualViewport.addEventListener("resize", pinNativeViewportWidth, { passive: true });
+    window.visualViewport.addEventListener("resize", schedulePinFromResize, { passive: true });
   }
 
   var css =

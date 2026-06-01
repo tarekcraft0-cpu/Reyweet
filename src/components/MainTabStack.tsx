@@ -152,17 +152,21 @@ export function MainTabStack({
     if (!isNativeCapacitorShell() || dragIndex != null) return;
     const host = containerRef.current;
     if (!host) return;
-    host.querySelectorAll<HTMLElement>("[data-tab-panel]").forEach(panel => {
-      if (panel.getAttribute("aria-hidden") === "true") return;
-      panel.style.transform = "translate3d(0, 0, 0)";
-      panel.style.width = "100%";
-      panel.style.maxWidth = "100%";
-      panel.style.marginLeft = "0";
-      panel.style.marginRight = "0";
-      panel.style.left = "0";
-      panel.style.right = "0";
+    const tab = activeTab;
+    const id = requestAnimationFrame(() => {
+      host.querySelectorAll<HTMLElement>("[data-tab-panel]").forEach(panel => {
+        if (panel.getAttribute("aria-hidden") === "true") return;
+        panel.style.transform = "translate3d(0, 0, 0)";
+        panel.style.width = "100%";
+        panel.style.maxWidth = "100%";
+        panel.style.marginLeft = "0";
+        panel.style.marginRight = "0";
+        panel.style.left = "0";
+        panel.style.right = "0";
+      });
+      if (tab === "chat") applyNativeViewportFullBleed();
     });
-    if (activeTab === "chat") applyNativeViewportFullBleed();
+    return () => cancelAnimationFrame(id);
   }, [activeTab, dragIndex, settledIndex]);
 
   const displayIndex =
