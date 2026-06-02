@@ -512,15 +512,15 @@ function SecurityScreenShell({
   children: ReactNode;
 }) {
   return (
-    <div className="settings-screen-root min-h-full w-full overflow-x-hidden bg-background text-foreground pb-10" dir="ltr">
+    <div className="settings-screen-root min-h-full w-full overflow-x-hidden bg-background text-foreground pb-10" dir="rtl">
       <div className="sticky top-0 z-[10001] isolate bg-background px-4 pt-[max(0.75rem,var(--sat))] pb-3">
         <SlideDismissBackButton
           navScope="local"
           onDismiss={onBack}
           className="relative z-[10001] mb-1 inline-flex h-11 w-11 items-center justify-center rounded-full text-foreground hover:bg-accent"
-          aria-label="Back"
+          aria-label="رجوع"
         >
-          <ChevronLeft size={24} strokeWidth={2} className="pointer-events-none" />
+          <ArrowRight size={24} strokeWidth={2} className="pointer-events-none" />
         </SlideDismissBackButton>
         <h1 className="text-[32px] font-bold leading-tight tracking-tight text-foreground">{title}</h1>
       </div>
@@ -661,9 +661,9 @@ function SecuritySettingsPanel({ onBack }: { onBack: () => void }) {
 
   if (view === "changePassword") {
     return (
-      <SecurityScreenShell title="Change password" onBack={() => setView("menu")}>
+      <SecurityScreenShell title="تغيير كلمة المرور" onBack={() => setView("menu")}>
         <p className="mt-2 text-[14px] leading-5 text-muted-foreground">
-          Enter your current password, then choose a new one.
+          أدخل كلمة المرور الحالية ثم اختر كلمة مرور جديدة.
         </p>
         <div className="mt-4 space-y-3">
           <SecurityDarkInput
@@ -700,18 +700,18 @@ function SecuritySettingsPanel({ onBack }: { onBack: () => void }) {
 
   if (view === "twoFactor") {
     return (
-      <SecurityScreenShell title="Two-factor authentication" onBack={() => setView("menu")}>
+      <SecurityScreenShell title="التحقق بخطوتين" onBack={() => setView("menu")}>
         <p className="mt-2 text-[14px] leading-5 text-muted-foreground">
-          Add an extra layer of security with an email code at each sign-in.
+          أضف طبقة حماية إضافية عبر رمز بريد إلكتروني عند كل تسجيل دخول.
         </p>
         <div className="mt-4 space-y-4">
-          {loading ? <p className="text-sm text-muted-foreground">Loading…</p> : null}
+          {loading ? <p className="text-sm text-muted-foreground">جاري التحميل…</p> : null}
           {!loading && summary ? (
             <div className="overflow-hidden rounded-2xl border border-border bg-card px-4 py-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-[16px] font-medium text-foreground">Two-factor authentication</p>
-                  <p className="mt-1 text-[13px] text-muted-foreground">Email code on every login</p>
+                  <p className="text-[16px] font-medium text-foreground">التحقق بخطوتين</p>
+                  <p className="mt-1 text-[13px] text-muted-foreground">رمز بريد إلكتروني عند كل تسجيل دخول</p>
                 </div>
                 <IgToggle
                   on={!!summary.twoFactorEnabled}
@@ -755,13 +755,13 @@ function SecuritySettingsPanel({ onBack }: { onBack: () => void }) {
 
   if (view === "savedLogin") {
     return (
-      <SecurityScreenShell title="Saved login" onBack={() => setView("menu")}>
+      <SecurityScreenShell title="تسجيلات الدخول المحفوظة" onBack={() => setView("menu")}>
         <p className="mt-2 text-[14px] leading-5 text-muted-foreground">
-          Accounts saved on this device that can sign in to your profile.
+          الحسابات المحفوظة على هذا الجهاز والقابلة لتسجيل الدخول.
         </p>
         <div className={accountsCenterCardClass}>
           {savedAccounts.length === 0 ? (
-            <p className="px-4 py-6 text-center text-sm text-muted-foreground">No saved accounts on this device.</p>
+            <p className="px-4 py-6 text-center text-sm text-muted-foreground">لا توجد حسابات محفوظة على هذا الجهاز.</p>
           ) : (
             savedAccounts.map((s, i) => (
               <div
@@ -781,11 +781,11 @@ function SecuritySettingsPanel({ onBack }: { onBack: () => void }) {
                 </div>
                 {s.userId === me.id ? (
                   <span className="shrink-0 rounded-full bg-[#0095F6]/20 px-2.5 py-1 text-[11px] font-semibold text-[#0095F6]">
-                    Active
+                    نشط
                   </span>
                 ) : (
                   <span className="shrink-0 rounded-full bg-secondary px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
-                    Saved
+                    محفوظ
                   </span>
                 )}
               </div>
@@ -798,29 +798,29 @@ function SecuritySettingsPanel({ onBack }: { onBack: () => void }) {
 
   if (view === "whereLoggedIn") {
     return (
-      <SecurityScreenShell title="Where you&apos;re logged in" onBack={() => setView("menu")}>
+      <SecurityScreenShell title="أماكن تسجيل دخولك" onBack={() => setView("menu")}>
         <p className="mt-2 text-[14px] leading-5 text-muted-foreground">
-          Devices and browsers currently trusted for your account.
+          الأجهزة والمتصفحات الموثوقة حاليًا لحسابك.
         </p>
         <div className="mt-4 space-y-4">
-          {loading ? <p className="text-sm text-muted-foreground">Loading…</p> : null}
+          {loading ? <p className="text-sm text-muted-foreground">جاري التحميل…</p> : null}
           {!loading && summary ? (
             <>
               <div className="overflow-hidden rounded-2xl border border-border bg-card px-4 py-4">
                 <p className="text-[16px] font-medium text-foreground flex items-center gap-2">
                   <Smartphone className="h-4 w-4" />
-                  Trusted devices ({summary.trustedDeviceCount ?? 0})
+                  الأجهزة الموثوقة ({summary.trustedDeviceCount ?? 0})
                 </p>
                 {(summary.trustedDevices ?? []).length > 0 ? (
                   <ul className="mt-3 space-y-2">
                     {(summary.trustedDevices ?? []).map((d, i) => (
                       <li key={i} className="text-[13px] text-muted-foreground">
-                        {d.label} · Last seen {new Date(d.lastSeenAt).toLocaleDateString()}
+                        {d.label} · آخر ظهور {new Date(d.lastSeenAt).toLocaleDateString()}
                       </li>
                     ))}
                   </ul>
                 ) : (
-                  <p className="mt-2 text-[13px] text-muted-foreground">No trusted devices yet.</p>
+                  <p className="mt-2 text-[13px] text-muted-foreground">لا توجد أجهزة موثوقة بعد.</p>
                 )}
               </div>
               <SecurityDarkInput
@@ -836,7 +836,7 @@ function SecuritySettingsPanel({ onBack }: { onBack: () => void }) {
                 onClick={() => void revokeDevices()}
                 className="w-full rounded-xl border border-red-500/30 bg-red-500/10 py-2.5 text-sm font-semibold text-red-400 disabled:opacity-50"
               >
-                Remove all trusted devices
+                إزالة كل الأجهزة الموثوقة
               </button>
             </>
           ) : null}
@@ -854,7 +854,7 @@ function SecuritySettingsPanel({ onBack }: { onBack: () => void }) {
     return (
       <SecurityScreenShell title={comingSoonTitle} onBack={() => setView("menu")}>
         <div className="mt-8 flex flex-col items-center gap-4 px-4 text-center">
-          <p className="text-[18px] font-semibold text-foreground">Coming soon</p>
+          <p className="text-[18px] font-semibold text-foreground">قريبًا</p>
           <p className="text-[14px] leading-6 text-muted-foreground">{t("comingSoonPanel")}</p>
         </div>
       </SecurityScreenShell>
@@ -862,34 +862,34 @@ function SecuritySettingsPanel({ onBack }: { onBack: () => void }) {
   }
 
   return (
-    <SecurityScreenShell title="Password and security" onBack={onBack}>
-      <p className="mt-4 text-[17px] font-bold leading-snug text-foreground">Login & recovery</p>
+    <SecurityScreenShell title="كلمة المرور والأمان" onBack={onBack}>
+      <p className="mt-4 text-[17px] font-bold leading-snug text-foreground">تسجيل الدخول والاسترداد</p>
       <p className="mt-1.5 text-[14px] leading-5 text-muted-foreground">
-        Manage your passwords, login preferences and recovery methods.
+        إدارة كلمات المرور وتفضيلات الدخول وطرق الاسترداد.
       </p>
       <div className={`mt-3 ${accountsCenterCardClass}`}>
-        <SecurityMenuRow label="Change password" onClick={() => { setMsg(null); setView("changePassword"); }} />
-        <SecurityMenuRow label="Two-factor authentication" onClick={() => { setMsg(null); setPwd(""); setView("twoFactor"); }} />
-        <SecurityMenuRow label="Verification selfie" onClick={() => setView("verificationSelfie")} />
-        <SecurityMenuRow label="Saved login" onClick={() => setView("savedLogin")} />
+        <SecurityMenuRow label="تغيير كلمة المرور" onClick={() => { setMsg(null); setView("changePassword"); }} />
+        <SecurityMenuRow label="التحقق بخطوتين" onClick={() => { setMsg(null); setPwd(""); setView("twoFactor"); }} />
+        <SecurityMenuRow label="سلفي التوثيق" onClick={() => setView("verificationSelfie")} />
+        <SecurityMenuRow label="تسجيلات الدخول المحفوظة" onClick={() => setView("savedLogin")} />
       </div>
 
-      <p className="mt-6 text-[17px] font-bold leading-snug text-foreground">Security checks</p>
+      <p className="mt-6 text-[17px] font-bold leading-snug text-foreground">فحوصات الأمان</p>
       <p className="mt-1.5 text-[14px] leading-5 text-muted-foreground">
-        Review security issues by running checks across apps, devices and emails sent.
+        راجع مشكلات الأمان عبر فحص التطبيقات والأجهزة ورسائل البريد.
       </p>
       <div className={`mt-3 ${accountsCenterCardClass}`}>
-        <SecurityMenuRow label="Where you&apos;re logged in" onClick={() => { setMsg(null); setPwd(""); setView("whereLoggedIn"); }} />
+        <SecurityMenuRow label="أماكن تسجيل دخولك" onClick={() => { setMsg(null); setPwd(""); setView("whereLoggedIn"); }} />
         <SecurityMenuRow
-          label="Recent emails"
-          onClick={() => openComingSoon("Recent emails")}
+          label="رسائل البريد الأخيرة"
+          onClick={() => openComingSoon("رسائل البريد الأخيرة")}
           trailing={
             <span className="flex h-5 w-5 items-center justify-center rounded-md bg-gradient-to-br from-[#f58529] via-[#dd2a7b] to-[#8134af] text-[10px] font-bold text-white">
               IG
             </span>
           }
         />
-        <SecurityMenuRow label="Security Checkup" onClick={() => openComingSoon("Security Checkup")} />
+        <SecurityMenuRow label="فحص الأمان" onClick={() => openComingSoon("فحص الأمان")} />
       </div>
     </SecurityScreenShell>
   );
@@ -1277,7 +1277,7 @@ export function SettingsScreen({
               "absolute flex w-full flex-col overflow-hidden border border-border bg-background text-foreground shadow-2xl",
               nativeShell
                 ? "inset-0 max-w-none rounded-none"
-                : "inset-x-0 bottom-0 top-[max(0.75rem,var(--sat))] mx-auto max-w-md rounded-t-[28px]",
+                : "inset-x-0 bottom-0 top-0 mx-auto max-w-md rounded-t-[28px]",
             )}
             style={{
               transform: `translate3d(0, ${Math.max(0, accountsCenterDragY)}px, 0)`,
