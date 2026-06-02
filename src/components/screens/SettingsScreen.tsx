@@ -1277,7 +1277,7 @@ export function SettingsScreen({
               "absolute flex w-full flex-col overflow-hidden border border-border bg-background text-foreground shadow-2xl",
               nativeShell
                 ? "inset-0 max-w-none rounded-none"
-                : "inset-x-0 bottom-0 top-0 mx-auto max-w-md rounded-t-[28px]",
+                : "inset-x-0 bottom-0 top-[max(3.5rem,var(--sat))] mx-auto max-w-md rounded-t-[28px]",
             )}
             style={{
               transform: `translate3d(0, ${Math.max(0, accountsCenterDragY)}px, 0)`,
@@ -1331,7 +1331,7 @@ export function SettingsScreen({
           >
             <div
               data-accounts-center-drag-handle
-              className="sticky top-0 z-10 shrink-0 border-b border-border bg-background px-4 pb-3 pt-[max(0.75rem,var(--sat))]"
+              className="sticky top-0 z-10 shrink-0 border-b border-border bg-background px-4 pb-3 pt-[max(1.1rem,var(--sat))]"
             >
               <div className="mx-auto mb-3 h-1.5 w-14 rounded-full bg-muted-foreground/30" />
               <div className="relative text-center">
@@ -1348,7 +1348,7 @@ export function SettingsScreen({
                   <span className="text-xs font-medium">رجوع</span>
                 </button>
                 <p className="text-sm font-semibold text-muted-foreground">ريتويت</p>
-                <h3 className="mt-2 text-[34px] font-bold leading-none text-foreground">إدارة الحساب</h3>
+                <h3 className="mt-2.5 text-[34px] font-bold leading-tight text-foreground">إدارة الحساب</h3>
                 <p className="mx-auto mt-3 max-w-[92%] text-sm leading-6 text-muted-foreground">
                   إدارة التجارب المتصلة وإعدادات الحساب عبر ريتويت.
                 </p>
