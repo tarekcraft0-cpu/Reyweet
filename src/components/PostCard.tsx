@@ -101,16 +101,14 @@ function PostCardInner({
     notifyGuestActionBlocked();
     return true;
   };
-  const liked = currentUser ? postLikes.includes(currentUser.id) : false;
-  const reposted = currentUser ? postReposts.includes(currentUser.id) : false;
-  if (!author) return null;
 
-  const openAuthorProfile = (userId: string) => {
-    const ctx: ProfileReturnContext | undefined = profileReturnTab ? { tab: profileReturnTab } : undefined;
-    startTransition(() => onOpenProfile(userId, ctx));
-  };
-
-  const postKindAr = post.type === "tweet" ? "التغريدة" : post.type === "reel" ? "الريلز" : "المنشور";
+  const openAuthorProfile = useCallback(
+    (userId: string) => {
+      const ctx: ProfileReturnContext | undefined = profileReturnTab ? { tab: profileReturnTab } : undefined;
+      startTransition(() => onOpenProfile(userId, ctx));
+    },
+    [onOpenProfile, profileReturnTab],
+  );
 
   const renderedPostText = useMemo(() => {
     if (!post.text) return null;
@@ -125,7 +123,13 @@ function PostCardInner({
         </span>
       ),
     });
-  }, [post.text, users]);
+  }, [post.text, users, openAuthorProfile]);
+
+  const liked = currentUser ? postLikes.includes(currentUser.id) : false;
+  const reposted = currentUser ? postReposts.includes(currentUser.id) : false;
+  if (!author) return null;
+
+  const postKindAr = post.type === "tweet" ? "التغريدة" : post.type === "reel" ? "الريلز" : "المنشور";
 
   const notesOverlay =
     feedNotes.length > 0 ? (

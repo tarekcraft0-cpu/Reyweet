@@ -29,18 +29,10 @@ export function VerificationPerksSettings({ onNeedSubscription }: Props) {
   const [pinPostId, setPinPostId] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
 
-  if (!currentUser) return null;
-  const ent = getUserEntitlements(currentUser);
-  const premium = ent.isSubscribed || ent.isVerified;
-
-  if (!premium) return null;
-
-  const myPosts = state.posts.filter(
-    p => p.userId === currentUser.id && (p.type === "post" || p.type === "tweet"),
-  );
-
   useEffect(() => {
     if (!currentUser) return;
+    const ent = getUserEntitlements(currentUser);
+    if (!ent.isSubscribed && !ent.isVerified) return;
     const saved = loadQuickReplies(currentUser.id);
     if (saved.length) setQuickReplies(saved);
     else {
@@ -54,6 +46,16 @@ export function VerificationPerksSettings({ onNeedSubscription }: Props) {
     setScheduled(loadScheduledPosts(currentUser.id));
     setPinPostId(currentUser.pinnedPostId || "");
   }, [currentUser?.id, currentUser?.pinnedPostId]);
+
+  if (!currentUser) return null;
+  const ent = getUserEntitlements(currentUser);
+  const premium = ent.isSubscribed || ent.isVerified;
+
+  if (!premium) return null;
+
+  const myPosts = state.posts.filter(
+    p => p.userId === currentUser.id && (p.type === "post" || p.type === "tweet"),
+  );
 
   const persistProfile = (patch: Partial<User>) => {
     updateProfile(patch, { commitRemote: apiBackendEnabled() && !!getApiToken() });
