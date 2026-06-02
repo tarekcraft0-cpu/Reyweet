@@ -1137,6 +1137,26 @@ export function App() {
     viewProfileId,
   ]);
 
+  const nativeShell = isNativeCapacitorShell();
+
+  /** قبل أي return — وإلا #310 بعد تسجيل الدخول (المزيد من hooks من Render السابق) */
+  useEffect(() => {
+    if (typeof document === "undefined" || !currentUser) return;
+    const root = document.documentElement;
+    if (nativeShell && tab === "chat") {
+      root.classList.add("retweet-chat-tab-active");
+      const id = requestAnimationFrame(() => {
+        void import("@/lib/nativeViewportLayout").then(m => m.applyNativeViewportFullBleed());
+      });
+      return () => {
+        cancelAnimationFrame(id);
+        root.classList.remove("retweet-chat-tab-active");
+      };
+    }
+    root.classList.remove("retweet-chat-tab-active");
+    return () => root.classList.remove("retweet-chat-tab-active");
+  }, [tab, nativeShell, currentUser?.id]);
+
   if (!currentUser) {
     if (getApiToken() && apiBackendEnabled()) {
       return (
@@ -1251,24 +1271,6 @@ export function App() {
     storyGalleryOpen;
   const showBottomNav = !hideBottomBar || chatExitNavActive;
   const banOverlayActive = !!(banInfo && banPresentation === "overlay" && !isGuest);
-  const nativeShell = isNativeCapacitorShell();
-
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-    const root = document.documentElement;
-    if (nativeShell && tab === "chat") {
-      root.classList.add("retweet-chat-tab-active");
-      const id = requestAnimationFrame(() => {
-        void import("@/lib/nativeViewportLayout").then(m => m.applyNativeViewportFullBleed());
-      });
-      return () => {
-        cancelAnimationFrame(id);
-        root.classList.remove("retweet-chat-tab-active");
-      };
-    }
-    root.classList.remove("retweet-chat-tab-active");
-    return () => root.classList.remove("retweet-chat-tab-active");
-  }, [tab, nativeShell]);
 
   const appShellHeight = nativeShell
     ? "h-full max-h-full min-h-0"
