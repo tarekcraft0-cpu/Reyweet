@@ -54,7 +54,6 @@ import {
   LogOut,
   MessageCircle,
   Moon,
-  X,
   Shield,
   ShieldCheck,
   Smartphone,
@@ -1330,24 +1329,28 @@ export function SettingsScreen({
               setAccountsCenterDragY(0);
             }}
           >
-            <div data-accounts-center-drag-handle className="shrink-0 px-4 pb-3 pt-4">
+            <div
+              data-accounts-center-drag-handle
+              className="sticky top-0 z-10 shrink-0 border-b border-border bg-background px-4 pb-3 pt-[max(0.75rem,var(--sat))]"
+            >
               <div className="mx-auto mb-3 h-1.5 w-14 rounded-full bg-muted-foreground/30" />
               <div className="relative text-center">
                 <button
                   type="button"
-                  className="absolute start-0 top-0 rounded-full p-2 text-foreground hover:bg-accent"
+                  className="absolute start-0 top-0 flex items-center gap-1 rounded-full p-2 text-foreground hover:bg-accent"
                   onClick={() => {
                     setAccountsCenterOpen(false);
                     setSubViewReturnToAccountsCenter(false);
                   }}
-                  aria-label="إغلاق"
+                  aria-label="رجوع"
                 >
-                  <X size={22} />
+                  <ArrowRight size={20} />
+                  <span className="text-xs font-medium">رجوع</span>
                 </button>
-                <p className="text-sm font-semibold text-muted-foreground">Retweet</p>
-                <h3 className="mt-2 text-[34px] font-bold leading-none text-foreground">Accounts Center</h3>
+                <p className="text-sm font-semibold text-muted-foreground">ريتويت</p>
+                <h3 className="mt-2 text-[34px] font-bold leading-none text-foreground">إدارة الحساب</h3>
                 <p className="mx-auto mt-3 max-w-[92%] text-sm leading-6 text-muted-foreground">
-                  Manage your connected experiences and account settings across Retweet.
+                  إدارة التجارب المتصلة وإعدادات الحساب عبر ريتويت.
                 </p>
               </div>
             </div>
@@ -1356,8 +1359,8 @@ export function SettingsScreen({
               <div className={accountsCenterCardClass}>
                 <AccountsCenterRow
                   icon={UserCircle}
-                  label="Profiles and personal details"
-                  subtitle="2 profiles"
+                  label="الملفات الشخصية والتفاصيل"
+                  subtitle="٢ ملفات شخصية"
                   onClick={() => openSubViewFromAccountsCenter("accountInfo")}
                 />
               </div>
@@ -1365,34 +1368,34 @@ export function SettingsScreen({
               <div className={`mt-3 ${accountsCenterCardClass}`}>
                 <AccountsCenterRow
                   icon={ShieldCheck}
-                  label="Password and security"
+                  label="كلمة المرور والأمان"
                   onClick={() =>
                     openSubViewFromAccountsCenter(apiBackendEnabled() ? "security" : "changePwd")
                   }
                 />
                 <AccountsCenterRow
                   icon={UsersRound}
-                  label="Connected experiences"
+                  label="التجارب المتصلة"
                   onClick={() => openSubViewFromAccountsCenter("closeFriends")}
                 />
                 <AccountsCenterRow
                   icon={Info}
-                  label="Your information and permissions"
+                  label="معلوماتك والأذونات"
                   onClick={() => openSubViewFromAccountsCenter("accountInfo")}
                 />
                 <AccountsCenterRow
                   icon={Bell}
-                  label="Ad preferences"
+                  label="تفضيلات الإعلانات"
                   onClick={() => openSubViewFromAccountsCenter("notifications")}
                 />
                 <AccountsCenterRow
                   icon={Bookmark}
-                  label="Retweet Pay"
+                  label="ريتويت باي"
                   onClick={() => openSubViewFromAccountsCenter("saved")}
                 />
                 <AccountsCenterRow
                   icon={BadgeCheck}
-                  label="Subscriptions"
+                  label="الاشتراكات"
                   onClick={() => openVerificationFlow(true)}
                 />
               </div>
@@ -1401,7 +1404,7 @@ export function SettingsScreen({
                 <div className={`mt-3 ${accountsCenterCardClass}`}>
                   <AccountsCenterRow
                     icon={Users}
-                    label="Manage accounts"
+                    label="إدارة الحسابات"
                     onClick={() => {
                       setAccountsCenterOpen(false);
                       setSubViewReturnToAccountsCenter(false);
@@ -1411,7 +1414,7 @@ export function SettingsScreen({
                 </div>
               ) : null}
 
-              <p className="mt-6 text-[26px] font-bold leading-none text-foreground">More from Retweet</p>
+              <p className="mt-6 text-[26px] font-bold leading-none text-foreground">المزيد من ريتويت</p>
               <div className="mt-3 grid grid-cols-2 gap-3">
                 <button
                   type="button"
@@ -1419,7 +1422,7 @@ export function SettingsScreen({
                   onClick={() => openVerificationFlow(true)}
                 >
                   <BadgeCheck size={24} className="mb-3 text-blue-400" />
-                  <div className="text-sm font-semibold text-foreground">Retweet Verified</div>
+                  <div className="text-sm font-semibold text-foreground">توثيق ريتويت</div>
                 </button>
                 <button
                   type="button"
@@ -1427,7 +1430,7 @@ export function SettingsScreen({
                   onClick={() => openSubViewFromAccountsCenter("timeManagement")}
                 >
                   <Globe size={24} className="mb-3 text-sky-300" />
-                  <div className="text-sm font-semibold text-foreground">AI Glasses</div>
+                  <div className="text-sm font-semibold text-foreground">نظارات الذكاء</div>
                 </button>
               </div>
 

@@ -78,7 +78,7 @@ function TierCard({
 const CAROUSEL_GAP = 14;
 const CAROUSEL_SLIDE_RATIO = 0.88;
 /** RTL: سحب من اليمين→اليسار = الباقة على يمين الشاشة، من اليسار→اليمين = على اليسار */
-const SWIPE_COMMIT_PX = 48;
+const SWIPE_COMMIT_PX = 36;
 
 function TierSwipeCarousel({
   index,
@@ -131,10 +131,10 @@ function TierSwipeCarousel({
 
   const finishDrag = (clientX: number) => {
     const dx = clientX - dragRef.current.startX;
-    const threshold = Math.max(SWIPE_COMMIT_PX, layout.step * 0.14);
+    const threshold = Math.max(SWIPE_COMMIT_PX, layout.step * 0.1);
     let next = dragRef.current.startIndex;
-    if (dx < -threshold) next = Math.max(0, next - 1);
-    else if (dx > threshold) next = Math.min(maxIndex, next + 1);
+    if (dx < -threshold) next = Math.min(maxIndex, next + 1);
+    else if (dx > threshold) next = Math.max(0, next - 1);
     setDragPx(0);
     setDragging(false);
     dragRef.current.active = false;
@@ -164,9 +164,9 @@ function TierSwipeCarousel({
     let dx = e.clientX - dragRef.current.startX;
     const atStart = dragRef.current.startIndex <= 0;
     const atEnd = dragRef.current.startIndex >= maxIndex;
-    if (atStart && dx < 0) dx *= 0.22;
-    if (atEnd && dx > 0) dx *= 0.22;
-    setDragPx(-dx);
+    if (atStart && dx > 0) dx *= 0.24;
+    if (atEnd && dx < 0) dx *= 0.24;
+    setDragPx(dx);
   };
 
   const onPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
@@ -202,7 +202,7 @@ function TierSwipeCarousel({
             transform: `translate3d(${translateX}px, 0, 0)`,
             transition: dragging
               ? "none"
-              : "transform 380ms cubic-bezier(0.22, 1, 0.36, 1), opacity 120ms ease",
+              : "transform 320ms cubic-bezier(0.2, 0.9, 0.2, 1), opacity 120ms ease",
           }}
         >
           {children.map((child, i) => (
