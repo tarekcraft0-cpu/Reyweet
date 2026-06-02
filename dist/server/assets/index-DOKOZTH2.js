@@ -1,10 +1,10 @@
-import { r as reactExports, a2 as getAugmentedNamespace, S as getDefaultExportFromCjs, W as jsxRuntimeExports, V as React__default, a3 as React } from "./server-DG-COnL2.js";
+import { r as reactExports, a2 as getAugmentedNamespace, S as getDefaultExportFromCjs, W as jsxRuntimeExports, V as React__default, a3 as React } from "./server-CwkBbFjQ.js";
 import require$$0 from "fs";
 import require$$1 from "url";
-import { n as notImplementedClass, a as notImplemented } from "./worker-entry-UWf-lzxI.js";
+import { n as notImplementedClass, a as notImplemented } from "./worker-entry-B0L4pACP.js";
 import require$$3 from "http";
 import require$$4 from "https";
-import { r as reactDomExports, R as ReactDOM } from "./router-BuZII3iJ.js";
+import { r as reactDomExports, R as ReactDOM } from "./router-CFFoT6fT.js";
 import require$$0$1 from "util";
 import require$$1$1 from "stream";
 import require$$1$2 from "zlib";
@@ -567,14 +567,26 @@ function isLanOrLocalHostname(hostname) {
   return false;
 }
 function isNativeCapacitorShell() {
+  try {
+    if (false) ;
+  } catch {
+  }
   if (typeof window === "undefined") return false;
   const w = window;
   if (w.__RETWEET_NATIVE_SHELL__ === true) return true;
+  if (w.__RETWEET_NO_SELECT_BOOT__ === true) return true;
   try {
-    return w.Capacitor?.isNativePlatform?.() === true;
+    if (w.Capacitor?.isNativePlatform?.() === true) return true;
   } catch {
-    return false;
   }
+  try {
+    const html = document.documentElement;
+    if (html.classList.contains("retweet-native-shell") || html.getAttribute("data-native-app") === "1") {
+      return true;
+    }
+  } catch {
+  }
+  return false;
 }
 function isExpiredTunnelApiUrl(url2) {
   const u = url2.trim();
@@ -7676,6 +7688,48 @@ function subscribeRealtimeEvents(onEvent) {
   };
 }
 const USER_REGISTERED_WINDOW_EVENT = "retweet-user-registered";
+function isCapacitorBundledApp() {
+  try {
+    return false;
+  } catch {
+    return false;
+  }
+}
+function detectNativeShell() {
+  if (isCapacitorBundledApp()) return true;
+  if (typeof window === "undefined") return false;
+  const w = window;
+  if (w.__RETWEET_NATIVE_SHELL__ === true) return true;
+  if (w.__RETWEET_NO_SELECT_BOOT__ === true) return true;
+  try {
+    if (w.Capacitor?.isNativePlatform?.() === true) return true;
+  } catch {
+  }
+  try {
+    const html = document.documentElement;
+    if (html.classList.contains("retweet-native-shell") || html.getAttribute("data-native-app") === "1") {
+      return true;
+    }
+  } catch {
+  }
+  return false;
+}
+function isNativeMobileApp() {
+  return detectNativeShell();
+}
+let quietUntil = 0;
+function beginNativePostLoginQuietPeriod(ms = 4e3) {
+  if (!isNativeMobileApp() || typeof performance === "undefined") return;
+  quietUntil = Math.max(quietUntil, performance.now() + ms);
+}
+function isNativePostLoginQuietPeriod() {
+  if (!isNativeMobileApp() || typeof performance === "undefined") return false;
+  return performance.now() < quietUntil;
+}
+function allowNativeLayoutResizeListeners() {
+  if (!isNativeMobileApp()) return true;
+  return !isNativePostLoginQuietPeriod();
+}
 const AUTH_FEED_REFRESH_EVENT = "retweet-auth-feed-refresh";
 function requestAuthFeedRefresh() {
   if (typeof window === "undefined") return;
@@ -10204,43 +10258,51 @@ function AppProvider({
       return;
     }
     let cancelled = false;
+    let debounceTimer = 0;
     const run = () => {
       if (cancelled) return;
       perfMark("homeFeedIndex-start");
-      const next = computeHomeFeedPostIds(stateRef.current, me.id, me);
+      const snap = stateRef.current;
+      const computed = computeHomeFeedPostIds(snap, me.id, me);
       perfMark("homeFeedIndex-end");
-      setHomeFeedPosts(
-        (prev) => homeFeedSignature(prev) === homeFeedSignature(next) ? prev : next
-      );
+      setHomeFeedPosts((prev) => {
+        const sigPrev = homeFeedSignature(prev);
+        const sigNext = homeFeedSignature(computed);
+        if (sigPrev !== sigNext) return computed;
+        if (!prev.length) return prev;
+        const byId = new Map((snap.posts ?? []).map((p) => [p.id, p]));
+        let anyChanged = false;
+        const next = prev.map((p, i) => {
+          const fresh = byId.get(p.id) ?? computed[i];
+          if (!fresh || fresh.id !== p.id) return p;
+          if (fresh !== p) anyChanged = true;
+          return fresh;
+        });
+        return anyChanged ? next : prev;
+      });
     };
-    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
-      const id = window.requestIdleCallback(run, { timeout: 150 });
-      return () => {
-        cancelled = true;
-        window.cancelIdleCallback(id);
-      };
-    }
-    run();
+    const schedule = () => {
+      if (debounceTimer) window.clearTimeout(debounceTimer);
+      const delayMs = isNativeCapacitorShell() ? 400 : 0;
+      if (delayMs) {
+        debounceTimer = window.setTimeout(() => {
+          debounceTimer = 0;
+          run();
+        }, delayMs);
+        return;
+      }
+      if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+        window.requestIdleCallback(run, { timeout: 200 });
+        return;
+      }
+      run();
+    };
+    schedule();
     return () => {
       cancelled = true;
+      if (debounceTimer) window.clearTimeout(debounceTimer);
     };
-  }, [homeFeedSig, currentUser?.id]);
-  reactExports.useEffect(() => {
-    setHomeFeedPosts((prev) => {
-      if (!prev.length) return prev;
-      const byId = new Map((state2.posts ?? []).map((p) => [p.id, p]));
-      let changed = false;
-      const next = prev.map((p) => {
-        const u = byId.get(p.id);
-        if (u && u !== p) {
-          changed = true;
-          return u;
-        }
-        return p;
-      });
-      return changed ? next : prev;
-    });
-  }, [homeFeedPostsTouchSig]);
+  }, [homeFeedSig, homeFeedPostsTouchSig, currentUser?.id]);
   const signup = async (data) => {
     const pwdErrFirst = validateNewPasswordPlain(data.password);
     if (pwdErrFirst) return { ok: false, error: pwdErrFirst };
@@ -10267,6 +10329,7 @@ function AppProvider({
       const applied = await applyApiAuthSuccess(reg.token, reg.user, stateRef.current, adding);
       if (!applied.ok) return { ok: false, error: applied.error };
       setStateRaw(applied.state);
+      beginNativePostLoginQuietPeriod();
       void Promise.resolve().then(() => feedVisibility).then(({ requestAuthFeedRefresh: requestAuthFeedRefresh2 }) => requestAuthFeedRefresh2());
       return { ok: true, userId: reg.userId };
     }
@@ -10333,6 +10396,7 @@ function AppProvider({
       );
       if (!applied.ok) return { ok: false, error: applied.error };
       setStateRaw(applied.state);
+      beginNativePostLoginQuietPeriod();
       if (isBannedLogin && r2.banInfo) {
         dispatchAccountModeration({
           banInfo: r2.banInfo,
@@ -10384,6 +10448,7 @@ function AppProvider({
     );
     if (!applied.ok) return { ok: false, error: applied.error };
     setStateRaw(applied.state);
+    beginNativePostLoginQuietPeriod();
     if (isBannedLogin && r2.banInfo) {
       dispatchAccountModeration({
         banInfo: r2.banInfo,
@@ -13016,13 +13081,22 @@ function AppProvider({
   }, [refreshFeedFromServer]);
   reactExports.useEffect(() => {
     if (typeof window === "undefined") return;
+    let authFeedTimer = 0;
     const onAuthFeed = () => {
-      void refreshFeedFromServer();
-      refreshFromServer({ urgent: true });
+      if (authFeedTimer) window.clearTimeout(authFeedTimer);
+      const delayMs = isNativeCapacitorShell() ? 1e3 : 500;
+      authFeedTimer = window.setTimeout(() => {
+        authFeedTimer = 0;
+        void refreshFeedFromServer();
+        if (!isNativeCapacitorShell()) {
+          refreshFromServer({ urgent: true });
+        }
+      }, delayMs);
     };
     window.addEventListener(AUTH_FEED_REFRESH_EVENT, onAuthFeed);
     return () => {
       window.removeEventListener(AUTH_FEED_REFRESH_EVENT, onAuthFeed);
+      if (authFeedTimer) window.clearTimeout(authFeedTimer);
     };
   }, [refreshFromServer, refreshFeedFromServer]);
   const refreshSocialRelation = reactExports.useCallback(
@@ -19333,16 +19407,25 @@ function scheduleNativeViewportFromSafeArea() {
 function initNativeViewportLayout() {
   if (!isNativeCapacitorShell() || typeof window === "undefined" || booted$1) return;
   booted$1 = true;
-  bootGraceUntil = performance.now() + 900;
+  bootGraceUntil = performance.now() + 2200;
   scheduleNativeViewportFullBleed(true);
   window.setTimeout(() => scheduleNativeViewportFullBleed(true), 150);
-  window.addEventListener("resize", scheduleNativeViewportFromResize, { passive: true });
-  window.visualViewport?.addEventListener("resize", scheduleNativeViewportFromResize, {
-    passive: true
-  });
+  if (allowNativeLayoutResizeListeners()) {
+    window.addEventListener("resize", scheduleNativeViewportFromResize, { passive: true });
+    window.visualViewport?.addEventListener("resize", scheduleNativeViewportFromResize, {
+      passive: true
+    });
+  }
   window.addEventListener("retweet-safe-area-change", scheduleNativeViewportFromSafeArea, {
     passive: true
   });
+  window.setTimeout(() => {
+    if (!allowNativeLayoutResizeListeners()) return;
+    window.addEventListener("resize", scheduleNativeViewportFromResize, { passive: true });
+    window.visualViewport?.addEventListener("resize", scheduleNativeViewportFromResize, {
+      passive: true
+    });
+  }, 4500);
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") scheduleNativeViewportFullBleed(true);
   });
@@ -21997,1274 +22080,6 @@ function TabPanelShell({
     }
   ) });
 }
-function createLazyMeasurementsView(count2, flat, getItemKey) {
-  const cache2 = new Array(count2);
-  return new Proxy(cache2, {
-    get(target, prop, receiver) {
-      if (typeof prop === "string") {
-        const c = prop.charCodeAt(0);
-        if (c >= 48 && c <= 57) {
-          const i = +prop;
-          if (Number.isInteger(i) && i >= 0 && i < count2) {
-            let v = target[i];
-            if (!v) {
-              const s = flat[i * 2];
-              v = target[i] = {
-                index: i,
-                key: getItemKey(i),
-                start: s,
-                size: flat[i * 2 + 1],
-                end: s + flat[i * 2 + 1],
-                lane: 0
-              };
-            }
-            return v;
-          }
-        }
-        if (prop === "length") return count2;
-      }
-      return Reflect.get(target, prop, receiver);
-    }
-  });
-}
-function memo(getDeps, fn, opts) {
-  let deps = opts.initialDeps ?? [];
-  let result;
-  let isInitial = true;
-  function memoizedFunction() {
-    const newDeps = getDeps();
-    const depsChanged = newDeps.length !== deps.length || newDeps.some((dep, index2) => deps[index2] !== dep);
-    if (!depsChanged) {
-      return result;
-    }
-    deps = newDeps;
-    result = fn(...newDeps);
-    if ((opts == null ? void 0 : opts.onChange) && !(isInitial && opts.skipInitialOnChange)) {
-      opts.onChange(result);
-    }
-    isInitial = false;
-    return result;
-  }
-  memoizedFunction.updateDeps = (newDeps) => {
-    deps = newDeps;
-  };
-  return memoizedFunction;
-}
-function notUndefined(value2, msg) {
-  if (value2 === void 0) {
-    throw new Error(`Unexpected undefined${""}`);
-  } else {
-    return value2;
-  }
-}
-const approxEqual = (a, b) => Math.abs(a - b) < 1.01;
-const debounce = (targetWindow, fn, ms) => {
-  let timeoutId;
-  return function(...args) {
-    targetWindow.clearTimeout(timeoutId);
-    timeoutId = targetWindow.setTimeout(() => fn.apply(this, args), ms);
-  };
-};
-let _isIOSResult;
-const isIOSWebKit = () => {
-  if (_isIOSResult !== void 0) return _isIOSResult;
-  if (typeof navigator === "undefined") return _isIOSResult = false;
-  if (/iP(hone|od|ad)/.test(navigator.userAgent)) return _isIOSResult = true;
-  const mtp = navigator.maxTouchPoints;
-  return _isIOSResult = navigator.platform === "MacIntel" && mtp !== void 0 && mtp > 0;
-};
-const getRect = (element) => {
-  const { offsetWidth, offsetHeight } = element;
-  return { width: offsetWidth, height: offsetHeight };
-};
-const defaultKeyExtractor = (index2) => index2;
-const defaultRangeExtractor = (range) => {
-  const start = Math.max(range.startIndex - range.overscan, 0);
-  const end = Math.min(range.endIndex + range.overscan, range.count - 1);
-  const len = end - start + 1;
-  const arr = new Array(len);
-  for (let i = 0; i < len; i++) {
-    arr[i] = start + i;
-  }
-  return arr;
-};
-const observeElementRect = (instance, cb) => {
-  const element = instance.scrollElement;
-  if (!element) {
-    return;
-  }
-  const targetWindow = instance.targetWindow;
-  if (!targetWindow) {
-    return;
-  }
-  const handler = (rect) => {
-    const { width, height } = rect;
-    cb({ width: Math.round(width), height: Math.round(height) });
-  };
-  handler(getRect(element));
-  if (!targetWindow.ResizeObserver) {
-    return () => {
-    };
-  }
-  const observer = new targetWindow.ResizeObserver((entries) => {
-    const run = () => {
-      const entry = entries[0];
-      if (entry == null ? void 0 : entry.borderBoxSize) {
-        const box = entry.borderBoxSize[0];
-        if (box) {
-          handler({ width: box.inlineSize, height: box.blockSize });
-          return;
-        }
-      }
-      handler(getRect(element));
-    };
-    instance.options.useAnimationFrameWithResizeObserver ? requestAnimationFrame(run) : run();
-  });
-  observer.observe(element, { box: "border-box" });
-  return () => {
-    observer.unobserve(element);
-  };
-};
-const addEventListenerOptions = {
-  passive: true
-};
-const supportsScrollend = typeof window == "undefined" ? true : "onscrollend" in window;
-const observeOffset = (instance, cb, readOffset) => {
-  const element = instance.scrollElement;
-  if (!element) {
-    return;
-  }
-  const targetWindow = instance.targetWindow;
-  if (!targetWindow) {
-    return;
-  }
-  const registerScrollendEvent = instance.options.useScrollendEvent && supportsScrollend;
-  let offset = 0;
-  const fallback = registerScrollendEvent ? null : debounce(
-    targetWindow,
-    () => cb(offset, false),
-    instance.options.isScrollingResetDelay
-  );
-  const createHandler = (isScrolling) => () => {
-    offset = readOffset(element);
-    fallback == null ? void 0 : fallback();
-    cb(offset, isScrolling);
-  };
-  const handler = createHandler(true);
-  const endHandler = createHandler(false);
-  element.addEventListener("scroll", handler, addEventListenerOptions);
-  if (registerScrollendEvent) {
-    element.addEventListener("scrollend", endHandler, addEventListenerOptions);
-  }
-  return () => {
-    element.removeEventListener("scroll", handler);
-    if (registerScrollendEvent) {
-      element.removeEventListener("scrollend", endHandler);
-    }
-  };
-};
-const observeElementOffset = (instance, cb) => observeOffset(instance, cb, (el) => {
-  const { horizontal, isRtl } = instance.options;
-  return horizontal ? el.scrollLeft * (isRtl && -1 || 1) : el.scrollTop;
-});
-const measureElement = (element, entry, instance) => {
-  if (entry == null ? void 0 : entry.borderBoxSize) {
-    const box = entry.borderBoxSize[0];
-    if (box) {
-      const size = Math.round(
-        box[instance.options.horizontal ? "inlineSize" : "blockSize"]
-      );
-      return size;
-    }
-  }
-  return element[instance.options.horizontal ? "offsetWidth" : "offsetHeight"];
-};
-const scrollWithAdjustments = (offset, {
-  adjustments = 0,
-  behavior
-}, instance) => {
-  var _a, _b;
-  (_b = (_a = instance.scrollElement) == null ? void 0 : _a.scrollTo) == null ? void 0 : _b.call(_a, {
-    [instance.options.horizontal ? "left" : "top"]: offset + adjustments,
-    behavior
-  });
-};
-const elementScroll = scrollWithAdjustments;
-class Virtualizer {
-  constructor(opts) {
-    this.unsubs = [];
-    this.scrollElement = null;
-    this.targetWindow = null;
-    this.isScrolling = false;
-    this.scrollState = null;
-    this.measurementsCache = [];
-    this._flatMeasurements = null;
-    this.itemSizeCache = /* @__PURE__ */ new Map();
-    this.itemSizeCacheVersion = 0;
-    this.laneAssignments = /* @__PURE__ */ new Map();
-    this.pendingMin = null;
-    this.prevLanes = void 0;
-    this.lanesChangedFlag = false;
-    this.lanesSettling = false;
-    this.pendingScrollAnchor = null;
-    this.scrollRect = null;
-    this.scrollOffset = null;
-    this.scrollDirection = null;
-    this.scrollAdjustments = 0;
-    this._iosDeferredAdjustment = 0;
-    this._iosTouching = false;
-    this._iosJustTouchEnded = false;
-    this._iosTouchEndTimerId = null;
-    this._intendedScrollOffset = null;
-    this.elementsCache = /* @__PURE__ */ new Map();
-    this.now = () => {
-      var _a, _b, _c;
-      return ((_c = (_b = (_a = this.targetWindow) == null ? void 0 : _a.performance) == null ? void 0 : _b.now) == null ? void 0 : _c.call(_b)) ?? Date.now();
-    };
-    this.observer = /* @__PURE__ */ (() => {
-      let _ro = null;
-      const get = () => {
-        if (_ro) {
-          return _ro;
-        }
-        if (!this.targetWindow || !this.targetWindow.ResizeObserver) {
-          return null;
-        }
-        return _ro = new this.targetWindow.ResizeObserver((entries) => {
-          entries.forEach((entry) => {
-            const run = () => {
-              const node = entry.target;
-              const index2 = this.indexFromElement(node);
-              if (!node.isConnected) {
-                this.observer.unobserve(node);
-                for (const [cacheKey2, cachedNode] of this.elementsCache) {
-                  if (cachedNode === node) {
-                    this.elementsCache.delete(cacheKey2);
-                    break;
-                  }
-                }
-                return;
-              }
-              if (this.shouldMeasureDuringScroll(index2)) {
-                this.resizeItem(
-                  index2,
-                  this.options.measureElement(node, entry, this)
-                );
-              }
-            };
-            this.options.useAnimationFrameWithResizeObserver ? requestAnimationFrame(run) : run();
-          });
-        });
-      };
-      return {
-        disconnect: () => {
-          var _a;
-          (_a = get()) == null ? void 0 : _a.disconnect();
-          _ro = null;
-        },
-        observe: (target) => {
-          var _a;
-          return (_a = get()) == null ? void 0 : _a.observe(target, { box: "border-box" });
-        },
-        unobserve: (target) => {
-          var _a;
-          return (_a = get()) == null ? void 0 : _a.unobserve(target);
-        }
-      };
-    })();
-    this.range = null;
-    this.setOptions = (opts2) => {
-      var _a, _b;
-      const merged = {
-        debug: false,
-        initialOffset: 0,
-        overscan: 1,
-        paddingStart: 0,
-        paddingEnd: 0,
-        scrollPaddingStart: 0,
-        scrollPaddingEnd: 0,
-        horizontal: false,
-        getItemKey: defaultKeyExtractor,
-        rangeExtractor: defaultRangeExtractor,
-        onChange: () => {
-        },
-        measureElement,
-        initialRect: { width: 0, height: 0 },
-        scrollMargin: 0,
-        gap: 0,
-        indexAttribute: "data-index",
-        initialMeasurementsCache: [],
-        lanes: 1,
-        anchorTo: "start",
-        followOnAppend: false,
-        scrollEndThreshold: 1,
-        isScrollingResetDelay: 150,
-        enabled: true,
-        isRtl: false,
-        useScrollendEvent: false,
-        useAnimationFrameWithResizeObserver: false,
-        laneAssignmentMode: "estimate"
-      };
-      for (const key2 in opts2) {
-        const v = opts2[key2];
-        if (v !== void 0) merged[key2] = v;
-      }
-      const prevOptions = this.options;
-      let anchor = null;
-      let followOnAppend = null;
-      if (prevOptions !== void 0 && prevOptions.enabled && merged.enabled && merged.anchorTo === "end" && this.scrollElement !== null) {
-        const prevCount = prevOptions.count;
-        const nextCount = merged.count;
-        const measurements = this.getMeasurements();
-        const prevFirstKey = prevCount > 0 ? ((_a = measurements[0]) == null ? void 0 : _a.key) ?? prevOptions.getItemKey(0) : null;
-        const prevLastKey = prevCount > 0 ? ((_b = measurements[prevCount - 1]) == null ? void 0 : _b.key) ?? prevOptions.getItemKey(prevCount - 1) : null;
-        const didCountChange = nextCount !== prevCount;
-        const didEdgeKeysChange = didCountChange || prevCount > 0 && nextCount > 0 && (merged.getItemKey(0) !== prevFirstKey || merged.getItemKey(nextCount - 1) !== prevLastKey);
-        if (didEdgeKeysChange) {
-          const item = prevCount > 0 ? this.getVirtualItemForOffset(this.getScrollOffset()) ?? measurements[0] : null;
-          if (item) {
-            anchor = [item.key, this.getScrollOffset() - item.start];
-          }
-          const behavior = merged.followOnAppend === true ? "auto" : merged.followOnAppend || null;
-          if (behavior && nextCount > prevCount && this.isAtEnd(prevOptions.scrollEndThreshold) && (prevCount === 0 || merged.getItemKey(nextCount - 1) !== prevLastKey)) {
-            followOnAppend = behavior;
-          }
-        }
-      }
-      this.options = merged;
-      if (anchor || followOnAppend) {
-        this.pendingScrollAnchor = [
-          (anchor == null ? void 0 : anchor[0]) ?? null,
-          (anchor == null ? void 0 : anchor[1]) ?? 0,
-          followOnAppend
-        ];
-      }
-    };
-    this.notify = (sync) => {
-      var _a, _b;
-      (_b = (_a = this.options).onChange) == null ? void 0 : _b.call(_a, this, sync);
-    };
-    this.maybeNotify = memo(
-      () => {
-        this.calculateRange();
-        return [
-          this.isScrolling,
-          this.range ? this.range.startIndex : null,
-          this.range ? this.range.endIndex : null
-        ];
-      },
-      (isScrolling) => {
-        this.notify(isScrolling);
-      },
-      {
-        key: false,
-        debug: () => this.options.debug,
-        initialDeps: [
-          this.isScrolling,
-          this.range ? this.range.startIndex : null,
-          this.range ? this.range.endIndex : null
-        ]
-      }
-    );
-    this.cleanup = () => {
-      this.unsubs.filter(Boolean).forEach((d) => d());
-      this.unsubs = [];
-      this.observer.disconnect();
-      if (this.rafId != null && this.targetWindow) {
-        this.targetWindow.cancelAnimationFrame(this.rafId);
-        this.rafId = null;
-      }
-      this.scrollState = null;
-      this.scrollElement = null;
-      this.targetWindow = null;
-    };
-    this._didMount = () => {
-      return () => {
-        this.cleanup();
-      };
-    };
-    this._willUpdate = () => {
-      var _a;
-      const scrollElement = this.options.enabled ? this.options.getScrollElement() : null;
-      if (this.scrollElement !== scrollElement) {
-        this.cleanup();
-        if (!scrollElement) {
-          this.maybeNotify();
-          return;
-        }
-        this.scrollElement = scrollElement;
-        if (this.scrollElement && "ownerDocument" in this.scrollElement) {
-          this.targetWindow = this.scrollElement.ownerDocument.defaultView;
-        } else {
-          this.targetWindow = ((_a = this.scrollElement) == null ? void 0 : _a.window) ?? null;
-        }
-        this.elementsCache.forEach((cached2) => {
-          this.observer.observe(cached2);
-        });
-        this.unsubs.push(
-          this.options.observeElementRect(this, (rect) => {
-            this.scrollRect = rect;
-            this.maybeNotify();
-          })
-        );
-        this.unsubs.push(
-          this.options.observeElementOffset(this, (offset, isScrolling) => {
-            if (this._intendedScrollOffset !== null && Math.abs(offset - this._intendedScrollOffset) < 1.5) {
-              offset = this._intendedScrollOffset;
-            }
-            this._intendedScrollOffset = null;
-            this.scrollAdjustments = 0;
-            this.scrollDirection = isScrolling ? this.getScrollOffset() < offset ? "forward" : "backward" : null;
-            this.scrollOffset = offset;
-            this.isScrolling = isScrolling;
-            this._flushIosDeferredIfReady();
-            if (this.scrollState) {
-              this.scheduleScrollReconcile();
-            }
-            this.maybeNotify();
-          })
-        );
-        if ("addEventListener" in this.scrollElement) {
-          const scrollEl = this.scrollElement;
-          const onTouchStart = () => {
-            this._iosTouching = true;
-            this._iosJustTouchEnded = false;
-            if (this._iosTouchEndTimerId !== null && this.targetWindow != null) {
-              this.targetWindow.clearTimeout(this._iosTouchEndTimerId);
-              this._iosTouchEndTimerId = null;
-            }
-          };
-          const onTouchEnd = () => {
-            this._iosTouching = false;
-            if (!isIOSWebKit() || this.targetWindow == null) {
-              return;
-            }
-            this._iosJustTouchEnded = true;
-            this._iosTouchEndTimerId = this.targetWindow.setTimeout(() => {
-              this._iosJustTouchEnded = false;
-              this._iosTouchEndTimerId = null;
-              this._flushIosDeferredIfReady();
-            }, 150);
-          };
-          scrollEl.addEventListener(
-            "touchstart",
-            onTouchStart,
-            addEventListenerOptions
-          );
-          scrollEl.addEventListener(
-            "touchend",
-            onTouchEnd,
-            addEventListenerOptions
-          );
-          this.unsubs.push(() => {
-            scrollEl.removeEventListener("touchstart", onTouchStart);
-            scrollEl.removeEventListener("touchend", onTouchEnd);
-            if (this._iosTouchEndTimerId !== null && this.targetWindow != null) {
-              this.targetWindow.clearTimeout(this._iosTouchEndTimerId);
-              this._iosTouchEndTimerId = null;
-            }
-          });
-        }
-        this._scrollToOffset(this.getScrollOffset(), {
-          adjustments: void 0,
-          behavior: void 0
-        });
-      }
-      const anchor = this.pendingScrollAnchor;
-      this.pendingScrollAnchor = null;
-      if (anchor && this.scrollElement && this.options.enabled) {
-        const [key2, offset, followOnAppend] = anchor;
-        if (key2 !== null) {
-          const { count: count2, getItemKey } = this.options;
-          let index2 = 0;
-          while (index2 < count2 && getItemKey(index2) !== key2) {
-            index2++;
-          }
-          const item = index2 < count2 ? this.getMeasurements()[index2] : void 0;
-          if (item) {
-            const delta = item.start + offset - this.getScrollOffset();
-            if (!approxEqual(delta, 0)) {
-              this.applyScrollAdjustment(delta);
-            }
-          }
-        }
-        if (followOnAppend) {
-          this.scrollToEnd({ behavior: followOnAppend });
-        }
-      }
-    };
-    this._flushIosDeferredIfReady = () => {
-      if (this._iosDeferredAdjustment === 0) return;
-      if (this.isScrolling) return;
-      if (this._iosTouching) return;
-      if (this._iosJustTouchEnded) return;
-      const cur = this.getScrollOffset();
-      const max = this.getMaxScrollOffset();
-      if (cur < 0 || cur > max) return;
-      const delta = this._iosDeferredAdjustment;
-      this._iosDeferredAdjustment = 0;
-      this._scrollToOffset(cur, {
-        adjustments: this.scrollAdjustments += delta,
-        behavior: void 0
-      });
-    };
-    this.rafId = null;
-    this.getSize = () => {
-      if (!this.options.enabled) {
-        this.scrollRect = null;
-        return 0;
-      }
-      this.scrollRect = this.scrollRect ?? this.options.initialRect;
-      return this.scrollRect[this.options.horizontal ? "width" : "height"];
-    };
-    this.getScrollOffset = () => {
-      if (!this.options.enabled) {
-        this.scrollOffset = null;
-        return 0;
-      }
-      this.scrollOffset = this.scrollOffset ?? (typeof this.options.initialOffset === "function" ? this.options.initialOffset() : this.options.initialOffset);
-      return this.scrollOffset;
-    };
-    this.getFurthestMeasurement = (measurements, index2) => {
-      const furthestMeasurementsFound = /* @__PURE__ */ new Map();
-      const furthestMeasurements = /* @__PURE__ */ new Map();
-      for (let m = index2 - 1; m >= 0; m--) {
-        const measurement = measurements[m];
-        if (furthestMeasurementsFound.has(measurement.lane)) {
-          continue;
-        }
-        const previousFurthestMeasurement = furthestMeasurements.get(
-          measurement.lane
-        );
-        if (previousFurthestMeasurement == null || measurement.end > previousFurthestMeasurement.end) {
-          furthestMeasurements.set(measurement.lane, measurement);
-        } else if (measurement.end < previousFurthestMeasurement.end) {
-          furthestMeasurementsFound.set(measurement.lane, true);
-        }
-        if (furthestMeasurementsFound.size === this.options.lanes) {
-          break;
-        }
-      }
-      return furthestMeasurements.size === this.options.lanes ? Array.from(furthestMeasurements.values()).sort((a, b) => {
-        if (a.end === b.end) {
-          return a.index - b.index;
-        }
-        return a.end - b.end;
-      })[0] : void 0;
-    };
-    this.getMeasurementOptions = memo(
-      () => [
-        this.options.count,
-        this.options.paddingStart,
-        this.options.scrollMargin,
-        this.options.getItemKey,
-        this.options.enabled,
-        this.options.lanes,
-        this.options.laneAssignmentMode
-      ],
-      (count2, paddingStart, scrollMargin, getItemKey, enabled, lanes, laneAssignmentMode) => {
-        const lanesChanged = this.prevLanes !== void 0 && this.prevLanes !== lanes;
-        if (lanesChanged) {
-          this.lanesChangedFlag = true;
-        }
-        this.prevLanes = lanes;
-        this.pendingMin = null;
-        return {
-          count: count2,
-          paddingStart,
-          scrollMargin,
-          getItemKey,
-          enabled,
-          lanes,
-          laneAssignmentMode
-        };
-      },
-      {
-        key: false
-      }
-    );
-    this.getMeasurements = memo(
-      () => [this.getMeasurementOptions(), this.itemSizeCacheVersion],
-      ({
-        count: count2,
-        paddingStart,
-        scrollMargin,
-        getItemKey,
-        enabled,
-        lanes,
-        laneAssignmentMode
-      }, _itemSizeCacheVersion) => {
-        const itemSizeCache = this.itemSizeCache;
-        if (!enabled) {
-          this.measurementsCache = [];
-          this.itemSizeCache.clear();
-          this.laneAssignments.clear();
-          return [];
-        }
-        if (this.laneAssignments.size > count2) {
-          for (const index2 of this.laneAssignments.keys()) {
-            if (index2 >= count2) {
-              this.laneAssignments.delete(index2);
-            }
-          }
-        }
-        if (this.lanesChangedFlag) {
-          this.lanesChangedFlag = false;
-          this.lanesSettling = true;
-          this.measurementsCache = [];
-          this.itemSizeCache.clear();
-          this.laneAssignments.clear();
-          this.pendingMin = null;
-        }
-        if (this.measurementsCache.length === 0 && !this.lanesSettling) {
-          this.measurementsCache = this.options.initialMeasurementsCache;
-          this.measurementsCache.forEach((item) => {
-            this.itemSizeCache.set(item.key, item.size);
-          });
-        }
-        const min = this.lanesSettling ? 0 : this.pendingMin ?? 0;
-        this.pendingMin = null;
-        if (this.lanesSettling && this.measurementsCache.length === count2) {
-          this.lanesSettling = false;
-        }
-        if (lanes === 1) {
-          const gap = this.options.gap;
-          const need = count2 * 2;
-          let flat = this._flatMeasurements;
-          if (!flat || flat.length < need) {
-            const next = new Float64Array(need);
-            if (flat && min > 0) next.set(flat.subarray(0, min * 2));
-            flat = next;
-            this._flatMeasurements = flat;
-          }
-          let runningStart;
-          if (min === 0) {
-            runningStart = paddingStart + scrollMargin;
-          } else {
-            const prevIdx = min - 1;
-            runningStart = flat[prevIdx * 2] + flat[prevIdx * 2 + 1] + gap;
-          }
-          for (let i = min; i < count2; i++) {
-            const key2 = getItemKey(i);
-            const measuredSize = itemSizeCache.get(key2);
-            const size = typeof measuredSize === "number" ? measuredSize : this.options.estimateSize(i);
-            flat[i * 2] = runningStart;
-            flat[i * 2 + 1] = size;
-            runningStart += size + gap;
-          }
-          const view = createLazyMeasurementsView(count2, flat, getItemKey);
-          this.measurementsCache = view;
-          return view;
-        }
-        const measurements = this.measurementsCache.slice(0, min);
-        const laneLastIndex = new Array(lanes).fill(
-          void 0
-        );
-        for (let m = 0; m < min; m++) {
-          const item = measurements[m];
-          if (item) {
-            laneLastIndex[item.lane] = m;
-          }
-        }
-        for (let i = min; i < count2; i++) {
-          const key2 = getItemKey(i);
-          const cachedLane = this.laneAssignments.get(i);
-          let lane;
-          let start;
-          const shouldCacheLane = laneAssignmentMode === "estimate" || itemSizeCache.has(key2);
-          if (cachedLane !== void 0 && this.options.lanes > 1) {
-            lane = cachedLane;
-            const prevIndex = laneLastIndex[lane];
-            const prevInLane = prevIndex !== void 0 ? measurements[prevIndex] : void 0;
-            start = prevInLane ? prevInLane.end + this.options.gap : paddingStart + scrollMargin;
-          } else {
-            const furthestMeasurement = this.options.lanes === 1 ? measurements[i - 1] : this.getFurthestMeasurement(measurements, i);
-            start = furthestMeasurement ? furthestMeasurement.end + this.options.gap : paddingStart + scrollMargin;
-            lane = furthestMeasurement ? furthestMeasurement.lane : i % this.options.lanes;
-            if (this.options.lanes > 1 && shouldCacheLane) {
-              this.laneAssignments.set(i, lane);
-            }
-          }
-          const measuredSize = itemSizeCache.get(key2);
-          const size = typeof measuredSize === "number" ? measuredSize : this.options.estimateSize(i);
-          const end = start + size;
-          measurements[i] = {
-            index: i,
-            start,
-            size,
-            end,
-            key: key2,
-            lane
-          };
-          laneLastIndex[lane] = i;
-        }
-        this.measurementsCache = measurements;
-        return measurements;
-      },
-      {
-        key: false,
-        debug: () => this.options.debug
-      }
-    );
-    this.calculateRange = memo(
-      () => [
-        this.getMeasurements(),
-        this.getSize(),
-        this.getScrollOffset(),
-        this.options.lanes
-      ],
-      (measurements, outerSize, scrollOffset, lanes) => {
-        return this.range = measurements.length > 0 && outerSize > 0 ? calculateRange({
-          measurements,
-          outerSize,
-          scrollOffset,
-          lanes,
-          // Pass the typed array so binary search + forward-walk can
-          // read start/end directly from Float64Array, skipping the
-          // Proxy traps that materialize a full VirtualItem per probe.
-          flat: lanes === 1 && this._flatMeasurements != null ? this._flatMeasurements : null
-        }) : null;
-      },
-      {
-        key: false,
-        debug: () => this.options.debug
-      }
-    );
-    this.getVirtualIndexes = memo(
-      () => {
-        let startIndex = null;
-        let endIndex = null;
-        const range = this.calculateRange();
-        if (range) {
-          startIndex = range.startIndex;
-          endIndex = range.endIndex;
-        }
-        this.maybeNotify.updateDeps([this.isScrolling, startIndex, endIndex]);
-        return [
-          this.options.rangeExtractor,
-          this.options.overscan,
-          this.options.count,
-          startIndex,
-          endIndex
-        ];
-      },
-      (rangeExtractor, overscan, count2, startIndex, endIndex) => {
-        return startIndex === null || endIndex === null ? [] : rangeExtractor({
-          startIndex,
-          endIndex,
-          overscan,
-          count: count2
-        });
-      },
-      {
-        key: false,
-        debug: () => this.options.debug
-      }
-    );
-    this.indexFromElement = (node) => {
-      const attributeName = this.options.indexAttribute;
-      const indexStr = node.getAttribute(attributeName);
-      if (!indexStr) {
-        console.warn(
-          `Missing attribute name '${attributeName}={index}' on measured element.`
-        );
-        return -1;
-      }
-      return parseInt(indexStr, 10);
-    };
-    this.shouldMeasureDuringScroll = (index2) => {
-      var _a;
-      if (!this.scrollState || this.scrollState.behavior !== "smooth") {
-        return true;
-      }
-      const scrollIndex = this.scrollState.index ?? ((_a = this.getVirtualItemForOffset(this.scrollState.lastTargetOffset)) == null ? void 0 : _a.index);
-      if (scrollIndex !== void 0 && this.range) {
-        const bufferSize = Math.max(
-          this.options.overscan,
-          Math.ceil((this.range.endIndex - this.range.startIndex) / 2)
-        );
-        const minIndex = Math.max(0, scrollIndex - bufferSize);
-        const maxIndex = Math.min(
-          this.options.count - 1,
-          scrollIndex + bufferSize
-        );
-        return index2 >= minIndex && index2 <= maxIndex;
-      }
-      return true;
-    };
-    this.measureElement = (node) => {
-      if (!node) {
-        this.elementsCache.forEach((cached2, key22) => {
-          if (!cached2.isConnected) {
-            this.observer.unobserve(cached2);
-            this.elementsCache.delete(key22);
-          }
-        });
-        return;
-      }
-      const index2 = this.indexFromElement(node);
-      const key2 = this.options.getItemKey(index2);
-      const prevNode = this.elementsCache.get(key2);
-      if (prevNode !== node) {
-        if (prevNode) {
-          this.observer.unobserve(prevNode);
-        }
-        this.observer.observe(node);
-        this.elementsCache.set(key2, node);
-      }
-      if ((!this.isScrolling || this.scrollState) && this.shouldMeasureDuringScroll(index2)) {
-        this.resizeItem(index2, this.options.measureElement(node, void 0, this));
-      }
-    };
-    this.resizeItem = (index2, size) => {
-      var _a, _b;
-      if (index2 < 0 || index2 >= this.options.count) return;
-      let cachedSize;
-      let itemStart;
-      let key2;
-      const flat = this._flatMeasurements;
-      if (this.options.lanes === 1 && flat !== null) {
-        key2 = this.options.getItemKey(index2);
-        itemStart = flat[index2 * 2];
-        cachedSize = flat[index2 * 2 + 1];
-      } else {
-        const item = this.measurementsCache[index2];
-        if (!item) return;
-        key2 = item.key;
-        itemStart = item.start;
-        cachedSize = item.size;
-      }
-      const itemSize = this.itemSizeCache.get(key2) ?? cachedSize;
-      const delta = size - itemSize;
-      if (delta !== 0) {
-        const wasAtEnd = this.options.anchorTo === "end" && ((_a = this.scrollState) == null ? void 0 : _a.behavior) !== "smooth" && this.getVirtualDistanceFromEnd() <= this.options.scrollEndThreshold;
-        const prevTotalSize = wasAtEnd ? this.getTotalSize() : 0;
-        const shouldAdjustScroll = ((_b = this.scrollState) == null ? void 0 : _b.behavior) !== "smooth" && (this.shouldAdjustScrollPositionOnItemSizeChange !== void 0 ? this.shouldAdjustScrollPositionOnItemSizeChange(
-          // The callback expects a VirtualItem; build one lazily only
-          // when the consumer actually supplied a custom predicate.
-          this.measurementsCache[index2] ?? {
-            index: index2,
-            key: key2,
-            start: itemStart,
-            size: cachedSize,
-            end: itemStart + cachedSize,
-            lane: 0
-          },
-          delta,
-          this
-        ) : (
-          // Default: adjust scrollTop only when the resize is an above-
-          // viewport item AND we're not actively scrolling backward.
-          // Adjusting during backward scroll fights the user's scroll
-          // direction and produces the "items jump while scrolling up"
-          // jank reported across many issues. Users who want the old
-          // behavior can pass shouldAdjustScrollPositionOnItemSizeChange.
-          itemStart < this.getScrollOffset() + this.scrollAdjustments && this.scrollDirection !== "backward"
-        ));
-        if (this.pendingMin === null || index2 < this.pendingMin) {
-          this.pendingMin = index2;
-        }
-        this.itemSizeCache.set(key2, size);
-        this.itemSizeCacheVersion++;
-        if (wasAtEnd) {
-          this.applyScrollAdjustment(this.getTotalSize() - prevTotalSize);
-        } else if (shouldAdjustScroll) {
-          this.applyScrollAdjustment(delta);
-        }
-        this.notify(false);
-      }
-    };
-    this.getVirtualItems = memo(
-      () => [this.getVirtualIndexes(), this.getMeasurements()],
-      (indexes, measurements) => {
-        const virtualItems = [];
-        for (let k = 0, len = indexes.length; k < len; k++) {
-          const i = indexes[k];
-          const measurement = measurements[i];
-          virtualItems.push(measurement);
-        }
-        return virtualItems;
-      },
-      {
-        key: false,
-        debug: () => this.options.debug
-      }
-    );
-    this.getVirtualItemForOffset = (offset) => {
-      const measurements = this.getMeasurements();
-      if (measurements.length === 0) {
-        return void 0;
-      }
-      const flat = this._flatMeasurements;
-      const useFlat = this.options.lanes === 1 && flat != null;
-      const idx = findNearestBinarySearch(
-        0,
-        measurements.length - 1,
-        useFlat ? (i) => flat[i * 2] : (i) => notUndefined(measurements[i]).start,
-        offset
-      );
-      return notUndefined(measurements[idx]);
-    };
-    this.getMaxScrollOffset = () => {
-      if (!this.scrollElement) return 0;
-      if ("scrollHeight" in this.scrollElement) {
-        return this.options.horizontal ? this.scrollElement.scrollWidth - this.scrollElement.clientWidth : this.scrollElement.scrollHeight - this.scrollElement.clientHeight;
-      } else {
-        const doc = this.scrollElement.document.documentElement;
-        return this.options.horizontal ? doc.scrollWidth - this.scrollElement.innerWidth : doc.scrollHeight - this.scrollElement.innerHeight;
-      }
-    };
-    this.getVirtualDistanceFromEnd = () => {
-      return Math.max(
-        this.getTotalSize() - this.getSize() - this.getScrollOffset(),
-        0
-      );
-    };
-    this.getDistanceFromEnd = () => {
-      return Math.max(this.getMaxScrollOffset() - this.getScrollOffset(), 0);
-    };
-    this.isAtEnd = (threshold = this.options.scrollEndThreshold) => {
-      return this.getDistanceFromEnd() <= threshold;
-    };
-    this.getOffsetForAlignment = (toOffset, align, itemSize = 0) => {
-      if (!this.scrollElement) return 0;
-      const size = this.getSize();
-      const scrollOffset = this.getScrollOffset();
-      if (align === "auto") {
-        align = toOffset >= scrollOffset + size ? "end" : "start";
-      }
-      if (align === "center") {
-        toOffset += (itemSize - size) / 2;
-      } else if (align === "end") {
-        toOffset -= size;
-      }
-      const maxOffset = this.getMaxScrollOffset();
-      return Math.max(Math.min(maxOffset, toOffset), 0);
-    };
-    this.getOffsetForIndex = (index2, align = "auto") => {
-      index2 = Math.max(0, Math.min(index2, this.options.count - 1));
-      const size = this.getSize();
-      const scrollOffset = this.getScrollOffset();
-      const item = this.measurementsCache[index2];
-      if (!item) return;
-      if (align === "auto") {
-        if (item.end >= scrollOffset + size - this.options.scrollPaddingEnd) {
-          align = "end";
-        } else if (item.start <= scrollOffset + this.options.scrollPaddingStart) {
-          align = "start";
-        } else {
-          return [scrollOffset, align];
-        }
-      }
-      if (align === "end" && index2 === this.options.count - 1) {
-        return [this.getMaxScrollOffset(), align];
-      }
-      const toOffset = align === "end" ? item.end + this.options.scrollPaddingEnd : item.start - this.options.scrollPaddingStart;
-      return [
-        this.getOffsetForAlignment(toOffset, align, item.size),
-        align
-      ];
-    };
-    this.scrollToOffset = (toOffset, { align = "start", behavior = "auto" } = {}) => {
-      const offset = this.getOffsetForAlignment(toOffset, align);
-      const now = this.now();
-      this.scrollState = {
-        index: null,
-        align,
-        behavior,
-        startedAt: now,
-        lastTargetOffset: offset,
-        stableFrames: 0
-      };
-      this._scrollToOffset(offset, { adjustments: void 0, behavior });
-      this.scheduleScrollReconcile();
-    };
-    this.scrollToIndex = (index2, {
-      align: initialAlign = "auto",
-      behavior = "auto"
-    } = {}) => {
-      index2 = Math.max(0, Math.min(index2, this.options.count - 1));
-      const offsetInfo = this.getOffsetForIndex(index2, initialAlign);
-      if (!offsetInfo) {
-        return;
-      }
-      const [offset, align] = offsetInfo;
-      const now = this.now();
-      this.scrollState = {
-        index: index2,
-        align,
-        behavior,
-        startedAt: now,
-        lastTargetOffset: offset,
-        stableFrames: 0
-      };
-      this._scrollToOffset(offset, { adjustments: void 0, behavior });
-      this.scheduleScrollReconcile();
-    };
-    this.scrollBy = (delta, { behavior = "auto" } = {}) => {
-      const offset = this.getScrollOffset() + delta;
-      const now = this.now();
-      this.scrollState = {
-        index: null,
-        align: "start",
-        behavior,
-        startedAt: now,
-        lastTargetOffset: offset,
-        stableFrames: 0
-      };
-      this._scrollToOffset(offset, { adjustments: void 0, behavior });
-      this.scheduleScrollReconcile();
-    };
-    this.scrollToEnd = ({ behavior = "auto" } = {}) => {
-      if (this.options.count > 0) {
-        this.scrollToIndex(this.options.count - 1, {
-          align: "end",
-          behavior
-        });
-        return;
-      }
-      this.scrollToOffset(Math.max(this.getTotalSize() - this.getSize(), 0), {
-        behavior
-      });
-    };
-    this.getTotalSize = () => {
-      var _a;
-      const measurements = this.getMeasurements();
-      let end;
-      if (measurements.length === 0) {
-        end = this.options.paddingStart;
-      } else if (this.options.lanes === 1) {
-        const lastIdx = measurements.length - 1;
-        const flat = this._flatMeasurements;
-        if (flat != null) {
-          end = flat[lastIdx * 2] + flat[lastIdx * 2 + 1];
-        } else {
-          end = ((_a = measurements[lastIdx]) == null ? void 0 : _a.end) ?? 0;
-        }
-      } else {
-        const endByLane = Array(this.options.lanes).fill(null);
-        let endIndex = measurements.length - 1;
-        while (endIndex >= 0 && endByLane.some((val) => val === null)) {
-          const item = measurements[endIndex];
-          if (endByLane[item.lane] === null) {
-            endByLane[item.lane] = item.end;
-          }
-          endIndex--;
-        }
-        end = Math.max(...endByLane.filter((val) => val !== null));
-      }
-      return Math.max(
-        end - this.options.scrollMargin + this.options.paddingEnd,
-        0
-      );
-    };
-    this.takeSnapshot = () => {
-      const snapshot = [];
-      if (this.itemSizeCache.size === 0) return snapshot;
-      const m = this.getMeasurements();
-      for (const item of m) {
-        if (item && this.itemSizeCache.has(item.key)) {
-          snapshot.push({
-            index: item.index,
-            key: item.key,
-            start: item.start,
-            size: item.size,
-            end: item.end,
-            lane: item.lane
-          });
-        }
-      }
-      return snapshot;
-    };
-    this._scrollToOffset = (offset, {
-      adjustments,
-      behavior
-    }) => {
-      this._intendedScrollOffset = offset + (adjustments ?? 0);
-      this.options.scrollToFn(offset, { behavior, adjustments }, this);
-    };
-    this.measure = () => {
-      this.pendingMin = null;
-      this.itemSizeCache.clear();
-      this.laneAssignments.clear();
-      this.itemSizeCacheVersion++;
-      this.notify(false);
-    };
-    this.setOptions(opts);
-  }
-  applyScrollAdjustment(delta, behavior) {
-    if (delta === 0) return;
-    if (isIOSWebKit() && (this.isScrolling || this._iosTouching || this._iosJustTouchEnded)) {
-      this._iosDeferredAdjustment += delta;
-    } else {
-      this._scrollToOffset(this.getScrollOffset(), {
-        adjustments: this.scrollAdjustments += delta,
-        behavior
-      });
-    }
-  }
-  scheduleScrollReconcile() {
-    if (!this.targetWindow) {
-      this.scrollState = null;
-      return;
-    }
-    if (this.rafId != null) return;
-    this.rafId = this.targetWindow.requestAnimationFrame(() => {
-      this.rafId = null;
-      this.reconcileScroll();
-    });
-  }
-  reconcileScroll() {
-    if (!this.scrollState) return;
-    const el = this.scrollElement;
-    if (!el) return;
-    const MAX_RECONCILE_MS = 5e3;
-    if (this.now() - this.scrollState.startedAt > MAX_RECONCILE_MS) {
-      this.scrollState = null;
-      return;
-    }
-    const offsetInfo = this.scrollState.index != null ? this.getOffsetForIndex(this.scrollState.index, this.scrollState.align) : void 0;
-    const targetOffset = offsetInfo ? offsetInfo[0] : this.scrollState.lastTargetOffset;
-    const STABLE_FRAMES = 1;
-    const targetChanged = targetOffset !== this.scrollState.lastTargetOffset;
-    if (!targetChanged && approxEqual(targetOffset, this.getScrollOffset())) {
-      this.scrollState.stableFrames++;
-      if (this.scrollState.stableFrames >= STABLE_FRAMES) {
-        if (this.getScrollOffset() !== targetOffset) {
-          this._scrollToOffset(targetOffset, {
-            adjustments: void 0,
-            behavior: "auto"
-          });
-        }
-        this.scrollState = null;
-        return;
-      }
-    } else {
-      this.scrollState.stableFrames = 0;
-      if (targetChanged) {
-        const viewport = this.getSize() || 600;
-        const distance = Math.abs(targetOffset - this.getScrollOffset());
-        const keepSmooth = this.scrollState.behavior === "smooth" && distance > viewport;
-        this.scrollState.lastTargetOffset = targetOffset;
-        if (!keepSmooth) {
-          this.scrollState.behavior = "auto";
-        }
-        this._scrollToOffset(targetOffset, {
-          adjustments: void 0,
-          behavior: keepSmooth ? "smooth" : "auto"
-        });
-      }
-    }
-    this.scheduleScrollReconcile();
-  }
-}
-const findNearestBinarySearch = (low, high, getCurrentValue, value2) => {
-  while (low <= high) {
-    const middle = (low + high) / 2 | 0;
-    const currentValue = getCurrentValue(middle);
-    if (currentValue < value2) {
-      low = middle + 1;
-    } else if (currentValue > value2) {
-      high = middle - 1;
-    } else {
-      return middle;
-    }
-  }
-  if (low > 0) {
-    return low - 1;
-  } else {
-    return 0;
-  }
-};
-function calculateRange({
-  measurements,
-  outerSize,
-  scrollOffset,
-  lanes,
-  flat
-}) {
-  const lastIndex = measurements.length - 1;
-  const getStart = flat ? (index2) => flat[index2 * 2] : (index2) => measurements[index2].start;
-  const getEnd = flat ? (index2) => flat[index2 * 2] + flat[index2 * 2 + 1] : (index2) => measurements[index2].end;
-  if (measurements.length <= lanes) {
-    return {
-      startIndex: 0,
-      endIndex: lastIndex
-    };
-  }
-  let startIndex = findNearestBinarySearch(0, lastIndex, getStart, scrollOffset);
-  let endIndex = startIndex;
-  if (lanes === 1) {
-    while (endIndex < lastIndex && getEnd(endIndex) < scrollOffset + outerSize) {
-      endIndex++;
-    }
-  } else if (lanes > 1) {
-    const endPerLane = Array(lanes).fill(0);
-    while (endIndex < lastIndex && endPerLane.some((pos) => pos < scrollOffset + outerSize)) {
-      const item = measurements[endIndex];
-      endPerLane[item.lane] = item.end;
-      endIndex++;
-    }
-    const startPerLane = Array(lanes).fill(scrollOffset + outerSize);
-    while (startIndex >= 0 && startPerLane.some((pos) => pos >= scrollOffset)) {
-      const item = measurements[startIndex];
-      startPerLane[item.lane] = item.start;
-      startIndex--;
-    }
-    startIndex = Math.max(0, startIndex - startIndex % lanes);
-    endIndex = Math.min(lastIndex, endIndex + (lanes - 1 - endIndex % lanes));
-  }
-  return { startIndex, endIndex };
-}
-const useIsomorphicLayoutEffect$2 = typeof document !== "undefined" ? reactExports.useLayoutEffect : reactExports.useEffect;
-function useVirtualizerBase({
-  useFlushSync = true,
-  ...options
-}) {
-  const rerender = reactExports.useReducer((x) => x + 1, 0)[1];
-  const resolvedOptions = {
-    ...options,
-    onChange: (instance2, sync) => {
-      var _a;
-      if (useFlushSync && sync) {
-        reactDomExports.flushSync(rerender);
-      } else {
-        rerender();
-      }
-      (_a = options.onChange) == null ? void 0 : _a.call(options, instance2, sync);
-    }
-  };
-  const [instance] = reactExports.useState(
-    () => new Virtualizer(resolvedOptions)
-  );
-  instance.setOptions(resolvedOptions);
-  useIsomorphicLayoutEffect$2(() => {
-    return instance._didMount();
-  }, []);
-  useIsomorphicLayoutEffect$2(() => {
-    return instance._willUpdate();
-  });
-  return instance;
-}
-function useVirtualizer(options) {
-  return useVirtualizerBase({
-    observeElementRect,
-    observeElementOffset,
-    scrollToFn: elementScroll,
-    ...options
-  });
-}
-function stableVirtualRowMeasure(element, _entry, instance) {
-  const index2 = instance.indexFromElement(element);
-  const cached2 = instance.measurementsCache[index2]?.size;
-  const estimate = typeof instance.options.estimateSize === "function" ? instance.options.estimateSize(index2) : instance.options.estimateSize;
-  const rect = element.getBoundingClientRect();
-  const h = Math.round(rect.height);
-  const w = Math.round(rect.width);
-  if (h < 8 || w < 8) return cached2 ?? estimate;
-  if (cached2 != null && Math.abs(cached2 - h) <= 2) return cached2;
-  return h;
-}
 function LazyInView({
   children,
   fallback,
@@ -24785,14 +23600,13 @@ function PostCardInner({
     notifyGuestActionBlocked();
     return true;
   };
-  const liked = currentUser ? postLikes.includes(currentUser.id) : false;
-  const reposted = currentUser ? postReposts.includes(currentUser.id) : false;
-  if (!author) return null;
-  const openAuthorProfile = (userId) => {
-    const ctx = profileReturnTab ? { tab: profileReturnTab } : void 0;
-    reactExports.startTransition(() => onOpenProfile(userId, ctx));
-  };
-  const postKindAr = post.type === "tweet" ? "التغريدة" : post.type === "reel" ? "الريلز" : "المنشور";
+  const openAuthorProfile = reactExports.useCallback(
+    (userId) => {
+      const ctx = profileReturnTab ? { tab: profileReturnTab } : void 0;
+      reactExports.startTransition(() => onOpenProfile(userId, ctx));
+    },
+    [onOpenProfile, profileReturnTab]
+  );
   const renderedPostText = reactExports.useMemo(() => {
     if (!post.text) return null;
     return renderMentionHashtagNodes(post.text, {
@@ -24802,7 +23616,11 @@ function PostCardInner({
       }),
       renderHashtag: (h, key2) => /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-primary", children: h }, key2)
     });
-  }, [post.text, users]);
+  }, [post.text, users, openAuthorProfile]);
+  const liked = currentUser ? postLikes.includes(currentUser.id) : false;
+  const reposted = currentUser ? postReposts.includes(currentUser.id) : false;
+  if (!author) return null;
+  const postKindAr = post.type === "tweet" ? "التغريدة" : post.type === "reel" ? "الريلز" : "المنشور";
   const notesOverlay = feedNotes.length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "pointer-events-none absolute inset-x-0 top-0 z-10 flex gap-2 overflow-x-auto bg-gradient-to-b from-black/55 via-black/25 to-transparent px-2.5 pb-8 pt-2.5", children: feedNotes.map((n) => {
     const nu = users.find((u) => u.id === n.authorId);
     if (!nu) return null;
@@ -24977,6 +23795,1278 @@ const HomeFeedPostItem = reactExports.memo(
   },
   (prev, next) => postFeedSignature(prev.post) === postFeedSignature(next.post)
 );
+const SimpleHomeFeed = reactExports.memo(function SimpleHomeFeed2({ posts, feedActions }) {
+  if (!posts.length) return null;
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(HomeFeedActionsProvider, { value: feedActions, children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "relative w-full", children: posts.map((post) => /* @__PURE__ */ jsxRuntimeExports.jsx(HomeFeedPostItem, { post }, post.id)) }) });
+});
+function createLazyMeasurementsView(count2, flat, getItemKey) {
+  const cache2 = new Array(count2);
+  return new Proxy(cache2, {
+    get(target, prop, receiver) {
+      if (typeof prop === "string") {
+        const c = prop.charCodeAt(0);
+        if (c >= 48 && c <= 57) {
+          const i = +prop;
+          if (Number.isInteger(i) && i >= 0 && i < count2) {
+            let v = target[i];
+            if (!v) {
+              const s = flat[i * 2];
+              v = target[i] = {
+                index: i,
+                key: getItemKey(i),
+                start: s,
+                size: flat[i * 2 + 1],
+                end: s + flat[i * 2 + 1],
+                lane: 0
+              };
+            }
+            return v;
+          }
+        }
+        if (prop === "length") return count2;
+      }
+      return Reflect.get(target, prop, receiver);
+    }
+  });
+}
+function memo(getDeps, fn, opts) {
+  let deps = opts.initialDeps ?? [];
+  let result;
+  let isInitial = true;
+  function memoizedFunction() {
+    const newDeps = getDeps();
+    const depsChanged = newDeps.length !== deps.length || newDeps.some((dep, index2) => deps[index2] !== dep);
+    if (!depsChanged) {
+      return result;
+    }
+    deps = newDeps;
+    result = fn(...newDeps);
+    if ((opts == null ? void 0 : opts.onChange) && !(isInitial && opts.skipInitialOnChange)) {
+      opts.onChange(result);
+    }
+    isInitial = false;
+    return result;
+  }
+  memoizedFunction.updateDeps = (newDeps) => {
+    deps = newDeps;
+  };
+  return memoizedFunction;
+}
+function notUndefined(value2, msg) {
+  if (value2 === void 0) {
+    throw new Error(`Unexpected undefined${""}`);
+  } else {
+    return value2;
+  }
+}
+const approxEqual = (a, b) => Math.abs(a - b) < 1.01;
+const debounce = (targetWindow, fn, ms) => {
+  let timeoutId;
+  return function(...args) {
+    targetWindow.clearTimeout(timeoutId);
+    timeoutId = targetWindow.setTimeout(() => fn.apply(this, args), ms);
+  };
+};
+let _isIOSResult;
+const isIOSWebKit = () => {
+  if (_isIOSResult !== void 0) return _isIOSResult;
+  if (typeof navigator === "undefined") return _isIOSResult = false;
+  if (/iP(hone|od|ad)/.test(navigator.userAgent)) return _isIOSResult = true;
+  const mtp = navigator.maxTouchPoints;
+  return _isIOSResult = navigator.platform === "MacIntel" && mtp !== void 0 && mtp > 0;
+};
+const getRect = (element) => {
+  const { offsetWidth, offsetHeight } = element;
+  return { width: offsetWidth, height: offsetHeight };
+};
+const defaultKeyExtractor = (index2) => index2;
+const defaultRangeExtractor = (range) => {
+  const start = Math.max(range.startIndex - range.overscan, 0);
+  const end = Math.min(range.endIndex + range.overscan, range.count - 1);
+  const len = end - start + 1;
+  const arr = new Array(len);
+  for (let i = 0; i < len; i++) {
+    arr[i] = start + i;
+  }
+  return arr;
+};
+const observeElementRect = (instance, cb) => {
+  const element = instance.scrollElement;
+  if (!element) {
+    return;
+  }
+  const targetWindow = instance.targetWindow;
+  if (!targetWindow) {
+    return;
+  }
+  const handler = (rect) => {
+    const { width, height } = rect;
+    cb({ width: Math.round(width), height: Math.round(height) });
+  };
+  handler(getRect(element));
+  if (!targetWindow.ResizeObserver) {
+    return () => {
+    };
+  }
+  const observer = new targetWindow.ResizeObserver((entries) => {
+    const run = () => {
+      const entry = entries[0];
+      if (entry == null ? void 0 : entry.borderBoxSize) {
+        const box = entry.borderBoxSize[0];
+        if (box) {
+          handler({ width: box.inlineSize, height: box.blockSize });
+          return;
+        }
+      }
+      handler(getRect(element));
+    };
+    instance.options.useAnimationFrameWithResizeObserver ? requestAnimationFrame(run) : run();
+  });
+  observer.observe(element, { box: "border-box" });
+  return () => {
+    observer.unobserve(element);
+  };
+};
+const addEventListenerOptions = {
+  passive: true
+};
+const supportsScrollend = typeof window == "undefined" ? true : "onscrollend" in window;
+const observeOffset = (instance, cb, readOffset) => {
+  const element = instance.scrollElement;
+  if (!element) {
+    return;
+  }
+  const targetWindow = instance.targetWindow;
+  if (!targetWindow) {
+    return;
+  }
+  const registerScrollendEvent = instance.options.useScrollendEvent && supportsScrollend;
+  let offset = 0;
+  const fallback = registerScrollendEvent ? null : debounce(
+    targetWindow,
+    () => cb(offset, false),
+    instance.options.isScrollingResetDelay
+  );
+  const createHandler = (isScrolling) => () => {
+    offset = readOffset(element);
+    fallback == null ? void 0 : fallback();
+    cb(offset, isScrolling);
+  };
+  const handler = createHandler(true);
+  const endHandler = createHandler(false);
+  element.addEventListener("scroll", handler, addEventListenerOptions);
+  if (registerScrollendEvent) {
+    element.addEventListener("scrollend", endHandler, addEventListenerOptions);
+  }
+  return () => {
+    element.removeEventListener("scroll", handler);
+    if (registerScrollendEvent) {
+      element.removeEventListener("scrollend", endHandler);
+    }
+  };
+};
+const observeElementOffset = (instance, cb) => observeOffset(instance, cb, (el) => {
+  const { horizontal, isRtl } = instance.options;
+  return horizontal ? el.scrollLeft * (isRtl && -1 || 1) : el.scrollTop;
+});
+const measureElement = (element, entry, instance) => {
+  if (entry == null ? void 0 : entry.borderBoxSize) {
+    const box = entry.borderBoxSize[0];
+    if (box) {
+      const size = Math.round(
+        box[instance.options.horizontal ? "inlineSize" : "blockSize"]
+      );
+      return size;
+    }
+  }
+  return element[instance.options.horizontal ? "offsetWidth" : "offsetHeight"];
+};
+const scrollWithAdjustments = (offset, {
+  adjustments = 0,
+  behavior
+}, instance) => {
+  var _a, _b;
+  (_b = (_a = instance.scrollElement) == null ? void 0 : _a.scrollTo) == null ? void 0 : _b.call(_a, {
+    [instance.options.horizontal ? "left" : "top"]: offset + adjustments,
+    behavior
+  });
+};
+const elementScroll = scrollWithAdjustments;
+class Virtualizer {
+  constructor(opts) {
+    this.unsubs = [];
+    this.scrollElement = null;
+    this.targetWindow = null;
+    this.isScrolling = false;
+    this.scrollState = null;
+    this.measurementsCache = [];
+    this._flatMeasurements = null;
+    this.itemSizeCache = /* @__PURE__ */ new Map();
+    this.itemSizeCacheVersion = 0;
+    this.laneAssignments = /* @__PURE__ */ new Map();
+    this.pendingMin = null;
+    this.prevLanes = void 0;
+    this.lanesChangedFlag = false;
+    this.lanesSettling = false;
+    this.pendingScrollAnchor = null;
+    this.scrollRect = null;
+    this.scrollOffset = null;
+    this.scrollDirection = null;
+    this.scrollAdjustments = 0;
+    this._iosDeferredAdjustment = 0;
+    this._iosTouching = false;
+    this._iosJustTouchEnded = false;
+    this._iosTouchEndTimerId = null;
+    this._intendedScrollOffset = null;
+    this.elementsCache = /* @__PURE__ */ new Map();
+    this.now = () => {
+      var _a, _b, _c;
+      return ((_c = (_b = (_a = this.targetWindow) == null ? void 0 : _a.performance) == null ? void 0 : _b.now) == null ? void 0 : _c.call(_b)) ?? Date.now();
+    };
+    this.observer = /* @__PURE__ */ (() => {
+      let _ro = null;
+      const get = () => {
+        if (_ro) {
+          return _ro;
+        }
+        if (!this.targetWindow || !this.targetWindow.ResizeObserver) {
+          return null;
+        }
+        return _ro = new this.targetWindow.ResizeObserver((entries) => {
+          entries.forEach((entry) => {
+            const run = () => {
+              const node = entry.target;
+              const index2 = this.indexFromElement(node);
+              if (!node.isConnected) {
+                this.observer.unobserve(node);
+                for (const [cacheKey2, cachedNode] of this.elementsCache) {
+                  if (cachedNode === node) {
+                    this.elementsCache.delete(cacheKey2);
+                    break;
+                  }
+                }
+                return;
+              }
+              if (this.shouldMeasureDuringScroll(index2)) {
+                this.resizeItem(
+                  index2,
+                  this.options.measureElement(node, entry, this)
+                );
+              }
+            };
+            this.options.useAnimationFrameWithResizeObserver ? requestAnimationFrame(run) : run();
+          });
+        });
+      };
+      return {
+        disconnect: () => {
+          var _a;
+          (_a = get()) == null ? void 0 : _a.disconnect();
+          _ro = null;
+        },
+        observe: (target) => {
+          var _a;
+          return (_a = get()) == null ? void 0 : _a.observe(target, { box: "border-box" });
+        },
+        unobserve: (target) => {
+          var _a;
+          return (_a = get()) == null ? void 0 : _a.unobserve(target);
+        }
+      };
+    })();
+    this.range = null;
+    this.setOptions = (opts2) => {
+      var _a, _b;
+      const merged = {
+        debug: false,
+        initialOffset: 0,
+        overscan: 1,
+        paddingStart: 0,
+        paddingEnd: 0,
+        scrollPaddingStart: 0,
+        scrollPaddingEnd: 0,
+        horizontal: false,
+        getItemKey: defaultKeyExtractor,
+        rangeExtractor: defaultRangeExtractor,
+        onChange: () => {
+        },
+        measureElement,
+        initialRect: { width: 0, height: 0 },
+        scrollMargin: 0,
+        gap: 0,
+        indexAttribute: "data-index",
+        initialMeasurementsCache: [],
+        lanes: 1,
+        anchorTo: "start",
+        followOnAppend: false,
+        scrollEndThreshold: 1,
+        isScrollingResetDelay: 150,
+        enabled: true,
+        isRtl: false,
+        useScrollendEvent: false,
+        useAnimationFrameWithResizeObserver: false,
+        laneAssignmentMode: "estimate"
+      };
+      for (const key2 in opts2) {
+        const v = opts2[key2];
+        if (v !== void 0) merged[key2] = v;
+      }
+      const prevOptions = this.options;
+      let anchor = null;
+      let followOnAppend = null;
+      if (prevOptions !== void 0 && prevOptions.enabled && merged.enabled && merged.anchorTo === "end" && this.scrollElement !== null) {
+        const prevCount = prevOptions.count;
+        const nextCount = merged.count;
+        const measurements = this.getMeasurements();
+        const prevFirstKey = prevCount > 0 ? ((_a = measurements[0]) == null ? void 0 : _a.key) ?? prevOptions.getItemKey(0) : null;
+        const prevLastKey = prevCount > 0 ? ((_b = measurements[prevCount - 1]) == null ? void 0 : _b.key) ?? prevOptions.getItemKey(prevCount - 1) : null;
+        const didCountChange = nextCount !== prevCount;
+        const didEdgeKeysChange = didCountChange || prevCount > 0 && nextCount > 0 && (merged.getItemKey(0) !== prevFirstKey || merged.getItemKey(nextCount - 1) !== prevLastKey);
+        if (didEdgeKeysChange) {
+          const item = prevCount > 0 ? this.getVirtualItemForOffset(this.getScrollOffset()) ?? measurements[0] : null;
+          if (item) {
+            anchor = [item.key, this.getScrollOffset() - item.start];
+          }
+          const behavior = merged.followOnAppend === true ? "auto" : merged.followOnAppend || null;
+          if (behavior && nextCount > prevCount && this.isAtEnd(prevOptions.scrollEndThreshold) && (prevCount === 0 || merged.getItemKey(nextCount - 1) !== prevLastKey)) {
+            followOnAppend = behavior;
+          }
+        }
+      }
+      this.options = merged;
+      if (anchor || followOnAppend) {
+        this.pendingScrollAnchor = [
+          (anchor == null ? void 0 : anchor[0]) ?? null,
+          (anchor == null ? void 0 : anchor[1]) ?? 0,
+          followOnAppend
+        ];
+      }
+    };
+    this.notify = (sync) => {
+      var _a, _b;
+      (_b = (_a = this.options).onChange) == null ? void 0 : _b.call(_a, this, sync);
+    };
+    this.maybeNotify = memo(
+      () => {
+        this.calculateRange();
+        return [
+          this.isScrolling,
+          this.range ? this.range.startIndex : null,
+          this.range ? this.range.endIndex : null
+        ];
+      },
+      (isScrolling) => {
+        this.notify(isScrolling);
+      },
+      {
+        key: false,
+        debug: () => this.options.debug,
+        initialDeps: [
+          this.isScrolling,
+          this.range ? this.range.startIndex : null,
+          this.range ? this.range.endIndex : null
+        ]
+      }
+    );
+    this.cleanup = () => {
+      this.unsubs.filter(Boolean).forEach((d) => d());
+      this.unsubs = [];
+      this.observer.disconnect();
+      if (this.rafId != null && this.targetWindow) {
+        this.targetWindow.cancelAnimationFrame(this.rafId);
+        this.rafId = null;
+      }
+      this.scrollState = null;
+      this.scrollElement = null;
+      this.targetWindow = null;
+    };
+    this._didMount = () => {
+      return () => {
+        this.cleanup();
+      };
+    };
+    this._willUpdate = () => {
+      var _a;
+      const scrollElement = this.options.enabled ? this.options.getScrollElement() : null;
+      if (this.scrollElement !== scrollElement) {
+        this.cleanup();
+        if (!scrollElement) {
+          this.maybeNotify();
+          return;
+        }
+        this.scrollElement = scrollElement;
+        if (this.scrollElement && "ownerDocument" in this.scrollElement) {
+          this.targetWindow = this.scrollElement.ownerDocument.defaultView;
+        } else {
+          this.targetWindow = ((_a = this.scrollElement) == null ? void 0 : _a.window) ?? null;
+        }
+        this.elementsCache.forEach((cached2) => {
+          this.observer.observe(cached2);
+        });
+        this.unsubs.push(
+          this.options.observeElementRect(this, (rect) => {
+            this.scrollRect = rect;
+            this.maybeNotify();
+          })
+        );
+        this.unsubs.push(
+          this.options.observeElementOffset(this, (offset, isScrolling) => {
+            if (this._intendedScrollOffset !== null && Math.abs(offset - this._intendedScrollOffset) < 1.5) {
+              offset = this._intendedScrollOffset;
+            }
+            this._intendedScrollOffset = null;
+            this.scrollAdjustments = 0;
+            this.scrollDirection = isScrolling ? this.getScrollOffset() < offset ? "forward" : "backward" : null;
+            this.scrollOffset = offset;
+            this.isScrolling = isScrolling;
+            this._flushIosDeferredIfReady();
+            if (this.scrollState) {
+              this.scheduleScrollReconcile();
+            }
+            this.maybeNotify();
+          })
+        );
+        if ("addEventListener" in this.scrollElement) {
+          const scrollEl = this.scrollElement;
+          const onTouchStart = () => {
+            this._iosTouching = true;
+            this._iosJustTouchEnded = false;
+            if (this._iosTouchEndTimerId !== null && this.targetWindow != null) {
+              this.targetWindow.clearTimeout(this._iosTouchEndTimerId);
+              this._iosTouchEndTimerId = null;
+            }
+          };
+          const onTouchEnd = () => {
+            this._iosTouching = false;
+            if (!isIOSWebKit() || this.targetWindow == null) {
+              return;
+            }
+            this._iosJustTouchEnded = true;
+            this._iosTouchEndTimerId = this.targetWindow.setTimeout(() => {
+              this._iosJustTouchEnded = false;
+              this._iosTouchEndTimerId = null;
+              this._flushIosDeferredIfReady();
+            }, 150);
+          };
+          scrollEl.addEventListener(
+            "touchstart",
+            onTouchStart,
+            addEventListenerOptions
+          );
+          scrollEl.addEventListener(
+            "touchend",
+            onTouchEnd,
+            addEventListenerOptions
+          );
+          this.unsubs.push(() => {
+            scrollEl.removeEventListener("touchstart", onTouchStart);
+            scrollEl.removeEventListener("touchend", onTouchEnd);
+            if (this._iosTouchEndTimerId !== null && this.targetWindow != null) {
+              this.targetWindow.clearTimeout(this._iosTouchEndTimerId);
+              this._iosTouchEndTimerId = null;
+            }
+          });
+        }
+        this._scrollToOffset(this.getScrollOffset(), {
+          adjustments: void 0,
+          behavior: void 0
+        });
+      }
+      const anchor = this.pendingScrollAnchor;
+      this.pendingScrollAnchor = null;
+      if (anchor && this.scrollElement && this.options.enabled) {
+        const [key2, offset, followOnAppend] = anchor;
+        if (key2 !== null) {
+          const { count: count2, getItemKey } = this.options;
+          let index2 = 0;
+          while (index2 < count2 && getItemKey(index2) !== key2) {
+            index2++;
+          }
+          const item = index2 < count2 ? this.getMeasurements()[index2] : void 0;
+          if (item) {
+            const delta = item.start + offset - this.getScrollOffset();
+            if (!approxEqual(delta, 0)) {
+              this.applyScrollAdjustment(delta);
+            }
+          }
+        }
+        if (followOnAppend) {
+          this.scrollToEnd({ behavior: followOnAppend });
+        }
+      }
+    };
+    this._flushIosDeferredIfReady = () => {
+      if (this._iosDeferredAdjustment === 0) return;
+      if (this.isScrolling) return;
+      if (this._iosTouching) return;
+      if (this._iosJustTouchEnded) return;
+      const cur = this.getScrollOffset();
+      const max = this.getMaxScrollOffset();
+      if (cur < 0 || cur > max) return;
+      const delta = this._iosDeferredAdjustment;
+      this._iosDeferredAdjustment = 0;
+      this._scrollToOffset(cur, {
+        adjustments: this.scrollAdjustments += delta,
+        behavior: void 0
+      });
+    };
+    this.rafId = null;
+    this.getSize = () => {
+      if (!this.options.enabled) {
+        this.scrollRect = null;
+        return 0;
+      }
+      this.scrollRect = this.scrollRect ?? this.options.initialRect;
+      return this.scrollRect[this.options.horizontal ? "width" : "height"];
+    };
+    this.getScrollOffset = () => {
+      if (!this.options.enabled) {
+        this.scrollOffset = null;
+        return 0;
+      }
+      this.scrollOffset = this.scrollOffset ?? (typeof this.options.initialOffset === "function" ? this.options.initialOffset() : this.options.initialOffset);
+      return this.scrollOffset;
+    };
+    this.getFurthestMeasurement = (measurements, index2) => {
+      const furthestMeasurementsFound = /* @__PURE__ */ new Map();
+      const furthestMeasurements = /* @__PURE__ */ new Map();
+      for (let m = index2 - 1; m >= 0; m--) {
+        const measurement = measurements[m];
+        if (furthestMeasurementsFound.has(measurement.lane)) {
+          continue;
+        }
+        const previousFurthestMeasurement = furthestMeasurements.get(
+          measurement.lane
+        );
+        if (previousFurthestMeasurement == null || measurement.end > previousFurthestMeasurement.end) {
+          furthestMeasurements.set(measurement.lane, measurement);
+        } else if (measurement.end < previousFurthestMeasurement.end) {
+          furthestMeasurementsFound.set(measurement.lane, true);
+        }
+        if (furthestMeasurementsFound.size === this.options.lanes) {
+          break;
+        }
+      }
+      return furthestMeasurements.size === this.options.lanes ? Array.from(furthestMeasurements.values()).sort((a, b) => {
+        if (a.end === b.end) {
+          return a.index - b.index;
+        }
+        return a.end - b.end;
+      })[0] : void 0;
+    };
+    this.getMeasurementOptions = memo(
+      () => [
+        this.options.count,
+        this.options.paddingStart,
+        this.options.scrollMargin,
+        this.options.getItemKey,
+        this.options.enabled,
+        this.options.lanes,
+        this.options.laneAssignmentMode
+      ],
+      (count2, paddingStart, scrollMargin, getItemKey, enabled, lanes, laneAssignmentMode) => {
+        const lanesChanged = this.prevLanes !== void 0 && this.prevLanes !== lanes;
+        if (lanesChanged) {
+          this.lanesChangedFlag = true;
+        }
+        this.prevLanes = lanes;
+        this.pendingMin = null;
+        return {
+          count: count2,
+          paddingStart,
+          scrollMargin,
+          getItemKey,
+          enabled,
+          lanes,
+          laneAssignmentMode
+        };
+      },
+      {
+        key: false
+      }
+    );
+    this.getMeasurements = memo(
+      () => [this.getMeasurementOptions(), this.itemSizeCacheVersion],
+      ({
+        count: count2,
+        paddingStart,
+        scrollMargin,
+        getItemKey,
+        enabled,
+        lanes,
+        laneAssignmentMode
+      }, _itemSizeCacheVersion) => {
+        const itemSizeCache = this.itemSizeCache;
+        if (!enabled) {
+          this.measurementsCache = [];
+          this.itemSizeCache.clear();
+          this.laneAssignments.clear();
+          return [];
+        }
+        if (this.laneAssignments.size > count2) {
+          for (const index2 of this.laneAssignments.keys()) {
+            if (index2 >= count2) {
+              this.laneAssignments.delete(index2);
+            }
+          }
+        }
+        if (this.lanesChangedFlag) {
+          this.lanesChangedFlag = false;
+          this.lanesSettling = true;
+          this.measurementsCache = [];
+          this.itemSizeCache.clear();
+          this.laneAssignments.clear();
+          this.pendingMin = null;
+        }
+        if (this.measurementsCache.length === 0 && !this.lanesSettling) {
+          this.measurementsCache = this.options.initialMeasurementsCache;
+          this.measurementsCache.forEach((item) => {
+            this.itemSizeCache.set(item.key, item.size);
+          });
+        }
+        const min = this.lanesSettling ? 0 : this.pendingMin ?? 0;
+        this.pendingMin = null;
+        if (this.lanesSettling && this.measurementsCache.length === count2) {
+          this.lanesSettling = false;
+        }
+        if (lanes === 1) {
+          const gap = this.options.gap;
+          const need = count2 * 2;
+          let flat = this._flatMeasurements;
+          if (!flat || flat.length < need) {
+            const next = new Float64Array(need);
+            if (flat && min > 0) next.set(flat.subarray(0, min * 2));
+            flat = next;
+            this._flatMeasurements = flat;
+          }
+          let runningStart;
+          if (min === 0) {
+            runningStart = paddingStart + scrollMargin;
+          } else {
+            const prevIdx = min - 1;
+            runningStart = flat[prevIdx * 2] + flat[prevIdx * 2 + 1] + gap;
+          }
+          for (let i = min; i < count2; i++) {
+            const key2 = getItemKey(i);
+            const measuredSize = itemSizeCache.get(key2);
+            const size = typeof measuredSize === "number" ? measuredSize : this.options.estimateSize(i);
+            flat[i * 2] = runningStart;
+            flat[i * 2 + 1] = size;
+            runningStart += size + gap;
+          }
+          const view = createLazyMeasurementsView(count2, flat, getItemKey);
+          this.measurementsCache = view;
+          return view;
+        }
+        const measurements = this.measurementsCache.slice(0, min);
+        const laneLastIndex = new Array(lanes).fill(
+          void 0
+        );
+        for (let m = 0; m < min; m++) {
+          const item = measurements[m];
+          if (item) {
+            laneLastIndex[item.lane] = m;
+          }
+        }
+        for (let i = min; i < count2; i++) {
+          const key2 = getItemKey(i);
+          const cachedLane = this.laneAssignments.get(i);
+          let lane;
+          let start;
+          const shouldCacheLane = laneAssignmentMode === "estimate" || itemSizeCache.has(key2);
+          if (cachedLane !== void 0 && this.options.lanes > 1) {
+            lane = cachedLane;
+            const prevIndex = laneLastIndex[lane];
+            const prevInLane = prevIndex !== void 0 ? measurements[prevIndex] : void 0;
+            start = prevInLane ? prevInLane.end + this.options.gap : paddingStart + scrollMargin;
+          } else {
+            const furthestMeasurement = this.options.lanes === 1 ? measurements[i - 1] : this.getFurthestMeasurement(measurements, i);
+            start = furthestMeasurement ? furthestMeasurement.end + this.options.gap : paddingStart + scrollMargin;
+            lane = furthestMeasurement ? furthestMeasurement.lane : i % this.options.lanes;
+            if (this.options.lanes > 1 && shouldCacheLane) {
+              this.laneAssignments.set(i, lane);
+            }
+          }
+          const measuredSize = itemSizeCache.get(key2);
+          const size = typeof measuredSize === "number" ? measuredSize : this.options.estimateSize(i);
+          const end = start + size;
+          measurements[i] = {
+            index: i,
+            start,
+            size,
+            end,
+            key: key2,
+            lane
+          };
+          laneLastIndex[lane] = i;
+        }
+        this.measurementsCache = measurements;
+        return measurements;
+      },
+      {
+        key: false,
+        debug: () => this.options.debug
+      }
+    );
+    this.calculateRange = memo(
+      () => [
+        this.getMeasurements(),
+        this.getSize(),
+        this.getScrollOffset(),
+        this.options.lanes
+      ],
+      (measurements, outerSize, scrollOffset, lanes) => {
+        return this.range = measurements.length > 0 && outerSize > 0 ? calculateRange({
+          measurements,
+          outerSize,
+          scrollOffset,
+          lanes,
+          // Pass the typed array so binary search + forward-walk can
+          // read start/end directly from Float64Array, skipping the
+          // Proxy traps that materialize a full VirtualItem per probe.
+          flat: lanes === 1 && this._flatMeasurements != null ? this._flatMeasurements : null
+        }) : null;
+      },
+      {
+        key: false,
+        debug: () => this.options.debug
+      }
+    );
+    this.getVirtualIndexes = memo(
+      () => {
+        let startIndex = null;
+        let endIndex = null;
+        const range = this.calculateRange();
+        if (range) {
+          startIndex = range.startIndex;
+          endIndex = range.endIndex;
+        }
+        this.maybeNotify.updateDeps([this.isScrolling, startIndex, endIndex]);
+        return [
+          this.options.rangeExtractor,
+          this.options.overscan,
+          this.options.count,
+          startIndex,
+          endIndex
+        ];
+      },
+      (rangeExtractor, overscan, count2, startIndex, endIndex) => {
+        return startIndex === null || endIndex === null ? [] : rangeExtractor({
+          startIndex,
+          endIndex,
+          overscan,
+          count: count2
+        });
+      },
+      {
+        key: false,
+        debug: () => this.options.debug
+      }
+    );
+    this.indexFromElement = (node) => {
+      const attributeName = this.options.indexAttribute;
+      const indexStr = node.getAttribute(attributeName);
+      if (!indexStr) {
+        console.warn(
+          `Missing attribute name '${attributeName}={index}' on measured element.`
+        );
+        return -1;
+      }
+      return parseInt(indexStr, 10);
+    };
+    this.shouldMeasureDuringScroll = (index2) => {
+      var _a;
+      if (!this.scrollState || this.scrollState.behavior !== "smooth") {
+        return true;
+      }
+      const scrollIndex = this.scrollState.index ?? ((_a = this.getVirtualItemForOffset(this.scrollState.lastTargetOffset)) == null ? void 0 : _a.index);
+      if (scrollIndex !== void 0 && this.range) {
+        const bufferSize = Math.max(
+          this.options.overscan,
+          Math.ceil((this.range.endIndex - this.range.startIndex) / 2)
+        );
+        const minIndex = Math.max(0, scrollIndex - bufferSize);
+        const maxIndex = Math.min(
+          this.options.count - 1,
+          scrollIndex + bufferSize
+        );
+        return index2 >= minIndex && index2 <= maxIndex;
+      }
+      return true;
+    };
+    this.measureElement = (node) => {
+      if (!node) {
+        this.elementsCache.forEach((cached2, key22) => {
+          if (!cached2.isConnected) {
+            this.observer.unobserve(cached2);
+            this.elementsCache.delete(key22);
+          }
+        });
+        return;
+      }
+      const index2 = this.indexFromElement(node);
+      const key2 = this.options.getItemKey(index2);
+      const prevNode = this.elementsCache.get(key2);
+      if (prevNode !== node) {
+        if (prevNode) {
+          this.observer.unobserve(prevNode);
+        }
+        this.observer.observe(node);
+        this.elementsCache.set(key2, node);
+      }
+      if ((!this.isScrolling || this.scrollState) && this.shouldMeasureDuringScroll(index2)) {
+        this.resizeItem(index2, this.options.measureElement(node, void 0, this));
+      }
+    };
+    this.resizeItem = (index2, size) => {
+      var _a, _b;
+      if (index2 < 0 || index2 >= this.options.count) return;
+      let cachedSize;
+      let itemStart;
+      let key2;
+      const flat = this._flatMeasurements;
+      if (this.options.lanes === 1 && flat !== null) {
+        key2 = this.options.getItemKey(index2);
+        itemStart = flat[index2 * 2];
+        cachedSize = flat[index2 * 2 + 1];
+      } else {
+        const item = this.measurementsCache[index2];
+        if (!item) return;
+        key2 = item.key;
+        itemStart = item.start;
+        cachedSize = item.size;
+      }
+      const itemSize = this.itemSizeCache.get(key2) ?? cachedSize;
+      const delta = size - itemSize;
+      if (delta !== 0) {
+        const wasAtEnd = this.options.anchorTo === "end" && ((_a = this.scrollState) == null ? void 0 : _a.behavior) !== "smooth" && this.getVirtualDistanceFromEnd() <= this.options.scrollEndThreshold;
+        const prevTotalSize = wasAtEnd ? this.getTotalSize() : 0;
+        const shouldAdjustScroll = ((_b = this.scrollState) == null ? void 0 : _b.behavior) !== "smooth" && (this.shouldAdjustScrollPositionOnItemSizeChange !== void 0 ? this.shouldAdjustScrollPositionOnItemSizeChange(
+          // The callback expects a VirtualItem; build one lazily only
+          // when the consumer actually supplied a custom predicate.
+          this.measurementsCache[index2] ?? {
+            index: index2,
+            key: key2,
+            start: itemStart,
+            size: cachedSize,
+            end: itemStart + cachedSize,
+            lane: 0
+          },
+          delta,
+          this
+        ) : (
+          // Default: adjust scrollTop only when the resize is an above-
+          // viewport item AND we're not actively scrolling backward.
+          // Adjusting during backward scroll fights the user's scroll
+          // direction and produces the "items jump while scrolling up"
+          // jank reported across many issues. Users who want the old
+          // behavior can pass shouldAdjustScrollPositionOnItemSizeChange.
+          itemStart < this.getScrollOffset() + this.scrollAdjustments && this.scrollDirection !== "backward"
+        ));
+        if (this.pendingMin === null || index2 < this.pendingMin) {
+          this.pendingMin = index2;
+        }
+        this.itemSizeCache.set(key2, size);
+        this.itemSizeCacheVersion++;
+        if (wasAtEnd) {
+          this.applyScrollAdjustment(this.getTotalSize() - prevTotalSize);
+        } else if (shouldAdjustScroll) {
+          this.applyScrollAdjustment(delta);
+        }
+        this.notify(false);
+      }
+    };
+    this.getVirtualItems = memo(
+      () => [this.getVirtualIndexes(), this.getMeasurements()],
+      (indexes, measurements) => {
+        const virtualItems = [];
+        for (let k = 0, len = indexes.length; k < len; k++) {
+          const i = indexes[k];
+          const measurement = measurements[i];
+          virtualItems.push(measurement);
+        }
+        return virtualItems;
+      },
+      {
+        key: false,
+        debug: () => this.options.debug
+      }
+    );
+    this.getVirtualItemForOffset = (offset) => {
+      const measurements = this.getMeasurements();
+      if (measurements.length === 0) {
+        return void 0;
+      }
+      const flat = this._flatMeasurements;
+      const useFlat = this.options.lanes === 1 && flat != null;
+      const idx = findNearestBinarySearch(
+        0,
+        measurements.length - 1,
+        useFlat ? (i) => flat[i * 2] : (i) => notUndefined(measurements[i]).start,
+        offset
+      );
+      return notUndefined(measurements[idx]);
+    };
+    this.getMaxScrollOffset = () => {
+      if (!this.scrollElement) return 0;
+      if ("scrollHeight" in this.scrollElement) {
+        return this.options.horizontal ? this.scrollElement.scrollWidth - this.scrollElement.clientWidth : this.scrollElement.scrollHeight - this.scrollElement.clientHeight;
+      } else {
+        const doc = this.scrollElement.document.documentElement;
+        return this.options.horizontal ? doc.scrollWidth - this.scrollElement.innerWidth : doc.scrollHeight - this.scrollElement.innerHeight;
+      }
+    };
+    this.getVirtualDistanceFromEnd = () => {
+      return Math.max(
+        this.getTotalSize() - this.getSize() - this.getScrollOffset(),
+        0
+      );
+    };
+    this.getDistanceFromEnd = () => {
+      return Math.max(this.getMaxScrollOffset() - this.getScrollOffset(), 0);
+    };
+    this.isAtEnd = (threshold = this.options.scrollEndThreshold) => {
+      return this.getDistanceFromEnd() <= threshold;
+    };
+    this.getOffsetForAlignment = (toOffset, align, itemSize = 0) => {
+      if (!this.scrollElement) return 0;
+      const size = this.getSize();
+      const scrollOffset = this.getScrollOffset();
+      if (align === "auto") {
+        align = toOffset >= scrollOffset + size ? "end" : "start";
+      }
+      if (align === "center") {
+        toOffset += (itemSize - size) / 2;
+      } else if (align === "end") {
+        toOffset -= size;
+      }
+      const maxOffset = this.getMaxScrollOffset();
+      return Math.max(Math.min(maxOffset, toOffset), 0);
+    };
+    this.getOffsetForIndex = (index2, align = "auto") => {
+      index2 = Math.max(0, Math.min(index2, this.options.count - 1));
+      const size = this.getSize();
+      const scrollOffset = this.getScrollOffset();
+      const item = this.measurementsCache[index2];
+      if (!item) return;
+      if (align === "auto") {
+        if (item.end >= scrollOffset + size - this.options.scrollPaddingEnd) {
+          align = "end";
+        } else if (item.start <= scrollOffset + this.options.scrollPaddingStart) {
+          align = "start";
+        } else {
+          return [scrollOffset, align];
+        }
+      }
+      if (align === "end" && index2 === this.options.count - 1) {
+        return [this.getMaxScrollOffset(), align];
+      }
+      const toOffset = align === "end" ? item.end + this.options.scrollPaddingEnd : item.start - this.options.scrollPaddingStart;
+      return [
+        this.getOffsetForAlignment(toOffset, align, item.size),
+        align
+      ];
+    };
+    this.scrollToOffset = (toOffset, { align = "start", behavior = "auto" } = {}) => {
+      const offset = this.getOffsetForAlignment(toOffset, align);
+      const now = this.now();
+      this.scrollState = {
+        index: null,
+        align,
+        behavior,
+        startedAt: now,
+        lastTargetOffset: offset,
+        stableFrames: 0
+      };
+      this._scrollToOffset(offset, { adjustments: void 0, behavior });
+      this.scheduleScrollReconcile();
+    };
+    this.scrollToIndex = (index2, {
+      align: initialAlign = "auto",
+      behavior = "auto"
+    } = {}) => {
+      index2 = Math.max(0, Math.min(index2, this.options.count - 1));
+      const offsetInfo = this.getOffsetForIndex(index2, initialAlign);
+      if (!offsetInfo) {
+        return;
+      }
+      const [offset, align] = offsetInfo;
+      const now = this.now();
+      this.scrollState = {
+        index: index2,
+        align,
+        behavior,
+        startedAt: now,
+        lastTargetOffset: offset,
+        stableFrames: 0
+      };
+      this._scrollToOffset(offset, { adjustments: void 0, behavior });
+      this.scheduleScrollReconcile();
+    };
+    this.scrollBy = (delta, { behavior = "auto" } = {}) => {
+      const offset = this.getScrollOffset() + delta;
+      const now = this.now();
+      this.scrollState = {
+        index: null,
+        align: "start",
+        behavior,
+        startedAt: now,
+        lastTargetOffset: offset,
+        stableFrames: 0
+      };
+      this._scrollToOffset(offset, { adjustments: void 0, behavior });
+      this.scheduleScrollReconcile();
+    };
+    this.scrollToEnd = ({ behavior = "auto" } = {}) => {
+      if (this.options.count > 0) {
+        this.scrollToIndex(this.options.count - 1, {
+          align: "end",
+          behavior
+        });
+        return;
+      }
+      this.scrollToOffset(Math.max(this.getTotalSize() - this.getSize(), 0), {
+        behavior
+      });
+    };
+    this.getTotalSize = () => {
+      var _a;
+      const measurements = this.getMeasurements();
+      let end;
+      if (measurements.length === 0) {
+        end = this.options.paddingStart;
+      } else if (this.options.lanes === 1) {
+        const lastIdx = measurements.length - 1;
+        const flat = this._flatMeasurements;
+        if (flat != null) {
+          end = flat[lastIdx * 2] + flat[lastIdx * 2 + 1];
+        } else {
+          end = ((_a = measurements[lastIdx]) == null ? void 0 : _a.end) ?? 0;
+        }
+      } else {
+        const endByLane = Array(this.options.lanes).fill(null);
+        let endIndex = measurements.length - 1;
+        while (endIndex >= 0 && endByLane.some((val) => val === null)) {
+          const item = measurements[endIndex];
+          if (endByLane[item.lane] === null) {
+            endByLane[item.lane] = item.end;
+          }
+          endIndex--;
+        }
+        end = Math.max(...endByLane.filter((val) => val !== null));
+      }
+      return Math.max(
+        end - this.options.scrollMargin + this.options.paddingEnd,
+        0
+      );
+    };
+    this.takeSnapshot = () => {
+      const snapshot = [];
+      if (this.itemSizeCache.size === 0) return snapshot;
+      const m = this.getMeasurements();
+      for (const item of m) {
+        if (item && this.itemSizeCache.has(item.key)) {
+          snapshot.push({
+            index: item.index,
+            key: item.key,
+            start: item.start,
+            size: item.size,
+            end: item.end,
+            lane: item.lane
+          });
+        }
+      }
+      return snapshot;
+    };
+    this._scrollToOffset = (offset, {
+      adjustments,
+      behavior
+    }) => {
+      this._intendedScrollOffset = offset + (adjustments ?? 0);
+      this.options.scrollToFn(offset, { behavior, adjustments }, this);
+    };
+    this.measure = () => {
+      this.pendingMin = null;
+      this.itemSizeCache.clear();
+      this.laneAssignments.clear();
+      this.itemSizeCacheVersion++;
+      this.notify(false);
+    };
+    this.setOptions(opts);
+  }
+  applyScrollAdjustment(delta, behavior) {
+    if (delta === 0) return;
+    if (isIOSWebKit() && (this.isScrolling || this._iosTouching || this._iosJustTouchEnded)) {
+      this._iosDeferredAdjustment += delta;
+    } else {
+      this._scrollToOffset(this.getScrollOffset(), {
+        adjustments: this.scrollAdjustments += delta,
+        behavior
+      });
+    }
+  }
+  scheduleScrollReconcile() {
+    if (!this.targetWindow) {
+      this.scrollState = null;
+      return;
+    }
+    if (this.rafId != null) return;
+    this.rafId = this.targetWindow.requestAnimationFrame(() => {
+      this.rafId = null;
+      this.reconcileScroll();
+    });
+  }
+  reconcileScroll() {
+    if (!this.scrollState) return;
+    const el = this.scrollElement;
+    if (!el) return;
+    const MAX_RECONCILE_MS = 5e3;
+    if (this.now() - this.scrollState.startedAt > MAX_RECONCILE_MS) {
+      this.scrollState = null;
+      return;
+    }
+    const offsetInfo = this.scrollState.index != null ? this.getOffsetForIndex(this.scrollState.index, this.scrollState.align) : void 0;
+    const targetOffset = offsetInfo ? offsetInfo[0] : this.scrollState.lastTargetOffset;
+    const STABLE_FRAMES = 1;
+    const targetChanged = targetOffset !== this.scrollState.lastTargetOffset;
+    if (!targetChanged && approxEqual(targetOffset, this.getScrollOffset())) {
+      this.scrollState.stableFrames++;
+      if (this.scrollState.stableFrames >= STABLE_FRAMES) {
+        if (this.getScrollOffset() !== targetOffset) {
+          this._scrollToOffset(targetOffset, {
+            adjustments: void 0,
+            behavior: "auto"
+          });
+        }
+        this.scrollState = null;
+        return;
+      }
+    } else {
+      this.scrollState.stableFrames = 0;
+      if (targetChanged) {
+        const viewport = this.getSize() || 600;
+        const distance = Math.abs(targetOffset - this.getScrollOffset());
+        const keepSmooth = this.scrollState.behavior === "smooth" && distance > viewport;
+        this.scrollState.lastTargetOffset = targetOffset;
+        if (!keepSmooth) {
+          this.scrollState.behavior = "auto";
+        }
+        this._scrollToOffset(targetOffset, {
+          adjustments: void 0,
+          behavior: keepSmooth ? "smooth" : "auto"
+        });
+      }
+    }
+    this.scheduleScrollReconcile();
+  }
+}
+const findNearestBinarySearch = (low, high, getCurrentValue, value2) => {
+  while (low <= high) {
+    const middle = (low + high) / 2 | 0;
+    const currentValue = getCurrentValue(middle);
+    if (currentValue < value2) {
+      low = middle + 1;
+    } else if (currentValue > value2) {
+      high = middle - 1;
+    } else {
+      return middle;
+    }
+  }
+  if (low > 0) {
+    return low - 1;
+  } else {
+    return 0;
+  }
+};
+function calculateRange({
+  measurements,
+  outerSize,
+  scrollOffset,
+  lanes,
+  flat
+}) {
+  const lastIndex = measurements.length - 1;
+  const getStart = flat ? (index2) => flat[index2 * 2] : (index2) => measurements[index2].start;
+  const getEnd = flat ? (index2) => flat[index2 * 2] + flat[index2 * 2 + 1] : (index2) => measurements[index2].end;
+  if (measurements.length <= lanes) {
+    return {
+      startIndex: 0,
+      endIndex: lastIndex
+    };
+  }
+  let startIndex = findNearestBinarySearch(0, lastIndex, getStart, scrollOffset);
+  let endIndex = startIndex;
+  if (lanes === 1) {
+    while (endIndex < lastIndex && getEnd(endIndex) < scrollOffset + outerSize) {
+      endIndex++;
+    }
+  } else if (lanes > 1) {
+    const endPerLane = Array(lanes).fill(0);
+    while (endIndex < lastIndex && endPerLane.some((pos) => pos < scrollOffset + outerSize)) {
+      const item = measurements[endIndex];
+      endPerLane[item.lane] = item.end;
+      endIndex++;
+    }
+    const startPerLane = Array(lanes).fill(scrollOffset + outerSize);
+    while (startIndex >= 0 && startPerLane.some((pos) => pos >= scrollOffset)) {
+      const item = measurements[startIndex];
+      startPerLane[item.lane] = item.start;
+      startIndex--;
+    }
+    startIndex = Math.max(0, startIndex - startIndex % lanes);
+    endIndex = Math.min(lastIndex, endIndex + (lanes - 1 - endIndex % lanes));
+  }
+  return { startIndex, endIndex };
+}
+const useIsomorphicLayoutEffect$2 = typeof document !== "undefined" ? reactExports.useLayoutEffect : reactExports.useEffect;
+function useVirtualizerBase({
+  useFlushSync = true,
+  ...options
+}) {
+  const rerender = reactExports.useReducer((x) => x + 1, 0)[1];
+  const resolvedOptions = {
+    ...options,
+    onChange: (instance2, sync) => {
+      var _a;
+      if (useFlushSync && sync) {
+        reactDomExports.flushSync(rerender);
+      } else {
+        rerender();
+      }
+      (_a = options.onChange) == null ? void 0 : _a.call(options, instance2, sync);
+    }
+  };
+  const [instance] = reactExports.useState(
+    () => new Virtualizer(resolvedOptions)
+  );
+  instance.setOptions(resolvedOptions);
+  useIsomorphicLayoutEffect$2(() => {
+    return instance._didMount();
+  }, []);
+  useIsomorphicLayoutEffect$2(() => {
+    return instance._willUpdate();
+  });
+  return instance;
+}
+function useVirtualizer(options) {
+  return useVirtualizerBase({
+    observeElementRect,
+    observeElementOffset,
+    scrollToFn: elementScroll,
+    ...options
+  });
+}
+function stableVirtualRowMeasure(element, _entry, instance) {
+  const index2 = instance.indexFromElement(element);
+  const cached2 = instance.measurementsCache[index2]?.size;
+  const estimate = typeof instance.options.estimateSize === "function" ? instance.options.estimateSize(index2) : instance.options.estimateSize;
+  const rect = element.getBoundingClientRect();
+  const h = Math.round(rect.height);
+  const w = Math.round(rect.width);
+  if (h < 8 || w < 8) return cached2 ?? estimate;
+  if (cached2 != null && Math.abs(cached2 - h) <= 2) return cached2;
+  return h;
+}
 const ESTIMATE_PX = 480;
 const OVERSCAN = 3;
 const VirtualizedHomeFeed = reactExports.memo(function VirtualizedHomeFeed2({
@@ -27380,6 +27470,8 @@ const HomeScreen = reactExports.memo(function HomeScreen2({
   const users = useAppSelector((s) => s.users);
   const { homeFeedPosts: feed, feedHasMore } = useHomeFeed();
   const isHomeTabActive = useIsTabActive("home");
+  const nativeShell = isNativeMobileApp();
+  const [nativeFeedReady, setNativeFeedReady] = reactExports.useState(!nativeShell);
   useScreenPerf("HomeScreen", { active: isHomeTabActive });
   const t = useT();
   const [shareTarget, setShareTarget] = reactExports.useState(null);
@@ -27418,8 +27510,14 @@ const HomeScreen = reactExports.memo(function HomeScreen2({
     window.addEventListener("retweet-open-post-id", onOpenPost);
     return () => window.removeEventListener("retweet-open-post-id", onOpenPost);
   }, []);
+  const restoreConsumedRef = reactExports.useRef(false);
+  reactExports.useEffect(() => {
+    if (!restoreFromProfileContext) restoreConsumedRef.current = false;
+  }, [restoreFromProfileContext]);
   reactExports.useLayoutEffect(() => {
     if (!restoreFromProfileContext || restoreFromProfileContext.tab !== "home") return;
+    if (restoreConsumedRef.current) return;
+    restoreConsumedRef.current = true;
     const d = restoreFromProfileContext;
     onConsumedRestoreFromProfile?.();
     if (!d.postId || !d.homeSurface) return;
@@ -27531,9 +27629,16 @@ const HomeScreen = reactExports.memo(function HomeScreen2({
     [onOpenProfile, onOpenChat, openPostById, openCommentsById]
   );
   reactExports.useEffect(() => {
+    if (!nativeShell) {
+      setNativeFeedReady(true);
+      return;
+    }
     if (!isHomeTabActive || isGuest) return;
-    void refreshFeedFromServer();
-  }, [isHomeTabActive, isGuest, refreshFeedFromServer]);
+    setNativeFeedReady(false);
+    const delayMs = isNativePostLoginQuietPeriod() ? 3800 : 1400;
+    const t2 = window.setTimeout(() => setNativeFeedReady(true), delayMs);
+    return () => window.clearTimeout(t2);
+  }, [nativeShell, isHomeTabActive, isGuest, currentUser?.id]);
   const handleLoadMore = reactExports.useCallback(() => {
     if (loadMoreBusyRef.current || !feedHasMore) return;
     loadMoreBusyRef.current = true;
@@ -27541,6 +27646,24 @@ const HomeScreen = reactExports.memo(function HomeScreen2({
       loadMoreBusyRef.current = false;
     });
   }, [feedHasMore, loadMoreFeedFromServer]);
+  reactExports.useEffect(() => {
+    if (!isHomeTabActive || isGuest) return;
+    const delayMs = nativeShell ? isNativePostLoginQuietPeriod() ? 3200 : 1200 : 0;
+    const t2 = window.setTimeout(() => void refreshFeedFromServer(), delayMs);
+    return () => window.clearTimeout(t2);
+  }, [isHomeTabActive, isGuest, refreshFeedFromServer, nativeShell]);
+  reactExports.useEffect(() => {
+    if (!nativeShell || !isHomeTabActive || isGuest) return;
+    const el = tabScrollRef?.current;
+    if (!el) return;
+    const onScroll = () => {
+      if (!feedHasMore) return;
+      const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 900;
+      if (nearBottom) handleLoadMore();
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [nativeShell, isHomeTabActive, isGuest, tabScrollRef, feedHasMore, handleLoadMore]);
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative flex min-h-0 flex-1 flex-col bg-background", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs(
       "div",
@@ -27584,7 +27707,7 @@ const HomeScreen = reactExports.memo(function HomeScreen2({
             ] }) })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsxs("section", { "aria-label": "الخلاصة", className: "relative z-0 flex flex-col bg-background", children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx(
+            nativeShell && !nativeFeedReady ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "py-10 text-center text-sm text-muted-foreground", children: "جاري تحميل الخلاصة…" }) : nativeShell ? /* @__PURE__ */ jsxRuntimeExports.jsx(SimpleHomeFeed, { posts: feed, feedActions }) : /* @__PURE__ */ jsxRuntimeExports.jsx(
               VirtualizedHomeFeed,
               {
                 posts: feed,
@@ -31528,7 +31651,10 @@ function listTypingPreview(lang) {
   return lang === "ar" ? "يكتب…" : "Typing…";
 }
 const CHAT_INBOX_ROW_HEIGHT_PX = 84;
-function ChatInboxVirtualList({
+function ChatInboxSimpleList({ chats, renderRow }) {
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "relative w-full", children: chats.map((chat, index2) => /* @__PURE__ */ jsxRuntimeExports.jsx("div", { children: renderRow(chat, index2) }, chat.id)) });
+}
+function ChatInboxVirtualListInner({
   chats,
   scrollParentRef,
   scrollMargin = 0,
@@ -31566,6 +31692,12 @@ function ChatInboxVirtualList({
       vi.key
     );
   }) });
+}
+function ChatInboxVirtualList(props) {
+  if (isNativeMobileApp()) {
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(ChatInboxSimpleList, { chats: props.chats, renderRow: props.renderRow });
+  }
+  return /* @__PURE__ */ jsxRuntimeExports.jsx(ChatInboxVirtualListInner, { ...props });
 }
 function ChatInboxSkeleton({ rows = 7 }) {
   return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "animate-pulse", "aria-hidden": true, children: Array.from({ length: rows }, (_, i) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
@@ -31793,15 +31925,15 @@ async function ensureNativeKeyboardBridge() {
   nativeListenersReady = true;
   try {
     const [{ Keyboard }, { Capacitor: Capacitor2 }] = await Promise.all([
-      import("./index-C4el4jY3.js"),
+      import("./index-BsNFNSkY.js"),
       Promise.resolve().then(() => index$1)
     ]);
     if (!Capacitor2.isNativePlatform()) return;
     useNativeKeyboardHeight = true;
     document.documentElement.classList.add("retweet-kb-body-resize");
     try {
-      const { KeyboardResize } = await import("./index-C4el4jY3.js");
-      await Keyboard.setResizeMode({ mode: KeyboardResize.Body });
+      const { KeyboardResize } = await import("./index-BsNFNSkY.js");
+      await Keyboard.setResizeMode({ mode: KeyboardResize.None });
     } catch {
     }
     const onShow = (info) => {
@@ -42152,15 +42284,10 @@ function VerificationPerksSettings({ onNeedSubscription }) {
   const [scheduleAt, setScheduleAt] = reactExports.useState("");
   const [pinPostId, setPinPostId] = reactExports.useState("");
   const [msg, setMsg] = reactExports.useState(null);
-  if (!currentUser) return null;
-  const ent = getUserEntitlements(currentUser);
-  const premium = ent.isSubscribed || ent.isVerified;
-  if (!premium) return null;
-  const myPosts = state2.posts.filter(
-    (p) => p.userId === currentUser.id && (p.type === "post" || p.type === "tweet")
-  );
   reactExports.useEffect(() => {
     if (!currentUser) return;
+    const ent2 = getUserEntitlements(currentUser);
+    if (!ent2.isSubscribed && !ent2.isVerified) return;
     const saved = loadQuickReplies(currentUser.id);
     if (saved.length) setQuickReplies(saved);
     else {
@@ -42174,6 +42301,13 @@ function VerificationPerksSettings({ onNeedSubscription }) {
     setScheduled(loadScheduledPosts(currentUser.id));
     setPinPostId(currentUser.pinnedPostId || "");
   }, [currentUser?.id, currentUser?.pinnedPostId]);
+  if (!currentUser) return null;
+  const ent = getUserEntitlements(currentUser);
+  const premium = ent.isSubscribed || ent.isVerified;
+  if (!premium) return null;
+  const myPosts = state2.posts.filter(
+    (p) => p.userId === currentUser.id && (p.type === "post" || p.type === "tweet")
+  );
   const persistProfile = (patch) => {
     updateProfile(patch, { commitRemote: apiBackendEnabled() && !!getApiToken() });
     setMsg("تم الحفظ");
@@ -50707,7 +50841,7 @@ function TierCard({
 }
 const CAROUSEL_GAP = 14;
 const CAROUSEL_SLIDE_RATIO = 0.88;
-const SWIPE_COMMIT_PX = 48;
+const SWIPE_COMMIT_PX = 36;
 function TierSwipeCarousel({
   index: index2,
   onIndexChange,
@@ -50748,10 +50882,10 @@ function TierSwipeCarousel({
   const translateX = baseTranslate + dragPx;
   const finishDrag = (clientX) => {
     const dx = clientX - dragRef.current.startX;
-    const threshold = Math.max(SWIPE_COMMIT_PX, layout.step * 0.14);
+    const threshold = Math.max(SWIPE_COMMIT_PX, layout.step * 0.1);
     let next = dragRef.current.startIndex;
-    if (dx < -threshold) next = Math.max(0, next - 1);
-    else if (dx > threshold) next = Math.min(maxIndex, next + 1);
+    if (dx < -threshold) next = Math.min(maxIndex, next + 1);
+    else if (dx > threshold) next = Math.max(0, next - 1);
     setDragPx(0);
     setDragging(false);
     dragRef.current.active = false;
@@ -50778,9 +50912,9 @@ function TierSwipeCarousel({
     let dx = e.clientX - dragRef.current.startX;
     const atStart = dragRef.current.startIndex <= 0;
     const atEnd = dragRef.current.startIndex >= maxIndex;
-    if (atStart && dx < 0) dx *= 0.22;
-    if (atEnd && dx > 0) dx *= 0.22;
-    setDragPx(-dx);
+    if (atStart && dx > 0) dx *= 0.24;
+    if (atEnd && dx < 0) dx *= 0.24;
+    setDragPx(dx);
   };
   const onPointerUp = (e) => {
     if (dragRef.current.pointerId !== e.pointerId) return;
@@ -50810,7 +50944,7 @@ function TierSwipeCarousel({
           style: {
             gap: CAROUSEL_GAP,
             transform: `translate3d(${translateX}px, 0, 0)`,
-            transition: dragging ? "none" : "transform 380ms cubic-bezier(0.22, 1, 0.36, 1), opacity 120ms ease"
+            transition: dragging ? "none" : "transform 320ms cubic-bezier(0.2, 0.9, 0.2, 1), opacity 120ms ease"
           },
           children: children.map((child, i) => /* @__PURE__ */ jsxRuntimeExports.jsx(
             "div",
@@ -52483,7 +52617,7 @@ function SecurityScreenShell({
   onBack,
   children
 }) {
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "settings-screen-root min-h-full w-full overflow-x-hidden bg-background text-foreground pb-10", dir: "ltr", children: [
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "settings-screen-root min-h-full w-full overflow-x-hidden bg-background text-foreground pb-10", dir: "rtl", children: [
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "sticky top-0 z-[10001] isolate bg-background px-4 pt-[max(0.75rem,var(--sat))] pb-3", children: [
       /* @__PURE__ */ jsxRuntimeExports.jsx(
         SlideDismissBackButton,
@@ -52491,8 +52625,8 @@ function SecurityScreenShell({
           navScope: "local",
           onDismiss: onBack,
           className: "relative z-[10001] mb-1 inline-flex h-11 w-11 items-center justify-center rounded-full text-foreground hover:bg-accent",
-          "aria-label": "Back",
-          children: /* @__PURE__ */ jsxRuntimeExports.jsx(ChevronLeft, { size: 24, strokeWidth: 2, className: "pointer-events-none" })
+          "aria-label": "رجوع",
+          children: /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowRight, { size: 24, strokeWidth: 2, className: "pointer-events-none" })
         }
       ),
       /* @__PURE__ */ jsxRuntimeExports.jsx("h1", { className: "text-[32px] font-bold leading-tight tracking-tight text-foreground", children: title })
@@ -52617,8 +52751,8 @@ function SecuritySettingsPanel({ onBack }) {
     return rows;
   }, [me.id, me.username, me.email, me.avatar]);
   if (view === "changePassword") {
-    return /* @__PURE__ */ jsxRuntimeExports.jsxs(SecurityScreenShell, { title: "Change password", onBack: () => setView("menu"), children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-[14px] leading-5 text-muted-foreground", children: "Enter your current password, then choose a new one." }),
+    return /* @__PURE__ */ jsxRuntimeExports.jsxs(SecurityScreenShell, { title: "تغيير كلمة المرور", onBack: () => setView("menu"), children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-[14px] leading-5 text-muted-foreground", children: "أدخل كلمة المرور الحالية ثم اختر كلمة مرور جديدة." }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4 space-y-3", children: [
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           SecurityDarkInput,
@@ -52655,14 +52789,14 @@ function SecuritySettingsPanel({ onBack }) {
     ] });
   }
   if (view === "twoFactor") {
-    return /* @__PURE__ */ jsxRuntimeExports.jsxs(SecurityScreenShell, { title: "Two-factor authentication", onBack: () => setView("menu"), children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-[14px] leading-5 text-muted-foreground", children: "Add an extra layer of security with an email code at each sign-in." }),
+    return /* @__PURE__ */ jsxRuntimeExports.jsxs(SecurityScreenShell, { title: "التحقق بخطوتين", onBack: () => setView("menu"), children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-[14px] leading-5 text-muted-foreground", children: "أضف طبقة حماية إضافية عبر رمز بريد إلكتروني عند كل تسجيل دخول." }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4 space-y-4", children: [
-        loading ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-muted-foreground", children: "Loading…" }) : null,
+        loading ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-muted-foreground", children: "جاري التحميل…" }) : null,
         !loading && summary ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "overflow-hidden rounded-2xl border border-border bg-card px-4 py-4", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex items-center justify-between gap-3", children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { children: [
-            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[16px] font-medium text-foreground", children: "Two-factor authentication" }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-[13px] text-muted-foreground", children: "Email code on every login" })
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[16px] font-medium text-foreground", children: "التحقق بخطوتين" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1 text-[13px] text-muted-foreground", children: "رمز بريد إلكتروني عند كل تسجيل دخول" })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(
             IgToggle,
@@ -52694,9 +52828,9 @@ function SecuritySettingsPanel({ onBack }) {
     ] }) });
   }
   if (view === "savedLogin") {
-    return /* @__PURE__ */ jsxRuntimeExports.jsxs(SecurityScreenShell, { title: "Saved login", onBack: () => setView("menu"), children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-[14px] leading-5 text-muted-foreground", children: "Accounts saved on this device that can sign in to your profile." }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: accountsCenterCardClass, children: savedAccounts.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "px-4 py-6 text-center text-sm text-muted-foreground", children: "No saved accounts on this device." }) : savedAccounts.map((s, i) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
+    return /* @__PURE__ */ jsxRuntimeExports.jsxs(SecurityScreenShell, { title: "تسجيلات الدخول المحفوظة", onBack: () => setView("menu"), children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-[14px] leading-5 text-muted-foreground", children: "الحسابات المحفوظة على هذا الجهاز والقابلة لتسجيل الدخول." }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: accountsCenterCardClass, children: savedAccounts.length === 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "px-4 py-6 text-center text-sm text-muted-foreground", children: "لا توجد حسابات محفوظة على هذا الجهاز." }) : savedAccounts.map((s, i) => /* @__PURE__ */ jsxRuntimeExports.jsxs(
         "div",
         {
           className: "flex items-center gap-3 px-4 py-3.5 " + (i < savedAccounts.length - 1 ? "border-b border-border" : ""),
@@ -52710,7 +52844,7 @@ function SecuritySettingsPanel({ onBack }) {
               ] }),
               s.email ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "truncate text-[12px] text-muted-foreground/80", children: s.email }) : null
             ] }),
-            s.userId === me.id ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "shrink-0 rounded-full bg-[#0095F6]/20 px-2.5 py-1 text-[11px] font-semibold text-[#0095F6]", children: "Active" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "shrink-0 rounded-full bg-secondary px-2.5 py-1 text-[11px] font-medium text-muted-foreground", children: "Saved" })
+            s.userId === me.id ? /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "shrink-0 rounded-full bg-[#0095F6]/20 px-2.5 py-1 text-[11px] font-semibold text-[#0095F6]", children: "نشط" }) : /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "shrink-0 rounded-full bg-secondary px-2.5 py-1 text-[11px] font-medium text-muted-foreground", children: "محفوظ" })
           ]
         },
         s.userId
@@ -52718,23 +52852,23 @@ function SecuritySettingsPanel({ onBack }) {
     ] });
   }
   if (view === "whereLoggedIn") {
-    return /* @__PURE__ */ jsxRuntimeExports.jsxs(SecurityScreenShell, { title: "Where you're logged in", onBack: () => setView("menu"), children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-[14px] leading-5 text-muted-foreground", children: "Devices and browsers currently trusted for your account." }),
+    return /* @__PURE__ */ jsxRuntimeExports.jsxs(SecurityScreenShell, { title: "أماكن تسجيل دخولك", onBack: () => setView("menu"), children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-[14px] leading-5 text-muted-foreground", children: "الأجهزة والمتصفحات الموثوقة حاليًا لحسابك." }),
       /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-4 space-y-4", children: [
-        loading ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-muted-foreground", children: "Loading…" }) : null,
+        loading ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm text-muted-foreground", children: "جاري التحميل…" }) : null,
         !loading && summary ? /* @__PURE__ */ jsxRuntimeExports.jsxs(jsxRuntimeExports.Fragment, { children: [
           /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "overflow-hidden rounded-2xl border border-border bg-card px-4 py-4", children: [
             /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "text-[16px] font-medium text-foreground flex items-center gap-2", children: [
               /* @__PURE__ */ jsxRuntimeExports.jsx(Smartphone, { className: "h-4 w-4" }),
-              "Trusted devices (",
+              "الأجهزة الموثوقة (",
               summary.trustedDeviceCount ?? 0,
               ")"
             ] }),
             (summary.trustedDevices ?? []).length > 0 ? /* @__PURE__ */ jsxRuntimeExports.jsx("ul", { className: "mt-3 space-y-2", children: (summary.trustedDevices ?? []).map((d, i) => /* @__PURE__ */ jsxRuntimeExports.jsxs("li", { className: "text-[13px] text-muted-foreground", children: [
               d.label,
-              " · Last seen ",
+              " · آخر ظهور ",
               new Date(d.lastSeenAt).toLocaleDateString()
-            ] }, i)) }) : /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-[13px] text-muted-foreground", children: "No trusted devices yet." })
+            ] }, i)) }) : /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-2 text-[13px] text-muted-foreground", children: "لا توجد أجهزة موثوقة بعد." })
           ] }),
           /* @__PURE__ */ jsxRuntimeExports.jsx(
             SecurityDarkInput,
@@ -52753,7 +52887,7 @@ function SecuritySettingsPanel({ onBack }) {
               disabled: busy,
               onClick: () => void revokeDevices(),
               className: "w-full rounded-xl border border-red-500/30 bg-red-500/10 py-2.5 text-sm font-semibold text-red-400 disabled:opacity-50",
-              children: "Remove all trusted devices"
+              children: "إزالة كل الأجهزة الموثوقة"
             }
           )
         ] }) : null,
@@ -52763,30 +52897,30 @@ function SecuritySettingsPanel({ onBack }) {
   }
   if (view === "comingSoon") {
     return /* @__PURE__ */ jsxRuntimeExports.jsx(SecurityScreenShell, { title: comingSoonTitle, onBack: () => setView("menu"), children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-8 flex flex-col items-center gap-4 px-4 text-center", children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[18px] font-semibold text-foreground", children: "Coming soon" }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[18px] font-semibold text-foreground", children: "قريبًا" }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-[14px] leading-6 text-muted-foreground", children: t("comingSoonPanel") })
     ] }) });
   }
-  return /* @__PURE__ */ jsxRuntimeExports.jsxs(SecurityScreenShell, { title: "Password and security", onBack, children: [
-    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-4 text-[17px] font-bold leading-snug text-foreground", children: "Login & recovery" }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1.5 text-[14px] leading-5 text-muted-foreground", children: "Manage your passwords, login preferences and recovery methods." }),
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs(SecurityScreenShell, { title: "كلمة المرور والأمان", onBack, children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-4 text-[17px] font-bold leading-snug text-foreground", children: "تسجيل الدخول والاسترداد" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1.5 text-[14px] leading-5 text-muted-foreground", children: "إدارة كلمات المرور وتفضيلات الدخول وطرق الاسترداد." }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `mt-3 ${accountsCenterCardClass}`, children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(SecurityMenuRow, { label: "Change password", onClick: () => {
+      /* @__PURE__ */ jsxRuntimeExports.jsx(SecurityMenuRow, { label: "تغيير كلمة المرور", onClick: () => {
         setMsg(null);
         setView("changePassword");
       } }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(SecurityMenuRow, { label: "Two-factor authentication", onClick: () => {
+      /* @__PURE__ */ jsxRuntimeExports.jsx(SecurityMenuRow, { label: "التحقق بخطوتين", onClick: () => {
         setMsg(null);
         setPwd("");
         setView("twoFactor");
       } }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(SecurityMenuRow, { label: "Verification selfie", onClick: () => setView("verificationSelfie") }),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(SecurityMenuRow, { label: "Saved login", onClick: () => setView("savedLogin") })
+      /* @__PURE__ */ jsxRuntimeExports.jsx(SecurityMenuRow, { label: "سلفي التوثيق", onClick: () => setView("verificationSelfie") }),
+      /* @__PURE__ */ jsxRuntimeExports.jsx(SecurityMenuRow, { label: "تسجيلات الدخول المحفوظة", onClick: () => setView("savedLogin") })
     ] }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-6 text-[17px] font-bold leading-snug text-foreground", children: "Security checks" }),
-    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1.5 text-[14px] leading-5 text-muted-foreground", children: "Review security issues by running checks across apps, devices and emails sent." }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-6 text-[17px] font-bold leading-snug text-foreground", children: "فحوصات الأمان" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-1.5 text-[14px] leading-5 text-muted-foreground", children: "راجع مشكلات الأمان عبر فحص التطبيقات والأجهزة ورسائل البريد." }),
     /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: `mt-3 ${accountsCenterCardClass}`, children: [
-      /* @__PURE__ */ jsxRuntimeExports.jsx(SecurityMenuRow, { label: "Where you're logged in", onClick: () => {
+      /* @__PURE__ */ jsxRuntimeExports.jsx(SecurityMenuRow, { label: "أماكن تسجيل دخولك", onClick: () => {
         setMsg(null);
         setPwd("");
         setView("whereLoggedIn");
@@ -52794,12 +52928,12 @@ function SecuritySettingsPanel({ onBack }) {
       /* @__PURE__ */ jsxRuntimeExports.jsx(
         SecurityMenuRow,
         {
-          label: "Recent emails",
-          onClick: () => openComingSoon("Recent emails"),
+          label: "رسائل البريد الأخيرة",
+          onClick: () => openComingSoon("رسائل البريد الأخيرة"),
           trailing: /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex h-5 w-5 items-center justify-center rounded-md bg-gradient-to-br from-[#f58529] via-[#dd2a7b] to-[#8134af] text-[10px] font-bold text-white", children: "IG" })
         }
       ),
-      /* @__PURE__ */ jsxRuntimeExports.jsx(SecurityMenuRow, { label: "Security Checkup", onClick: () => openComingSoon("Security Checkup") })
+      /* @__PURE__ */ jsxRuntimeExports.jsx(SecurityMenuRow, { label: "فحص الأمان", onClick: () => openComingSoon("فحص الأمان") })
     ] })
   ] });
 }
@@ -53141,7 +53275,7 @@ function SettingsScreen({
             {
               className: cn(
                 "absolute flex w-full flex-col overflow-hidden border border-border bg-background text-foreground shadow-2xl",
-                nativeShell ? "inset-0 max-w-none rounded-none" : "inset-x-0 bottom-0 top-[max(0.75rem,var(--sat))] mx-auto max-w-md rounded-t-[28px]"
+                nativeShell ? "inset-0 max-w-none rounded-none" : "inset-x-0 bottom-0 top-[max(3.5rem,var(--sat))] mx-auto max-w-md rounded-t-[28px]"
               ),
               style: {
                 transform: `translate3d(0, ${Math.max(0, accountsCenterDragY)}px, 0)`,
@@ -53191,34 +53325,44 @@ function SettingsScreen({
                 setAccountsCenterDragY(0);
               },
               children: [
-                /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { "data-accounts-center-drag-handle": true, className: "shrink-0 px-4 pb-3 pt-4", children: [
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mx-auto mb-3 h-1.5 w-14 rounded-full bg-muted-foreground/30" }),
-                  /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative text-center", children: [
-                    /* @__PURE__ */ jsxRuntimeExports.jsx(
-                      "button",
-                      {
-                        type: "button",
-                        className: "absolute start-0 top-0 rounded-full p-2 text-foreground hover:bg-accent",
-                        onClick: () => {
-                          setAccountsCenterOpen(false);
-                          setSubViewReturnToAccountsCenter(false);
-                        },
-                        "aria-label": "إغلاق",
-                        children: /* @__PURE__ */ jsxRuntimeExports.jsx(X, { size: 22 })
-                      }
-                    ),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm font-semibold text-muted-foreground", children: "Retweet" }),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "mt-2 text-[34px] font-bold leading-none text-foreground", children: "Accounts Center" }),
-                    /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mx-auto mt-3 max-w-[92%] text-sm leading-6 text-muted-foreground", children: "Manage your connected experiences and account settings across Retweet." })
-                  ] })
-                ] }),
+                /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                  "div",
+                  {
+                    "data-accounts-center-drag-handle": true,
+                    className: "sticky top-0 z-10 shrink-0 border-b border-border bg-background px-4 pb-3 pt-[max(1.1rem,var(--sat))]",
+                    children: [
+                      /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mx-auto mb-3 h-1.5 w-14 rounded-full bg-muted-foreground/30" }),
+                      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "relative text-center", children: [
+                        /* @__PURE__ */ jsxRuntimeExports.jsxs(
+                          "button",
+                          {
+                            type: "button",
+                            className: "absolute start-0 top-0 flex items-center gap-1 rounded-full p-2 text-foreground hover:bg-accent",
+                            onClick: () => {
+                              setAccountsCenterOpen(false);
+                              setSubViewReturnToAccountsCenter(false);
+                            },
+                            "aria-label": "رجوع",
+                            children: [
+                              /* @__PURE__ */ jsxRuntimeExports.jsx(ArrowRight, { size: 20 }),
+                              /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "text-xs font-medium", children: "رجوع" })
+                            ]
+                          }
+                        ),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm font-semibold text-muted-foreground", children: "ريتويت" }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("h3", { className: "mt-2.5 text-[34px] font-bold leading-tight text-foreground", children: "إدارة الحساب" }),
+                        /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mx-auto mt-3 max-w-[92%] text-sm leading-6 text-muted-foreground", children: "إدارة التجارب المتصلة وإعدادات الحساب عبر ريتويت." })
+                      ] })
+                    ]
+                  }
+                ),
                 /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain px-4 pb-[max(1.75rem,var(--sab))]", children: [
                   /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: accountsCenterCardClass, children: /* @__PURE__ */ jsxRuntimeExports.jsx(
                     AccountsCenterRow,
                     {
                       icon: CircleUser,
-                      label: "Profiles and personal details",
-                      subtitle: "2 profiles",
+                      label: "الملفات الشخصية والتفاصيل",
+                      subtitle: "٢ ملفات شخصية",
                       onClick: () => openSubViewFromAccountsCenter("accountInfo")
                     }
                   ) }),
@@ -53227,7 +53371,7 @@ function SettingsScreen({
                       AccountsCenterRow,
                       {
                         icon: ShieldCheck,
-                        label: "Password and security",
+                        label: "كلمة المرور والأمان",
                         onClick: () => openSubViewFromAccountsCenter(apiBackendEnabled() ? "security" : "changePwd")
                       }
                     ),
@@ -53235,7 +53379,7 @@ function SettingsScreen({
                       AccountsCenterRow,
                       {
                         icon: UsersRound,
-                        label: "Connected experiences",
+                        label: "التجارب المتصلة",
                         onClick: () => openSubViewFromAccountsCenter("closeFriends")
                       }
                     ),
@@ -53243,7 +53387,7 @@ function SettingsScreen({
                       AccountsCenterRow,
                       {
                         icon: Info,
-                        label: "Your information and permissions",
+                        label: "معلوماتك والأذونات",
                         onClick: () => openSubViewFromAccountsCenter("accountInfo")
                       }
                     ),
@@ -53251,7 +53395,7 @@ function SettingsScreen({
                       AccountsCenterRow,
                       {
                         icon: Bell,
-                        label: "Ad preferences",
+                        label: "تفضيلات الإعلانات",
                         onClick: () => openSubViewFromAccountsCenter("notifications")
                       }
                     ),
@@ -53259,7 +53403,7 @@ function SettingsScreen({
                       AccountsCenterRow,
                       {
                         icon: Bookmark,
-                        label: "Retweet Pay",
+                        label: "ريتويت باي",
                         onClick: () => openSubViewFromAccountsCenter("saved")
                       }
                     ),
@@ -53267,7 +53411,7 @@ function SettingsScreen({
                       AccountsCenterRow,
                       {
                         icon: BadgeCheck,
-                        label: "Subscriptions",
+                        label: "الاشتراكات",
                         onClick: () => openVerificationFlow(true)
                       }
                     )
@@ -53276,7 +53420,7 @@ function SettingsScreen({
                     AccountsCenterRow,
                     {
                       icon: Users,
-                      label: "Manage accounts",
+                      label: "إدارة الحسابات",
                       onClick: () => {
                         setAccountsCenterOpen(false);
                         setSubViewReturnToAccountsCenter(false);
@@ -53284,7 +53428,7 @@ function SettingsScreen({
                       }
                     }
                   ) }) : null,
-                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-6 text-[26px] font-bold leading-none text-foreground", children: "More from Retweet" }),
+                  /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-6 text-[26px] font-bold leading-none text-foreground", children: "المزيد من ريتويت" }),
                   /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-3 grid grid-cols-2 gap-3", children: [
                     /* @__PURE__ */ jsxRuntimeExports.jsxs(
                       "button",
@@ -53294,7 +53438,7 @@ function SettingsScreen({
                         onClick: () => openVerificationFlow(true),
                         children: [
                           /* @__PURE__ */ jsxRuntimeExports.jsx(BadgeCheck, { size: 24, className: "mb-3 text-blue-400" }),
-                          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-sm font-semibold text-foreground", children: "Retweet Verified" })
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-sm font-semibold text-foreground", children: "توثيق ريتويت" })
                         ]
                       }
                     ),
@@ -53306,7 +53450,7 @@ function SettingsScreen({
                         onClick: () => openSubViewFromAccountsCenter("timeManagement"),
                         children: [
                           /* @__PURE__ */ jsxRuntimeExports.jsx(Globe, { size: 24, className: "mb-3 text-sky-300" }),
-                          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-sm font-semibold text-foreground", children: "AI Glasses" })
+                          /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "text-sm font-semibold text-foreground", children: "نظارات الذكاء" })
                         ]
                       }
                     )
@@ -60243,12 +60387,12 @@ function App() {
   reactExports.useEffect(() => startPerfSession(), []);
   reactExports.useEffect(() => {
     if (!currentUser || isGuest) return;
-    void import("./pushNotifications-o5ueMnf7.js").then((m) => {
+    void import("./pushNotifications-ChxQQg5d.js").then((m) => {
       void m.initPushNotifications();
       void m.syncPushRegistration();
     });
     return () => {
-      void import("./pushNotifications-o5ueMnf7.js").then((m) => m.teardownPushNotifications());
+      void import("./pushNotifications-ChxQQg5d.js").then((m) => m.teardownPushNotifications());
     };
   }, [currentUser?.id, isGuest]);
   reactExports.useEffect(() => {
@@ -61126,6 +61270,23 @@ function App() {
     profilePanel,
     viewProfileId
   ]);
+  const nativeShell = isNativeCapacitorShell();
+  reactExports.useEffect(() => {
+    if (typeof document === "undefined" || !currentUser) return;
+    const root = document.documentElement;
+    if (nativeShell && tab === "chat") {
+      root.classList.add("retweet-chat-tab-active");
+      const id = requestAnimationFrame(() => {
+        void Promise.resolve().then(() => nativeViewportLayout).then((m) => m.applyNativeViewportFullBleed());
+      });
+      return () => {
+        cancelAnimationFrame(id);
+        root.classList.remove("retweet-chat-tab-active");
+      };
+    }
+    root.classList.remove("retweet-chat-tab-active");
+    return () => root.classList.remove("retweet-chat-tab-active");
+  }, [tab, nativeShell, currentUser?.id]);
   if (!currentUser) {
     if (getApiToken() && apiBackendEnabled()) {
       return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex min-h-dvh flex-col items-center justify-center gap-4 bg-background px-6 text-center text-sm text-muted-foreground", children: [
@@ -61203,23 +61364,6 @@ function App() {
   const hideBottomBar = immersiveOverlay && !chatExitNavActive || storyFullscreen || !!profileOverlayUserId || settingsImmersive || reportSheetOpen || reelsCommentsOpen || chatCreateSheetOpen || cameraFullscreenOpen || storyGalleryOpen;
   const showBottomNav = !hideBottomBar || chatExitNavActive;
   const banOverlayActive = !!(banInfo && banPresentation === "overlay" && !isGuest);
-  const nativeShell = isNativeCapacitorShell();
-  reactExports.useEffect(() => {
-    if (typeof document === "undefined") return;
-    const root = document.documentElement;
-    if (nativeShell && tab === "chat") {
-      root.classList.add("retweet-chat-tab-active");
-      const id = requestAnimationFrame(() => {
-        void Promise.resolve().then(() => nativeViewportLayout).then((m) => m.applyNativeViewportFullBleed());
-      });
-      return () => {
-        cancelAnimationFrame(id);
-        root.classList.remove("retweet-chat-tab-active");
-      };
-    }
-    root.classList.remove("retweet-chat-tab-active");
-    return () => root.classList.remove("retweet-chat-tab-active");
-  }, [tab, nativeShell]);
   const appShellHeight = nativeShell ? "h-full max-h-full min-h-0" : immersiveOverlay || settingsImmersive ? "h-dvh max-h-dvh" : "h-dvh max-h-dvh";
   return /* @__PURE__ */ jsxRuntimeExports.jsxs(
     "div",
@@ -61783,8 +61927,15 @@ function initSafeAreaBootstrap() {
   window.setTimeout(scheduleSafeAreaSync, 120);
   window.setTimeout(scheduleSafeAreaSync, 400);
   window.addEventListener("retweet-safe-area-change", scheduleSafeAreaFromResize, { passive: true });
-  window.addEventListener("resize", scheduleSafeAreaFromResize, { passive: true });
-  window.visualViewport?.addEventListener("resize", scheduleSafeAreaFromResize, { passive: true });
+  if (allowNativeLayoutResizeListeners()) {
+    window.addEventListener("resize", scheduleSafeAreaFromResize, { passive: true });
+    window.visualViewport?.addEventListener("resize", scheduleSafeAreaFromResize, { passive: true });
+  }
+  window.setTimeout(() => {
+    if (!allowNativeLayoutResizeListeners()) return;
+    window.addEventListener("resize", scheduleSafeAreaFromResize, { passive: true });
+    window.visualViewport?.addEventListener("resize", scheduleSafeAreaFromResize, { passive: true });
+  }, 4500);
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible") scheduleSafeAreaSync();
   });
@@ -61858,10 +62009,11 @@ function WebAppRoot() {
     }).finally(() => {
       if (!cancelled) {
         setReady(true);
-        if (isNativeCapacitorShell()) {
-          requestAnimationFrame(() => {
-            initNativeViewportLayout();
-          });
+        if (isNativeMobileApp()) {
+          beginNativePostLoginQuietPeriod();
+          window.setTimeout(() => {
+            requestAnimationFrame(() => initNativeViewportLayout());
+          }, 4500);
         }
         logAuthRoute("webapp-root-ready", {
           bootUserId: readPersistedAppState().currentUserId
