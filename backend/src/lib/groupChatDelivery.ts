@@ -348,12 +348,14 @@ export async function patchGroupChatForMembers(
   };
   await syncGroupChatCanonical(canonical, members[0] || nextMembers[0] || "");
 
-  const livePatch = {
+  const baseIds = new Set((base.messages || []).map(m => m.id));
+  const messageDelta = (canonical.messages || []).filter(m => !baseIds.has(m.id));
+  const livePatch: Partial<Chat> = {
     members: canonical.members,
     admins: canonical.admins,
     mutedUserIds: canonical.mutedUserIds,
-    messages: canonical.messages,
   };
+  if (messageDelta.length) livePatch.messages = messageDelta;
   for (const memberId of canonical.members) {
     broadcastSseToUser(memberId, "sync_hint", { kind: "chats", chatId });
     emitToUsers([memberId], "group:updated", { chatId, patch: livePatch });

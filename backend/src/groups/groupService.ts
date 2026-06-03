@@ -280,7 +280,7 @@ export async function muteMember(
   await patchGroupChatForMembers(chatId, chat.members, {
     groupPatch: {
       mutedUserIds: muted,
-      messages: [...(chat.messages || []), systemMessage],
+      messages: [systemMessage],
     },
   });
   const m = record.members.find(x => x.userId === targetUserId);
@@ -318,13 +318,10 @@ export async function unmuteMember(
     action: "member.unmuted",
     targetUserId,
   });
-  const nextMessages = systemMessage
-    ? [...(chat.messages || []), systemMessage]
-    : chat.messages || [];
   await patchGroupChatForMembers(chatId, chat.members, {
     groupPatch: {
       mutedUserIds: muted,
-      messages: nextMessages,
+      ...(systemMessage ? { messages: [systemMessage] } : {}),
     },
   });
   const m = record.members.find(x => x.userId === targetUserId);

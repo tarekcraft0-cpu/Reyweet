@@ -2400,6 +2400,40 @@ export function ChatScreen({
     setStackGestureLocked(false);
   }, []);
 
+  const ensureOpenChatInteractive = useCallback(() => {
+    stackRoomDismissDraggingRef.current = false;
+    setStackRoomDismissDragging(false);
+    stackRoomDriveRef.current = "idle";
+    stackRoomDismissRef.current = false;
+    if (stackCloseCommitRef.current || stackClosingId) return;
+    if (stackProgressRef.current < 0.35 && !openChat) return;
+    if (stackProgressRef.current >= 0.98 || openChat) {
+      releaseStackTransitionLock();
+      const { roomEl } = stackLayers();
+      if (roomEl) {
+        roomEl.style.visibility = "";
+        roomEl.style.opacity = "1";
+        roomEl.style.pointerEvents = "";
+      }
+    }
+  }, [openChat, stackClosingId, stackLayers, releaseStackTransitionLock]);
+
+  useEffect(() => {
+    const onGroupPatch = (e: Event) => {
+      const chatId = (e as CustomEvent<{ chatId?: string }>).detail?.chatId;
+      if (!chatId || !openChat) return;
+      if (resolveOpenChatId(openChat) !== chatId && openChat !== chatId) return;
+      if (stackDismissPullRafRef.current) {
+        cancelAnimationFrame(stackDismissPullRafRef.current);
+        stackDismissPullRafRef.current = 0;
+      }
+      stackDismissPullPendingRef.current = null;
+      ensureOpenChatInteractive();
+    };
+    window.addEventListener("retweet-group-chat-patch", onGroupPatch);
+    return () => window.removeEventListener("retweet-group-chat-patch", onGroupPatch);
+  }, [openChat, resolveOpenChatId, ensureOpenChatInteractive]);
+
   const openChatDirect = useCallback(
     (id: string) => {
       if (stackClosingId || stackDismissFinalizingRef.current || stackRoomDriveRef.current === "close") {
@@ -2461,6 +2495,19 @@ export function ChatScreen({
         roomEl.style.pointerEvents = "none";
       }
 
+      const openSafetyTimer = window.setTimeout(() => {
+        if (stackNavTargetRef.current !== canonical) return;
+        if (stackProgressRef.current >= 0.95) return;
+        stackProgressRef.current = 1;
+        setStackProgress(1);
+        publishChatStackCssProgress(1);
+        syncStackNavHideProgress(null);
+        stackTapTransitionRef.current = false;
+        releaseStackTransitionLock();
+        ensureOpenChatInteractive();
+        applyStackLayerTransforms(1, false);
+      }, 480);
+
       stackOpenAnimCancelRef.current = runChatNavOpenAnimation(
         cap,
         layers,
@@ -2473,6 +2520,7 @@ export function ChatScreen({
           }
         },
         () => {
+          window.clearTimeout(openSafetyTimer);
           stackOpenAnimCancelRef.current = null;
           stackProgressRef.current = 1;
           setStackProgress(1);
@@ -2481,6 +2529,7 @@ export function ChatScreen({
           onExitNavRevealProgress?.(null);
           stackTapTransitionRef.current = false;
           releaseStackTransitionLock();
+          ensureOpenChatInteractive();
           requestStackRoomScrollBottom();
         },
       );
@@ -2498,6 +2547,8 @@ export function ChatScreen({
       onActiveChatChange,
       onExitNavRevealProgress,
       releaseStackTransitionLock,
+      ensureOpenChatInteractive,
+      applyStackLayerTransforms,
       requestStackRoomScrollBottom,
     ],
   );
@@ -4948,6 +4999,22 @@ function ChatRoom({
     setVanishMessages([]);
     vanishPullProgRef.current = 0;
   }, [chat.id]);
+
+  const wasMutedRef = useRef(isMutedNow);
+  /** بعد كتم/تحديث المجموعة — إيقاف حلقات تمرير/لمس */
+  useEffect(() => {
+    if (!chat.isGroup || chat.isChannel) return;
+    const wasMuted = wasMutedRef.current;
+    wasMutedRef.current = isMutedNow;
+    if (wasMuted === isMutedNow) return;
+    cancelIntroScroll();
+    stickToBottomRef.current = true;
+    roomScrollArmedRef.current = false;
+    const t = window.setTimeout(() => {
+      roomScrollArmedRef.current = true;
+    }, 350);
+    return () => window.clearTimeout(t);
+  }, [isMutedNow, chat.isGroup, chat.isChannel, cancelIntroScroll]);
 
   useEffect(() => {
     const onVanishArm = (e: Event) => {

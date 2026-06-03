@@ -1767,7 +1767,7 @@ app.delete("/v1/chats/group/:chatId/members/:userId", authMiddleware, async (req
   await patchGroupChatForMembers(chatId, chat.members, {
     removeMemberIds: [targetId],
     memberIds: undefined,
-    groupPatch: { messages: [...(chat.messages || []), systemMessage] },
+    groupPatch: { messages: [systemMessage] },
   });
   let targetState = (await getSnapshot(targetId)) as { chats?: Chat[] } | null;
   if (targetState?.chats) {

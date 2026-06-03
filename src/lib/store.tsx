@@ -6082,14 +6082,33 @@ export function AppProvider({
       if (event === "group:updated") {
         const payload = data as { chatId?: string; patch?: Partial<Chat> };
         if (!payload?.chatId || !payload.patch) return;
+        const patch = payload.patch;
         setState(s => ({
           ...s,
           chats: s.chats.map(c => {
             if (c.id !== payload.chatId) return c;
-            const merged = normalizeChatRecord({ ...c, ...payload.patch } as Chat);
-            return mergeChatRecord(c, merged);
+            const merged = mergeChatRecord(
+              c,
+              normalizeChatRecord({
+                ...c,
+                members: patch.members ?? c.members,
+                admins: patch.admins ?? c.admins,
+                mutedUserIds: patch.mutedUserIds ?? c.mutedUserIds,
+                messages: patch.messages ?? c.messages,
+              } as Chat),
+            );
+            return merged;
           }),
         }));
+        try {
+          window.dispatchEvent(
+            new CustomEvent("retweet-group-chat-patch", {
+              detail: { chatId: payload.chatId },
+            }),
+          );
+        } catch {
+          /* ignore */
+        }
         return;
       }
       if (event === "group:deleted") {
