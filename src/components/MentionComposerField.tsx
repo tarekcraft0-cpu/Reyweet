@@ -25,6 +25,7 @@ export function MentionComposerField({
   className,
   overlayClassName,
   wrapperClassName,
+  textDir,
   ...rest
 }: Props) {
   const innerRef = useRef<HTMLTextAreaElement>(null);

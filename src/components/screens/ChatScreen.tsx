@@ -4579,6 +4579,9 @@ function ChatRoom({
 
   /** false عندما يمرّر المستخدم لأعلى لقراءة قديم — لا نعيده للأسفل تلقائياً عند وصول رسالة جديدة */
   const stickToBottomRef = useRef(true);
+  /** يمنع حلقة scroll↔ResizeObserver أول ~600ms بعد فتح المحادثة */
+  const roomScrollArmedRef = useRef(false);
+  const roomScrollArmTimerRef = useRef(0);
   const introScrollHandleRef = useRef<ChatScrollIntroHandle | null>(null);
   const introScrollActiveRef = useRef(false);
   const introDoneForChatRef = useRef<string | null>(null);
@@ -4649,6 +4652,7 @@ function ChatRoom({
   );
 
   const scheduleScrollFromResize = useCallback(() => {
+    if (!roomScrollArmedRef.current) return;
     if (scrollResizeCoalesceRef.current) return;
     scrollResizeCoalesceRef.current = requestAnimationFrame(() => {
       scrollResizeCoalesceRef.current = 0;
@@ -4699,7 +4703,7 @@ function ChatRoom({
     syncComposerDockHeight();
     const ro = new ResizeObserver(() => {
       syncComposerDockHeight();
-      scheduleScrollFromResize();
+      if (roomScrollArmedRef.current) scheduleScrollFromResize();
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -4974,13 +4978,34 @@ function ChatRoom({
       cancelAnimationFrame(scrollResizeCoalesceRef.current);
       scrollResizeCoalesceRef.current = 0;
     }
+    if (roomScrollArmTimerRef.current) {
+      window.clearTimeout(roomScrollArmTimerRef.current);
+      roomScrollArmTimerRef.current = 0;
+    }
+    roomScrollArmedRef.current = false;
     introDoneForChatRef.current = null;
     stickToBottomRef.current = true;
     const el = messagesScrollRef.current;
-    if (!el) return;
+    if (!el) {
+      roomScrollArmTimerRef.current = window.setTimeout(() => {
+        roomScrollArmTimerRef.current = 0;
+        roomScrollArmedRef.current = true;
+      }, 600);
+      return () => {
+        if (roomScrollArmTimerRef.current) window.clearTimeout(roomScrollArmTimerRef.current);
+      };
+    }
     scrollMessagesToBottom({ instant: true });
     const id = requestAnimationFrame(() => scrollMessagesToBottom({ instant: true }));
-    return () => cancelAnimationFrame(id);
+    roomScrollArmTimerRef.current = window.setTimeout(() => {
+      roomScrollArmTimerRef.current = 0;
+      roomScrollArmedRef.current = true;
+    }, 600);
+    return () => {
+      cancelAnimationFrame(id);
+      if (roomScrollArmTimerRef.current) window.clearTimeout(roomScrollArmTimerRef.current);
+      roomScrollArmedRef.current = false;
+    };
   }, [chat.id, cancelIntroScroll, scrollMessagesToBottom]);
 
   useLayoutEffect(() => {
@@ -5800,7 +5825,6 @@ function ChatRoom({
     const lastMine = myOutgoing[myOutgoing.length - 1];
     if (!lastMine || otherLastOpen < lastMine.createdAt) return null;
     const otherRepliedAfter = visibleMessages.some(m => m.senderId === otherId && m.createdAt >= lastMine.createdAt);
-    const lang = lang;
     if (!otherRepliedAfter) {
       const mins = Math.max(0, Math.floor((Date.now() - otherLastOpen) / 60000));
       return mins === 0
@@ -6456,7 +6480,7 @@ function ChatRoom({
       >
         <div
           className={
-            "mt-auto flex w-full flex-col gap-2 px-3 pt-2 pb-0.5 " +
+            "flex min-h-full w-full flex-col justify-end gap-2 px-3 pt-2 pb-0.5 " +
             (isQuranChannel ? "bg-zinc-950" : chromeOnWallpaper ? "bg-transparent" : "")
           }
         >

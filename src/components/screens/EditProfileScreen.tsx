@@ -47,19 +47,19 @@ async function uploadAvatarDataUrl(
 
 export function EditProfileScreen({ onBack }: { onBack: () => void }) {
   const { currentUser, updateProfile, setNote, state } = useApp();
-  const u = currentUser!;
-  const [username, setUsername] = useState(u.username);
-  const [displayName, setDisplayName] = useState(u.displayName || "");
-  const founder = isFounderAccount(u);
-  const shortName = isShortUsernameException(username, u.id);
-  const [bio, setBio] = useState(u.bio);
-  const [avatar, setAvatar] = useState(u.avatar);
-  const [note, setLocalNote] = useState(u.note || "");
-  const [profileLink, setProfileLink] = useState(u.profileLink || "");
+  const u = currentUser;
+  const [username, setUsername] = useState(u?.username ?? "");
+  const [displayName, setDisplayName] = useState(u?.displayName || "");
+  const founder = u ? isFounderAccount(u) : false;
+  const shortName = u ? isShortUsernameException(username, u.id) : false;
+  const [bio, setBio] = useState(u?.bio ?? "");
+  const [avatar, setAvatar] = useState(u?.avatar ?? "");
+  const [note, setLocalNote] = useState(u?.note || "");
+  const [profileLink, setProfileLink] = useState(u?.profileLink || "");
   const [saving, setSaving] = useState(false);
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [avatarModalOpen, setAvatarModalOpen] = useState(false);
-  const ent = getUserEntitlements(u);
+  const ent = u ? getUserEntitlements(u) : null;
 
   const onAvatarFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -117,6 +117,21 @@ export function EditProfileScreen({ onBack }: { onBack: () => void }) {
     updateProfile({ avatar: av }, { skipRemotePush: true });
     return true;
   };
+
+  if (!u) {
+    return (
+      <div className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-background px-6 text-center" dir="rtl">
+        <p className="text-sm text-muted-foreground">تعذّر فتح تعديل البروفايل — سجّل الدخول ثم أعد المحاولة.</p>
+        <button
+          type="button"
+          className="rounded-2xl bg-primary px-6 py-3 text-sm font-semibold text-primary-foreground"
+          onClick={onBack}
+        >
+          رجوع
+        </button>
+      </div>
+    );
+  }
 
   const save = async () => {
     if (saving || avatarBusy) return;

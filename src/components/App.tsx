@@ -1064,6 +1064,7 @@ export function App() {
         onBack={viewProfileId && viewProfileId !== currentUser.id ? popProfileScreenBack : undefined}
         onEdit={() => {
           blurActiveElement();
+          closeProfileOverlay();
           setModal("edit");
         }}
         onOpenAccountSwitcher={isGuest ? undefined : () => setModal("switcher")}

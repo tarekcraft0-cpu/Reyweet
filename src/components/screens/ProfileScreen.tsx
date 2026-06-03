@@ -486,8 +486,8 @@ export function ProfileScreen({
     "profile-scroll-pane tab-panel-scroll tab-panel-immersive min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain touch-pan-y [-webkit-overflow-scrolling:touch]";
   const profileShellClass = isOtherUserProfile
     ? dismissPresentation === "overlay"
-      ? "flex h-full min-h-0 w-full max-w-full min-w-0 flex-col overflow-hidden bg-white dark:bg-background"
-      : "absolute inset-0 z-0 flex min-h-0 max-w-full min-w-0 flex-col overflow-hidden bg-white dark:bg-background"
+      ? "flex h-full min-h-0 w-full max-w-full min-w-0 flex-col bg-white dark:bg-background"
+      : "absolute inset-0 z-0 flex min-h-0 max-w-full min-w-0 flex-col bg-white dark:bg-background"
     : "flex w-full max-w-full min-w-0 flex-col bg-white pb-24 dark:bg-background";
 
   const profileBody = (
@@ -575,7 +575,7 @@ export function ProfileScreen({
             {menuOpen && (
               <div
                 data-profile-menu
-                className="absolute end-0 top-full z-[10050] mt-2 w-48 overflow-hidden rounded-2xl border border-border bg-card shadow-xl"
+                className="absolute end-0 top-full z-[10050] mt-2 w-48 max-h-[min(70dvh,320px)] overflow-y-auto overflow-x-hidden rounded-2xl border border-border bg-card shadow-xl"
                 onPointerDown={e => e.stopPropagation()}
               >
                 {profileOverflowMenu}
@@ -641,7 +641,7 @@ export function ProfileScreen({
             {menuOpen && (
               <div
                 data-profile-menu
-                className="absolute end-0 top-full z-[10050] mt-2 w-48 overflow-hidden rounded-2xl border border-border bg-card shadow-xl"
+                className="absolute end-0 top-full z-[10050] mt-2 w-48 max-h-[min(70dvh,320px)] overflow-y-auto overflow-x-hidden rounded-2xl border border-border bg-card shadow-xl"
                 onPointerDown={e => e.stopPropagation()}
               >
                 {profileOverflowMenu}
