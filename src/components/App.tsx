@@ -744,7 +744,9 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    const onAccountSwitch = () => {
+    const onAccountSwitch = (e: Event) => {
+      const nextUserId = (e as CustomEvent<{ userId?: string }>).detail?.userId;
+      if (nextUserId && nextUserId === currentUser?.id) return;
       resetChatNavigation();
       setModal(null);
       setCreateInitial(null);
@@ -753,6 +755,7 @@ export function App() {
       setProfileReturnTargetTab(null);
       setResumeProfileUserId(null);
       setRestorePostContext(null);
+      setProfileOverlayUserId(null);
       setTab("home");
     };
     window.addEventListener(ACCOUNT_SWITCHED_EVENT, onAccountSwitch);
@@ -761,7 +764,7 @@ export function App() {
       window.removeEventListener(ACCOUNT_SWITCHED_EVENT, onAccountSwitch);
       window.removeEventListener("retweet-reset-chat-ui", onAccountSwitch);
     };
-  }, [resetChatNavigation]);
+  }, [resetChatNavigation, currentUser?.id]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !currentUser || isGuest) return;

@@ -1989,7 +1989,7 @@ export function AppProvider({
         if (!apiBackendEnabled() || !getApiToken()) return;
         const meId = stateRef.current.currentUserId;
         if (!meId || isGuestUserId(meId)) return;
-        activateAccountSession(meId);
+        activateAccountSession(meId, { emitSwitchedEvent: false });
         socialSyncBusyRef.current = true;
         try {
           const r = await apiToggleFollow(getApiToken()!, targetUserId);
@@ -2023,7 +2023,7 @@ export function AppProvider({
         const token = getApiToken();
         const meId = stateRef.current.currentUserId;
         if (!apiBackendEnabled() || !token || !meId || isGuestUserId(meId)) return;
-        activateAccountSession(meId);
+        activateAccountSession(meId, { emitSwitchedEvent: false });
         socialSyncBusyRef.current = true;
         try {
           const r = await apiAcceptFollowRequest(token, fromId);
@@ -2055,7 +2055,7 @@ export function AppProvider({
         const token = getApiToken();
         const meId = stateRef.current.currentUserId;
         if (!apiBackendEnabled() || !token || !meId || isGuestUserId(meId)) return;
-        activateAccountSession(meId);
+        activateAccountSession(meId, { emitSwitchedEvent: false });
         socialSyncBusyRef.current = true;
         try {
           const r = await apiDeclineFollowRequest(token, fromId);

@@ -812,6 +812,7 @@ export function ProfileScreen({
               <>
                 <div className="flex gap-2 items-stretch">
                   <button
+                    type="button"
                     onClick={() => {
                       if (isGuest) {
                         notifyGuestActionBlocked();
