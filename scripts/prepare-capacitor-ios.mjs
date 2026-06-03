@@ -85,7 +85,10 @@ function injectNativeShellIndex(indexPath) {
 }
 
 console.log("\n══ Retweet iOS — Capacitor (نسخة الموقع) ══\n");
-console.log(`  وضع:     bundled (محلي داخل IPA)`);
+const useRemoteWeb = process.env.CAPACITOR_REMOTE_WEB === "1";
+console.log(
+  `  وضع:     ${useRemoteWeb ? "remote (Vercel — تحديثات فورية)" : "bundled (محلي داخل IPA)"}`,
+);
 console.log(`  API:      ${apiUrl}\n`);
 
 process.env.RETWEET_PUBLIC_API_URL = apiUrl;
@@ -192,6 +195,12 @@ function patchIosEmbeddedCapConfig() {
       /* ignore */
     }
   }
+  if (useRemoteWeb) {
+    capJson.server = { url: webAppUrl, cleartext: false };
+    console.log(`  ✓ ios remote WebView → ${webAppUrl}`);
+  } else {
+    delete capJson.server;
+  }
   if (rootCap.plugins) {
     capJson.plugins = { ...(capJson.plugins || {}), ...rootCap.plugins };
   }
@@ -258,7 +267,7 @@ const configJson = {
   apiUrl,
   siteUrl: VERCEL_SITE_URL,
   bundleId: appId,
-  bundled: true,
+  bundled: !useRemoteWeb,
   builtAt: new Date().toISOString(),
 };
 fs.writeFileSync(

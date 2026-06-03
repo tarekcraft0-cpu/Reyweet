@@ -38,10 +38,19 @@ const capTs = fs.readFileSync(path.join(root, "capacitor.config.ts"), "utf8");
 must(/appId:\s*["']com\.reyweet\.app["']/.test(capTs), "capacitor.config.ts appId must be com.reyweet.app");
 warn(!/server:\s*\{/.test(capTs), "capacitor.config.ts should not set server.url for store builds");
 
+const allowRemoteIos = process.env.CAPACITOR_REMOTE_WEB === "1";
 const iosCap = readJson(path.join(root, "ios", "App", "App", "capacitor.config.json"));
 if (iosCap) {
   must(iosCap.appId === "com.reyweet.app", "ios embedded appId mismatch");
   must(iosCap.webDir === "public", "ios embedded webDir should be public");
+  if (iosCap.server?.url) {
+    must(
+      allowRemoteIos && /^https:\/\/reyweet\.vercel\.app\/app\/?$/.test(String(iosCap.server.url)),
+      "ios server.url must be reyweet.vercel.app/app when CAPACITOR_REMOTE_WEB=1",
+    );
+  } else {
+    warn(allowRemoteIos, "CAPACITOR_REMOTE_WEB=1 but ios capacitor.config.json has no server.url");
+  }
   warn(
     Array.isArray(iosCap.packageClassList) && iosCap.packageClassList.length > 0,
     "ios capacitor.config.json packageClassList is empty — run npm run ios:prepare after cap sync",
@@ -50,7 +59,8 @@ if (iosCap) {
 
 const iosApp = readJson(path.join(root, "ios-app.config.json"));
 if (iosApp) {
-  must(iosApp.bundled === true, "ios-app.config.json must have bundled: true");
+  const expectBundled = !allowRemoteIos;
+  must(iosApp.bundled === expectBundled, `ios-app.config.json bundled must be ${expectBundled}`);
   must(/^https:\/\//.test(iosApp.apiUrl || ""), "ios-app.config.json apiUrl must be HTTPS");
 } else {
   warnings.push("ios-app.config.json missing — run npm run ios:prepare");

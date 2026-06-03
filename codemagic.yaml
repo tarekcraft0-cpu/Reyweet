@@ -101,6 +101,7 @@ workflows:
         CAPACITOR_WEB_APP_URL: https://reyweet.vercel.app/app
         CAPACITOR_API_URL: https://reyweet.vercel.app
         RETWEET_PUBLIC_API_URL: https://reyweet.vercel.app
+        CAPACITOR_REMOTE_WEB: "1"
         XCODE_SCHEME: App
         XCODE_WORKSPACE: ios/App/App.xcworkspace
 
@@ -121,6 +122,7 @@ workflows:
           export CAPACITOR_WEB_APP_URL="${CAPACITOR_WEB_APP_URL:-https://reyweet.vercel.app/app}"
           export CAPACITOR_API_URL="${CAPACITOR_API_URL:-https://reyweet.vercel.app}"
           export RETWEET_PUBLIC_API_URL="${RETWEET_PUBLIC_API_URL:-https://reyweet.vercel.app}"
+          export CAPACITOR_REMOTE_WEB="${CAPACITOR_REMOTE_WEB:-1}"
           export CAPACITOR_NATIVE=1
           node scripts/prepare-capacitor-ios.mjs
           node scripts/verify-ios-api-bundle.mjs
