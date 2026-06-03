@@ -225,7 +225,8 @@ import {
 } from "./chatMessageCache";
 import { handleRemoteCallSignal, type CallSignalPayload, type IncomingCallRing } from "./webrtcCall";
 
-export { INCOMING_CALL_WINDOW_EVENT } from "./activeCallUi";
+import { dispatchIncomingCallRing, INCOMING_CALL_WINDOW_EVENT } from "./activeCallUi";
+export { INCOMING_CALL_WINDOW_EVENT };
 import { logAuthRoute } from "./authRouteDebug";
 import {
   activateAccountSession,
@@ -5645,7 +5646,6 @@ export function AppProvider({
         const payload = data as IncomingCallRing;
         if (!payload?.chatId || !payload?.fromUserId) return;
         try {
-          const { dispatchIncomingCallRing } = await import("./activeCallUi");
           dispatchIncomingCallRing(payload);
         } catch {
           /* ignore */
