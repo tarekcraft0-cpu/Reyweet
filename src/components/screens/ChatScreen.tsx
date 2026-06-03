@@ -4466,6 +4466,7 @@ function ChatRoom({
   }, [isDmRoom, visibleMessages, vanishMessages]);
 
   const [showDmDetails, setShowDmDetails] = useState(false);
+  const dmDetailsPopStepRef = useRef<() => boolean>(() => false);
   const displayMessagesForView = displayMessages;
 
   const [loadingOlderUi, setLoadingOlderUi] = useState(false);
@@ -5972,12 +5973,17 @@ function ChatRoom({
     const now = Date.now();
     if (now - roomBackAtRef.current < 200) return;
     roomBackAtRef.current = now;
+    if (showDmDetails) {
+      if (dmDetailsPopStepRef.current()) return;
+      setShowDmDetails(false);
+      return;
+    }
     if (embedInStack && onAnimatedBack) {
       onAnimatedBack();
       return;
     }
     onBack();
-  }, [embedInStack, onAnimatedBack, onBack]);
+  }, [showDmDetails, embedInStack, onAnimatedBack, onBack]);
 
 
   const {
@@ -6121,6 +6127,7 @@ function ChatRoom({
         }}
         {...chatNoSelectCaptureHandlers}
       >
+      {!showDmDetails ? (
       <div
         ref={chatHeaderRef}
         dir={useIgDm ? dmDir : "rtl"}
@@ -6362,6 +6369,7 @@ function ChatRoom({
           )}
         </div>
       </div>
+      ) : null}
 
       <div className="chat-bottom-lift flex min-h-0 flex-1 flex-col overflow-hidden">
       {isDmRoom && vanishMode && (
@@ -7701,7 +7709,7 @@ function ChatRoom({
       {showDmDetails && isDmRoom && other ? (
         <div
           className={
-            "pointer-events-auto fixed inset-0 z-[220] flex w-full max-w-[100vw] flex-col overflow-hidden bg-background " +
+            "pointer-events-auto fixed inset-0 z-[280] flex w-full max-w-[100vw] flex-col overflow-hidden bg-background " +
             (nativeShell ? "" : "mx-auto max-w-md")
           }
         >
@@ -7709,7 +7717,10 @@ function ChatRoom({
             chat={chat}
             peer={other}
             messages={displayMessages}
-            onBack={() => setShowDmDetails(false)}
+            onBack={() => {
+              dmDetailsPopStepRef.current = () => false;
+              setShowDmDetails(false);
+            }}
             onOpenProfile={userId => {
               setShowDmDetails(false);
               void import("@/lib/nativeViewportLayout").then(m => m.resetMobileViewportAfterKeyboard());
@@ -7722,6 +7733,9 @@ function ChatRoom({
             onScrollToMessage={scrollToMessageId}
             isMuted={isChatMuted}
             onToggleMute={() => toggleChatMute(chat.id)}
+            onRegisterPopStep={pop => {
+              dmDetailsPopStepRef.current = pop;
+            }}
           />
         </div>
       ) : null}

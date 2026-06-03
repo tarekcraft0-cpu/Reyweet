@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { resetMobileViewportAfterKeyboard } from "@/lib/nativeViewportLayout";
 import {
   ArrowRight,
@@ -13,7 +13,6 @@ import {
   Shield,
   UserCircle,
 } from "lucide-react";
-import { SlideDismissBackButton } from "../SlideDismissShell";
 import { Avatar } from "../Avatar";
 import { VerifiedMarkForUser } from "../VerifiedBadge";
 import { useApp } from "@/lib/store";
@@ -29,19 +28,18 @@ import { messageContent } from "@/lib/chatNormalize";
 
 type SubView = "search" | null;
 
-function IgSubHeader({ title, onBack }: { title: string; onBack: () => void }) {
+/** شريط علوي بسيط — سهم رجوع خطوة واحدة للخلف فقط (بدون مكالمات) */
+function DmDetailsBackHeader({ onBack }: { onBack: () => void }) {
   return (
-    <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-3 pt-[max(0.5rem,var(--sat))]">
-      <SlideDismissBackButton
-        navScope="local"
-        onDismiss={onBack}
-        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-border bg-secondary/60 text-foreground hover:bg-secondary active:bg-secondary/80"
+    <div className="flex shrink-0 items-center border-b border-border px-3 py-2.5 pt-[max(0.75rem,var(--sat))]">
+      <button
+        type="button"
+        onClick={onBack}
         aria-label="رجوع"
+        className="flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-full text-foreground hover:bg-secondary active:bg-secondary/80"
       >
-        <ArrowRight size={22} strokeWidth={1.75} />
-      </SlideDismissBackButton>
-      <h2 className="flex-1 truncate text-center text-[17px] font-semibold text-foreground">{title}</h2>
-      <span className="w-10 shrink-0" aria-hidden />
+        <ArrowRight size={24} strokeWidth={2} />
+      </button>
     </div>
   );
 }
@@ -75,6 +73,7 @@ export function ChatDmDetailsScreen({
   onScrollToMessage,
   isMuted,
   onToggleMute,
+  onRegisterPopStep,
 }: {
   chat: Chat;
   peer: User;
@@ -85,6 +84,8 @@ export function ChatDmDetailsScreen({
   onScrollToMessage: (messageId: string) => void;
   isMuted: boolean;
   onToggleMute: () => void;
+  /** يُستدعى عند الرجوع خطوة واحدة (بحث → التفاصيل) قبل إغلاق الشاشة */
+  onRegisterPopStep?: (pop: () => boolean) => void;
 }) {
   const { state, currentUser } = useApp();
   const t = useT();
@@ -149,8 +150,19 @@ export function ChatDmDetailsScreen({
     </button>
   );
 
+  const exitToChat = () => {
+    resetMobileViewportAfterKeyboard();
+    setSubView(null);
+    setSearchQ("");
+    setShowOptions(false);
+    onBack();
+  };
+
   const jumpToMessage = (messageId: string) => {
     resetMobileViewportAfterKeyboard();
+    setSubView(null);
+    setSearchQ("");
+    setShowOptions(false);
     onBack();
     window.setTimeout(() => onScrollToMessage(messageId), 0);
   };
@@ -161,10 +173,26 @@ export function ChatDmDetailsScreen({
     resetMobileViewportAfterKeyboard();
   };
 
+  useEffect(() => {
+    if (!onRegisterPopStep) return;
+    onRegisterPopStep(() => {
+      if (showOptions) {
+        setShowOptions(false);
+        return true;
+      }
+      if (subView === "search") {
+        closeSearch();
+        return true;
+      }
+      return false;
+    });
+    return () => onRegisterPopStep(() => false);
+  }, [subView, showOptions, onRegisterPopStep]);
+
   if (subView === "search") {
     return (
       <div className="flex h-full min-h-0 max-w-full flex-col overflow-hidden bg-background text-foreground">
-        <IgSubHeader title={state.language === "en" ? "Search" : "بحث"} onBack={closeSearch} />
+        <DmDetailsBackHeader onBack={closeSearch} />
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain px-4 py-3">
           <div className="mb-3 flex items-center gap-2 rounded-xl bg-input px-3 py-2.5">
             <Search size={18} className="shrink-0 text-muted-foreground" />
@@ -217,13 +245,7 @@ export function ChatDmDetailsScreen({
 
   return (
     <div className="flex h-full min-h-0 max-w-full flex-col overflow-hidden bg-background text-foreground">
-      <IgSubHeader
-        title={state.language === "en" ? "Chat details" : "تفاصيل المحادثة"}
-        onBack={() => {
-          resetMobileViewportAfterKeyboard();
-          onBack();
-        }}
-      />
+      <DmDetailsBackHeader onBack={exitToChat} />
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain pb-[max(1.5rem,var(--sab))]">
         <div className="px-4 pb-2 pt-4 text-center">
