@@ -106,6 +106,10 @@ import {
   dispatchAccountModeration,
   hasModerationNoticeBeenShown,
   isBannedAccountStatus,
+  hasPendingAppealFromModerationStatus,
+  markAppealSubmittedLocally,
+  clearAppealSubmittedLocally,
+  hasAppealSubmittedLocally,
   markModerationNoticeShown,
   type AccountModerationEventDetail,
 } from "@/lib/accountModerationBridge";
@@ -478,8 +482,10 @@ export function App() {
   );
 
   const applyActiveBan = useCallback(
-    (info: BanInfo) => {
-      setAppealPending(false);
+    (info: BanInfo, opts?: { hasPendingAppeal?: boolean }) => {
+      if (opts?.hasPendingAppeal !== undefined) {
+        setAppealPending(opts.hasPendingAppeal);
+      }
       setPendingModerationNotice(null);
       setBanInfo(info);
       setBanPresentation(
@@ -493,6 +499,18 @@ export function App() {
     },
     [],
   );
+
+  const handleAppealSubmitted = useCallback(() => {
+    const uid = currentUser?.id;
+    if (uid) markAppealSubmittedLocally(uid);
+    setAppealPending(true);
+    void apiGetMyModerationStatus().then(r => {
+      if (!r.ok || !uid) return;
+      const pending = hasPendingAppealFromModerationStatus(r.data);
+      setAppealPending(pending || hasAppealSubmittedLocally(uid));
+      if (pending) clearAppealSubmittedLocally(uid);
+    });
+  }, [currentUser?.id]);
 
   useEffect(() => {
     if (!currentUser || isGuest || !apiBackendEnabled()) {
@@ -524,16 +542,20 @@ export function App() {
         return;
       }
       if (r.data.banInfo && isBannedAccountStatus(r.data.accountStatus)) {
-        applyActiveBan(r.data.banInfo);
+        const pending =
+          hasPendingAppealFromModerationStatus(r.data) ||
+          hasAppealSubmittedLocally(currentUser.id);
+        applyActiveBan(r.data.banInfo, { hasPendingAppeal: pending });
+        if (hasPendingAppealFromModerationStatus(r.data)) {
+          clearAppealSubmittedLocally(currentUser.id);
+        }
         return;
       }
+      clearAppealSubmittedLocally(currentUser.id);
       setBanInfo(null);
       setBanPresentation(null);
       setPendingModerationNotice(null);
-      setAppealPending(
-        !!r.data.activeAppeal &&
-          (r.data.activeAppeal.status === "pending" || r.data.activeAppeal.status === "under_review"),
-      );
+      setAppealPending(hasPendingAppealFromModerationStatus(r.data));
       hadActiveAppRef.current = true;
     });
     const applyModeration = async (d: AccountModerationEventDetail) => {
@@ -569,12 +591,26 @@ export function App() {
       if (!isBannedAccountStatus(d.accountStatus) && !d.banInfo) return;
 
       if (d.banInfo) {
-        applyActiveBan(d.banInfo);
+        const r = await apiGetMyModerationStatus();
+        const pending = r.ok
+          ? hasPendingAppealFromModerationStatus(r.data) ||
+            hasAppealSubmittedLocally(currentUser.id)
+          : hasAppealSubmittedLocally(currentUser.id);
+        applyActiveBan(d.banInfo, { hasPendingAppeal: pending });
+        if (r.ok && hasPendingAppealFromModerationStatus(r.data)) {
+          clearAppealSubmittedLocally(currentUser.id);
+        }
         return;
       }
       const r = await apiGetMyModerationStatus();
       if (r.ok && r.data.banInfo && isBannedAccountStatus(r.data.accountStatus)) {
-        applyActiveBan(r.data.banInfo);
+        const pending =
+          hasPendingAppealFromModerationStatus(r.data) ||
+          hasAppealSubmittedLocally(currentUser.id);
+        applyActiveBan(r.data.banInfo, { hasPendingAppeal: pending });
+        if (hasPendingAppealFromModerationStatus(r.data)) {
+          clearAppealSubmittedLocally(currentUser.id);
+        }
       }
     };
 
@@ -1261,7 +1297,7 @@ export function App() {
         banInfo={pendingModerationNotice ? null : banInfo}
         notice={pendingModerationNotice}
         hasPendingAppeal={appealPending}
-        onAppealSubmitted={() => setAppealPending(true)}
+        onAppealSubmitted={handleAppealSubmitted}
         onLogout={() => logout()}
         onNoticeDismiss={() => {
           if (!pendingModerationNotice) return;
@@ -1782,7 +1818,7 @@ export function App() {
           banInfo={banInfo}
           notice={null}
           hasPendingAppeal={appealPending}
-          onAppealSubmitted={() => setAppealPending(true)}
+          onAppealSubmitted={handleAppealSubmitted}
           onLogout={() => logout()}
           onNoticeDismiss={() => {}}
         />

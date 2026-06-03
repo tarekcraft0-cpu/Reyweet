@@ -27,6 +27,7 @@ export function AppealFlow({
   const [err, setErr] = useState("");
   const [otpSending, setOtpSending] = useState(false);
   const otpSendLock = useRef(false);
+  const submitLock = useRef(false);
 
   const sendOtp = async () => {
     if (otpSendLock.current) return;
@@ -59,23 +60,40 @@ export function AppealFlow({
   };
 
   const submit = async () => {
+    if (submitLock.current) return;
     if (message.trim().length < 10) {
       setErr("اكتب رسالة الطعن (10 أحرف على الأقل)");
       return;
     }
+    submitLock.current = true;
     setStep("submitting");
-    const r = await apiSubmitAppeal({
-      message: message.trim(),
-      phone: phone.trim() || undefined,
-      emailVerified: true,
-    });
-    if (!r.ok) {
-      setErr(r.error);
-      setStep("message");
-      return;
+    setErr("");
+    try {
+      const r = await apiSubmitAppeal({
+        message: message.trim(),
+        phone: phone.trim() || undefined,
+        emailVerified: true,
+      });
+      if (!r.ok) {
+        if (r.error.includes("قيد المراجعة") || r.error.includes("duplicate")) {
+          onSubmitted();
+          setStep("done");
+          return;
+        }
+        setErr(r.error);
+        setStep("message");
+        return;
+      }
+      setStep("done");
+      onSubmitted();
+    } finally {
+      submitLock.current = false;
     }
-    setStep("done");
-    window.setTimeout(onSubmitted, 700);
+  };
+
+  const finishAndReturn = () => {
+    onSubmitted();
+    onBack();
   };
 
   return (
@@ -159,12 +177,21 @@ export function AppealFlow({
             </button>
           </div>
         )}
+        {step === "submitting" && (
+          <p className="text-center text-sm text-muted-foreground py-8">جاري إرسال الطعن…</p>
+        )}
         {step === "done" && (
           <div className="text-center py-8">
             <p className="font-semibold">تم استلام طعنك</p>
-            <p className="mt-2 text-sm text-muted-foreground">سنراجعه ونُبلغك بالنتيجة.</p>
-            <button type="button" onClick={onBack} className="mt-8 text-primary text-sm font-semibold">
-              رجوع
+            <p className="mt-2 text-sm text-muted-foreground">
+              سنعود بك لشاشة الحظر. لا يمكن تقديم طعن آخر حتى صدور القرار.
+            </p>
+            <button
+              type="button"
+              onClick={finishAndReturn}
+              className="mt-8 w-full rounded-xl bg-primary py-3 font-semibold text-primary-foreground"
+            >
+              العودة لشاشة الحظر
             </button>
           </div>
         )}

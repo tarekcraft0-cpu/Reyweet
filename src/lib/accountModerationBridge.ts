@@ -21,6 +21,47 @@ export function isBannedAccountStatus(status?: string | null): boolean {
   );
 }
 
+export function isOpenAppealStatus(status?: string | null): boolean {
+  return status === "pending" || status === "under_review";
+}
+
+export function hasPendingAppealFromModerationStatus(data: {
+  activeAppeal?: { status: string } | null;
+}): boolean {
+  return !!data.activeAppeal && isOpenAppealStatus(data.activeAppeal.status);
+}
+
+export function appealSubmittedLocalKey(userId: string): string {
+  return `retweet_appeal_submitted_${userId}`;
+}
+
+export function markAppealSubmittedLocally(userId: string, appealId?: string): void {
+  if (!userId || typeof localStorage === "undefined") return;
+  try {
+    localStorage.setItem(appealSubmittedLocalKey(userId), appealId || "1");
+  } catch {
+    /* ignore */
+  }
+}
+
+export function hasAppealSubmittedLocally(userId: string): boolean {
+  if (!userId || typeof localStorage === "undefined") return false;
+  try {
+    return !!localStorage.getItem(appealSubmittedLocalKey(userId));
+  } catch {
+    return false;
+  }
+}
+
+export function clearAppealSubmittedLocally(userId: string): void {
+  if (!userId || typeof localStorage === "undefined") return;
+  try {
+    localStorage.removeItem(appealSubmittedLocalKey(userId));
+  } catch {
+    /* ignore */
+  }
+}
+
 export function moderationNoticeShownKey(userId: string, noticeId: string): string {
   return `retweet_mod_notice_shown_${userId}_${noticeId}`;
 }

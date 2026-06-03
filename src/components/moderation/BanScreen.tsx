@@ -128,20 +128,20 @@ export function BanScreen({
             </div>
           )}
         </dl>
-        {hasPendingAppeal && !permanent && (
+        {hasPendingAppeal && !permanent ? (
           <div
             className={
-              "mt-6 w-full rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200 " +
+              "mt-6 w-full rounded-xl border border-emerald-500/35 bg-emerald-500/10 px-4 py-3.5 text-sm text-start " +
               (pendingPulse ? "moderation-pending-flash" : "")
             }
+            role="status"
           >
-            <p className="font-semibold text-amber-100">طلب الطعن قيد المراجعة</p>
-            <p className="mt-1 text-amber-200/90">
-              تم استلام طعنك. سنُبلغك هنا فور صدور القرار — لا حاجة لإعادة الإرسال.
+            <p className="font-semibold text-emerald-100">لقد قدمت طعناً بالفعل</p>
+            <p className="mt-1.5 text-emerald-200/90 leading-relaxed">
+              طلبك قيد المراجعة. لا يمكن تقديم طعن آخر حتى نصدر قراراً بشأن حسابك.
             </p>
           </div>
-        )}
-        {banInfo.canAppeal && !permanent && !hasPendingAppeal && (
+        ) : banInfo.canAppeal && !permanent ? (
           <button
             type="button"
             onClick={() => setAppeal(true)}
@@ -149,7 +149,7 @@ export function BanScreen({
           >
             طعن (Appeal)
           </button>
-        )}
+        ) : null}
       </div>
 
       {onLogout ? (
