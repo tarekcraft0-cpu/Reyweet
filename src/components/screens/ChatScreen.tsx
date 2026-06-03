@@ -91,6 +91,7 @@ import { chatMergeKey, dmChatId, findChatByOpenId, openChatIdFor } from "@/lib/d
 import { ChatInlineReplyQuote } from "../chat/ChatInlineReplyQuote";
 import { ChatComposerReplyBar } from "../chat/ChatComposerReplyBar";
 import { GroupDetailsScreen } from "../chat/GroupDetailsScreen";
+import { ChatDmDetailsScreen } from "../chat/ChatDmDetailsScreen";
 import { ChatThemePickerSheet } from "../chat/ChatThemePickerSheet";
 import {
   loadChatWallpaperForChat,
@@ -4267,6 +4268,7 @@ function ChatRoom({
     addFavoriteStickerContent,
     addCreatedStickerContent,
     mergeDiscoveredUsers,
+    toggleChatMute,
   } = useAppActions();
   const currentUser = useCurrentUser();
   const isGuest = useIsGuestSelector();
@@ -4290,6 +4292,7 @@ function ChatRoom({
   const [wallpaperId, setWallpaperId] = useState<ChatWallpaperId>("default");
   const [recording, setRecording] = useState(false);
   const [showPrivacyMenu, setShowPrivacyMenu] = useState(false);
+  const isChatMuted = !!(currentUser?.mutedChatIds || []).includes(chat.id);
   const [hideReadStatus, setHideReadStatus] = useState(false);
   const [hideTypingStatus, setHideTypingStatus] = useState(false);
   const [vanishMode, setVanishMode] = useState(false);
@@ -4462,13 +4465,8 @@ function ChatRoom({
     return [...visibleMessages, ...vanishMessages].slice().sort((a, b) => a.createdAt - b.createdAt);
   }, [isDmRoom, visibleMessages, vanishMessages]);
 
-  const [roomSearchOpen, setRoomSearchOpen] = useState(false);
-  const [roomSearchQ, setRoomSearchQ] = useState("");
-  const displayMessagesForView = useMemo(() => {
-    const q = roomSearchQ.trim().toLowerCase();
-    if (!q) return displayMessages;
-    return displayMessages.filter(m => String(m.content || "").toLowerCase().includes(q));
-  }, [displayMessages, roomSearchQ]);
+  const [showDmDetails, setShowDmDetails] = useState(false);
+  const displayMessagesForView = displayMessages;
 
   const [loadingOlderUi, setLoadingOlderUi] = useState(false);
   const isLoadingOlderRef = useRef(false);
@@ -6200,12 +6198,18 @@ function ChatRoom({
 
         <button
           type="button"
-          onClick={() =>
-            chat.isGroup || chat.isChannel
-              ? onOpenSettings()
-              : otherId && startTransition(() => onOpenProfile(otherId))
-          }
-          className="relative z-[10] flex min-w-0 flex-1 items-center gap-2 text-start justify-start"
+          onClick={() => {
+            if (chat.isGroup || chat.isChannel) {
+              onOpenSettings();
+              return;
+            }
+            if (isDmRoom && other) {
+              setShowDmDetails(true);
+              return;
+            }
+            if (otherId) startTransition(() => onOpenProfile(otherId));
+          }}
+          className="relative z-[10] flex min-w-0 flex-1 items-center gap-2 text-start justify-start touch-manipulation"
         >
           <Avatar
             name={chat.isGroup ? chat.name! : other?.username || "?"}
@@ -6255,16 +6259,6 @@ function ChatRoom({
         </div>
 
         <div className="flex shrink-0 items-center gap-3">
-          {!isQuranChannel && (
-            <button
-              type="button"
-              aria-label="بحث في المحادثة"
-              onClick={() => setRoomSearchOpen(v => !v)}
-              className={useIgDm && dmPalette ? dmPalette.iconBtnClass + " touch-manipulation p-1" : undefined}
-            >
-              <Search size={20} />
-            </button>
-          )}
           {!isQuranChannel && !chat.isChannel && (
             <>
               <button
@@ -6428,22 +6422,6 @@ function ChatRoom({
           onOpenProfile={() => startTransition(() => onOpenProfile(otherId!))}
         />
       )}
-
-      {roomSearchOpen ? (
-        <div className="shrink-0 border-b border-border bg-card px-3 py-2">
-          <input
-            type="search"
-            value={roomSearchQ}
-            onChange={e => setRoomSearchQ(e.target.value)}
-            placeholder={lang === "ar" ? "بحث في الرسائل…" : "Search messages…"}
-            className="w-full rounded-xl border border-border bg-input px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            autoFocus
-          />
-          {roomSearchQ.trim() && displayMessagesForView.length === 0 ? (
-            <p className="mt-2 text-center text-xs text-muted-foreground">لا نتائج</p>
-          ) : null}
-        </div>
-      ) : null}
 
       <div className="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden">
         {useIgDm && chatTimelineRows && (
@@ -7720,6 +7698,32 @@ function ChatRoom({
       {forwardingMessage && (
         <ForwardChatSheet currentChat={chat} message={forwardingMessage} me={me} onClose={() => setForwardingMessage(null)} />
       )}
+      {showDmDetails && isDmRoom && other ? (
+        <div
+          className={
+            "pointer-events-auto fixed inset-0 z-[220] flex w-full flex-col bg-background " +
+            (nativeShell ? "" : "mx-auto max-w-md")
+          }
+        >
+          <ChatDmDetailsScreen
+            chat={chat}
+            peer={other}
+            messages={displayMessages}
+            onBack={() => setShowDmDetails(false)}
+            onOpenProfile={userId => {
+              setShowDmDetails(false);
+              startTransition(() => onOpenProfile(userId));
+            }}
+            onOpenChatTheme={() => {
+              setShowDmDetails(false);
+              window.setTimeout(() => setShowChatThemePicker(true), 0);
+            }}
+            onScrollToMessage={scrollToMessageId}
+            isMuted={isChatMuted}
+            onToggleMute={() => toggleChatMute(chat.id)}
+          />
+        </div>
+      ) : null}
       <ChatThemePickerSheet
         open={showChatThemePicker}
         selectedId={wallpaperId}

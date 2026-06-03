@@ -4,7 +4,6 @@ import {
   useLayoutEffect,
   useRef,
   useState,
-  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
 import { BadgeCheck, Check, ChevronLeft, ChevronRight, Loader2, X } from "lucide-react";
@@ -75,11 +74,10 @@ function TierCard({
   );
 }
 
-const CAROUSEL_GAP = 14;
+const CAROUSEL_GAP_PX = 14;
 const CAROUSEL_SLIDE_RATIO = 0.88;
-/** سحب يمين = الباقة التالية (يمين)، سحب يسار = الباقة السابقة (يسار) */
-const SWIPE_COMMIT_PX = 36;
 
+/** تمرير أفقي بـ scroll-snap — أوثق من سحب pointer على iOS */
 function TierSwipeCarousel({
   index,
   onIndexChange,
@@ -91,130 +89,88 @@ function TierSwipeCarousel({
   disabled?: boolean;
   children: ReactNode[];
 }) {
-  const viewportRef = useRef<HTMLDivElement>(null);
-  const [layout, setLayout] = useState({ viewportW: 0, slideW: 0, step: 0 });
-  const [dragPx, setDragPx] = useState(0);
-  const [dragging, setDragging] = useState(false);
-  const [ready, setReady] = useState(false);
-  const dragRef = useRef({ pointerId: -1, startX: 0, startIndex: 0, active: false });
-
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const syncingRef = useRef(false);
+  const scrollEndRef = useRef(0);
   const maxIndex = Math.max(0, children.length - 1);
   const clampedIndex = Math.min(maxIndex, Math.max(0, index));
 
-  const measure = useCallback(() => {
-    const el = viewportRef.current;
-    if (!el) return;
-    const viewportW = el.clientWidth;
-    if (viewportW < 1) return;
-    const slideW = viewportW * CAROUSEL_SLIDE_RATIO;
-    setLayout({ viewportW, slideW, step: slideW + CAROUSEL_GAP });
-    setReady(true);
-  }, []);
+  const scrollToIndex = useCallback(
+    (i: number, behavior: ScrollBehavior = "smooth") => {
+      const scroller = scrollerRef.current;
+      if (!scroller) return;
+      const slide = scroller.children[i] as HTMLElement | undefined;
+      if (!slide) return;
+      syncingRef.current = true;
+      const targetLeft = slide.offsetLeft - (scroller.clientWidth - slide.offsetWidth) / 2;
+      scroller.scrollTo({ left: Math.max(0, targetLeft), behavior });
+      window.setTimeout(() => {
+        syncingRef.current = false;
+      }, behavior === "instant" ? 0 : 380);
+    },
+    [],
+  );
 
   useLayoutEffect(() => {
-    measure();
-    const id = requestAnimationFrame(measure);
-    const el = viewportRef.current;
-    if (!el) return () => cancelAnimationFrame(id);
-    const ro = new ResizeObserver(() => measure());
-    ro.observe(el);
-    return () => {
-      cancelAnimationFrame(id);
-      ro.disconnect();
-    };
-  }, [measure]);
+    scrollToIndex(clampedIndex, "instant");
+  }, [clampedIndex, scrollToIndex]);
 
-  const centerPad = layout.viewportW > 0 ? (layout.viewportW - layout.slideW) / 2 : 0;
-  const baseTranslate =
-    layout.step > 0 ? -clampedIndex * layout.step + centerPad : centerPad;
-  const translateX = baseTranslate + dragPx;
-
-  const finishDrag = (clientX: number) => {
-    const dx = clientX - dragRef.current.startX;
-    const threshold = Math.max(SWIPE_COMMIT_PX, layout.step * 0.1);
-    let next = dragRef.current.startIndex;
-    if (dx > threshold) next = Math.min(maxIndex, next + 1);
-    else if (dx < -threshold) next = Math.max(0, next - 1);
-    setDragPx(0);
-    setDragging(false);
-    dragRef.current.active = false;
-    if (next !== index) onIndexChange(next);
-  };
-
-  const onPointerDown = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (disabled || !ready || layout.step <= 0) return;
-    if (e.pointerType === "mouse" && e.button !== 0) return;
-    dragRef.current = {
-      pointerId: e.pointerId,
-      startX: e.clientX,
-      startIndex: clampedIndex,
-      active: true,
-    };
-    setDragging(true);
-    setDragPx(0);
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {
-      /* ignore */
+  const resolveIndexFromScroll = useCallback(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller || syncingRef.current) return clampedIndex;
+    const center = scroller.scrollLeft + scroller.clientWidth / 2;
+    let best = 0;
+    let bestDist = Infinity;
+    for (let i = 0; i < scroller.children.length; i++) {
+      const el = scroller.children[i] as HTMLElement;
+      const elCenter = el.offsetLeft + el.offsetWidth / 2;
+      const d = Math.abs(elCenter - center);
+      if (d < bestDist) {
+        bestDist = d;
+        best = i;
+      }
     }
-  };
+    return best;
+  }, [clampedIndex]);
 
-  const onPointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (!dragRef.current.active || dragRef.current.pointerId !== e.pointerId) return;
-    let dx = e.clientX - dragRef.current.startX;
-    const atStart = dragRef.current.startIndex <= 0;
-    const atEnd = dragRef.current.startIndex >= maxIndex;
-    if (atStart && dx < 0) dx *= 0.24;
-    if (atEnd && dx > 0) dx *= 0.24;
-    setDragPx(dx);
-  };
-
-  const onPointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
-    if (dragRef.current.pointerId !== e.pointerId) return;
-    finishDrag(e.clientX);
-    try {
-      e.currentTarget.releasePointerCapture(e.pointerId);
-    } catch {
-      /* ignore */
-    }
+  const onScroll = () => {
+    if (disabled || syncingRef.current) return;
+    window.clearTimeout(scrollEndRef.current);
+    scrollEndRef.current = window.setTimeout(() => {
+      const best = resolveIndexFromScroll();
+      if (best !== clampedIndex) onIndexChange(best);
+    }, 60);
   };
 
   return (
     <div className="relative w-full min-h-[clamp(400px,54vh,540px)]">
       <div
-        ref={viewportRef}
+        ref={scrollerRef}
         dir="ltr"
+        role="region"
         aria-roledescription="carousel"
-        aria-label="باقات الاشتراك — اسحب لليمين للباقة التالية ولليسار للباقة السابقة"
+        aria-label="باقات الاشتراك — اسحب يميناً أو يساراً للتبديل"
         className={
-          "overflow-hidden py-1 " + (disabled ? "pointer-events-none opacity-60" : "cursor-grab active:cursor-grabbing")
+          "no-scrollbar flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain py-1 " +
+          (disabled ? "pointer-events-none opacity-60" : "")
         }
-        style={{ touchAction: "none" }}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
+        style={{
+          gap: CAROUSEL_GAP_PX,
+          scrollPaddingInline: "6%",
+          WebkitOverflowScrolling: "touch",
+          touchAction: "pan-x",
+        }}
+        onScroll={onScroll}
       >
-        <div
-          className={`flex will-change-transform ${ready ? "opacity-100" : "opacity-0"}`}
-          style={{
-            gap: CAROUSEL_GAP,
-            transform: `translate3d(${translateX}px, 0, 0)`,
-            transition: dragging
-              ? "none"
-              : "transform 320ms cubic-bezier(0.2, 0.9, 0.2, 1), opacity 120ms ease",
-          }}
-        >
-          {children.map((child, i) => (
-            <div
-              key={i}
-              className="shrink-0"
-              style={{ width: layout.slideW > 0 ? layout.slideW : "88%" }}
-            >
-              {child}
-            </div>
-          ))}
-        </div>
+        {children.map((child, i) => (
+          <div
+            key={i}
+            className="shrink-0 snap-center"
+            style={{ width: `${CAROUSEL_SLIDE_RATIO * 100}%` }}
+          >
+            {child}
+          </div>
+        ))}
       </div>
     </div>
   );
