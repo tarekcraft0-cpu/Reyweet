@@ -44,6 +44,7 @@ import {
 import { ChatStackRoomGestureShell } from "../chat/ChatStackRoomGestureShell";
 import { SlideDismissBackButton, SlideDismissContext, SlideDismissShell } from "../SlideDismissShell";
 import { QURAN_CHANNEL_ID, isProfileNoteActive, useAppActions, useAppLanguage, useAppTheme, useAppSelector, useAppState, useChats, useCurrentUser, useIsGuestSelector, useAccountSessionKey, userById, visibleChatMessages } from "@/lib/store";
+import { parseGroupSystemEvent } from "@/lib/groupSystemMessages";
 import { getChatMessageSyncMeta } from "@/lib/chatMessageSync";
 import { useProfiledRender } from "@/lib/renderProfiler";
 import { useTypingUsers } from "@/lib/typingContext";
@@ -293,19 +294,6 @@ function chatForwardLabel(users: import("@/lib/types").User[], c: Chat, meId: st
   const oid = c.members.find(x => x !== meId);
   const u = oid ? users.find(x => x.id === oid) : null;
   return u ? "@" + u.username : "?";
-}
-
-function parseGroupSystemEvent(raw: string): { actor: string; action: string; target: string } | null {
-  const text = (raw || "").trim();
-  let m = text.match(/^@?([A-Za-z0-9_.-]+)\s+أضاف\s+@?([A-Za-z0-9_.-]+)\s+إلى المجموعة$/);
-  if (m) return { actor: m[1], action: "added", target: m[2] };
-  m = text.match(/^@?([A-Za-z0-9_.-]+)\s+طرد\s+@?([A-Za-z0-9_.-]+)\s+من المجموعة$/);
-  if (m) return { actor: m[1], action: "removed", target: m[2] };
-  m = text.match(/^@?([A-Za-z0-9_.-]+)\s+added\s+@?([A-Za-z0-9_.-]+)(?:\s+to\s+the\s+group)?$/i);
-  if (m) return { actor: m[1], action: "added", target: m[2] };
-  m = text.match(/^@?([A-Za-z0-9_.-]+)\s+removed\s+@?([A-Za-z0-9_.-]+)(?:\s+from\s+the\s+group)?$/i);
-  if (m) return { actor: m[1], action: "removed", target: m[2] };
-  return null;
 }
 
 function ForwardChatSheet({

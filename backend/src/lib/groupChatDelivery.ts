@@ -347,6 +347,17 @@ export async function patchGroupChatForMembers(
       : base.messages || [],
   };
   await syncGroupChatCanonical(canonical, members[0] || nextMembers[0] || "");
+
+  const livePatch = {
+    members: canonical.members,
+    admins: canonical.admins,
+    mutedUserIds: canonical.mutedUserIds,
+    messages: canonical.messages,
+  };
+  for (const memberId of canonical.members) {
+    broadcastSseToUser(memberId, "sync_hint", { kind: "chats", chatId });
+    emitToUsers([memberId], "group:updated", { chatId, patch: livePatch });
+  }
 }
 
 export async function loadGroupChatForAdmin(

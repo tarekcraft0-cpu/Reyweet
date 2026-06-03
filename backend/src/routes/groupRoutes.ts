@@ -153,6 +153,7 @@ export function createGroupRouter(authMiddleware: (req: Request, res: Response, 
         actorId(req),
         String(req.params.userId),
         until,
+        mins,
       );
       return res.json({ chat, mutedUntil: until });
     } catch (e) {

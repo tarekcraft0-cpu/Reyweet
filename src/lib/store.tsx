@@ -304,6 +304,10 @@ import {
 import { applyDeviceThemeToDom, readDeviceTheme } from "./deviceTheme";
 import { runChatIsolationMigration } from "./chatIsolationMigration";
 import { normalizeChatMessage, normalizeChatRecord } from "./chatNormalize";
+import {
+  buildGroupKickSystemContent,
+  buildGroupMuteSystemContent,
+} from "./groupSystemMessages";
 import { chatMergeKey, dmChatId, findChatByOpenId, parseDmChatId } from "./dmChatId";
 import {
   findDmChatForPeer,
@@ -4466,15 +4470,10 @@ export function AppProvider({
                   id: uid(),
                   senderId: s.currentUserId || c.ownerId || userId,
                   type: "text",
-                  content: `${
-                    s.users.find(u => u.id === s.currentUserId)?.username
-                      ? `@${s.users.find(u => u.id === s.currentUserId)!.username}`
-                      : "مشرف"
-                  } طرد ${
-                    s.users.find(u => u.id === userId)?.username
-                      ? `@${s.users.find(u => u.id === userId)!.username}`
-                      : "عضو"
-                  } من المجموعة`,
+                  content: buildGroupKickSystemContent(
+                    s.users.find(u => u.id === s.currentUserId)?.username || "مشرف",
+                    s.users.find(u => u.id === userId)?.username || "عضو",
+                  ),
                   createdAt: Date.now(),
                 },
               ],
@@ -4524,7 +4523,11 @@ export function AppProvider({
           id: uid(),
           senderId: meId,
           type: "text",
-          content: `${meUser?.username ? `@${meUser.username}` : "مشرف"} كتم ${targetUser?.username ? `@${targetUser.username}` : "عضو"} لمدة ${muteLabel}`,
+          content: buildGroupMuteSystemContent(
+            meUser?.username || "مشرف",
+            targetUser?.username || "عضو",
+            muteLabel,
+          ),
           createdAt: now,
         };
         return {
@@ -6024,9 +6027,11 @@ export function AppProvider({
         if (!payload?.chatId || !payload.patch) return;
         setState(s => ({
           ...s,
-          chats: s.chats.map(c =>
-            c.id === payload.chatId ? normalizeChatRecord({ ...c, ...payload.patch }) : c,
-          ),
+          chats: s.chats.map(c => {
+            if (c.id !== payload.chatId) return c;
+            const merged = normalizeChatRecord({ ...c, ...payload.patch } as Chat);
+            return mergeChatRecord(c, merged);
+          }),
         }));
         return;
       }

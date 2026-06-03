@@ -16,11 +16,16 @@ import {
   saveGroupRecord,
   settingsFromRecord,
 } from "../db/groupRegistry.js";
+import { getUserById } from "../db/engine.js";
 import {
   loadGroupChatForAdmin,
   patchGroupChatForMembers,
   syncGroupChatCanonical,
 } from "../lib/groupChatDelivery.js";
+import {
+  buildGroupMuteSystemContent,
+  muteDurationLabelAr,
+} from "../lib/groupSystemMessages.js";
 import { registerGroupInvite } from "../db/groupInvites.js";
 import { emitToUsers } from "../lib/realtimeSocket.js";
 import { broadcastSseToUser } from "../lib/realtimeHub.js";
@@ -242,10 +247,28 @@ export async function muteMember(
   actorId: string,
   targetUserId: string,
   untilMs: number,
+  durationMinutes?: number | null,
 ): Promise<Chat> {
   await requirePermission(chatId, actorId, "members.mute");
   const { chat, record } = await loadGroupContext(chatId, actorId);
   const muted = { ...(chat.mutedUserIds || {}), [targetUserId]: untilMs };
+  const actorRow = await getUserById(actorId);
+  const targetRow = await getUserById(targetUserId);
+  const actorName = actorRow?.username || "مشرف";
+  const targetName = targetRow?.username || "عضو";
+  const mins =
+    durationMinutes != null
+      ? durationMinutes
+      : untilMs > Date.now() + 86400 * 365 * 5
+        ? null
+        : Math.max(1, Math.round((untilMs - Date.now()) / 60_000));
+  const systemMessage = {
+    id: randomUUID(),
+    senderId: actorId,
+    type: "text" as const,
+    content: buildGroupMuteSystemContent(actorName, targetName, muteDurationLabelAr(mins)),
+    createdAt: Date.now(),
+  };
   await appendGroupAudit({
     chatId,
     actorId,
@@ -254,7 +277,10 @@ export async function muteMember(
     meta: { untilMs },
   });
   await patchGroupChatForMembers(chatId, chat.members, {
-    groupPatch: { mutedUserIds: muted },
+    groupPatch: {
+      mutedUserIds: muted,
+      messages: [...(chat.messages || []), systemMessage],
+    },
   });
   const m = record.members.find(x => x.userId === targetUserId);
   if (m) m.mutedUntil = untilMs;
