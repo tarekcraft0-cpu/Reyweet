@@ -3604,10 +3604,14 @@ export function ChatScreen({
                 type="button"
                 className="flex flex-col items-center gap-1 rounded-2xl bg-white/10 px-3 py-2 text-[11px] backdrop-blur hover:bg-white/16 active:scale-95 transition"
                 onClick={() => {
-                  // TODO: فتح Music Picker حقيقي وربط مع backend
                   const base = noteInput.replace(/^🎵[^|]*\|\s*/u, "");
-                  const demo = isRtl ? "🎵 أغنية تجريبية | " : "🎵 Demo song | ";
-                  setNoteInput(demo + base.trim());
+                  const title = prompt(
+                    isRtl ? "اسم الأغنية (يظهر في النوت)" : "Song title (shown on note)",
+                    isRtl ? "أغنية" : "Song",
+                  );
+                  if (!title?.trim()) return;
+                  const prefix = isRtl ? `🎵 ${title.trim()} | ` : `🎵 ${title.trim()} | `;
+                  setNoteInput(prefix + base.trim());
                 }}
               >
                 <span className="text-lg leading-none">🎵</span>

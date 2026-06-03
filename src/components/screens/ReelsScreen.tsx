@@ -55,6 +55,9 @@ import {
   apiToggleReelLike,
   reelsApiEnabled,
 } from "@/lib/reelsApi";
+import { apiListSavedPostIds, apiToggleSavedPost } from "@/lib/userExtrasApi";
+import { apiBackendEnabled } from "@/lib/apiBackend";
+import { emitUiToast } from "@/lib/uiToast";
 
 /* ═══════════════════════════════════════
    ReelMediaPlayer — مشغّل الفيديو بملء الشاشة
@@ -862,9 +865,19 @@ export const ReelsScreen = memo(function ReelsScreen({
 
                 {/* Save / Bookmark */}
                 <SideActionButton
-                  onClick={() => { if (guestBlock()) return; /* TODO: save */ }}
+                  onClick={() => {
+                    if (guestBlock()) return;
+                    void toggleSaveReel(r.id);
+                  }}
                   label="حفظ"
-                  icon={<Bookmark size={28} strokeWidth={1.75} style={{ filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.6))" }} />}
+                  icon={
+                    <Bookmark
+                      size={28}
+                      strokeWidth={1.75}
+                      className={savedReelIds.has(r.id) ? "fill-white text-white" : ""}
+                      style={{ filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.6))" }}
+                    />
+                  }
                 />
 
                 {/* Sound indicator / disc */}

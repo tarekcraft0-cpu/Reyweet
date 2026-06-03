@@ -41,6 +41,7 @@ import { apiBackendEnabled, getApiToken } from "@/lib/apiBackend";
 import { isNativeCapacitorShell } from "@/lib/apiUrlPolicy";
 import { getUserEntitlements } from "@/lib/verificationEntitlements";
 import { useScheduledPostsPublisher } from "./verification/VerificationPerksSettings";
+import { OnboardingOverlay, isOnboardingDone } from "./onboarding/OnboardingOverlay";
 import { logAuthRoute } from "@/lib/authRouteDebug";
 import { isGuestUserId } from "@/lib/guestUser";
 import { PROFILE_RETURN_POST_KEY, type ProfileReturnContext } from "@/lib/types";
@@ -159,6 +160,11 @@ export function App() {
   useEffect(() => {
     void import("@/lib/pushNotifications").then(m => m.initNativePushDeliveryShell());
   }, []);
+
+  useEffect(() => {
+    if (!currentUser || isGuest) return;
+    if (!isOnboardingDone()) setShowOnboarding(true);
+  }, [currentUser?.id, isGuest]);
 
   useEffect(() => {
     if (!currentUser || isGuest) return;
@@ -1696,6 +1702,9 @@ export function App() {
           <AuthScreen onAuthSuccess={() => setModal(null)} allowGuestBrowse={false} />
         </AppDismissSheet>
       )}
+      {showOnboarding && currentUser && !isGuest ? (
+        <OnboardingOverlay onDone={() => setShowOnboarding(false)} />
+      ) : null}
       {showWelcome && (
         <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4" onClick={() => setShowWelcome(false)}>
           <div className="bg-background rounded-3xl p-6 w-full max-w-sm text-center" onClick={e => e.stopPropagation()}>

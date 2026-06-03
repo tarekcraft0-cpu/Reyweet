@@ -216,7 +216,10 @@ export function EditProfileScreen({ onBack }: { onBack: () => void }) {
   };
 
   return (
-    <div className="relative min-h-dvh p-4 space-y-4 pb-[max(1.5rem,var(--sab))]">
+    <div
+      dir="rtl"
+      className="relative flex min-h-dvh min-w-0 flex-col overflow-x-hidden bg-background text-foreground"
+    >
       {(saving || avatarBusy) && (
         <div
           className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm"
@@ -232,16 +235,23 @@ export function EditProfileScreen({ onBack }: { onBack: () => void }) {
         </div>
       )}
 
-      <div className="flex items-center justify-between">
-        <SlideDismissBackButton onDismiss={onBack} disabled={saving || avatarBusy}>
-          <ArrowRight />
+      <div className="sticky top-0 z-10 flex shrink-0 flex-row items-center gap-2 border-b border-border bg-background px-2 py-3 pt-[max(0.5rem,var(--sat))] [padding-inline-start:max(0.5rem,var(--sal))] [padding-inline-end:max(0.5rem,var(--sar))]">
+        <SlideDismissBackButton
+          onDismiss={onBack}
+          disabled={saving || avatarBusy}
+          className="relative shrink-0 rounded-full p-2 text-foreground active:bg-accent"
+          aria-label="رجوع"
+        >
+          <ArrowRight size={24} strokeWidth={1.75} className="pointer-events-none" />
         </SlideDismissBackButton>
-        <h2 className="font-bold">تعديل البروفايل</h2>
+        <h2 className="min-w-0 flex-1 truncate text-center text-[17px] font-bold text-foreground">
+          تعديل البروفايل
+        </h2>
         <button
           type="button"
           onClick={() => void save()}
           disabled={saving || avatarBusy}
-          className="inline-flex min-w-[3.5rem] items-center justify-center gap-1.5 text-primary font-semibold disabled:opacity-50"
+          className="inline-flex min-h-11 min-w-[3.25rem] shrink-0 items-center justify-center gap-1.5 rounded-full px-2 text-sm font-semibold text-primary disabled:opacity-50"
         >
           {saving ? (
             <>
@@ -254,6 +264,7 @@ export function EditProfileScreen({ onBack }: { onBack: () => void }) {
         </button>
       </div>
 
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden overscroll-y-contain pb-[max(1.5rem,var(--sab))] pt-4 [padding-inline-start:max(1rem,var(--sal))] [padding-inline-end:max(1rem,var(--sar))]">
       <div className="flex flex-col items-center gap-2">
         <button type="button" onClick={() => setAvatarModalOpen(true)} className="rounded-full">
           <Avatar name={username} src={avatar} size={100} />
@@ -341,6 +352,7 @@ export function EditProfileScreen({ onBack }: { onBack: () => void }) {
           maxLength={50}
           className="w-full bg-input rounded-2xl px-4 py-3 outline-none mt-1"
         />
+      </div>
       </div>
     </div>
   );

@@ -25,6 +25,24 @@ export function loadScheduledPosts(userId: ID): ScheduledPostDraft[] {
 export function saveScheduledPosts(userId: ID, items: ScheduledPostDraft[]): void {
   if (typeof localStorage === "undefined") return;
   localStorage.setItem(`${KEY}:${userId}`, JSON.stringify(items.slice(0, 50)));
+  void import("./apiBackend")
+    .then(({ apiBackendEnabled }) => {
+      if (!apiBackendEnabled()) return;
+      return import("./userExtrasApi");
+    })
+    .then(mod => {
+      if (!mod) return;
+      void mod.apiSyncScheduledPosts(
+        items.map(it => ({
+          id: it.id,
+          text: it.text,
+          image: it.image,
+          type: "post" as const,
+          publishAt: new Date(it.publishAt).toISOString(),
+        })),
+      );
+    })
+    .catch(() => undefined);
 }
 
 export function addScheduledPost(userId: ID, draft: Omit<ScheduledPostDraft, "id" | "createdAt">): ScheduledPostDraft {

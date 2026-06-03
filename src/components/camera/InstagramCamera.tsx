@@ -451,35 +451,15 @@ export function InstagramCamera({
         style={{ top: "calc(max(72px, var(--sat, 0px)) + 4.5rem)" }}
       >
         {sideToolsExpanded && (
-          <>
-            <SideToolBtn
-              label={ar ? "نص" : "Text"}
-              onClick={() => alert(ar ? "النص على الصورة — قريباً" : "Text overlay — coming soon")}
-            >
-              <Type size={26} strokeWidth={2} />
-            </SideToolBtn>
-            <SideToolBtn
-              label="Boomerang"
-              onClick={() => alert(ar ? "بوميرانغ — قريباً" : "Boomerang — coming soon")}
-            >
-              <Infinity size={26} strokeWidth={2} />
-            </SideToolBtn>
-            <SideToolBtn
-              label={ar ? "تخطيط" : "Layout"}
-              onClick={() => alert(ar ? "تخطيط — قريباً" : "Layout — coming soon")}
-            >
-              <LayoutGrid size={24} strokeWidth={2} />
-            </SideToolBtn>
-            <SideToolBtn
-              label={ar ? "بدون يد" : "Hands-free"}
-              onClick={() => {
-                hapticLight();
-                startVideoRecording();
-              }}
-            >
-              <CircleDot size={24} strokeWidth={2} />
-            </SideToolBtn>
-          </>
+          <SideToolBtn
+            label={ar ? "بدون يد" : "Hands-free"}
+            onClick={() => {
+              hapticLight();
+              startVideoRecording();
+            }}
+          >
+            <CircleDot size={24} strokeWidth={2} />
+          </SideToolBtn>
         )}
         <button
           type="button"
@@ -567,16 +547,12 @@ export function InstagramCamera({
 
         {/* أوضاع: POST · STORY · REEL · LIVE */}
         <div className="mb-2 flex w-full max-w-[min(100%,340px)] items-center justify-center gap-5 px-4">
-          {MODES.map(m => (
+          {MODES.filter(m => m.id !== "live").map(m => (
             <button
               key={m.id}
               type="button"
               onClick={() => {
                 hapticLight();
-                if (m.id === "live") {
-                  alert(ar ? "البث المباشر — قريباً" : "Live — coming soon");
-                  return;
-                }
                 setMode(m.id);
               }}
               className={

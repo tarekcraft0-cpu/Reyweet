@@ -17,6 +17,9 @@ import { cn } from "@/lib/utils";
 import { getUserEntitlements } from "@/lib/verificationEntitlements";
 import { apiAdminMe } from "@/lib/verificationApi";
 import { VerificationSubscriptionSheet } from "../verification/VerificationSubscriptionSheet";
+import { SavedPostsPanel } from "../settings/SavedPostsPanel";
+import { TimeManagementPanel } from "../settings/TimeManagementPanel";
+import { apiGetLoginHistory } from "@/lib/userExtrasApi";
 import { VerificationRequestPanel } from "../verification/VerificationRequestPanel";
 import { VerificationPerksSettings } from "../verification/VerificationPerksSettings";
 import { VerificationBadgeColorPicker } from "../verification/VerificationBadgeColorPicker";
@@ -114,7 +117,7 @@ function SettingsScreenRoot({
   children,
 }: {
   dir?: "rtl" | "ltr";
-  header: ReactNode;
+  header?: ReactNode;
   children: ReactNode;
 }) {
   return (
@@ -640,7 +643,9 @@ type SecurityView =
   | "verificationSelfie"
   | "savedLogin"
   | "whereLoggedIn"
-  | "comingSoon";
+  | "comingSoon"
+  | "emailHistory"
+  | "securityCheck";
 
 function SecurityMenuRow({
   label,
@@ -702,6 +707,139 @@ function SecurityDarkInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
         (props.className ?? "")
       }
     />
+  );
+}
+
+function SecurityEmailHistoryPanel({ onBack }: { onBack: () => void }) {
+  const [rows, setRows] = useState<
+    Array<{ at: string; success: boolean; ip?: string; deviceLabel?: string; userAgent?: string }>
+  >([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      setLoading(true);
+      const r = await apiGetLoginHistory();
+      setLoading(false);
+      if (!r.ok) {
+        setErr(r.error);
+        return;
+      }
+      setRows(r.loginHistory);
+    })();
+  }, []);
+
+  return (
+    <SecurityScreenShell title="سجل تسجيل الدخول" onBack={onBack}>
+      <p className="mt-2 text-[14px] leading-5 text-muted-foreground">
+        آخر محاولات الدخول الناجحة على حسابك من الخادم.
+      </p>
+      {loading ? <p className="mt-4 text-sm text-muted-foreground">جاري التحميل…</p> : null}
+      {err ? <p className="mt-4 text-sm text-destructive">{err}</p> : null}
+      <div className={`mt-4 ${accountsCenterCardClass}`}>
+        {rows.length === 0 && !loading ? (
+          <p className="px-4 py-6 text-center text-sm text-muted-foreground">لا يوجد سجل بعد.</p>
+        ) : (
+          rows.map((row, i) => (
+            <div
+              key={`${row.at}-${i}`}
+              className={
+                "px-4 py-3.5 " + (i < rows.length - 1 ? "border-b border-border" : "")
+              }
+            >
+              <p className="text-[15px] font-medium text-foreground">
+                {row.success ? "دخول ناجح" : "محاولة فاشلة"}
+              </p>
+              <p className="mt-1 text-[12px] text-muted-foreground">
+                {new Date(row.at).toLocaleString("ar")}
+                {row.deviceLabel ? ` · ${row.deviceLabel}` : ""}
+                {row.ip ? ` · ${row.ip}` : ""}
+              </p>
+            </div>
+          ))
+        )}
+      </div>
+    </SecurityScreenShell>
+  );
+}
+
+function SecurityCheckPanel({
+  onBack,
+  summary: summaryProp,
+  onRefresh,
+}: {
+  onBack: () => void;
+  summary: SecuritySummary | null;
+  onRefresh: () => Promise<void>;
+}) {
+  const [summary, setSummary] = useState<SecuritySummary | null>(summaryProp);
+  useEffect(() => {
+    setSummary(summaryProp);
+  }, [summaryProp]);
+  useEffect(() => {
+    void (async () => {
+      const r = await apiGetSecurity();
+      if (r.ok && r.data) setSummary(r.data);
+    })();
+  }, []);
+
+  const checks = [
+    {
+      ok: !!summary?.twoFactorEnabled,
+      label: "التحقق بخطوتين",
+      hint: summary?.twoFactorEnabled ? "مفعّل" : "غير مفعّل — يُنصح بتفعيله",
+    },
+    {
+      ok: (summary?.trustedDeviceCount ?? 0) > 0,
+      label: "أجهزة موثوقة",
+      hint: `${summary?.trustedDeviceCount ?? 0} جهاز`,
+    },
+    {
+      ok: apiBackendEnabled(),
+      label: "اتصال الخادم",
+      hint: apiBackendEnabled() ? "متصل" : "غير متصل",
+    },
+  ];
+  const score = checks.filter(c => c.ok).length;
+
+  return (
+    <SecurityScreenShell title="فحص الأمان" onBack={onBack}>
+      <p className="mt-2 text-[14px] leading-5 text-muted-foreground">
+        ملخص سريع لحالة أمان حسابك ({score}/{checks.length}).
+      </p>
+      <div className={`mt-4 ${accountsCenterCardClass}`}>
+        {checks.map((c, i) => (
+          <div
+            key={c.label}
+            className={
+              "flex items-center justify-between gap-3 px-4 py-3.5 " +
+              (i < checks.length - 1 ? "border-b border-border" : "")
+            }
+          >
+            <div>
+              <p className="text-[15px] font-medium text-foreground">{c.label}</p>
+              <p className="text-[12px] text-muted-foreground">{c.hint}</p>
+            </div>
+            <span
+              className={
+                "shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold " +
+                (c.ok ? "bg-emerald-500/15 text-emerald-600" : "bg-amber-500/15 text-amber-700")
+              }
+            >
+              {c.ok ? "جيد" : "تحسين"}
+            </span>
+          </div>
+        ))}
+      </div>
+      <button
+        type="button"
+        className="mt-4 w-full rounded-xl border border-border bg-card py-2.5 text-sm font-medium"
+        onClick={() => void onRefresh()}
+      >
+        إعادة الفحص
+      </button>
+    </SecurityScreenShell>
   );
 }
 
@@ -904,14 +1042,13 @@ function SecuritySettingsPanel({ onBack }: { onBack: () => void }) {
 
   if (view === "verificationSelfie") {
     return (
-      <SecurityScreenShell title="Verification selfie" onBack={() => setView("menu")}>
-        <div className="mt-8 flex flex-col items-center gap-4 px-4 text-center">
-          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-secondary">
-            <UserCircle size={36} className="text-muted-foreground" />
-          </div>
-          <p className="text-[18px] font-semibold text-foreground">لا تزال تحت الصنع</p>
+      <SecurityScreenShell title="توثيق بالصورة" onBack={() => setView("menu")}>
+        <div className="mt-6 space-y-4 px-1">
           <p className="text-[14px] leading-6 text-muted-foreground">
-            ميزة التحقق بالصورة الشخصية قيد التطوير حالياً وستتوفر قريباً.
+            التوثيق الرسمي يتم عبر اشتراك Get Verified ومراجعة فريق الدعم — وليس عبر سيلفي منفصل هنا.
+          </p>
+          <p className="rounded-2xl border border-[#0095F6]/25 bg-[#0095F6]/10 px-4 py-3 text-sm text-[#0095F6]">
+            من الإعدادات → إدارة الحساب → الاشتراكات → Get Verified
           </p>
         </div>
       </SecurityScreenShell>
@@ -1015,6 +1152,14 @@ function SecuritySettingsPanel({ onBack }: { onBack: () => void }) {
     );
   }
 
+  if (view === "emailHistory") {
+    return <SecurityEmailHistoryPanel onBack={() => setView("menu")} />;
+  }
+
+  if (view === "securityCheck") {
+    return <SecurityCheckPanel onBack={() => setView("menu")} summary={summary} onRefresh={refresh} />;
+  }
+
   if (view === "comingSoon") {
     return (
       <SecurityScreenShell title={comingSoonTitle} onBack={() => setView("menu")}>
@@ -1046,15 +1191,10 @@ function SecuritySettingsPanel({ onBack }: { onBack: () => void }) {
       <div className={`mt-3 ${accountsCenterCardClass}`}>
         <SecurityMenuRow label="أماكن تسجيل دخولك" onClick={() => { setMsg(null); setPwd(""); setView("whereLoggedIn"); }} />
         <SecurityMenuRow
-          label="رسائل البريد الأخيرة"
-          onClick={() => openComingSoon("رسائل البريد الأخيرة")}
-          trailing={
-            <span className="flex h-5 w-5 items-center justify-center rounded-md bg-gradient-to-br from-[#f58529] via-[#dd2a7b] to-[#8134af] text-[10px] font-bold text-white">
-              IG
-            </span>
-          }
+          label="سجل تسجيل الدخول"
+          onClick={() => setView("emailHistory")}
         />
-        <SecurityMenuRow label="فحص الأمان" onClick={() => openComingSoon("فحص الأمان")} />
+        <SecurityMenuRow label="فحص الأمان" onClick={() => { void refresh(); setView("securityCheck"); }} />
       </div>
     </SecurityScreenShell>
   );
@@ -1270,13 +1410,13 @@ export function SettingsScreen({
   }
 
   if (subView === "saved") {
-    return <PlaceholderPanel title={t("saved")} hint={t("savedHint")} onBack={closeSubView} />;
+    return <SavedPostsPanel onBack={closeSubView} />;
   }
   if (subView === "archive") {
     return <StoriesArchiveScreen onBack={closeSubView} />;
   }
   if (subView === "timeManagement") {
-    return <PlaceholderPanel title={t("timeManagement")} hint={t("timeMgmtHint")} onBack={closeSubView} />;
+    return <TimeManagementPanel onBack={closeSubView} />;
   }
   if (subView === "notifications") {
     return <NotificationsSettingsPanel onBack={closeSubView} />;
@@ -1418,12 +1558,13 @@ export function SettingsScreen({
     <>
       <SettingsScreenRoot
         header={
-          <SettingsHeader
-            title={t("settingsActivity")}
-            onBack={onBack}
-            navScope="local"
-            showBack={!accountsCenterOpen}
-          />
+          accountsCenterOpen ? null : (
+            <SettingsHeader
+              title={t("settingsActivity")}
+              onBack={onBack}
+              navScope="local"
+            />
+          )
         }
       >
       <SettingsCard>
@@ -1442,7 +1583,7 @@ export function SettingsScreen({
               "absolute flex w-full flex-col overflow-hidden border border-border bg-background text-foreground shadow-2xl",
               nativeShell
                 ? "inset-0 max-w-none rounded-none"
-                : "inset-x-0 bottom-0 top-[max(3.5rem,var(--sat))] mx-auto max-w-md rounded-t-[28px]",
+                : "inset-x-0 bottom-0 top-[max(var(--sat),0px)] mx-auto max-w-md rounded-t-[28px]",
             )}
             style={{
               transform: `translate3d(0, ${Math.max(0, accountsCenterDragY)}px, 0)`,

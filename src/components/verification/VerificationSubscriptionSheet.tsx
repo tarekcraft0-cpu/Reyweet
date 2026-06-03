@@ -77,7 +77,7 @@ function TierCard({
 
 const CAROUSEL_GAP = 14;
 const CAROUSEL_SLIDE_RATIO = 0.88;
-/** RTL: سحب من اليمين→اليسار = الباقة على يمين الشاشة، من اليسار→اليمين = على اليسار */
+/** سحب يمين = الباقة التالية (يمين)، سحب يسار = الباقة السابقة (يسار) */
 const SWIPE_COMMIT_PX = 36;
 
 function TierSwipeCarousel({
@@ -133,8 +133,8 @@ function TierSwipeCarousel({
     const dx = clientX - dragRef.current.startX;
     const threshold = Math.max(SWIPE_COMMIT_PX, layout.step * 0.1);
     let next = dragRef.current.startIndex;
-    if (dx < -threshold) next = Math.min(maxIndex, next + 1);
-    else if (dx > threshold) next = Math.max(0, next - 1);
+    if (dx > threshold) next = Math.min(maxIndex, next + 1);
+    else if (dx < -threshold) next = Math.max(0, next - 1);
     setDragPx(0);
     setDragging(false);
     dragRef.current.active = false;
@@ -164,8 +164,8 @@ function TierSwipeCarousel({
     let dx = e.clientX - dragRef.current.startX;
     const atStart = dragRef.current.startIndex <= 0;
     const atEnd = dragRef.current.startIndex >= maxIndex;
-    if (atStart && dx > 0) dx *= 0.24;
-    if (atEnd && dx < 0) dx *= 0.24;
+    if (atStart && dx < 0) dx *= 0.24;
+    if (atEnd && dx > 0) dx *= 0.24;
     setDragPx(dx);
   };
 
@@ -185,7 +185,7 @@ function TierSwipeCarousel({
         ref={viewportRef}
         dir="ltr"
         aria-roledescription="carousel"
-        aria-label="باقات الاشتراك — اسحب من اليمين لليسار للباقة السابقة ومن اليسار لليمين للتالية"
+        aria-label="باقات الاشتراك — اسحب لليمين للباقة التالية ولليسار للباقة السابقة"
         className={
           "overflow-hidden py-1 " + (disabled ? "pointer-events-none opacity-60" : "cursor-grab active:cursor-grabbing")
         }
@@ -361,7 +361,7 @@ export function VerificationSubscriptionSheet({ open, onClose, onSubscribed }: P
             </button>
             <h3 className="text-[26px] font-bold text-foreground">اشتراك التوثيق</h3>
             <p className="mx-auto mt-2.5 max-w-[94%] text-[15px] leading-7 text-muted-foreground">
-              اسحب من اليمين لليسار للباقة السابقة · من اليسار لليمين للتالية
+              اسحب لليمين للباقة التالية · لليسار للباقة السابقة
             </p>
           </div>
         </div>

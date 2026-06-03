@@ -320,6 +320,14 @@ export function AuthScreen(props?: { onAuthSuccess?: () => void; /** false دا�
       passwordResetLinkTokenRef.current = null;
       setMode("reset");
       setForm(f => ({ ...f, code: "", password: "", confirm: "" }));
+      if (rr.method === "link") {
+        setInfo(
+          rr.message ||
+            "أُرسل رابط إعادة تعيين كلمة المرور إلى بريدك. افتح الرابط من البريد على هذا الجهاز، أو أدخل الرابط إذا ظهر لك في الوضع التجريبي.",
+        );
+        setMode("login");
+        return;
+      }
       setInfo(
         rr.message ||
           "إن وُجد حساب بهذا البريد أو اسم المستخدم أُرسل رمز التحقق (6 أرقام) إلى بريدك. أدخله أدناه مع كلمة المرور الجديدة.",

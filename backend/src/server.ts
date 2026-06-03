@@ -196,6 +196,13 @@ app.get("/health", async (_req, res) => {
     // eslint-disable-next-line no-console
     console.error("[health] db", e);
   }
+  let pushConfigured = false;
+  try {
+    const { isFcmConfigured } = await import("./lib/fcmAdmin.js");
+    pushConfigured = isFcmConfigured();
+  } catch {
+    pushConfigured = false;
+  }
   res.json({
     ok: dbOk,
     service: "retweet-backend",
@@ -204,6 +211,9 @@ app.get("/health", async (_req, res) => {
     dbOk,
     usersCount,
     smtpConfigured: isSmtpConfigured(),
+    pushConfigured,
+    stripeConfigured: !!process.env.STRIPE_SECRET_KEY?.trim(),
+    passwordResetUsesLink: passwordResetUsesLink(),
   });
 });
 
@@ -232,11 +242,18 @@ app.post("/api/client-telemetry", (req, res) => {
   }
 });
 
+function passwordResetUsesLink(): boolean {
+  const flag = process.env.PASSWORD_RESET_USES_LINK?.trim();
+  if (flag === "0" || flag === "false") return false;
+  if (flag === "1" || flag === "true") return isSmtpConfigured();
+  return isSmtpConfigured();
+}
+
 app.get("/auth/config", (_req, res) => {
   res.json({
     signupOtpRequired: isSignupOtpRequired(),
     loginOtpRequired: isLoginOtpRequired(),
-    passwordResetUsesLink: false,
+    passwordResetUsesLink: passwordResetUsesLink(),
     smtpConfigured: isSmtpConfigured(),
   });
 });
@@ -370,6 +387,8 @@ async function finishAuthLogin(
   deviceFingerprint: string,
   deviceLabel: string,
 ): Promise<Response> {
+  const { recordLoginEvent } = await import("./routes/userExtrasRoutes.js");
+  recordLoginEvent(user.id, req, true, deviceLabel);
   await trustDeviceForUser(user.id, deviceFingerprint, deviceLabel, req);
   const token = signAccessToken(user.id);
   const status = await resolveEffectiveStatus(user.id);
@@ -706,6 +725,27 @@ app.post("/auth/request-password-reset", async (req, res) => {
   if (!isSmtpConfigured()) {
     return res.status(503).json({
       error: "إرسال البريد غير مُعدّ — أضف SMTP_USER و SMTP_PASS في backend/.env",
+    });
+  }
+
+  if (passwordResetUsesLink()) {
+    const token = `${user.id}.${crypto.randomBytes(32).toString("hex")}`;
+    const codeHash = await bcrypt.hash(token, 10);
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    await deleteOtpsForUser(user.id, "password_reset_link");
+    await deleteOtpsForUser(user.id, "password_reset");
+    await createOtp({ userId: user.id, purpose: "password_reset_link", codeHash, expiresAt });
+    const resetLink = `${publicAppUrl()}/app/?reset=${encodeURIComponent(token)}`;
+    const mail = await sendPasswordResetLinkEmail(user.email, resetLink);
+    if (!mail.sent) {
+      return res.status(503).json({
+        error: mail.error || "تعذر إرسال رابط الاستعادة إلى بريدك",
+      });
+    }
+    return res.json({
+      ok: true,
+      method: "link",
+      message: "أُرسل رابط إعادة تعيين كلمة المرور إلى بريدك الإلكتروني.",
     });
   }
 
@@ -2016,6 +2056,10 @@ const { registerSecurityRoutes } = await import("./routes/securityRoutes.js");
 registerSecurityRoutes(app, authMiddleware);
 const { registerPushRoutes } = await import("./routes/pushRoutes.js");
 registerPushRoutes(app, authMiddleware);
+const { registerUserExtrasRoutes } = await import("./routes/userExtrasRoutes.js");
+registerUserExtrasRoutes(app, authMiddleware);
+const { startScheduledPostWorker } = await import("./lib/scheduledPostWorker.js");
+startScheduledPostWorker();
 const { registerReelsRoutes } = await import("./routes/reelsRoutes.js");
 registerReelsRoutes(app, authMiddleware);
 if (isSmtpConfigured()) {

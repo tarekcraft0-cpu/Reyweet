@@ -839,7 +839,7 @@ export async function apiChangePassword(
 export async function apiRequestPasswordReset(
   identifier: string,
 ): Promise<
-  | { ok: true; method: "code"; message?: string }
+  | { ok: true; method: "code" | "link"; message?: string }
   | { ok: false; error: string }
 > {
   const res = await apiFetch("/auth/request-password-reset", {
@@ -856,7 +856,7 @@ export async function apiRequestPasswordReset(
   if (!res.ok) return { ok: false, error: data.error || "تعذر الطلب" };
   return {
     ok: true,
-    method: "code",
+    method: data.method === "link" ? "link" : "code",
     message: typeof (data as { message?: string }).message === "string"
       ? (data as { message?: string }).message
       : undefined,
