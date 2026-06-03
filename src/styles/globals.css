@@ -408,12 +408,9 @@ html.retweet-native-shell select {
   touch-action: auto;
 }
 
-/**
- * IPA + resize:none — تقليص عمود الرسائل+الشريط فوق الكيبورد (آخر رسالة تبقى فوق شريط الكتابة).
- */
-html.retweet-native-shell.chat-keyboard-open [data-chat-room] .chat-bottom-lift,
-html.chat-keyboard-open [data-chat-room] .chat-bottom-lift {
-  max-height: calc(100% - var(--chat-viewport-kb-trim, 0px));
+/** مع رفع الشريط بـ transform — مساحة تمرير إضافية لآخر رسالة فوق الشريط */
+html.chat-keyboard-open [data-chat-room] .chat-messages-inner {
+  padding-bottom: var(--retweet-composer-kb-lift, 0px);
 }
 
 /**

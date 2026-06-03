@@ -4792,6 +4792,7 @@ function ChatRoom({
       syncComposerDockHeight();
       scheduleScrollToBottom({ instant: true });
       scheduleScrollToBottom({ afterMs: 48 });
+      scheduleScrollToBottom({ afterMs: 160 });
     };
     window.addEventListener("retweet-keyboard-layout-change", onKbLayout, { passive: true });
     window.addEventListener("retweet-chat-keyboard-sync", onKbLayout, { passive: true });
@@ -6537,7 +6538,7 @@ function ChatRoom({
         <div
           ref={messagesListInnerRef}
           className={
-            "flex w-full flex-col justify-end gap-2 px-3 pt-2 pb-0.5 " +
+            "chat-messages-inner flex w-full flex-col justify-end gap-2 px-3 pt-2 pb-0.5 " +
             (isQuranChannel ? "bg-zinc-950" : chromeOnWallpaper ? "bg-transparent" : "")
           }
         >

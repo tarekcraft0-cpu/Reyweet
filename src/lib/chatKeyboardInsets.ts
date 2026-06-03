@@ -39,8 +39,8 @@ function readBodyShrinkPx(): number {
 }
 
 /**
- * iOS + resize:none: نقلص عمود الرسائل عبر --chat-viewport-kb-trim (لا transform فوق القائمة).
- * transform يُستخدم فقط عندما body يتقلص فعلياً ولم يلحق بعد.
+ * iOS: يرفع شريط الكتابة فور keyboardWillShow قبل أن يلحق resize:body.
+ * extraLift = ارتفاع الكيبورد − ما تقلصه body (→ 0 عند الالتقاء).
  */
 function applyComposerKeyboardLift(): void {
   if (typeof document === "undefined") return;
@@ -54,12 +54,7 @@ function applyComposerKeyboardLift(): void {
     root.style.setProperty("--retweet-composer-kb-lift", "0px");
     return;
   }
-  const bodyShrink = readBodyShrinkPx();
-  if (bodyShrink < 24) {
-    root.style.setProperty("--retweet-composer-kb-lift", "0px");
-    return;
-  }
-  const extraLift = Math.max(0, Math.round(kb - bodyShrink));
+  const extraLift = Math.max(0, Math.round(kb - readBodyShrinkPx()));
   root.style.setProperty(
     "--retweet-composer-kb-lift",
     extraLift < 3 ? "0px" : `${extraLift}px`,
@@ -116,17 +111,13 @@ function applyChatKeyboardCss() {
   root.style.setProperty("--vv-keyboard-inset", `${kbPx}px`);
   root.style.setProperty("--chat-sab-effective", snap.open ? "0px" : "var(--sab)");
   root.classList.toggle("chat-keyboard-open", snap.open);
-  root.style.setProperty(
-    "--chat-viewport-kb-trim",
-    snap.open && kbPx > 8 ? `${kbPx}px` : "0px",
-  );
+  applyComposerKeyboardLift();
   root.style.setProperty(
     "--chat-scroll-padding-bottom",
     snap.open
-      ? `max(8px, calc(var(--chat-composer-h, 56px) + ${kbPx}px))`
+      ? "max(8px, calc(var(--chat-composer-h, 56px) + var(--retweet-composer-kb-lift, 0px)))"
       : "max(4px, var(--chat-composer-h, 56px))",
   );
-  applyComposerKeyboardLift();
   return snap;
 }
 
@@ -228,7 +219,6 @@ export function mountChatKeyboardEngine(): () => void {
     root.style.removeProperty("--vv-offset-top");
     root.style.removeProperty("--chat-sab-effective");
     root.style.removeProperty("--chat-scroll-padding-bottom");
-    root.style.removeProperty("--chat-viewport-kb-trim");
     root.style.removeProperty("--retweet-composer-kb-lift");
     root.classList.remove("chat-keyboard-open");
     applyChatKeyboardCss();
