@@ -688,7 +688,8 @@ export function useSlideDismissBack({
   const edgeStripClassName =
     (dismissProfile === "chat"
       ? "absolute right-0 top-0 z-[30] touch-none select-none pointer-events-auto bg-transparent "
-      : "absolute left-0 top-0 z-[10000] w-[max(30px,8vw)] max-w-[48px] touch-none select-none pointer-events-auto bg-transparent ") +
+      : /* لا pointer-events — يمرّ النقر لأزرار الهيدر؛ السحب عبر globalPointerBackRouter */
+        "absolute left-0 top-0 z-[30] w-[max(30px,8vw)] max-w-[48px] touch-none select-none pointer-events-none bg-transparent ") +
     (!enabled || blocked ? "!pointer-events-none opacity-0" : "");
   const edgeStripStyle: React.CSSProperties =
     dismissProfile === "chat"

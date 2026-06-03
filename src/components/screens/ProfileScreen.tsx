@@ -564,7 +564,7 @@ export function ProfileScreen({
               aria-label={t("settings")}
               aria-expanded={menuOpen}
               className="touch-manipulation flex h-11 w-11 items-center justify-center rounded-full hover:bg-zinc-100 active:bg-zinc-200 dark:hover:bg-secondary dark:active:bg-secondary/80"
-              onPointerDownCapture={e => e.stopPropagation()}
+              onPointerDown={e => e.stopPropagation()}
               onClick={e => {
                 e.stopPropagation();
                 setMenuOpen(o => !o);
@@ -576,7 +576,7 @@ export function ProfileScreen({
               <div
                 data-profile-menu
                 className="absolute end-0 top-full z-[10050] mt-2 w-48 overflow-hidden rounded-2xl border border-border bg-card shadow-xl"
-                onPointerDownCapture={e => e.stopPropagation()}
+                onPointerDown={e => e.stopPropagation()}
               >
                 {profileOverflowMenu}
               </div>
@@ -586,76 +586,77 @@ export function ProfileScreen({
       </div>
       )}
 
+      {isOtherUserProfile && !suppressChrome && (
+        <div
+          dir="rtl"
+          data-no-dismiss-drag
+          className="relative z-[10001] shrink-0 max-w-full min-w-0 overflow-visible border-b border-border/60 bg-white px-4 pb-2 pt-[max(0.75rem,var(--sat))] flex items-center justify-between gap-2 dark:bg-background"
+          onPointerDownCapture={e => {
+            const t = e.target;
+            if (t instanceof HTMLElement && t.closest("button, a, [data-profile-menu-btn], [data-profile-back-btn]")) return;
+            e.stopPropagation();
+          }}
+        >
+          <div className="flex flex-row items-center gap-2 min-w-0 flex-1">
+            {onBack && (
+              <SlideDismissBackButton
+                data-no-dismiss-drag
+                data-profile-back-btn
+                onDismiss={onBack}
+                onClick={e => {
+                  if (profileFeed) {
+                    e.preventDefault();
+                    setProfileFeed(null);
+                  } else if (showFollowers) {
+                    e.preventDefault();
+                    setShowFollowers(null);
+                  }
+                }}
+                className="relative z-[10002] flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-zinc-900 hover:bg-secondary active:opacity-90 dark:text-white"
+              >
+                <ArrowRight size={22} />
+              </SlideDismissBackButton>
+            )}
+            <div className="font-bold text-lg truncate flex items-center gap-1 min-w-0 text-zinc-900 dark:text-white">
+              <span className="truncate">{profileHandle}</span>
+              <VerifiedMarkForUser user={u} size={14} className="shrink-0" />
+            </div>
+          </div>
+          <div className="relative z-[10002] shrink-0 overflow-visible">
+            <button
+              type="button"
+              data-no-dismiss-drag
+              data-profile-menu-btn
+              aria-label={t("settings")}
+              aria-expanded={menuOpen}
+              className="touch-manipulation flex h-11 w-11 items-center justify-center rounded-full hover:bg-zinc-100 active:bg-zinc-200 dark:hover:bg-secondary dark:active:bg-secondary/80"
+              onPointerDown={e => e.stopPropagation()}
+              onClick={e => {
+                e.stopPropagation();
+                setMenuOpen(o => !o);
+              }}
+            >
+              <MoreVertical size={22} />
+            </button>
+            {menuOpen && (
+              <div
+                data-profile-menu
+                className="absolute end-0 top-full z-[10050] mt-2 w-48 overflow-hidden rounded-2xl border border-border bg-card shadow-xl"
+                onPointerDown={e => e.stopPropagation()}
+              >
+                {profileOverflowMenu}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       <div
         {...(isOtherUserProfile
           ? { "data-profile-scroll": true as const, "data-no-dismiss-drag": true as const, "data-no-tab-swipe": true as const }
           : {})}
         className={(isOtherUserProfile ? profileScrollClass : "px-4 pt-2") + (isOtherUserProfile ? "" : "")}
       >
-        {isOtherUserProfile && !suppressChrome && (
-      <div
-        dir="rtl"
-        data-no-dismiss-drag
-        className="relative z-[10001] shrink-0 max-w-full min-w-0 overflow-hidden px-4 pb-2 pt-[max(0.75rem,var(--sat))] flex items-center justify-between gap-2"
-        onPointerDownCapture={e => {
-          const t = e.target;
-          if (t instanceof HTMLElement && t.closest("button, a, [data-profile-menu-btn], [data-profile-back-btn]")) return;
-          e.stopPropagation();
-        }}
-      >
-        <div className="flex flex-row items-center gap-2 min-w-0 flex-1">
-          {onBack && (
-            <SlideDismissBackButton
-              data-no-dismiss-drag
-              data-profile-back-btn
-              onDismiss={onBack}
-              onClick={e => {
-                if (profileFeed) {
-                  e.preventDefault();
-                  setProfileFeed(null);
-                } else if (showFollowers) {
-                  e.preventDefault();
-                  setShowFollowers(null);
-                }
-              }}
-              className="relative z-[10002] flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-zinc-900 hover:bg-secondary active:opacity-90 dark:text-white"
-            >
-              <ArrowRight size={22} />
-            </SlideDismissBackButton>
-          )}
-          <div className="font-bold text-lg truncate flex items-center gap-1 min-w-0 text-zinc-900 dark:text-white">
-            <span className="truncate">{profileHandle}</span>
-            <VerifiedMarkForUser user={u} size={14} className="shrink-0" />
-          </div>
-        </div>
-        <div className="relative z-[10002] shrink-0 overflow-visible">
-          <button
-            type="button"
-            data-no-dismiss-drag
-            data-profile-menu-btn
-            aria-label={t("settings")}
-            aria-expanded={menuOpen}
-            className="touch-manipulation flex h-11 w-11 items-center justify-center rounded-full hover:bg-zinc-100 active:bg-zinc-200 dark:hover:bg-secondary dark:active:bg-secondary/80"
-            onPointerDownCapture={e => e.stopPropagation()}
-            onClick={e => {
-              e.stopPropagation();
-              setMenuOpen(o => !o);
-            }}
-          >
-            <MoreVertical size={22} />
-          </button>
-          {menuOpen && (
-            <div
-              data-profile-menu
-              className="absolute end-0 top-full z-[10050] mt-2 w-48 overflow-hidden rounded-2xl border border-border bg-card shadow-xl"
-              onPointerDownCapture={e => e.stopPropagation()}
-            >
-              {profileOverflowMenu}
-            </div>
-          )}
-        </div>
-      </div>
-        )}
         <div className={"px-4 pt-2" + (isOtherUserProfile ? " pb-[calc(5.5rem+var(--sab))]" : "")}>
         <div className="flex items-center gap-6">
           {profileHasStories ? (
@@ -1153,7 +1154,7 @@ export function ProfileScreen({
         variant="overlay"
         overlayZIndex={dismissOverlayZIndex}
         panelSwipeDismiss={false}
-        edgeTopInsetPx={56}
+        edgeTopInsetPx={120}
         blocked={!!profileFeed || !!storyViewerUserId}
         className="h-full min-h-0"
       >

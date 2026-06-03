@@ -4684,9 +4684,11 @@ function ChatRoom({
   useLayoutEffect(() => {
     const headerEl = chatHeaderRef.current;
     if (!headerEl || typeof document === "undefined") return;
+    let lastHeaderH = 0;
     const syncHeaderH = () => {
       const hh = Math.ceil(headerEl.getBoundingClientRect().height);
-      if (hh > 0) {
+      if (hh > 0 && Math.abs(hh - lastHeaderH) > 1) {
+        lastHeaderH = hh;
         document.documentElement.style.setProperty("--chat-header-h", `${hh}px`);
       }
     };
@@ -4723,6 +4725,9 @@ function ChatRoom({
     if (typeof window === "undefined") return;
     const sync = () => {
       syncComposerDockHeight();
+      const scrollEl = messagesScrollRef.current;
+      if (!scrollEl || !stickToBottomRef.current) return;
+      if (scrollDistanceFromBottom(scrollEl) < 4) return;
       scheduleScrollToBottom();
     };
     window.addEventListener("resize", sync, { passive: true });
@@ -4731,7 +4736,7 @@ function ChatRoom({
       window.removeEventListener("resize", sync);
       window.removeEventListener("orientationchange", sync);
     };
-  }, [syncComposerDockHeight, scheduleScrollToBottom]);
+  }, [syncComposerDockHeight, scheduleScrollToBottom, scrollDistanceFromBottom]);
 
   const kbOpenPrevRef = useRef(false);
   useLayoutEffect(() => {

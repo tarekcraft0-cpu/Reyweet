@@ -1519,6 +1519,7 @@ export function App() {
               onBack={closeProfileOverlay}
               onEdit={() => {
                 blurActiveElement();
+                closeProfileOverlay();
                 setModal("edit");
               }}
               onOpenAccountSwitcher={isGuest ? undefined : () => {
@@ -1605,7 +1606,9 @@ export function App() {
           animateOnMount
           contentClassName="min-h-dvh bg-background text-foreground"
         >
-          <EditProfileScreen onBack={() => setModal(null)} />
+          <AppErrorBoundary label="edit-profile">
+            <EditProfileScreen onBack={() => setModal(null)} />
+          </AppErrorBoundary>
         </AppDismissSheet>
       )}
       {modal === "notifications" && (
