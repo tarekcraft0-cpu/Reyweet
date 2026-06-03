@@ -7701,7 +7701,7 @@ function ChatRoom({
       {showDmDetails && isDmRoom && other ? (
         <div
           className={
-            "pointer-events-auto fixed inset-0 z-[220] flex w-full flex-col bg-background " +
+            "pointer-events-auto fixed inset-0 z-[220] flex w-full max-w-[100vw] flex-col overflow-hidden bg-background " +
             (nativeShell ? "" : "mx-auto max-w-md")
           }
         >
@@ -7712,6 +7712,7 @@ function ChatRoom({
             onBack={() => setShowDmDetails(false)}
             onOpenProfile={userId => {
               setShowDmDetails(false);
+              void import("@/lib/nativeViewportLayout").then(m => m.resetMobileViewportAfterKeyboard());
               startTransition(() => onOpenProfile(userId));
             }}
             onOpenChatTheme={() => {

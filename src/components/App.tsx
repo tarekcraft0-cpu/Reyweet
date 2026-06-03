@@ -806,6 +806,7 @@ export function App() {
 
       const openOverChatThread = tab === "chat" && !!activeChatId && !returnCtx;
       if (openOverChatThread) {
+        void import("@/lib/nativeViewportLayout").then(m => m.resetMobileViewportAfterKeyboard());
         setProfileOverlayUserId(id);
         setOpenChatId(activeChatId);
         setChatThreadOpen(true);
@@ -1487,6 +1488,7 @@ export function App() {
       </div>
 
       {profileOverlayUserId && (
+        <div className="pointer-events-auto fixed inset-0 z-[280] flex w-full max-w-[100vw] justify-center overflow-hidden">
             <ProfileScreen
               userId={profileOverlayUserId}
               suppressChrome={settingsImmersive}
@@ -1546,6 +1548,7 @@ export function App() {
                 setChatHideBottomNav(true);
               }}
             />
+        </div>
       )}
 
       {/* مؤقتاً: عارض ستوري عام من App (يُعاد عبر storyChrome لاحقاً) */}

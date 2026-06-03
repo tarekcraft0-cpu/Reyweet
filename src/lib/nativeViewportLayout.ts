@@ -123,6 +123,19 @@ function scheduleNativeViewportFromSafeArea(): void {
   }, 48);
 }
 
+/** بعد إغلاق بحث/كيبورد — يمنع بقاء تكبير iOS (zoom) أو انزياح العرض */
+export function resetMobileViewportAfterKeyboard(): void {
+  if (typeof document === "undefined") return;
+  try {
+    const active = document.activeElement;
+    if (active instanceof HTMLElement) active.blur();
+  } catch {
+    /* ignore */
+  }
+  resetNativeDocumentScroll();
+  applyNativeViewportFullBleed();
+}
+
 export function initNativeViewportLayout(): void {
   if (!isNativeCapacitorShell() || typeof window === "undefined" || booted) return;
   booted = true;

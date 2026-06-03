@@ -133,7 +133,9 @@ export function SlideDismissShell({
         <div
           ref={containerRef}
           data-edge-swipe-root
-          className={"relative h-full min-w-0 overflow-hidden overscroll-none " + sheetWidthClass}
+          className={
+            "relative h-full min-h-0 max-w-full min-w-0 overflow-hidden overscroll-none " + sheetWidthClass
+          }
         >
           {panel}
         </div>

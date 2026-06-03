@@ -112,6 +112,13 @@ html.retweet-native-shell .chat-room-stack {
   height: 100%;
 }
 
+/** iOS: حقول أصغر من 16px تُكبّر الصفحة عند التركيز — نُبقي مقياس الجوال ثابتاً */
+html.retweet-native-shell input,
+html.retweet-native-shell textarea,
+html.retweet-native-shell select {
+  font-size: max(16px, 1rem);
+}
+
 /** ═══ تحسينات أداء المحادثة ═══ */
 
 /* منطقة التمرير — لا تمتد تحت شريط الكتابة (يُحجز الارتفاع عبر .chat-composer-spacer) */

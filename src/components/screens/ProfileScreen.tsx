@@ -486,9 +486,9 @@ export function ProfileScreen({
     "profile-scroll-pane tab-panel-scroll tab-panel-immersive min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-y-contain touch-pan-y [-webkit-overflow-scrolling:touch]";
   const profileShellClass = isOtherUserProfile
     ? dismissPresentation === "overlay"
-      ? "flex h-full min-h-0 w-full flex-col overflow-hidden bg-white dark:bg-background"
-      : "absolute inset-0 z-0 flex min-h-0 flex-col overflow-hidden bg-white dark:bg-background"
-    : "flex w-full flex-col bg-white pb-24 dark:bg-background";
+      ? "flex h-full min-h-0 w-full max-w-full min-w-0 flex-col overflow-hidden bg-white dark:bg-background"
+      : "absolute inset-0 z-0 flex min-h-0 max-w-full min-w-0 flex-col overflow-hidden bg-white dark:bg-background"
+    : "flex w-full max-w-full min-w-0 flex-col bg-white pb-24 dark:bg-background";
 
   const profileBody = (
     <div data-no-tab-swipe className={profileShellClass}>
@@ -596,7 +596,7 @@ export function ProfileScreen({
       <div
         dir="rtl"
         data-no-dismiss-drag
-        className="relative z-[10001] shrink-0 overflow-visible px-4 pt-3 pb-2 flex items-center justify-between gap-2"
+        className="relative z-[10001] shrink-0 max-w-full min-w-0 overflow-hidden px-4 pb-2 pt-[max(0.75rem,var(--sat))] flex items-center justify-between gap-2"
         onPointerDownCapture={e => {
           const t = e.target;
           if (t instanceof HTMLElement && t.closest("button, a, [data-profile-menu-btn], [data-profile-back-btn]")) return;
