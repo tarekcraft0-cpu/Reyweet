@@ -511,6 +511,7 @@ export type ApiSearchUser = {
   avatar: string;
   bio?: string;
   note?: string;
+  noteAt?: number;
   profileLink?: string;
   verified?: boolean;
   /** حساب خاص — يُرجَع من نهايات المستخدم العامة */

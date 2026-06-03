@@ -12,6 +12,7 @@ import { mergeSocialGraphIntoAppState } from "./mergeSocialGraph.js";
 import { mergeMessageLists, messageRowToClient, messageToRow, type MessageRow } from "./chatMessages.js";
 import { emitToUsers } from "./realtimeSocket.js";
 import { broadcastSseToUser } from "./realtimeHub.js";
+import { resolvedProfileNote } from "./profileNote.js";
 
 function stripPasswords(state: AppState): AppState {
   return {
@@ -50,7 +51,7 @@ function rowToChatUser(row: UserRow) {
     supportOfficialVerified: row.supportOfficialVerified === true,
     supportOfficialLabel: row.supportOfficialLabel,
     appOfficialLabel: row.appOfficialLabel,
-    note: row.note || undefined,
+    ...resolvedProfileNote(row),
     phone: row.phone || undefined,
     profileLink: row.profileLink || row.officialSiteUrl || undefined,
   };

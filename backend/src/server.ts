@@ -18,6 +18,7 @@ import {
   PUBLIC_BASE_URL,
 } from "./config.js";
 import { normalizePhone, validateOptionalPhone } from "./lib/phone.js";
+import { resolvedProfileNote } from "./lib/profileNote.js";
 import { normalizeUsername, USERNAME_PATTERN, validateUsernameFormat } from "./lib/usernameRules.js";
 import {
   createOtp,
@@ -293,13 +294,15 @@ function publicUserPayload(user: UserRow) {
   const av = toClientMediaRef(user.avatar) || DEFAULT_AVATAR_DATA_URI;
   const avatar =
     av.startsWith("/media/") ? `${av}?v=${Date.parse(user.updatedAt) || 0}` : av;
+  const noteFields = resolvedProfileNote(user);
   return {
     id: user.id,
     username: user.username,
     displayName: user.displayName?.trim() || undefined,
     avatar,
     bio: user.bio ?? "",
-    note: user.note ?? "",
+    note: noteFields.note,
+    noteAt: noteFields.noteAt,
     profileLink: user.profileLink ?? "",
     verified: user.verified === true,
     founderVerified: user.founderVerified === true,
@@ -1859,7 +1862,11 @@ app.patch("/v1/me/profile", authMiddleware, async (req, res) => {
   if (d.bio != null) patch.bio = d.bio;
   const prevBio = cur.bio ?? "";
   const newBio  = d.bio   ?? cur.bio ?? "";
-  if (d.note != null) patch.note = d.note.trim();
+  if (d.note != null) {
+    const trimmed = d.note.trim();
+    patch.note = trimmed;
+    patch.noteAt = trimmed ? Date.now() : undefined;
+  }
   if (d.profileLink != null) patch.profileLink = d.profileLink.trim();
   if (d.isPrivate != null) patch.isPrivate = d.isPrivate === true;
   if (d.email != null) {
@@ -1903,6 +1910,7 @@ app.patch("/v1/me/profile", authMiddleware, async (req, res) => {
   const snap = (await getSnapshot(userId)) as AppState | null;
   if (snap?.users) {
     const st = snap as AppState;
+    const noteFields = resolvedProfileNote(user);
     st.users = (st.users || []).map(u =>
       u.id === userId
         ? {
@@ -1911,7 +1919,8 @@ app.patch("/v1/me/profile", authMiddleware, async (req, res) => {
             displayName: user.displayName?.trim() || u.displayName,
             avatar: toClientMediaRef(user.avatar) || user.avatar,
             bio: user.bio ?? u.bio,
-            note: user.note ?? u.note,
+            note: noteFields.note,
+            noteAt: noteFields.noteAt,
             profileLink: user.profileLink ?? u.profileLink,
             isPrivate: user.isPrivate === true,
             verified: user.verified === true,

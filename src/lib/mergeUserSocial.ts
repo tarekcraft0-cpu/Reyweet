@@ -3,6 +3,7 @@ import type { ApiSearchUser } from "./apiBackend";
 import { userFromSearchResult } from "./apiBackend";
 import { DEFAULT_AVATAR_DATA_URI } from "./defaultAvatar";
 import { isRenderableMediaUrl } from "./mediaUrl";
+import { resolvedProfileNote } from "./profileNote";
 
 /** يمنع crash عند حقول مصفوفة ناقصة (حساب جديد / stub / لقطة قديمة) */
 export function withUserListDefaults(u: User): User {
@@ -67,7 +68,12 @@ export function applyAuthoritativeProfile(base: User, server: Partial<User> & { 
         ? server.avatar
         : pickAvatar(server.avatar, base.avatar, server.username ?? base.username),
     bio: server.bio !== undefined ? server.bio : base.bio,
-    note: server.note !== undefined ? server.note : base.note,
+    ...(server.note !== undefined || server.noteAt !== undefined
+      ? resolvedProfileNote({
+          note: server.note !== undefined ? server.note : base.note,
+          noteAt: server.noteAt !== undefined ? server.noteAt : base.noteAt,
+        })
+      : resolvedProfileNote(base)),
     profileLink: server.profileLink !== undefined ? server.profileLink : base.profileLink,
     verified: server.verified !== undefined ? server.verified : base.verified,
     founderVerified:
@@ -108,7 +114,12 @@ export function mergeUserFromServer(prev: User | undefined, incoming: User): Use
         ? incoming.avatar
         : pickAvatar(incoming.avatar, prev.avatar, incoming.username ?? prev.username),
     bio: incoming.bio !== undefined ? incoming.bio : prev.bio,
-    note: incoming.note !== undefined ? incoming.note : prev.note,
+    ...(incoming.note !== undefined || incoming.noteAt !== undefined
+      ? resolvedProfileNote({
+          note: incoming.note !== undefined ? incoming.note : prev.note,
+          noteAt: incoming.noteAt !== undefined ? incoming.noteAt : prev.noteAt,
+        })
+      : resolvedProfileNote(prev)),
     profileLink: incoming.profileLink !== undefined ? incoming.profileLink : prev.profileLink,
     verified: incoming.verified === true || prev.verified === true,
     founderVerified: incoming.founderVerified === true || prev.founderVerified === true,
@@ -197,7 +208,12 @@ export function mergeUserProfilePatch(prev: User, patch: Partial<User> & { id: I
         ? patch.avatar
         : prev.avatar,
     bio: patch.bio !== undefined ? patch.bio : prev.bio,
-    note: patch.note !== undefined ? patch.note : prev.note,
+    ...(patch.note !== undefined || patch.noteAt !== undefined
+      ? resolvedProfileNote({
+          note: patch.note !== undefined ? patch.note : prev.note,
+          noteAt: patch.noteAt !== undefined ? patch.noteAt : prev.noteAt,
+        })
+      : resolvedProfileNote(prev)),
     profileLink: patch.profileLink !== undefined ? patch.profileLink : prev.profileLink,
     verified: patch.verified === true ? true : patch.verified === false ? false : prev.verified,
     founderVerified:

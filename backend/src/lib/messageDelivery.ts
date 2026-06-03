@@ -15,6 +15,7 @@ import { canonicalizeDmChatId, dmChatId } from "./dmChatId.js";
 import { scopeAppStateToOwner } from "./scopeAppState.js";
 import { broadcastSseToUser } from "./realtimeHub.js";
 import { emitToUsers } from "./realtimeSocket.js";
+import { resolvedProfileNote } from "./profileNote.js";
 
 function stripPasswords(state: AppState): AppState {
   return {
@@ -53,7 +54,7 @@ function rowToChatUser(row: UserRow): User {
     supportOfficialVerified: row.supportOfficialVerified === true,
     supportOfficialLabel: row.supportOfficialLabel,
     appOfficialLabel: row.appOfficialLabel,
-    note: row.note || undefined,
+    ...resolvedProfileNote(row),
     phone: row.phone || undefined,
     profileLink: row.profileLink || row.officialSiteUrl || undefined,
   };

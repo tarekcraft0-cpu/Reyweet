@@ -1,6 +1,7 @@
 import type { AppState, User } from "../../../src/lib/types.js";
 import { listUsers, type UserRow } from "../db/engine.js";
 import { toClientMediaRef } from "./normalizeMediaRef.js";
+import { resolvedProfileNote } from "./profileNote.js";
 
 function rowToProfileOverlay(row: UserRow): Partial<User> {
   const av = toClientMediaRef(row.avatar) || row.avatar;
@@ -34,7 +35,7 @@ function rowToProfileOverlay(row: UserRow): Partial<User> {
     storyMaxDuration: row.storyMaxDuration,
     storyExpiryOptions: row.storyExpiryOptions,
     postCharacterLimit: row.postCharacterLimit,
-    note: row.note || undefined,
+    ...resolvedProfileNote(row),
     isPrivate: row.isPrivate === true,
   };
 }

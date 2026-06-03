@@ -28,6 +28,8 @@ export type UserRow = {
   appOfficialLabel?: string;
   profileLink?: string;
   note?: string;
+  /** وقت نشر النوت (ms) — تنتهي بعد 24 ساعة */
+  noteAt?: number;
   officialSiteUrl?: string;
   /** حساب خاص — يؤثر على طلبات المراسلة */
   isPrivate?: boolean;
@@ -244,6 +246,12 @@ export async function initDatabase(): Promise<void> {
   }
   const { runVerificationMigration } = await import("../lib/verificationMigration.js");
   const mig = await runVerificationMigration();
+  const { purgeExpiredProfileNotes } = await import("../lib/purgeExpiredProfileNotes.js");
+  const purgedNotes = await purgeExpiredProfileNotes();
+  if (purgedNotes > 0) {
+    // eslint-disable-next-line no-console
+    console.log(`[db] purged ${purgedNotes} expired profile note(s)`);
+  }
   if (mig.updated > 0) {
     // eslint-disable-next-line no-console
     console.log(`[verification] migration updated ${mig.updated} user(s)`);

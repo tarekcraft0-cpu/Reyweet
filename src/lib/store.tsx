@@ -178,6 +178,7 @@ import {
   apiFetchHomeFeed,
   apiFetchUserPosts,
   pushRemoteAppState,
+  apiPatchProfile,
   apiCreateStory,
   apiRequestPasswordReset,
   setApiToken,
@@ -321,15 +322,8 @@ import {
 
 const STORAGE_KEY = "retweet_state_v2";
 export const STORY_TTL_MS = 24 * 60 * 60 * 1000;
-/** مدة نوت البروفايل في شريط المحادثات */
-export const PROFILE_NOTE_TTL_MS = 24 * 60 * 60 * 1000;
-
-export function isProfileNoteActive(u: Pick<User, "note" | "noteAt">): boolean {
-  const text = u.note?.trim();
-  if (!text) return false;
-  if (!u.noteAt) return true;
-  return Date.now() - u.noteAt < PROFILE_NOTE_TTL_MS;
-}
+export { PROFILE_NOTE_TTL_MS, isProfileNoteActive } from "./profileNote";
+import { isProfileNoteActive } from "./profileNote";
 
 /** مقارنة سريعة بدل JSON.stringify على كل مستخدم في الدليل */
 function directoryUserRowEqual(prev: User, next: User): boolean {
@@ -2238,6 +2232,28 @@ export function AppProvider({
           ...(s.storyArchive || []).filter((x) => !archiveIds.has(x.id)),
         ].sort((a, b) => b.createdAt - a.createdAt);
         const next = { ...s, stories: nextStories, storyArchive };
+        const token = getApiToken();
+        if (token && apiBackendEnabled()) void pushRemoteAppState(token, next);
+        return next;
+      });
+    };
+    tick();
+    const id = window.setInterval(tick, 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    const tick = () => {
+      setStateRaw((s) => {
+        let changed = false;
+        const users = s.users.map((u) => {
+          if (!u.note?.trim() && !u.noteAt) return u;
+          if (isProfileNoteActive(u)) return u;
+          changed = true;
+          return { ...u, note: "", noteAt: undefined };
+        });
+        if (!changed) return s;
+        const next = { ...s, users };
         const token = getApiToken();
         if (token && apiBackendEnabled()) void pushRemoteAppState(token, next);
         return next;
@@ -4934,24 +4950,42 @@ export function AppProvider({
     [setState],
   );
 
-  const setNote = (text: string) =>
+  const setNote = (text: string) => {
+    const trimmed = text.trim();
+    const noteAt = trimmed ? Date.now() : undefined;
     setStateRaw(s => {
       if (!s.currentUserId) return s;
-      const trimmed = text.trim();
-      const next: AppState = {
+      return {
         ...s,
         users: s.users.map(u =>
-          u.id === s.currentUserId
-            ? { ...u, note: trimmed, noteAt: trimmed ? Date.now() : undefined }
-            : u,
+          u.id === s.currentUserId ? { ...u, note: trimmed, noteAt } : u,
         ),
       };
-      if (apiBackendEnabled()) {
-        const token = getApiToken();
-        if (token) void pushRemoteAppState(token, next);
-      }
-      return next;
     });
+    if (apiBackendEnabled()) {
+      const token = getApiToken();
+      if (token) {
+        void apiPatchProfile(token, { note: trimmed }).then((res) => {
+          if (!res.ok) return;
+          setStateRaw((s) => {
+            if (!s.currentUserId) return s;
+            return {
+              ...s,
+              users: s.users.map((u) =>
+                u.id === s.currentUserId
+                  ? mergeUserProfilePatch(u, {
+                      id: u.id,
+                      note: res.user.note ?? "",
+                      noteAt: res.user.noteAt ?? noteAt,
+                    })
+                  : u,
+              ),
+            };
+          });
+        });
+      }
+    }
+  };
   const createSticker = (emoji: string, label: string) =>
     setState((s) => {
       if (!s.currentUserId || isGuestUserId(s.currentUserId)) return s;

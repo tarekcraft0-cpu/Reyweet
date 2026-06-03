@@ -3355,7 +3355,7 @@ export function ChatScreen({
           >
             {noteUsers.map((u: any) => {
               const isMine = u.id === me.id;
-              const hasNote = !!u.note?.trim();
+              const hasNote = isProfileNoteActive(u);
 
               const handleNotePress = () => {
                 if (isMine) { setEditingNote(true); return; }
