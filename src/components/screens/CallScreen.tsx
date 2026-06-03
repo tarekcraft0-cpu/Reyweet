@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Mic, MicOff, X } from "lucide-react";
+import { ChevronDown, Mic, MicOff, X } from "lucide-react";
 import { useApp, userById } from "@/lib/store";
 import { Avatar } from "../Avatar";
 import {
@@ -15,11 +15,17 @@ export function CallScreen({
   chatId,
   video,
   onClose,
+  onMinimize,
+  hidden,
   calleePeerId,
 }: {
   chatId: string;
   video: boolean;
   onClose: () => void;
+  /** تصغير الشاشة مع إبقاء WebRTC نشطاً */
+  onMinimize?: () => void;
+  /** إخفاء الواجهة مع إبقاء الاتصال (لا تُلغى المكالمة عند الإخفاء) */
+  hidden?: boolean;
   calleePeerId?: string;
 }) {
   const { state, currentUser } = useApp();
@@ -77,17 +83,23 @@ export function CallScreen({
     })();
     return () => {
       cancelled = true;
-      void endCall();
+      void endCall({ notifyPeer: true });
     };
   }, [chatId, otherId, video, calleePeerId, chat?.isGroup, chat?.isChannel]);
 
   const hangUp = () => {
-    void endCall();
+    void endCall({ notifyPeer: true });
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 z-[300] bg-black text-white flex flex-col">
+    <div
+      className={
+        "fixed inset-0 z-[300] bg-black text-white flex flex-col " +
+        (hidden ? "pointer-events-none opacity-0" : "")
+      }
+      aria-hidden={hidden || undefined}
+    >
       {video && (
         <div className="relative flex-1 min-h-0">
           <video ref={remoteVideoRef} playsInline className="absolute inset-0 h-full w-full object-cover" />
@@ -105,6 +117,16 @@ export function CallScreen({
         <div className="text-sm text-white/60">{status}</div>
       </div>
       <div className="flex gap-4 justify-center pb-12">
+        {onMinimize ? (
+          <button
+            type="button"
+            onClick={onMinimize}
+            aria-label="تصغير المكالمة"
+            className="w-14 h-14 rounded-full flex items-center justify-center bg-white/20"
+          >
+            <ChevronDown />
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={() => {

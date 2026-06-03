@@ -16,6 +16,7 @@ import { PostGridThumbnail } from "../PostGridThumbnail";
 import { isGuestUserId } from "@/lib/guestUser";
 import {
   apiBackendEnabled,
+  apiDiscoverSuggestions,
   apiFetchUserDirectory,
   apiSearchUsers,
   getApiToken,
@@ -56,6 +57,7 @@ export function SearchScreen({
   const [q, setQ] = useState("");
   const [remoteHits, setRemoteHits] = useState<User[]>([]);
   const [recentUsers, setRecentUsers] = useState<User[]>([]);
+  const [suggestedUsers, setSuggestedUsers] = useState<User[]>([]);
   const [searching, setSearching] = useState(false);
   const [openPostId, setOpenPostId] = useState<string | null>(null);
   const [focusCommentsOnOpen, setFocusCommentsOnOpen] = useState(false);
@@ -87,12 +89,28 @@ export function SearchScreen({
   const loadRecentFromServer = useCallback(async () => {
     if (!apiBackendEnabled() || !getApiToken() || isGuest) {
       setRecentUsers([]);
+      setSuggestedUsers([]);
       return;
     }
-    const rows = await apiFetchUserDirectory();
+    const token = getApiToken()!;
+    const [rows, sug] = await Promise.all([
+      apiFetchUserDirectory(),
+      apiDiscoverSuggestions(token, 16),
+    ]);
     const users = rows.map(userFromSearchResult);
     setRecentUsers(users);
     mergeDiscoveredUsers(users);
+    if (sug.ok) {
+      const mapped = sug.users.map(u =>
+        userFromSearchResult({
+          id: u.id,
+          username: u.username,
+          avatar: u.avatar,
+        }),
+      );
+      setSuggestedUsers(mapped);
+      mergeDiscoveredUsers(mapped);
+    }
   }, [isGuest, mergeDiscoveredUsers]);
 
   useEffect(() => {
@@ -138,7 +156,7 @@ export function SearchScreen({
   }, [qq, runServerSearch, loadRecentFromServer]);
 
   const accountList = useMemo(() => {
-    const source = qq ? remoteHits : recentUsers;
+    const source = qq ? remoteHits : suggestedUsers.length ? suggestedUsers : recentUsers;
     const byId = new Map<string, User>();
     for (const u of source) {
       if (u.id === me.id || isGuestUserId(u.id) || isBlockedBetween(me, u)) continue;
@@ -154,7 +172,7 @@ export function SearchScreen({
       }
     }
     return rankUsersBySearchQuery([...byId.values()], qq);
-  }, [qq, remoteHits, recentUsers, state.users, me]);
+  }, [qq, remoteHits, recentUsers, suggestedUsers, state.users, me]);
 
   const tags = trendingHashtags(state);
 
@@ -321,7 +339,7 @@ export function SearchScreen({
       {(qq || (q === "" && discoverTab === "search" && accountList.length > 0)) ? (
       <div className="space-y-2 px-4 mt-4">
         <h3 className="text-xs text-muted-foreground">
-          {qq ? "نتائج البحث" : "حسابات جديدة"}
+          {qq ? "نتائج البحث" : suggestedUsers.length ? "اقتراحات متابعة" : "حسابات جديدة"}
         </h3>
         {searching && accountList.length === 0 && (
           <p className="text-xs text-muted-foreground py-2">جاري التحديث من الخادم…</p>

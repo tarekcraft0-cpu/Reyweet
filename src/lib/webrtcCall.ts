@@ -31,15 +31,54 @@ type ActiveCall = {
 
 let active: ActiveCall | null = null;
 let socketRef: Socket | null = null;
+const pendingSignals = new Map<string, CallSignalPayload[]>();
+
+function signalKey(chatId: string, fromUserId: string): string {
+  return `${chatId}:${fromUserId}`;
+}
+
+function bufferSignal(payload: CallSignalPayload): void {
+  const key = signalKey(payload.chatId, payload.fromUserId);
+  const list = pendingSignals.get(key) ?? [];
+  list.push(payload);
+  pendingSignals.set(key, list);
+}
+
+async function flushBufferedSignals(chatId: string, peerUserId: string): Promise<void> {
+  const key = signalKey(chatId, peerUserId);
+  const list = pendingSignals.get(key) ?? [];
+  pendingSignals.delete(key);
+  for (const payload of list) {
+    await handleRemoteCallSignal(payload);
+  }
+}
+
+export function getActiveCallMeta(): {
+  chatId: string;
+  peerUserId: string;
+  video: boolean;
+} | null {
+  if (!active) return null;
+  return {
+    chatId: active.chatId,
+    peerUserId: active.peerUserId,
+    video: active.video,
+  };
+}
 
 export function bindCallSocket(socket: Socket | null): void {
   if (socketRef) {
     socketRef.off("call:ended");
+    socketRef.off("call:reject");
   }
   socketRef = socket;
   if (!socket) return;
   socket.on("call:ended", () => {
-    void endCall();
+    void endCall({ notifyPeer: false });
+    import("./activeCallUi.js").then(m => m.dispatchCallUiEnded());
+  });
+  socket.on("call:reject", () => {
+    import("./activeCallUi.js").then(m => m.dispatchCallUiEnded());
   });
 }
 
@@ -125,6 +164,7 @@ export async function prepareCalleeCall(opts: {
     onRemoteStream: opts.onRemoteStream,
     onState: opts.onState,
   };
+  await flushBufferedSignals(opts.chatId, opts.peerUserId);
 }
 
 export async function startOutgoingCall(opts: {
@@ -193,10 +233,14 @@ export function setLocalAudioMuted(muted: boolean): void {
   }
 }
 
-export async function endCall(): Promise<void> {
+export async function endCall(opts?: { notifyPeer?: boolean }): Promise<void> {
   if (!active) return;
-  const { pc, localStream } = active;
+  const { pc, localStream, peerUserId, chatId } = active;
+  if (opts?.notifyPeer !== false && socketRef?.connected) {
+    socketRef.emit("call:hangup", { toUserId: peerUserId, chatId });
+  }
   for (const t of localStream.getTracks()) t.stop();
   pc.close();
   active = null;
+  pendingSignals.clear();
 }

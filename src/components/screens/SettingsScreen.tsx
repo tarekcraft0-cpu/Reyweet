@@ -31,8 +31,12 @@ import {
   apiGetSecurity,
   apiRevokeTrustedDevices,
   apiSetTwoFactor,
+  apiTotpDisable,
+  apiTotpEnable,
+  apiTotpSetup,
   type SecuritySummary,
 } from "@/lib/securityApi";
+import { apiExportMyData } from "@/lib/apiBackend";
 import { AppErrorBoundary } from "../AppErrorBoundary";
 import { useT, type TKey } from "@/lib/i18n";
 
@@ -73,6 +77,7 @@ import { writeDeviceTheme } from "@/lib/deviceTheme";
 import { StoriesArchiveScreen } from "./StoriesArchiveScreen";
 import { readNotificationPrefs, updateNotificationPrefs } from "@/lib/notificationPrefs";
 import { emitUiToast } from "@/lib/uiToast";
+import { AboutPanel, HelpPanel, TermsPanel } from "../settings/HelpAboutPanels";
 
 type SubView =
   | null
@@ -87,9 +92,13 @@ type SubView =
   | "closeFriends"
   | "notifications"
   | "security"
-  | "deleteAccount";
+  | "deleteAccount"
+  | "help"
+  | "about"
+  | "terms";
 
 const PRIVACY_POLICY_URL = `${VERCEL_SITE_URL}/privacy.html`;
+const TERMS_URL = `${VERCEL_SITE_URL}/terms.html`;
 
 function SectionGap() {
   return <div className="h-2 shrink-0 bg-background" aria-hidden />;
@@ -640,6 +649,7 @@ type SecurityView =
   | "menu"
   | "changePassword"
   | "twoFactor"
+  | "totpAuth"
   | "verificationSelfie"
   | "savedLogin"
   | "whereLoggedIn"
@@ -858,7 +868,10 @@ function SecuritySettingsPanel({ onBack }: { onBack: () => void }) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
-  const needsSecurityData = view === "twoFactor" || view === "whereLoggedIn";
+  const [totpSetupSecret, setTotpSetupSecret] = useState<string | null>(null);
+  const [totpCode, setTotpCode] = useState("");
+  const needsSecurityData =
+    view === "twoFactor" || view === "whereLoggedIn" || view === "totpAuth";
 
   useEffect(() => {
     if (!needsSecurityData) return;
@@ -997,6 +1010,119 @@ function SecuritySettingsPanel({ onBack }: { onBack: () => void }) {
           </button>
           {msg ? (
             <p className={`text-sm ${msg.includes("تعذر") || msg.includes("غير") || msg.includes("Failed") ? "text-red-400" : "text-emerald-400"}`}>
+              {msg}
+            </p>
+          ) : null}
+        </div>
+      </SecurityScreenShell>
+    );
+  }
+
+  if (view === "totpAuth") {
+    return (
+      <SecurityScreenShell title="Google Authenticator" onBack={() => setView("menu")}>
+        <p className="mt-2 text-[14px] leading-5 text-muted-foreground">
+          رمز 6 أرقام من تطبيق المصادقة (TOTP) — يُطلب بعد كلمة المرور عند تسجيل الدخول.
+        </p>
+        <div className="mt-4 space-y-4">
+          {loading ? <p className="text-sm text-muted-foreground">جاري التحميل…</p> : null}
+          {!loading && summary ? (
+            <div className="overflow-hidden rounded-2xl border border-border bg-card px-4 py-4">
+              <p className="text-[16px] font-medium text-foreground">
+                {summary.totpEnabled ? "مفعّل" : summary.totpConfigured ? "بانتظار التفعيل" : "غير مفعّل"}
+              </p>
+            </div>
+          ) : null}
+          <SecurityDarkInput
+            value={pwd}
+            onChange={e => setPwd(e.target.value)}
+            type="password"
+            placeholder={t("pwdCurrent")}
+            autoComplete="current-password"
+          />
+          {!summary?.totpEnabled ? (
+            <>
+              <button
+                type="button"
+                disabled={busy || !pwd.trim()}
+                className="w-full rounded-xl bg-[#0095F6] py-3 text-sm font-semibold text-white disabled:opacity-50"
+                onClick={() => {
+                  void (async () => {
+                    setBusy(true);
+                    setMsg(null);
+                    const r = await apiTotpSetup(pwd);
+                    setBusy(false);
+                    if (!r.ok) {
+                      setMsg(r.error);
+                      return;
+                    }
+                    setTotpSetupSecret(r.secret);
+                    setMsg(
+                      `المفتاح: ${r.secret} — أضفه في Google Authenticator ثم أدخل الرمز أدناه.`,
+                    );
+                  })();
+                }}
+              >
+                إنشاء مفتاح المصادقة
+              </button>
+              {totpSetupSecret ? (
+                <SecurityDarkInput
+                  value={totpCode}
+                  onChange={e => setTotpCode(e.target.value)}
+                  placeholder="رمز 6 أرقام"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                />
+              ) : null}
+              {totpSetupSecret ? (
+                <button
+                  type="button"
+                  disabled={busy || !pwd.trim() || totpCode.length < 6}
+                  className="w-full rounded-xl border border-[#0095F6] py-3 text-sm font-semibold text-[#0095F6] disabled:opacity-50"
+                  onClick={() => {
+                    void (async () => {
+                      setBusy(true);
+                      const r = await apiTotpEnable(pwd, totpCode);
+                      setBusy(false);
+                      if (!r.ok) {
+                        setMsg(r.error);
+                        return;
+                      }
+                      setSummary(r.data);
+                      setTotpSetupSecret(null);
+                      setTotpCode("");
+                      setMsg("تم تفعيل Google Authenticator");
+                    })();
+                  }}
+                >
+                  تفعيل المصادقة
+                </button>
+              ) : null}
+            </>
+          ) : (
+            <button
+              type="button"
+              disabled={busy || !pwd.trim()}
+              className="w-full rounded-xl border border-red-500/30 bg-red-500/10 py-3 text-sm font-semibold text-red-400 disabled:opacity-50"
+              onClick={() => {
+                void (async () => {
+                  setBusy(true);
+                  const r = await apiTotpDisable(pwd);
+                  setBusy(false);
+                  if (!r.ok) {
+                    setMsg(r.error);
+                    return;
+                  }
+                  setSummary(r.data);
+                  setMsg("تم إيقاف Google Authenticator");
+                })();
+              }}
+            >
+              إيقاف المصادقة
+            </button>
+          )}
+          {msg ? (
+            <p className={`text-sm ${msg.includes("تعذر") || msg.includes("غير") ? "text-red-400" : "text-emerald-400"}`}>
               {msg}
             </p>
           ) : null}
@@ -1183,7 +1309,8 @@ function SecuritySettingsPanel({ onBack }: { onBack: () => void }) {
       </p>
       <div className={`mt-3 ${accountsCenterCardClass}`}>
         <SecurityMenuRow label="تغيير كلمة المرور" onClick={() => { setMsg(null); setView("changePassword"); }} />
-        <SecurityMenuRow label="التحقق بخطوتين" onClick={() => { setMsg(null); setPwd(""); setView("twoFactor"); }} />
+        <SecurityMenuRow label="التحقق بخطوتين (بريد)" onClick={() => { setMsg(null); setPwd(""); setView("twoFactor"); }} />
+        <SecurityMenuRow label="Google Authenticator" onClick={() => { setMsg(null); setPwd(""); setView("totpAuth"); }} />
         <SecurityMenuRow label="سلفي التوثيق" onClick={() => setView("verificationSelfie")} />
         <SecurityMenuRow label="تسجيلات الدخول المحفوظة" onClick={() => setView("savedLogin")} />
       </div>
@@ -1396,9 +1523,22 @@ export function SettingsScreen({
       closeFriends: "closeFriends",
       notifications: "notificationsSettings",
       deleteAccount: "deleteAccount",
+      help: "help",
+      about: "about",
+      terms: "terms",
     };
     return k && k in map ? t(map[k as keyof typeof map]) : "";
   };
+
+  if (subView === "help") {
+    return <HelpPanel onBack={closeSubView} />;
+  }
+  if (subView === "about") {
+    return <AboutPanel onBack={closeSubView} />;
+  }
+  if (subView === "terms") {
+    return <TermsPanel onBack={closeSubView} />;
+  }
 
   if (subView === "deleteAccount") {
     return (
@@ -1888,6 +2028,32 @@ export function SettingsScreen({
         {apiBackendEnabled() && currentUser && !isGuestUserId(currentUser.id) ? (
           <SettingsRow
             icon={Archive}
+            label="تصدير بياناتي (JSON)"
+            onClick={() => {
+              const token = getApiToken();
+              if (!token) {
+                emitUiToast("سجّل الدخول أولاً");
+                return;
+              }
+              void apiExportMyData(token).then(r => {
+                if (!r.ok) {
+                  emitUiToast(r.error);
+                  return;
+                }
+                const url = URL.createObjectURL(r.blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = r.filename;
+                a.click();
+                URL.revokeObjectURL(url);
+                emitUiToast("تم تنزيل نسخة بياناتك");
+              });
+            }}
+          />
+        ) : null}
+        {apiBackendEnabled() && currentUser && !isGuestUserId(currentUser.id) ? (
+          <SettingsRow
+            icon={Archive}
             label={resyncBusy ? "جاري الاستعادة…" : "استعادة البيانات من الخادم"}
             onClick={() => {
               if (resyncBusy) return;
@@ -1900,8 +2066,16 @@ export function SettingsScreen({
             }}
           />
         ) : null}
-        <SettingsRow icon={HelpCircle} label={t("help")} chevron />
-        <SettingsRow icon={Info} label={t("about")} chevron />
+        <SettingsRow icon={HelpCircle} label={t("help")} chevron onClick={() => setSubView("help")} />
+        <SettingsRow icon={Info} label={t("about")} chevron onClick={() => setSubView("about")} />
+        <SettingsRow
+          icon={Shield}
+          label="شروط الاستخدام"
+          chevron
+          onClick={() => {
+            window.open(TERMS_URL, "_blank", "noopener,noreferrer");
+          }}
+        />
       </SettingsCard>
       {resyncMsg ? (
         <p className="mx-4 mt-2 text-center text-sm text-muted-foreground">{resyncMsg}</p>

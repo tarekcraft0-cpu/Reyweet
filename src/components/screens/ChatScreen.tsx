@@ -133,11 +133,9 @@ import {
   getApiToken,
   userFromSearchResult,
 } from "@/lib/apiBackend";
-import { INCOMING_CALL_WINDOW_EVENT } from "@/lib/store";
+import { dispatchStartOutgoingCall } from "@/lib/activeCallUi";
 import { apiSearchChatMessages, type MessageSearchHit } from "@/lib/chatSearchApi";
-import { emitCallReject, type IncomingCallRing } from "@/lib/webrtcCall";
 import { emitUiToast } from "@/lib/uiToast";
-import { CallScreen } from "./CallScreen";
 
 const PREVIEW_MAX = 96;
 /** عرض عمود التطبيق — من useSlideDismissBack */
@@ -2044,9 +2042,6 @@ export function ChatScreen({
   const [openChat, setOpenChat] = useState<string | null>(() => initialChatId ?? null);
   const [showRequests, setShowRequests] = useState(false);
   const [showCreate, setShowCreate] = useState<null | "menu" | "group" | "channel">(null);
-  const [showCall, setShowCall] = useState<string | null>(null);
-  const [callVideo, setCallVideo] = useState(false);
-  const [incomingCall, setIncomingCall] = useState<IncomingCallRing | null>(null);
   const [showGroupSettings, setShowGroupSettings] = useState(false);
   const [stackDragChatId, setStackDragChatId] = useState<string | null>(null);
   const [stackProgress, setStackProgress] = useState(() => (initialChatId ? 1 : 0));
@@ -2689,8 +2684,6 @@ export function ChatScreen({
     setStackDragChatId(null);
     setStackClosingId(null);
     setStackSpring(false);
-    setShowCall(null);
-    setIncomingCall(null);
     setShowGroupSettings(false);
     stackChromeHiddenRef.current = false;
     setStackChromeHidden(false);
@@ -3062,15 +3055,6 @@ export function ChatScreen({
       window.visualViewport?.removeEventListener("resize", onResize);
     };
   }, [chatTabActive, openChat, stackClosingId, resetStackToInboxRest, stackLayers]);
-
-  useEffect(() => {
-    const onRing = (e: Event) => {
-      const detail = (e as CustomEvent<IncomingCallRing>).detail;
-      if (detail?.chatId) setIncomingCall(detail);
-    };
-    window.addEventListener(INCOMING_CALL_WINDOW_EVENT, onRing);
-    return () => window.removeEventListener(INCOMING_CALL_WINDOW_EVENT, onRing);
-  }, []);
 
   useEffect(() => {
     setProfileNoteReplyDraft("");
@@ -3727,20 +3711,6 @@ export function ChatScreen({
     </div>
   );
 
-  if (showCall) {
-    return (
-      <CallScreen
-        chatId={showCall}
-        calleePeerId={incomingCall?.chatId === showCall ? incomingCall.fromUserId : undefined}
-        video={incomingCall?.chatId === showCall ? incomingCall.video : callVideo}
-        onClose={() => {
-          setShowCall(null);
-          setCallVideo(false);
-          setIncomingCall(null);
-        }}
-      />
-    );
-  }
   if (showRequests)
     return (
       <RequestsList
@@ -3765,48 +3735,8 @@ export function ChatScreen({
       />
     );
 
-  const caller = incomingCall ? userById(state, incomingCall.fromUserId) : null;
-
   return (
     <>
-      {incomingCall && !showCall && (
-        <div
-          className={
-            "fixed inset-x-0 z-[250] mx-auto max-w-md px-3 " +
-            (hideInboxChrome
-              ? "bottom-[max(0.75rem,var(--sab))]"
-              : "bottom-[calc(5.5rem+var(--sab))]")
-          }
-        >
-          <div className="flex items-center gap-3 rounded-2xl border border-border bg-card p-3 shadow-lg">
-            <Avatar name={caller?.username || "?"} src={caller?.avatar} size={44} />
-            <div className="min-w-0 flex-1 text-start">
-              <div className="text-sm font-semibold">مكالمة {incomingCall.video ? "فيديو" : "صوتية"}</div>
-              <div className="truncate text-xs text-muted-foreground">@{caller?.username || "?"}</div>
-            </div>
-            <button
-              type="button"
-              className="rounded-full bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground"
-              onClick={() => {
-                setCallVideo(incomingCall.video);
-                setShowCall(incomingCall.chatId);
-              }}
-            >
-              قبول
-            </button>
-            <button
-              type="button"
-              className="rounded-full bg-secondary px-3 py-2 text-xs font-semibold"
-              onClick={() => {
-                emitCallReject(incomingCall.fromUserId, incomingCall.chatId);
-                setIncomingCall(null);
-              }}
-            >
-              رفض
-            </button>
-          </div>
-        </div>
-      )}
       <div
         dir="ltr"
         className="chat-stack-scene relative flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col overflow-x-clip overflow-y-hidden bg-background"
@@ -3832,8 +3762,13 @@ export function ChatScreen({
               onCall={
                 openChat
                   ? video => {
-                      setCallVideo(video);
-                      setShowCall(stackChat.id);
+                      const peer = stackChat.members.find(id => id !== me.id);
+                      if (!peer || stackChat.isGroup || stackChat.isChannel) return;
+                      dispatchStartOutgoingCall({
+                        chatId: stackChat.id,
+                        video,
+                        peerUserId: peer,
+                      });
                     }
                   : () => {}
               }
@@ -4534,8 +4469,6 @@ function ChatRoom({
     return displayMessages.filter(m => String(m.content || "").toLowerCase().includes(q));
   }, [displayMessages, roomSearchQ]);
 
-  /** عدد الرسائل المعروضة في النافذة — يبدأ بـ 60 ويزيد عند التمرير للأعلى */
-  const [visibleWindowCount, setVisibleWindowCount] = useState(60);
   const [loadingOlderUi, setLoadingOlderUi] = useState(false);
   const isLoadingOlderRef = useRef(false);
   const draftSaveTimerRef = useRef(0);
@@ -4589,9 +4522,8 @@ function ChatRoom({
     return () => window.removeEventListener("online", flushOffline);
   }, [offlineQueueKey]);
 
-  /** إعادة ضبط النافذة عند تبديل المحادثة + استعادة المسودة */
+  /** إعادة ضبط عند تبديل المحادثة + استعادة المسودة */
   useEffect(() => {
-    setVisibleWindowCount(60);
     isLoadingOlderRef.current = false;
     setLoadingOlderUi(false);
     const draft = meId ? loadChatDraft(meId, sendChatId) : "";
@@ -4613,13 +4545,10 @@ function ChatRoom({
     };
   }, [text, meId, sendChatId]);
 
-  /** الرسائل المعروضة فعلياً — آخر N رسالة فقط */
-  const windowedMessages = useMemo(() => {
-    if (displayMessagesForView.length <= visibleWindowCount) return displayMessagesForView;
-    return displayMessagesForView.slice(displayMessagesForView.length - visibleWindowCount);
-  }, [displayMessagesForView, visibleWindowCount]);
+  /** كل رسائل المحادثة — بدون قصّ */
+  const windowedMessages = displayMessagesForView;
 
-  const hasOlderMessages = displayMessages.length > visibleWindowCount;
+  const hasOlderMessages = false;
   const noMessagesYet = displayMessages.length === 0;
   const showDmIntro = isDmRoom && !!other && !!otherId && !vanishMode && noMessagesYet;
   const [messageContext, setMessageContext] = useState<Message | null>(null);
@@ -5116,12 +5045,10 @@ function ChatRoom({
       introDoneForChatRef.current = chat.id;
     }
 
-    // عند التمرير للأعلى وبلوغ الـ 20% العلوية — نوسّع النافذة
-    if (el.scrollTop < el.scrollHeight * 0.20 && !isLoadingOlderRef.current && hasOlderMessages) {
+    if (el.scrollTop < el.scrollHeight * 0.12 && !isLoadingOlderRef.current) {
       isLoadingOlderRef.current = true;
       setLoadingOlderUi(true);
       const prevScrollHeight = el.scrollHeight;
-      setVisibleWindowCount(prev => prev + 40);
       void loadChatMessages(chat.id).finally(() => {
         requestAnimationFrame(() => {
           if (!messagesScrollRef.current) return;
@@ -6618,8 +6545,11 @@ function ChatRoom({
             useIgDm && dmPalette && !mine && !bareMedia ? chatDmPeerBubbleStyle(dmPalette) : undefined;
           const showBubbleTime = useIgDm && !bareMedia;
           return (
-            <ChatSwipeMessageRow
+            <div
               key={m.id}
+              style={{ contentVisibility: "auto", containIntrinsicSize: "auto 72px" }}
+            >
+            <ChatSwipeMessageRow
               message={m}
               mine={mine}
               isQuran={isQuranChannel}
@@ -6709,6 +6639,7 @@ function ChatRoom({
                 )}
               </div>
             </ChatSwipeMessageRow>
+            </div>
           );
         })}
         {seenFooter && (

@@ -6,6 +6,11 @@ import {
   revokeAllTrustedDevices,
   securitySummary,
 } from "../lib/loginSecurity.js";
+import {
+  generateTotpSecret,
+  totpProvisioningUri,
+  verifyTotpCode,
+} from "../lib/totpSecurity.js";
 
 type AuthedReq = Request & { userId: string };
 
@@ -51,6 +56,54 @@ export function registerSecurityRoutes(
       ok: true,
       ...securitySummary(updated!),
     });
+  });
+
+  const totpEnableSchema = z.object({
+    password: z.string().min(1).max(128),
+    code: z.string().min(6).max(8),
+  });
+
+  app.post("/v1/me/totp/setup", authMiddleware, async (req, res) => {
+    const userId = (req as AuthedReq).userId;
+    const parsed = z.object({ password: z.string().min(1).max(128) }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "بيانات غير صالحة" });
+    const user = await getUserById(userId);
+    if (!user) return res.status(404).json({ error: "غير موجود" });
+    const ok = await bcrypt.compare(parsed.data.password, user.passwordHash);
+    if (!ok) return res.status(401).json({ error: "كلمة المرور غير صحيحة" });
+    const secret = generateTotpSecret();
+    await updateUser(userId, { totpSecret: secret, totpEnabled: false });
+    const uri = totpProvisioningUri(secret, user.email || user.username);
+    return res.json({ ok: true, secret, provisioningUri: uri });
+  });
+
+  app.post("/v1/me/totp/enable", authMiddleware, async (req, res) => {
+    const userId = (req as AuthedReq).userId;
+    const parsed = totpEnableSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "بيانات غير صالحة" });
+    const user = await getUserById(userId);
+    if (!user?.totpSecret) return res.status(400).json({ error: "ابدأ الإعداد أولاً" });
+    const ok = await bcrypt.compare(parsed.data.password, user.passwordHash);
+    if (!ok) return res.status(401).json({ error: "كلمة المرور غير صحيحة" });
+    if (!verifyTotpCode(user.totpSecret, parsed.data.code)) {
+      return res.status(400).json({ error: "رمز المصادقة غير صحيح" });
+    }
+    await updateUser(userId, { totpEnabled: true });
+    const updated = await getUserById(userId);
+    return res.json({ ok: true, ...securitySummary(updated!) });
+  });
+
+  app.post("/v1/me/totp/disable", authMiddleware, async (req, res) => {
+    const userId = (req as AuthedReq).userId;
+    const parsed = z.object({ password: z.string().min(1).max(128) }).safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "بيانات غير صالحة" });
+    const user = await getUserById(userId);
+    if (!user) return res.status(404).json({ error: "غير موجود" });
+    const ok = await bcrypt.compare(parsed.data.password, user.passwordHash);
+    if (!ok) return res.status(401).json({ error: "كلمة المرور غير صحيحة" });
+    await updateUser(userId, { totpEnabled: false, totpSecret: undefined });
+    const updated = await getUserById(userId);
+    return res.json({ ok: true, ...securitySummary(updated!) });
   });
 
   app.post("/v1/me/trusted-devices/revoke-all", authMiddleware, async (req, res) => {

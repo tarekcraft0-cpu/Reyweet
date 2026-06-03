@@ -39,7 +39,9 @@ for (const rel of [
   "ios/App/App/PrivacyInfo.xcprivacy",
   "ios/App/App/ar.lproj/InfoPlist.strings",
   "landing/public/privacy.html",
+  "landing/public/terms.html",
   "capacitor.config.ts",
+  "docs/APP_STORE_SUBMISSION.md",
 ]) {
   if (!fs.existsSync(path.join(root, rel))) fail(`missing ${rel}`);
 }
@@ -78,8 +80,16 @@ if (!srcSettings.includes("apiDeleteAccount") && !srcSettings.includes("deleteAc
 if (!srcSettings.includes("privacy.html")) {
   fail("Settings must link to privacy policy URL");
 }
-
+if (!srcSettings.includes("HelpPanel") && !srcSettings.includes("help")) {
+  fail("Settings must include Help screen");
+}
 const server = read(path.join(root, "backend/src/server.ts"));
+if (!read(path.join(root, "src/lib/messageReactionApi.ts"))) {
+  fail("missing message reaction API client");
+}
+if (!server.includes("/reaction")) {
+  fail("backend missing message reaction route");
+}
 if (!server.includes('app.delete("/v1/me/account"')) {
   fail("backend missing DELETE /v1/me/account");
 }

@@ -49,6 +49,9 @@ export type UserRow = {
   restrictDmFromNonFollowers?: boolean;
   /** مصادقة ثنائية — كود بريد عند كل تسجيل دخول */
   twoFactorEnabled?: boolean;
+  /** Google Authenticator — TOTP */
+  totpEnabled?: boolean;
+  totpSecret?: string;
   /** أجهزة موثوقة بعد التحقق بالبريد */
   trustedDevices?: Array<{
     fingerprint: string;

@@ -120,7 +120,7 @@ async function main() {
     `APNS_KEY_PATH=${remoteKey}`,
     `APNS_PRODUCTION=${production}`,
     `APNS_NOTIFICATION_SOUND=${env.APNS_NOTIFICATION_SOUND || env.FCM_NOTIFICATION_SOUND || "default"}`,
-    "APP_STATE_MESSAGES_PER_CHAT=40",
+    "# APP_STATE_MESSAGES_PER_CHAT removed — unlimited chat history",
   ];
 
   const sh = `

@@ -36,7 +36,6 @@ const MODES: { id: CameraMode; label: string }[] = [
   { id: "post", label: "POST" },
   { id: "story", label: "STORY" },
   { id: "reel", label: "REEL" },
-  { id: "live", label: "LIVE" },
 ];
 
 function readBlobAsDataUrl(blob: Blob): Promise<string> {

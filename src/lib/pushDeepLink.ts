@@ -1,3 +1,5 @@
+import { dispatchIncomingCallRing } from "./activeCallUi";
+
 /** توجيه النقر على إشعار الدفع داخل التطبيق */
 
 export type PushDeepLinkPayload = {
@@ -27,6 +29,10 @@ export function routePushNotificationTap(data?: PushDeepLinkPayload | null): voi
 
   if (type === "CALL" && chatId) {
     window.dispatchEvent(new CustomEvent("retweet-open-chat", { detail: { chatId } }));
+    const fromId = typeof data.fromId === "string" ? data.fromId : "";
+    if (fromId) {
+      dispatchIncomingCallRing({ fromUserId: fromId, chatId, video: false });
+    }
     return;
   }
 

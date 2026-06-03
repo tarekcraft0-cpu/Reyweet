@@ -188,6 +188,21 @@ export function attachRealtimeSocket(httpServer: HttpServer): Server {
         reason: "rejected",
       });
     });
+
+    socket.on("call:hangup", raw => {
+      const parsed = z
+        .object({
+          toUserId: z.string().min(1),
+          chatId: z.string().min(1),
+        })
+        .safeParse(raw);
+      if (!parsed.success || !userId) return;
+      emitToUser(parsed.data.toUserId, "call:ended", {
+        fromUserId: userId,
+        chatId: parsed.data.chatId,
+        reason: "hangup",
+      });
+    });
   });
 
   return io;

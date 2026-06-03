@@ -110,6 +110,8 @@ export async function revokeAllTrustedDevices(userId: string): Promise<void> {
 export function securitySummary(user: UserRow) {
   return {
     twoFactorEnabled: user.twoFactorEnabled === true,
+    totpEnabled: user.totpEnabled === true,
+    totpConfigured: !!(user.totpEnabled && user.totpSecret),
     trustedDeviceCount: (user.trustedDevices ?? []).length,
     trustedDevices: (user.trustedDevices ?? []).map(d => ({
       fingerprint: d.fingerprint.slice(0, 8) + "…",

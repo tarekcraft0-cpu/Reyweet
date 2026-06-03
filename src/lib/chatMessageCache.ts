@@ -68,7 +68,7 @@ export async function writeCachedChatMessages(
       key: cacheKey(userId, chatId),
       chatId,
       userId,
-      messages: messages.slice(-200),
+      messages,
       updatedAt: Date.now(),
     };
     await new Promise<void>((resolve, reject) => {

@@ -70,15 +70,9 @@ export function messageToRow(chatId: string, m: Message, receiverId: string | nu
   };
 }
 
-/** أقصى رسائل تُدمج في لقطة app-state — الباقي عبر GET /v1/chats/:id/messages */
-const APP_STATE_MESSAGES_PER_CHAT = Math.min(
-  200,
-  Math.max(10, Number(process.env.APP_STATE_MESSAGES_PER_CHAT || 40)),
-);
-
+/** لا قصّ لرسائل المحادثة — تُعرض كل الرسائل (التخزين الكامل في messages.json). */
 export function trimMessagesForSnapshot(messages: Message[]): Message[] {
-  if (messages.length <= APP_STATE_MESSAGES_PER_CHAT) return messages;
-  return messages.slice(-APP_STATE_MESSAGES_PER_CHAT);
+  return messages;
 }
 
 export function mergeMessageLists(local: Message[], remote: Message[]): Message[] {

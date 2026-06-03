@@ -266,6 +266,7 @@ export async function apiLogin(
   | { ok: true; token: string; userId: string; user: ApiAuthUser }
   | { ok: true; token: string; userId: string; user: ApiAuthUser; banned: true; banInfo: import("./moderationBanTypes").BanInfo }
   | { ok: true; requiresOtp: true; emailHint?: string; otpReason?: string }
+  | { ok: true; requiresTotp: true; pendingLoginId: string }
   | { ok: false; error: string; banned?: boolean; banInfo?: import("./moderationBanTypes").BanInfo }
 > {
   await ensureApiRuntimeConfig();
@@ -292,6 +293,8 @@ export async function apiLogin(
     error?: string;
     user?: ApiAuthUser;
     requiresOtp?: boolean;
+    requiresTotp?: boolean;
+    pendingLoginId?: string;
     emailHint?: string;
     otpReason?: string;
     banInfo?: import("./moderationBanTypes").BanInfo;
@@ -320,6 +323,9 @@ export async function apiLogin(
     }
     return { ok: false, error: data.error || `فشل تسجيل الدخول (${res.status})` };
   }
+  if (data.requiresTotp && data.pendingLoginId) {
+    return { ok: true, requiresTotp: true, pendingLoginId: data.pendingLoginId };
+  }
   if (data.requiresOtp) {
     return {
       ok: true,
@@ -339,6 +345,40 @@ export async function apiLogin(
       banInfo: data.banInfo,
     };
   }
+  return { ok: true, token: data.token, userId: data.user.id, user: data.user };
+}
+
+export async function apiVerifyTotpLogin(
+  pendingLoginId: string,
+  code: string,
+): Promise<
+  | { ok: true; token: string; userId: string; user: ApiAuthUser }
+  | { ok: true; requiresOtp: true; emailHint?: string; otpReason?: string }
+  | { ok: false; error: string }
+> {
+  const res = await apiFetch("/auth/verify-totp-login", {
+    method: "POST",
+    body: JSON.stringify({ pendingLoginId, code: code.trim() }),
+    token: null,
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    token?: string;
+    user?: ApiAuthUser;
+    error?: string;
+    requiresOtp?: boolean;
+    emailHint?: string;
+    otpReason?: string;
+  };
+  if (!res.ok) return { ok: false, error: data.error || "رمز غير صحيح" };
+  if (data.requiresOtp) {
+    return {
+      ok: true,
+      requiresOtp: true,
+      emailHint: data.emailHint,
+      otpReason: data.otpReason,
+    };
+  }
+  if (!data.token || !data.user?.id) return { ok: false, error: "استجابة غير صالحة" };
   return { ok: true, token: data.token, userId: data.user.id, user: data.user };
 }
 
@@ -1268,17 +1308,51 @@ export async function apiFetchChatMessages(
   chatId: ID,
   opts?: { limit?: number; before?: number },
 ): Promise<Message[]> {
-  const qs = new URLSearchParams();
-  if (opts?.limit) qs.set("limit", String(opts.limit));
-  if (opts?.before) qs.set("before", String(opts.before));
-  const suffix = qs.toString() ? `?${qs}` : "";
-  const res = await apiFetch(`/v1/chats/${encodeURIComponent(chatId)}/messages${suffix}`, {
-    method: "GET",
+  const { apiFetchAllChatMessages } = await import("./chatMessagesApi");
+  if (!opts?.before && (opts?.limit == null || opts.limit >= 200)) {
+    return apiFetchAllChatMessages(token, chatId);
+  }
+  const { apiFetchChatMessagesPage } = await import("./chatMessagesApi");
+  const page = await apiFetchChatMessagesPage(token, chatId, opts);
+  return page.messages;
+}
+
+export async function apiAcceptChatRequest(
+  token: string,
+  chatId: ID,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const res = await apiFetch(`/v1/chats/${encodeURIComponent(chatId)}/accept-request`, {
+    method: "POST",
     token,
   });
-  if (!res.ok) return [];
-  const data = (await res.json().catch(() => null)) as { messages?: Message[] } | null;
-  return data?.messages ?? [];
+  const data = (await res.json().catch(() => ({}))) as { error?: string };
+  if (!res.ok) return { ok: false, error: data.error || "تعذر قبول الطلب" };
+  return { ok: true };
+}
+
+export async function apiExportMyData(
+  token: string,
+): Promise<{ ok: true; blob: Blob; filename: string } | { ok: false; error: string }> {
+  const res = await apiFetch("/v1/me/export", { method: "GET", token });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    return { ok: false, error: data.error || "تعذر التصدير" };
+  }
+  const blob = await res.blob();
+  const cd = res.headers.get("content-disposition") || "";
+  const match = /filename="?([^";]+)"?/i.exec(cd);
+  const filename = match?.[1]?.trim() || `retweet-export-${Date.now()}.json`;
+  return { ok: true, blob, filename };
+}
+
+export async function apiDiscoverSuggestions(
+  token: string,
+  limit = 20,
+): Promise<{ ok: true; users: User[] } | { ok: false; error: string }> {
+  const res = await apiFetch(`/v1/discover/suggestions?limit=${limit}`, { method: "GET", token });
+  const data = (await res.json().catch(() => ({}))) as { users?: User[]; error?: string };
+  if (!res.ok) return { ok: false, error: data.error || "تعذر التحميل" };
+  return { ok: true, users: data.users ?? [] };
 }
 
 export async function apiCreateGroup(

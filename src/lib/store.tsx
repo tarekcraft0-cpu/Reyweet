@@ -225,7 +225,7 @@ import {
 } from "./chatMessageCache";
 import { handleRemoteCallSignal, type CallSignalPayload, type IncomingCallRing } from "./webrtcCall";
 
-export const INCOMING_CALL_WINDOW_EVENT = "retweet-call-ring";
+export { INCOMING_CALL_WINDOW_EVENT } from "./activeCallUi";
 import { logAuthRoute } from "./authRouteDebug";
 import {
   activateAccountSession,
@@ -1032,12 +1032,8 @@ function loadState(): AppState {
   }
 }
 
-const MAX_CHAT_MESSAGES_PERSIST = 120;
-
 function trimChatForLocalPersist(chat: Chat): Chat {
-  const msgs = chat.messages || [];
-  if (msgs.length <= MAX_CHAT_MESSAGES_PERSIST) return chat;
-  return { ...chat, messages: msgs.slice(-MAX_CHAT_MESSAGES_PERSIST) };
+  return chat;
 }
 
 function scopeStateForAccountPersist(state: AppState, ownerId: ID): AppState {
@@ -1381,6 +1377,18 @@ interface Ctx {
   login: (data: {
     username: string;
     password: string;
+  }) => Promise<{
+    ok: boolean;
+    error?: string;
+    requiresOtp?: boolean;
+    requiresTotp?: boolean;
+    pendingLoginId?: string;
+    emailHint?: string;
+    otpReason?: string;
+  }>;
+  verifyTotpLogin: (data: {
+    pendingLoginId: string;
+    code: string;
   }) => Promise<{
     ok: boolean;
     error?: string;
@@ -2415,6 +2423,9 @@ export function AppProvider({
         }
         return { ok: false, error: r.error };
       }
+      if ("requiresTotp" in r && r.requiresTotp) {
+        return { ok: true, requiresTotp: true, pendingLoginId: r.pendingLoginId };
+      }
       if ("requiresOtp" in r && r.requiresOtp) {
         return {
           ok: true,
@@ -2471,6 +2482,29 @@ export function AppProvider({
       currentUserId: u.id,
       accountIds: [u.id],
     }));
+    return { ok: true };
+  };
+
+  const verifyTotpLogin: Ctx["verifyTotpLogin"] = async ({ pendingLoginId, code }) => {
+    if (!apiBackendEnabled()) return { ok: false, error: "الخادم غير مفعّل" };
+    const { apiVerifyTotpLogin } = await import("./apiBackend");
+    const r = await apiVerifyTotpLogin(pendingLoginId, code);
+    if (!r.ok) return { ok: false, error: r.error };
+    if ("requiresOtp" in r && r.requiresOtp) {
+      return {
+        ok: true,
+        requiresOtp: true,
+        emailHint: r.emailHint,
+        otpReason: r.otpReason,
+      };
+    }
+    const adding =
+      !!(stateRef.current.currentUserId && !isGuestUserId(stateRef.current.currentUserId));
+    const applied = await applyApiAuthSuccess(r.token, r.user, stateRef.current, adding);
+    if (!applied.ok) return { ok: false, error: applied.error };
+    setStateRaw(applied.state);
+    beginNativePostLoginQuietPeriod();
+    void import("./feedVisibility").then(({ requestAuthFeedRefresh }) => requestAuthFeedRefresh());
     return { ok: true };
   };
 
@@ -4127,7 +4161,8 @@ export function AppProvider({
     }
 
     const fetchId = stateKey;
-    const remote = await apiFetchChatMessages(token, fetchId, { limit: 80 });
+    const { apiFetchAllChatMessages } = await import("./chatMessagesApi");
+    const remote = await apiFetchAllChatMessages(token, fetchId);
     if (remote.length === 0) return;
     void writeCachedChatMessages(uid, stateKey, remote);
     setState(s => {
@@ -4583,11 +4618,18 @@ export function AppProvider({
     }
   };
 
-  const acceptRequest = (chatId: ID) =>
+  const acceptRequest = (chatId: ID) => {
     setState((s) => ({
       ...s,
       chats: s.chats.map((c) => (c.id === chatId ? { ...c, request: false } : c)),
     }));
+    const token = getApiToken();
+    if (token && apiBackendEnabled()) {
+      void import("./apiBackend").then(({ apiAcceptChatRequest }) =>
+        apiAcceptChatRequest(token, chatId),
+      );
+    }
+  };
   const deleteChat = (chatId: ID) =>
     setState((s) => ({
       ...s,
@@ -4680,30 +4722,49 @@ export function AppProvider({
 
   const addMessageReaction: Ctx["addMessageReaction"] = useCallback(
     (chatId, messageId, emoji) => {
-      setState((s) => {
-        if (!s.currentUserId || isGuestUserId(s.currentUserId)) return s;
-        const uidMe = s.currentUserId;
-        return {
-          ...s,
-          chats: s.chats.map((c) => {
-            if (c.id !== chatId) return c;
-            return {
-              ...c,
-              messages: c.messages.map((m) => {
-                if (m.id !== messageId) return m;
-                const prev = m.reactions || [];
-                const mine = prev.find((r) => r.userId === uidMe);
-                if (mine && mine.emoji === emoji) {
-                  const next = prev.filter((r) => r.userId !== uidMe);
-                  return { ...m, reactions: next.length ? next : undefined };
-                }
-                const others = prev.filter((r) => r.userId !== uidMe);
-                return { ...m, reactions: [...others, { emoji, userId: uidMe }] };
-              }),
-            };
+      const token = getApiToken();
+      const uidMe = stateRef.current.currentUserId;
+      if (!uidMe || isGuestUserId(uidMe)) return;
+      setState((s) => ({
+        ...s,
+        chats: s.chats.map((c) => {
+          if (c.id !== chatId) return c;
+          return {
+            ...c,
+            messages: c.messages.map((m) => {
+              if (m.id !== messageId) return m;
+              const prev = m.reactions || [];
+              const mine = prev.find((r) => r.userId === uidMe);
+              if (mine && mine.emoji === emoji) {
+                const next = prev.filter((r) => r.userId !== uidMe);
+                return { ...m, reactions: next.length ? next : undefined };
+              }
+              const others = prev.filter((r) => r.userId !== uidMe);
+              return { ...m, reactions: [...others, { emoji, userId: uidMe }] };
+            }),
+          };
+        }),
+      }));
+      if (token && apiBackendEnabled()) {
+        void import("./messageReactionApi").then(({ apiSetMessageReaction }) =>
+          apiSetMessageReaction(token, chatId, messageId, emoji).then(r => {
+            if (!r.ok || !r.message.reactions) return;
+            setState(s => ({
+              ...s,
+              chats: s.chats.map(c =>
+                c.id !== chatId
+                  ? c
+                  : {
+                      ...c,
+                      messages: c.messages.map(m =>
+                        m.id === messageId ? { ...m, reactions: r.message.reactions } : m,
+                      ),
+                    },
+              ),
+            }));
           }),
-        };
-      });
+        );
+      }
     },
     [setState],
   );
@@ -4786,7 +4847,7 @@ export function AppProvider({
           if (!(c.messages || []).some((m) => m.id === messageId)) return c;
           const cur = [...(c.pinnedMessageIds || [])].filter((id) => id !== messageId);
           cur.unshift(messageId);
-          return { ...c, pinnedMessageIds: cur.slice(0, 3) };
+          return { ...c, pinnedMessageIds: cur.slice(0, 10) };
         }),
       }));
     },
@@ -5584,12 +5645,49 @@ export function AppProvider({
         const payload = data as IncomingCallRing;
         if (!payload?.chatId || !payload?.fromUserId) return;
         try {
-          window.dispatchEvent(
-            new CustomEvent(INCOMING_CALL_WINDOW_EVENT, { detail: payload }),
-          );
+          const { dispatchIncomingCallRing } = await import("./activeCallUi");
+          dispatchIncomingCallRing(payload);
         } catch {
           /* ignore */
         }
+        return;
+      }
+      if (event === "message_reaction") {
+        const payload = data as {
+          chatId?: string;
+          messageId?: string;
+          reactions?: Message["reactions"];
+        };
+        if (!payload?.chatId || !payload?.messageId) return;
+        setState(s => {
+          if (!s.currentUserId || isGuestUserId(s.currentUserId)) return s;
+          return {
+            ...s,
+            chats: s.chats.map(c => {
+              if (c.id !== payload.chatId && chatMergeKey(c, s.currentUserId) !== payload.chatId)
+                return c;
+              return {
+                ...c,
+                messages: (c.messages || []).map(m =>
+                  m.id === payload.messageId
+                    ? { ...m, reactions: payload.reactions }
+                    : m,
+                ),
+              };
+            }),
+          };
+        });
+        return;
+      }
+      if (event === "chat_request_accepted") {
+        const payload = data as { chatId?: string };
+        if (!payload?.chatId) return;
+        setState(s => ({
+          ...s,
+          chats: s.chats.map(c =>
+            c.id === payload.chatId ? { ...c, request: false } : c,
+          ),
+        }));
         return;
       }
       if (event === "group_invite") {
@@ -6047,6 +6145,7 @@ export function AppProvider({
     refreshSocialRelation,
     signup,
     login,
+    verifyTotpLogin,
     verifyLogin,
     resetPasswordForUser,
     requestPasswordResetRemote,

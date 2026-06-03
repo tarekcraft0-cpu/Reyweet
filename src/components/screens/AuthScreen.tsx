@@ -69,6 +69,7 @@ export function AuthScreen(props?: { onAuthSuccess?: () => void; /** false دا�
   const {
     signup,
     login,
+    verifyTotpLogin,
     verifyLogin,
     resetPasswordForUser,
     requestPasswordResetRemote,
@@ -91,7 +92,9 @@ export function AuthScreen(props?: { onAuthSuccess?: () => void; /** false دا�
   const [busy, setBusy] = useState(false);
   const [signupAwaitingOtp, setSignupAwaitingOtp] = useState(false);
   const [loginAwaitingOtp, setLoginAwaitingOtp] = useState(false);
+  const [loginAwaitingTotp, setLoginAwaitingTotp] = useState(false);
   const loginIdentifierRef = useRef("");
+  const pendingLoginIdRef = useRef("");
 
   const passwordResetUserIdRef = useRef<string | null>(null);
   const passwordResetOtpRef = useRef<string | null>(null);
@@ -171,6 +174,36 @@ export function AuthScreen(props?: { onAuthSuccess?: () => void; /** false دا�
         setError(`محاولات كثيرة. انتظر ${s} ثانية ثم أعد المحاولة.`);
         return;
       }
+      if (loginAwaitingTotp && pendingLoginIdRef.current) {
+        if (!form.code.trim()) {
+          setError("أدخل رمز المصادقة من تطبيق Google Authenticator");
+          return;
+        }
+        const tr = await verifyTotpLogin({
+          pendingLoginId: pendingLoginIdRef.current,
+          code: form.code.trim(),
+        });
+        if (!tr.ok) {
+          setError(tr.error || "رمز غير صحيح");
+          return;
+        }
+        if (tr.requiresOtp) {
+          setLoginAwaitingTotp(false);
+          pendingLoginIdRef.current = "";
+          loginIdentifierRef.current = form.username.trim();
+          setLoginAwaitingOtp(true);
+          setInfo(
+            `أُرسل كود التحقق إلى ${tr.emailHint || "بريدك"}. أدخل الـ 6 أرقام للمتابعة.`,
+          );
+          return;
+        }
+        loginFailCountRef.current = 0;
+        loginLockUntilRef.current = 0;
+        setLoginAwaitingTotp(false);
+        pendingLoginIdRef.current = "";
+        onAuthSuccess?.();
+        return;
+      }
       if (!loginAwaitingOtp) {
         const r = await login({ username: form.username, password: form.password });
         if (!r.ok) {
@@ -182,6 +215,12 @@ export function AuthScreen(props?: { onAuthSuccess?: () => void; /** false دا�
           } else {
             setError(r.error || "بيانات خاطئة");
           }
+          return;
+        }
+        if (r.requiresTotp && r.pendingLoginId) {
+          pendingLoginIdRef.current = r.pendingLoginId;
+          setLoginAwaitingTotp(true);
+          setInfo("أدخل رمز المصادقة من تطبيق Google Authenticator (6 أرقام).");
           return;
         }
         if (r.requiresOtp) {
@@ -433,7 +472,7 @@ export function AuthScreen(props?: { onAuthSuccess?: () => void; /** false دا�
                 onChange={setField}
                 autoComplete="username"
               />
-              {!loginAwaitingOtp && (
+              {!loginAwaitingOtp && !loginAwaitingTotp && (
                 <Field
                   name="password"
                   placeholder="كلمة المرور"
@@ -443,10 +482,14 @@ export function AuthScreen(props?: { onAuthSuccess?: () => void; /** false دا�
                   autoComplete="current-password"
                 />
               )}
-              {loginAwaitingOtp && (
+              {(loginAwaitingOtp || loginAwaitingTotp) && (
                 <Field
                   name="code"
-                  placeholder="كود التحقق من البريد"
+                  placeholder={
+                    loginAwaitingTotp
+                      ? "رمز Google Authenticator"
+                      : "كود التحقق من البريد"
+                  }
                   value={form.code}
                   onChange={setField}
                   autoComplete="one-time-code"
@@ -576,7 +619,7 @@ export function AuthScreen(props?: { onAuthSuccess?: () => void; /** false دا�
             {busy
               ? "جاري المعالجة…"
               : mode === "login"
-                ? loginAwaitingOtp
+                ? loginAwaitingOtp || loginAwaitingTotp
                   ? "تأكيد الدخول"
                   : "دخول"
                 : mode === "signup"

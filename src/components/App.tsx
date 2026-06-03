@@ -82,6 +82,7 @@ import { ReportStatusScreen } from "./moderation/ReportStatusScreen";
 import { NotificationBanner } from "./NotificationBanner";
 import { InAppPushToast } from "./InAppPushToast";
 import { GlobalUiToast } from "./GlobalUiToast";
+import { GlobalCallOverlay } from "./GlobalCallOverlay";
 import { PerfHUD } from "./dev/PerfHUD";
 import { Avatar } from "./Avatar";
 import { AccountSwitcherSheet } from "./rsocial/AccountSwitcherSheet";
@@ -114,6 +115,7 @@ import {
   readNotificationPrefs,
 } from "@/lib/notificationPrefs";
 import { bindUnhandledTelemetry } from "@/lib/telemetry";
+import { initSentryIfConfigured } from "@/lib/sentryInit";
 
 type Tab = "home" | "search" | "reels" | "chat" | "profile";
 type Modal = null | "settings" | "create" | "edit" | "switcher" | "addAccount" | "notifications" | "visitors";
@@ -155,7 +157,10 @@ export function App() {
   );
 
   useEffect(() => startPerfSession(), []);
-  useEffect(() => bindUnhandledTelemetry(), []);
+  useEffect(() => {
+    bindUnhandledTelemetry();
+    void initSentryIfConfigured();
+  }, []);
 
   useEffect(() => {
     void import("@/lib/pushNotifications").then(m => m.initNativePushDeliveryShell());
@@ -1346,6 +1351,7 @@ export function App() {
       {currentUser && !isGuest && <InAppPushToast />}
       {!storyFullscreen && !chatOccupiesShell && !postImmersiveMode && !settingsImmersive && <NotificationBanner />}
       <GlobalUiToast />
+      <GlobalCallOverlay />
       <PerfHUD />
       {!hideAppHeader && (
       <header

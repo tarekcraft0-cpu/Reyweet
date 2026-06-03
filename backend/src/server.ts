@@ -208,6 +208,16 @@ app.get("/health", async (_req, res) => {
   } catch {
     pushConfigured = false;
   }
+  let messagesDbBytes: number | undefined;
+  try {
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    const { DB_DIR } = await import("./config.js");
+    const stat = await fs.stat(path.join(DB_DIR, "messages.json"));
+    messagesDbBytes = stat.size;
+  } catch {
+    messagesDbBytes = undefined;
+  }
   res.json({
     ok: dbOk,
     service: "retweet-backend",
@@ -215,12 +225,14 @@ app.get("/health", async (_req, res) => {
     publicUrl: PUBLIC_BASE_URL,
     dbOk,
     usersCount,
+    messagesDbBytes,
     smtpConfigured: isSmtpConfigured(),
     pushConfigured,
     pushIos,
     pushAndroid,
     stripeConfigured: !!process.env.STRIPE_SECRET_KEY?.trim(),
     passwordResetUsesLink: passwordResetUsesLink(),
+    chatMessagesUnlimited: true,
   });
 });
 
@@ -563,11 +575,59 @@ app.post("/auth/login", async (req, res) => {
   }
   const deviceFp = getDeviceFingerprintFromRequest(req, parsed.data);
   const deviceLabel = getDeviceLabelFromRequest(req, parsed.data);
+  if (user.totpEnabled === true && user.totpSecret) {
+    const { createPendingLogin } = await import("./lib/pendingLogin.js");
+    const pendingLoginId = createPendingLogin(user.id, deviceFp, deviceLabel);
+    return res.json({ requiresTotp: true, pendingLoginId });
+  }
   const otpCheck = needsLoginEmailOtp(user, deviceFp, isLoginOtpRequired());
   if (otpCheck.required) {
     return respondLoginRequiresOtp(user, res, otpCheck.reason ?? "policy");
   }
   return finishAuthLogin(user, req, res, deviceFp, deviceLabel);
+});
+
+const verifyTotpLoginSchema = z.object({
+  pendingLoginId: z.string().min(16).max(80),
+  code: z.string().min(6).max(8),
+});
+
+app.post("/auth/verify-totp-login", async (req, res) => {
+  const parsed = verifyTotpLoginSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "بيانات غير صالحة" });
+  const rl = rateLimitHit(`totp-login:${rateLimitClientKey(req)}`, 30, 15 * 60 * 1000);
+  if (!rl.ok) {
+    return res
+      .status(429)
+      .set("Retry-After", String(rl.retryAfterSec))
+      .json({ error: "طلبات كثيرة — حاول لاحقاً" });
+  }
+  const { consumePendingLogin } = await import("./lib/pendingLogin.js");
+  const { verifyTotpCode } = await import("./lib/totpSecurity.js");
+  const pending = consumePendingLogin(parsed.data.pendingLoginId.trim());
+  if (!pending) return res.status(400).json({ error: "انتهت الجلسة — أعد تسجيل الدخول" });
+  const user = await getUserById(pending.userId);
+  if (!user?.totpSecret || !user.totpEnabled) {
+    return res.status(400).json({ error: "المصادقة غير مفعّلة" });
+  }
+  if (!verifyTotpCode(user.totpSecret, parsed.data.code)) {
+    return res.status(401).json({ error: "رمز المصادقة غير صحيح" });
+  }
+  const otpCheck = needsLoginEmailOtp(
+    user,
+    pending.deviceFingerprint,
+    isLoginOtpRequired(),
+  );
+  if (otpCheck.required) {
+    return respondLoginRequiresOtp(user, res, otpCheck.reason ?? "policy");
+  }
+  return finishAuthLogin(
+    user,
+    req,
+    res,
+    pending.deviceFingerprint,
+    pending.deviceLabel,
+  );
 });
 
 const verifyLoginSchema = z.object({
@@ -1322,6 +1382,13 @@ app.post("/v1/chats/typing", authMiddleware, (req, res) => {
 
 app.post("/v1/messages", authMiddleware, async (req, res) => {
   const senderId = (req as Request & { userId: string }).userId;
+  const rl = rateLimitHit(`msg:${senderId}`, 120, 60 * 1000);
+  if (!rl.ok) {
+    return res
+      .status(429)
+      .set("Retry-After", String(rl.retryAfterSec))
+      .json({ error: "رسائل كثيرة — انتظر قليلاً" });
+  }
   const parsed = postMessageSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "بيانات غير صالحة" });
   try {
@@ -1332,6 +1399,25 @@ app.post("/v1/messages", authMiddleware, async (req, res) => {
     const msg = e instanceof Error ? e.message : "فشل إرسال الرسالة";
     return res.status(500).json({ error: msg });
   }
+});
+
+app.put("/v1/chats/:chatId/messages/:messageId/reaction", authMiddleware, async (req, res) => {
+  const userId = (req as Request & { userId: string }).userId;
+  const chatId = req.params.chatId;
+  const messageId = req.params.messageId;
+  const emoji = String((req.body as { emoji?: string })?.emoji ?? "").trim();
+  if (!chatId || !messageId) return res.status(400).json({ error: "معرّفات ناقصة" });
+  const rl = rateLimitHit(`react:${userId}`, 180, 60 * 1000);
+  if (!rl.ok) {
+    return res
+      .status(429)
+      .set("Retry-After", String(rl.retryAfterSec))
+      .json({ error: "طلبات كثيرة" });
+  }
+  const { setMessageReaction } = await import("./lib/messageReactions.js");
+  const result = await setMessageReaction({ userId, chatId, messageId, emoji });
+  if (!result.ok) return res.status(result.status).json({ error: result.error });
+  return res.json({ ok: true, message: result.message });
 });
 
 app.get("/v1/chats/search-messages", authMiddleware, async (req, res) => {
@@ -1368,7 +1454,7 @@ app.get("/v1/chats/:chatId/messages", authMiddleware, async (req, res) => {
     let sorted = visible.sort(
       (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
     );
-    const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 60));
+    const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 200));
     const beforeRaw = Number(req.query.before);
     if (Number.isFinite(beforeRaw) && beforeRaw > 0) {
       sorted = sorted.filter(r => new Date(r.createdAt).getTime() < beforeRaw);
@@ -2071,6 +2157,8 @@ const { registerGameRoutes } = await import("./routes/gameRoutes.js");
 registerGameRoutes(app, authMiddleware);
 const { registerSecurityRoutes } = await import("./routes/securityRoutes.js");
 registerSecurityRoutes(app, authMiddleware);
+const { registerAccountDataRoutes } = await import("./routes/accountDataRoutes.js");
+registerAccountDataRoutes(app, authMiddleware);
 const { registerPushRoutes } = await import("./routes/pushRoutes.js");
 registerPushRoutes(app, authMiddleware);
 const { registerUserExtrasRoutes } = await import("./routes/userExtrasRoutes.js");

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChatDrawingCanvas } from "./ChatDrawingCanvas";
 import { parseDrawingPayload } from "./drawingPayload";
-import { X, Sparkles, Type as TypeIcon, PenLine, Sticker, Music, Download, LayoutGrid, Infinity, Eye } from "lucide-react";
+import { X, Type as TypeIcon, Download, LayoutGrid, Eye } from "lucide-react";
 import { Avatar } from "../Avatar";
 import { emitUiToast } from "@/lib/uiToast";
 
@@ -140,9 +140,6 @@ export function ChatCameraComposeModal({
           <X size={20} />
         </button>
         <div className="flex min-w-0 flex-1 justify-end gap-2 overflow-x-auto py-1 pe-1 [scrollbar-width:none]">
-          <button type="button" className={toolBtn} aria-label="فلاتر" onClick={() => emitUiToast("الفلاتر قريباً")}>
-            <Sparkles size={18} />
-          </button>
           <button
             type="button"
             className={toolBtn}
@@ -151,15 +148,6 @@ export function ChatCameraComposeModal({
             disabled={kind !== "image"}
           >
             <TypeIcon size={18} className={kind !== "image" ? "opacity-40" : ""} />
-          </button>
-          <button type="button" className={toolBtn} aria-label="رسم" onClick={() => emitUiToast("الرسم قريباً")}>
-            <PenLine size={18} />
-          </button>
-          <button type="button" className={toolBtn} aria-label="ملصقات" onClick={() => emitUiToast("الملصقات قريباً")}>
-            <Sticker size={18} />
-          </button>
-          <button type="button" className={toolBtn} aria-label="موسيقى" onClick={() => emitUiToast("الموسيقى قريباً")}>
-            <Music size={18} />
           </button>
           <button type="button" className={toolBtn} aria-label="تنزيل" onClick={downloadMedia}>
             <Download size={18} />
@@ -192,18 +180,6 @@ export function ChatCameraComposeModal({
           >
             <LayoutGrid size={14} />
             تقسيم شاشة
-          </button>
-          <button
-            type="button"
-            onClick={() => emitUiToast("تكرار الفيديو (بوميرانغ) قريباً")}
-            disabled={kind !== "video"}
-            className={
-              "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium " +
-              (kind === "video" ? "border-violet-500/50 bg-violet-600/25 text-violet-100" : "border-white/10 text-white/40")
-            }
-          >
-            <Infinity size={14} />
-            تكرار
           </button>
         </div>
         <label className="flex cursor-pointer items-center justify-between gap-3 text-sm text-zinc-200">
