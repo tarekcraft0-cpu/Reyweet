@@ -1308,12 +1308,13 @@ export async function apiFetchChatMessages(
   chatId: ID,
   opts?: { limit?: number; before?: number },
 ): Promise<Message[]> {
-  const { apiFetchAllChatMessages } = await import("./chatMessagesApi");
-  if (!opts?.before && (opts?.limit == null || opts.limit >= 200)) {
-    return apiFetchAllChatMessages(token, chatId);
-  }
-  const { apiFetchChatMessagesPage } = await import("./chatMessagesApi");
-  const page = await apiFetchChatMessagesPage(token, chatId, opts);
+  const { apiFetchChatMessagesPage, CHAT_MESSAGES_PAGE_SIZE } = await import(
+    "./chatMessagesApi"
+  );
+  const page = await apiFetchChatMessagesPage(token, chatId, {
+    limit: opts?.limit ?? CHAT_MESSAGES_PAGE_SIZE,
+    before: opts?.before,
+  });
   return page.messages;
 }
 

@@ -16,14 +16,23 @@ function cacheKey(userId: ID, chatId: ID): string {
   return `${userId}::${chatId}`;
 }
 
+/** أقصى رسائل نخزّنها محلياً — يكفي للفتح السريع دون ضغط على الذاكرة */
+export const CHAT_CACHE_MAX_MESSAGES = 400;
+
+let dbPromise: Promise<IDBDatabase> | null = null;
+
 function openDb(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise((resolve, reject) => {
     if (typeof indexedDB === "undefined") {
       reject(new Error("indexedDB unavailable"));
       return;
     }
     const req = indexedDB.open(DB_NAME, VERSION);
-    req.onerror = () => reject(req.error ?? new Error("idb open failed"));
+    req.onerror = () => {
+      dbPromise = null;
+      reject(req.error ?? new Error("idb open failed"));
+    };
     req.onsuccess = () => resolve(req.result);
     req.onupgradeneeded = () => {
       const db = req.result;
@@ -32,6 +41,7 @@ function openDb(): Promise<IDBDatabase> {
       }
     };
   });
+  return dbPromise;
 }
 
 export async function readCachedChatMessages(
@@ -49,7 +59,6 @@ export async function readCachedChatMessages(
         resolve(row?.messages?.length ? row.messages : null);
       };
       req.onerror = () => reject(req.error);
-      tx.oncomplete = () => db.close();
     });
   } catch {
     return null;
@@ -62,13 +71,17 @@ export async function writeCachedChatMessages(
   messages: Message[],
 ): Promise<void> {
   if (!messages.length) return;
+  const trimmed =
+    messages.length > CHAT_CACHE_MAX_MESSAGES
+      ? messages.slice(-CHAT_CACHE_MAX_MESSAGES)
+      : messages;
   try {
     const db = await openDb();
     const row: CacheRow = {
       key: cacheKey(userId, chatId),
       chatId,
       userId,
-      messages,
+      messages: trimmed,
       updatedAt: Date.now(),
     };
     await new Promise<void>((resolve, reject) => {
@@ -77,7 +90,6 @@ export async function writeCachedChatMessages(
       const req = store.put(row);
       req.onsuccess = () => resolve();
       req.onerror = () => reject(req.error);
-      tx.oncomplete = () => db.close();
     });
   } catch {
     /* ignore quota / private mode */
@@ -102,7 +114,6 @@ export async function clearChatCacheForUser(userId: ID): Promise<void> {
         cursor.continue();
       };
       req.onerror = () => reject(req.error);
-      tx.oncomplete = () => db.close();
     });
   } catch {
     /* ignore */

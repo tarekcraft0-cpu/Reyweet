@@ -43,6 +43,7 @@ import {
 import { ChatStackRoomGestureShell } from "../chat/ChatStackRoomGestureShell";
 import { SlideDismissBackButton, SlideDismissContext, SlideDismissShell } from "../SlideDismissShell";
 import { QURAN_CHANNEL_ID, isProfileNoteActive, useAppActions, useAppLanguage, useAppTheme, useAppSelector, useAppState, useChats, useCurrentUser, useIsGuestSelector, useAccountSessionKey, userById, visibleChatMessages } from "@/lib/store";
+import { getChatMessageSyncMeta } from "@/lib/chatMessageSync";
 import { useProfiledRender } from "@/lib/renderProfiler";
 import { useTypingUsers } from "@/lib/typingContext";
 import { notifyGuestActionBlocked } from "@/lib/guestBlocked";
@@ -4545,10 +4546,25 @@ function ChatRoom({
     };
   }, [text, meId, sendChatId]);
 
-  /** كل رسائل المحادثة — بدون قصّ */
-  const windowedMessages = displayMessagesForView;
+  /** عرض تدريجي — يقلّل تعليق الواجهة في المحادثات الطويلة */
+  const CHAT_RENDER_INITIAL = 100;
+  const CHAT_RENDER_EXPAND = 80;
+  const [renderMessageCount, setRenderMessageCount] = useState(CHAT_RENDER_INITIAL);
+  useEffect(() => {
+    setRenderMessageCount(CHAT_RENDER_INITIAL);
+  }, [chat.id, sendChatId]);
 
-  const hasOlderMessages = false;
+  const windowedMessages = useMemo(() => {
+    const all = displayMessagesForView;
+    if (all.length <= renderMessageCount) return all;
+    return all.slice(-renderMessageCount);
+  }, [displayMessagesForView, renderMessageCount]);
+
+  const hasOlderMessages = useMemo(() => {
+    if (!meId) return false;
+    const meta = getChatMessageSyncMeta(meId, sendChatId);
+    return meta.hasMore || displayMessagesForView.length > renderMessageCount;
+  }, [meId, sendChatId, displayMessagesForView.length, renderMessageCount]);
   const noMessagesYet = displayMessages.length === 0;
   const showDmIntro = isDmRoom && !!other && !!otherId && !vanishMode && noMessagesYet;
   const [messageContext, setMessageContext] = useState<Message | null>(null);
@@ -4794,9 +4810,12 @@ function ChatRoom({
   }, [sendChatId, chat.id]);
 
   useEffect(() => {
-    if (!stackFullyOpen) return;
-    void loadChatMessages(sendChatId);
-  }, [sendChatId, loadChatMessages, stackFullyOpen]);
+    if (!stackFullyOpen || !sendChatId) return;
+    if ((chat.messages || []).length > 0) return;
+    startTransition(() => {
+      void loadChatMessages(sendChatId);
+    });
+  }, [stackFullyOpen, sendChatId, chat.messages?.length, loadChatMessages, chat.id]);
 
   const scrollToMessageId = useCallback((id: string) => {
     setMoreReactionEmoji(false);
@@ -5045,21 +5064,41 @@ function ChatRoom({
       introDoneForChatRef.current = chat.id;
     }
 
-    if (el.scrollTop < el.scrollHeight * 0.12 && !isLoadingOlderRef.current) {
-      isLoadingOlderRef.current = true;
-      setLoadingOlderUi(true);
-      const prevScrollHeight = el.scrollHeight;
-      void loadChatMessages(chat.id).finally(() => {
-        requestAnimationFrame(() => {
-          if (!messagesScrollRef.current) return;
-          const added = messagesScrollRef.current.scrollHeight - prevScrollHeight;
-          if (added > 0) messagesScrollRef.current.scrollTop += added;
-          isLoadingOlderRef.current = false;
-          setLoadingOlderUi(false);
-        });
-      });
+    const nearTop = el.scrollTop < 140;
+    if (!nearTop || isLoadingOlderRef.current) return;
+
+    if (displayMessagesForView.length > renderMessageCount) {
+      setRenderMessageCount(c =>
+        Math.min(displayMessagesForView.length, c + CHAT_RENDER_EXPAND),
+      );
+      return;
     }
-  }, [hasOlderMessages, loadChatMessages, chat.id, cancelIntroScroll]);
+
+    const meta = meId ? getChatMessageSyncMeta(meId, sendChatId) : { hasMore: false };
+    if (!meta.hasMore) return;
+
+    isLoadingOlderRef.current = true;
+    setLoadingOlderUi(true);
+    const prevScrollHeight = el.scrollHeight;
+    void loadChatMessages(sendChatId, { older: true }).finally(() => {
+      requestAnimationFrame(() => {
+        if (!messagesScrollRef.current) return;
+        const added = messagesScrollRef.current.scrollHeight - prevScrollHeight;
+        if (added > 0) messagesScrollRef.current.scrollTop += added;
+        isLoadingOlderRef.current = false;
+        setLoadingOlderUi(false);
+      });
+    });
+  }, [
+    hasOlderMessages,
+    loadChatMessages,
+    sendChatId,
+    chat.id,
+    cancelIntroScroll,
+    meId,
+    displayMessagesForView.length,
+    renderMessageCount,
+  ]);
 
   const VANISH_PULL_NEED = 120;
   /** ارتفاع النطاق من أسفل منطقة التمرير لبدء سحب الوضع المخفي */

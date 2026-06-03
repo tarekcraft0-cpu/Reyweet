@@ -223,6 +223,11 @@ import {
   readCachedChatMessages,
   writeCachedChatMessages,
 } from "./chatMessageCache";
+import {
+  getChatMessageSyncMeta,
+  runChatMessageLoad,
+  setChatMessageSyncMeta,
+} from "./chatMessageSync";
 import { handleRemoteCallSignal, type CallSignalPayload, type IncomingCallRing } from "./webrtcCall";
 
 import { dispatchIncomingCallRing, INCOMING_CALL_WINDOW_EVENT } from "./activeCallUi";
@@ -1483,8 +1488,8 @@ interface Ctx {
     chatId: ID,
     msg: Omit<Message, "id" | "senderId" | "createdAt">,
   ) => boolean;
-  /** جلب رسائل محادثة من messages.json على الخادم ودمجها */
-  loadChatMessages: (chatId: ID) => Promise<void>;
+  /** جلب رسائل محادثة (صفحة حديثة أو أقدم عند opts.older) */
+  loadChatMessages: (chatId: ID, opts?: { older?: boolean }) => Promise<void>;
   /** بعد إغلاق معاينة «مرة واحدة» يُسجَّل أن هذا المستخدم استهلك الرسالة */
   markViewOnceOpened: (chatId: ID, messageId: ID) => void;
   /** إخفاء الرسالة عندك فقط (لا تُحذف من عند الآخرين) */
@@ -4123,72 +4128,91 @@ export function AppProvider({
     [],
   );
 
-  const loadChatMessages: Ctx["loadChatMessages"] = useCallback(async (chatId) => {
-    if (!apiBackendEnabled()) return;
-    const token = getApiToken();
-    const uid = stateRef.current.currentUserId;
-    if (!token || !uid || isGuestUserId(uid)) return;
-    const localChat = stateRef.current.chats.find(
-      c => c.id === chatId || chatMergeKey(c, uid) === chatId,
-    );
-    if (!localChat?.members.includes(uid)) return;
-    const peer =
-      !localChat.isGroup && !localChat.isChannel
-        ? localChat.members.find(id => id !== uid)
-        : null;
-    const stateKey = peer ? dmChatId(uid, peer) : chatId;
-
-    const cached = await readCachedChatMessages(uid, stateKey);
-    if (cached?.length) {
-      setState(s => {
-        if (s.currentUserId !== uid) return s;
-        const chat = s.chats.find(
-          c => c.id === chatId || c.id === stateKey || chatMergeKey(c, uid) === stateKey,
-        );
-        if (!chat?.members.includes(uid)) return s;
-        const merged = {
-          ...chat,
-          id: stateKey,
-          messages: mergeChatMessages(chat.messages || [], cached),
-        };
-        const withoutDup = s.chats.filter(
-          c =>
-            c.id !== chat.id &&
-            c.id !== stateKey &&
-            chatMergeKey(c, uid) !== stateKey,
-        );
-        return { ...s, chats: [...withoutDup, merged] };
+  const mergeChatMessagesIntoState = useCallback(
+    (uid: ID, chatId: ID, stateKey: ID, incoming: Message[]) => {
+      if (!incoming.length) return;
+      startTransition(() => {
+        setState(s => {
+          if (s.currentUserId !== uid) return s;
+          const chat = s.chats.find(
+            c => c.id === chatId || c.id === stateKey || chatMergeKey(c, uid) === stateKey,
+          );
+          if (!chat?.members.includes(uid)) return s;
+          const merged = {
+            ...chat,
+            id: stateKey,
+            messages: mergeChatMessages(chat.messages || [], incoming),
+          };
+          const withoutDup = s.chats.filter(
+            c =>
+              c.id !== chat.id &&
+              c.id !== stateKey &&
+              chatMergeKey(c, uid) !== stateKey,
+          );
+          return { ...s, chats: [...withoutDup, merged] };
+        });
       });
-    }
+    },
+    [setState],
+  );
 
-    const fetchId = stateKey;
-    const { apiFetchAllChatMessages } = await import("./chatMessagesApi");
-    const remote = await apiFetchAllChatMessages(token, fetchId);
-    if (remote.length === 0) return;
-    void writeCachedChatMessages(uid, stateKey, remote);
-    setState(s => {
-      if (s.currentUserId !== uid) return s;
-      const chat = s.chats.find(
-        c => c.id === chatId || c.id === stateKey || chatMergeKey(c, uid) === stateKey,
+  const loadChatMessages: Ctx["loadChatMessages"] = useCallback(
+    async (chatId, opts) => {
+      if (!apiBackendEnabled()) return;
+      const token = getApiToken();
+      const uid = stateRef.current.currentUserId;
+      if (!token || !uid || isGuestUserId(uid)) return;
+      const localChat = stateRef.current.chats.find(
+        c => c.id === chatId || chatMergeKey(c, uid) === chatId,
       );
-      if (!chat?.members.includes(uid)) return s;
-      const merged = {
-        ...chat,
-        id: stateKey,
-        messages: mergeChatMessages(chat.messages || [], remote),
-      };
-      const withoutDup = s.chats.filter(
-        c =>
-          c.id !== chat.id &&
-          c.id !== stateKey &&
-          chatMergeKey(c, uid) !== stateKey,
-      );
-      return {
-        ...s,
-        chats: [...withoutDup, merged],
-      };
-    });
-  }, [setState]);
+      if (!localChat?.members.includes(uid)) return;
+      const peer =
+        !localChat.isGroup && !localChat.isChannel
+          ? localChat.members.find(id => id !== uid)
+          : null;
+      const stateKey = peer ? dmChatId(uid, peer) : chatId;
+      const fetchId = stateKey;
+
+      await runChatMessageLoad(uid, stateKey, async () => {
+        const { apiFetchChatMessagesPage, CHAT_MESSAGES_PAGE_SIZE } = await import(
+          "./chatMessagesApi"
+        );
+
+        if (!opts?.older) {
+          const cached = await readCachedChatMessages(uid, stateKey);
+          if (cached?.length) mergeChatMessagesIntoState(uid, chatId, stateKey, cached);
+        } else {
+          const meta = getChatMessageSyncMeta(uid, stateKey);
+          if (!meta.hasMore) return;
+        }
+
+        const meta = getChatMessageSyncMeta(uid, stateKey);
+        const page = await apiFetchChatMessagesPage(token, fetchId, {
+          limit: CHAT_MESSAGES_PAGE_SIZE,
+          before: opts?.older ? meta.oldestCursor : undefined,
+        });
+
+        setChatMessageSyncMeta(uid, stateKey, {
+          hasMore: page.hasMore,
+          oldestCursor: page.nextCursor,
+          loading: false,
+        });
+
+        if (!page.messages.length) return;
+
+        mergeChatMessagesIntoState(uid, chatId, stateKey, page.messages);
+
+        if (!opts?.older) {
+          const snap = stateRef.current.chats.find(
+            c => c.id === stateKey || chatMergeKey(c, uid) === stateKey,
+          );
+          const msgs = snap?.messages || page.messages;
+          void writeCachedChatMessages(uid, stateKey, msgs);
+        }
+      });
+    },
+    [mergeChatMessagesIntoState],
+  );
 
   const sendMessage: Ctx["sendMessage"] = useCallback(
     (chatId, msg) => {
@@ -4354,7 +4378,7 @@ export function AppProvider({
       }
       window.setTimeout(() => {
         messageSendBusyRef.current = false;
-      }, 450);
+      }, 120);
       return true;
     },
     [setState, persistMessageOnServer],
