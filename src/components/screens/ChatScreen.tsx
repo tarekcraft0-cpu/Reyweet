@@ -2305,6 +2305,20 @@ export function ChatScreen({
     [publishStackProgressVisual],
   );
 
+  const resolveOpenChatId = useCallback(
+    (id: string) => {
+      const found = findChatByOpenId(chats, id, me.id);
+      return found ? openChatIdFor(found, me.id) : id;
+    },
+    [chats, me.id],
+  );
+
+  const isChatThreadFullyOpen = useCallback(
+    (id: string) =>
+      openChat === id && !stackClosingId && stackProgressRef.current >= 0.98,
+    [openChat, stackClosingId],
+  );
+
   const applyStackDismissPullFrame = useCallback(
     (pullPx: number, phase: ChatSwipeBackPhase, velocityX: number) => {
       if (!openChat) return;
@@ -2411,20 +2425,6 @@ export function ChatScreen({
     if (openChat || stackDragChatId || stackClosingId) return;
     releaseChatChromeAfterGesture();
   }, [openChat, stackDragChatId, stackClosingId, releaseChatChromeAfterGesture]);
-
-  const resolveOpenChatId = useCallback(
-    (id: string) => {
-      const found = findChatByOpenId(chats, id, me.id);
-      return found ? openChatIdFor(found, me.id) : id;
-    },
-    [chats, me.id],
-  );
-
-  const isChatThreadFullyOpen = useCallback(
-    (id: string) =>
-      openChat === id && !stackClosingId && stackProgressRef.current >= 0.98,
-    [openChat, stackClosingId],
-  );
 
   const releaseStackTransitionLock = useCallback(() => {
     stackTransitionLockRef.current = false;

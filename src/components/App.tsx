@@ -1431,7 +1431,7 @@ export function App() {
             (chatImmersiveMode ? "" : "")
           }
         >
-          <AppErrorBoundary key={accountSessionKey} label="main-tabs">
+          <AppErrorBoundary key={`${accountSessionKey}-${tab}`} label="main-tabs">
             <MainTabStack
               activeTab={tab as PagerTab}
               swipeEnabled={pagerEnabled}
