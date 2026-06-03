@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { MoreHorizontal } from "lucide-react";
 import { Avatar } from "./Avatar";
 import { VerifiedMarkForUser } from "./VerifiedBadge";
@@ -376,6 +376,24 @@ export function PostFeedActions({
   /** داخل عمود بجانب الأفتار (بدون padding جانبي إضافي) */
   profileInset?: boolean;
 }) {
+  const [likePop, setLikePop] = useState(false);
+  const [repostPop, setRepostPop] = useState(false);
+  const likePopTimer = useRef(0);
+  const repostPopTimer = useRef(0);
+
+  useEffect(() => {
+    return () => {
+      window.clearTimeout(likePopTimer.current);
+      window.clearTimeout(repostPopTimer.current);
+    };
+  }, []);
+
+  const burst = (setter: (v: boolean) => void, timerRef: { current: number }) => {
+    setter(true);
+    window.clearTimeout(timerRef.current);
+    timerRef.current = window.setTimeout(() => setter(false), 480);
+  };
+
   const btn =
     "inline-flex items-center gap-1 rounded-md py-1 text-foreground/85 transition active:scale-95";
   const countBase = "text-[13px] tabular-nums";
@@ -391,7 +409,15 @@ export function PostFeedActions({
       }
     >
       <div className="flex flex-row items-center gap-4 sm:gap-5">
-        <button type="button" onClick={onLike} className={btn} aria-pressed={liked}>
+        <button
+          type="button"
+          onClick={() => {
+            if (!liked) burst(setLikePop, likePopTimer);
+            onLike();
+          }}
+          className={btn + (likePop ? " post-action-pop post-action-pop--like" : "")}
+          aria-pressed={liked}
+        >
           <HeartIcon liked={liked} size={20} />
           <span className={likeCountCls}>{likeCount}</span>
         </button>
@@ -401,8 +427,15 @@ export function PostFeedActions({
         </button>
         <button
           type="button"
-          onClick={onRepost}
-          className={btn + (reposted ? " text-primary" : "")}
+          onClick={() => {
+            if (!reposted) burst(setRepostPop, repostPopTimer);
+            onRepost();
+          }}
+          className={
+            btn +
+            (reposted ? " text-primary" : "") +
+            (repostPop ? " post-action-pop post-action-pop--repost" : "")
+          }
           aria-pressed={reposted}
         >
           <RepostIcon reposted={reposted} size={20} />

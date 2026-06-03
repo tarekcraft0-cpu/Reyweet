@@ -141,7 +141,7 @@ export function useChatSwipeBack({
       const d = dragRef.current;
       if (d.pointerId === null || d.pointerId !== pointerId) return;
       gestureDoneRef.current.add(pointerId);
-      window.setTimeout(() => gestureDoneRef.current.delete(pointerId), 800);
+      window.setTimeout(() => gestureDoneRef.current.delete(pointerId), 380);
 
       dragRef.current = { pointerId: null, startX: 0, startY: 0, startPull: 0 };
       clearPending();
@@ -174,7 +174,7 @@ export function useChatSwipeBack({
         onDismissRef.current();
         window.setTimeout(() => {
           dismissingRef.current = false;
-        }, CHAT_NAV_MS);
+        }, CHAT_NAV_MS + 40);
       } else {
         flushPull(0, "end", vx);
       }

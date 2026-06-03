@@ -906,3 +906,35 @@ html.retweet-native-shell .notifications-panel-scroll {
   padding: 0 !important;
   margin: 0 !important;
 }
+
+@keyframes post-like-pop {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.32);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes post-repost-pop {
+  0% {
+    transform: scale(1) rotate(0deg);
+  }
+  40% {
+    transform: scale(1.22) rotate(-14deg);
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+.post-action-pop--like {
+  animation: post-like-pop 0.45s cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.post-action-pop--repost {
+  animation: post-repost-pop 0.42s cubic-bezier(0.32, 0.72, 0, 1);
+}

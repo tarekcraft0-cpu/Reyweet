@@ -121,6 +121,15 @@ function mergeHomeFeedAppendIntoState(
   return { ...state, posts, users: [...usersById.values()] };
 }
 
+/** دمج قوائم الإعجاب/إعادة النشر دون فقدان تفاعل محلي أثناء مزامنة لقطة قديمة */
+function mergeSocialIdLists(local: string[] | undefined, remote: string[] | undefined): string[] {
+  const a = Array.isArray(local) ? local : [];
+  const b = Array.isArray(remote) ? remote : [];
+  if (!a.length) return [...b];
+  if (!b.length) return [...a];
+  return [...new Set([...a, ...b])];
+}
+
 function mergePostsPreservingLocalDeletes(localPosts: Post[], remotePosts: Post[]): Post[] {
   const now = Date.now();
   pruneLocalRemoveMaps(now);
@@ -143,8 +152,8 @@ function mergePostsPreservingLocalDeletes(localPosts: Post[], remotePosts: Post[
     ].filter(c => !locallyRemovedCommentKeys.has(`${p.id}:${c.id}`));
     merged.push({
       ...base,
-      likes: remote?.likes ?? p.likes,
-      reposts: remote?.reposts ?? p.reposts,
+      likes: mergeSocialIdLists(p.likes, remote?.likes),
+      reposts: mergeSocialIdLists(p.reposts, remote?.reposts),
       comments,
     });
   }
@@ -3549,34 +3558,69 @@ export function AppProvider({
   const toggleRepost = (postId: ID) => {
     const token = getApiToken();
     const useApi = Boolean(token && apiBackendEnabled());
+    let rollbackReposts: string[] | null = null;
+    let postSnapshot: Post | null = null;
+    let actorId: ID | null = null;
     setState((s) => {
       const post = s.posts.find((p) => p.id === postId);
       if (!post || !s.currentUserId || isGuestUserId(s.currentUserId)) return s;
-      const r = post.reposts.includes(s.currentUserId);
+      actorId = s.currentUserId;
+      const prevReposts = Array.isArray(post.reposts) ? post.reposts : [];
+      rollbackReposts = [...prevReposts];
+      postSnapshot = { ...post };
+      const had = prevReposts.includes(s.currentUserId);
       return {
         ...s,
         posts: s.posts.map((p) =>
           p.id === postId
             ? {
                 ...p,
-                reposts: r
-                  ? p.reposts.filter((x) => x !== s.currentUserId)
-                  : [...p.reposts, s.currentUserId!],
+                reposts: had
+                  ? prevReposts.filter((x) => x !== s.currentUserId)
+                  : [...prevReposts, s.currentUserId!],
               }
             : p,
         ),
       };
     });
     if (useApi && token) {
-      void apiTogglePostRepost(token, postId).then(res => {
-        if (!res.ok) return;
+      void (async () => {
+        let res = await apiTogglePostRepost(token, postId);
+        if (!res.ok && /غير موجود|not found|missing/i.test(res.error || "") && postSnapshot) {
+          if (actorId && postSnapshot.userId === actorId) {
+            await apiUpsertPost(token, {
+              id: postSnapshot.id,
+              type: postSnapshot.type,
+              text: postSnapshot.text || "",
+              image: postSnapshot.image,
+              video: postSnapshot.video,
+              audio: postSnapshot.audio,
+              createdAt: postSnapshot.createdAt || Date.now(),
+            });
+            res = await apiTogglePostRepost(token, postId);
+          } else {
+            await new Promise(r => window.setTimeout(r, 120));
+            res = await apiTogglePostRepost(token, postId);
+          }
+        }
+        if (!res.ok) {
+          if (rollbackReposts) {
+            setState(s => ({
+              ...s,
+              posts: s.posts.map(p =>
+                p.id === postId ? { ...p, reposts: rollbackReposts! } : p,
+              ),
+            }));
+          }
+          return;
+        }
         setState(s => ({
           ...s,
           posts: s.posts.map(p =>
             p.id === postId ? { ...p, reposts: res.reposts } : p,
           ),
         }));
-      });
+      })();
     }
   };
   const addComment = (postId: ID, text: string) => {
@@ -4023,7 +4067,7 @@ export function AppProvider({
           const created = await apiCreateGroup(token, {
             id: newChat.id,
             name: newChat.name || "مجموعة",
-            avatar: newChat.avatar || "👥",
+            avatar: newChat.avatar?.trim() || "",
             memberIds: memberIds.filter(id => id !== creatorId),
             welcomeMessage: `مرحباً بكم في «${newChat.name || "مجموعة"}»`,
           });
@@ -6132,8 +6176,12 @@ export function AppProvider({
                 ? {
                     ...p,
                     ...patch,
-                    likes: patch.likes,
-                    reposts: patch.reposts,
+                    likes: Array.isArray(patch.likes)
+                      ? patch.likes
+                      : mergeSocialIdLists(p.likes, patch.likes),
+                    reposts: Array.isArray(patch.reposts)
+                      ? patch.reposts
+                      : mergeSocialIdLists(p.reposts, patch.reposts),
                     comments,
                   }
                 : p,

@@ -32,6 +32,7 @@ import { ReportFlowSheet } from "@/components/moderation/ReportFlowSheet";
 import { canGroup } from "@/lib/groupRbac";
 import { SlideDismissBackButton, SlideDismissShell } from "../SlideDismissShell";
 import { Avatar } from "../Avatar";
+import { GroupSplitAvatar } from "./GroupSplitAvatar";
 import { useApp, userById } from "@/lib/store";
 import { useT } from "@/lib/i18n";
 import type { Chat, Message } from "@/lib/types";
@@ -54,43 +55,6 @@ function isDefaultGroupName(name: string | undefined) {
 function groupIgTitle(chat: Chat, memberUsers: { username: string }[]) {
   if (!isDefaultGroupName(chat.name)) return chat.name!.trim();
   return memberUsers.map(u => u.username).join(", ") || chat.name || "";
-}
-
-function GroupStackedAvatars({
-  chat,
-  memberUsers,
-  size = 96,
-}: {
-  chat: Chat;
-  memberUsers: { id: string; username: string; avatar?: string }[];
-  size?: number;
-}) {
-  if (chat.avatar && !chat.avatar.startsWith("👥") && chat.avatar.length > 4) {
-    return <Avatar name={chat.name || "مجموعة"} src={chat.avatar} size={size} className="mx-auto" />;
-  }
-  const slice = memberUsers.slice(0, 2);
-  if (slice.length === 0) {
-    return <Avatar name={chat.name || "مجموعة"} src={chat.avatar} size={size} className="mx-auto" />;
-  }
-  if (slice.length === 1) {
-    return <Avatar name={slice[0].username} src={slice[0].avatar} size={size} className="mx-auto" />;
-  }
-  const cell = Math.round(size * 0.58);
-  const overlap = Math.round(cell * 0.42);
-  const totalW = cell + overlap;
-  return (
-    <div className="relative mx-auto" style={{ width: totalW, height: size }}>
-      {slice.map((u, i) => (
-        <div
-          key={u.id}
-          className="absolute rounded-full ring-[3px] ring-background"
-          style={{ width: cell, height: cell, insetInlineStart: i * overlap, zIndex: slice.length - i }}
-        >
-          <Avatar name={u.username} src={u.avatar} size={cell} />
-        </div>
-      ))}
-    </div>
-  );
 }
 
 const headerIconBtn =
@@ -360,7 +324,15 @@ export function GroupDetailsScreen({
     <>
       <div className="px-4 pb-2 pt-2 text-center">
         <div className="relative mx-auto mb-4" style={{ width: 96, height: 96 }}>
-          <GroupStackedAvatars chat={chat} memberUsers={memberUsers} size={96} />
+          <GroupSplitAvatar
+            chatId={chat.id}
+            name={chat.name || "مجموعة"}
+            avatar={chat.avatar}
+            memberUsers={memberUsers}
+            viewerId={me.id}
+            size={96}
+            className="mx-auto"
+          />
         </div>
         <h1 className="text-xl font-bold leading-snug text-foreground">{displayTitle}</h1>
         {isAdmin && !chat.isChannel && (
@@ -452,7 +424,15 @@ export function GroupDetailsScreen({
             <div className="space-y-4 px-4 py-6">
               <div className="flex justify-center">
                 <button type="button" onClick={() => avatarInputRef.current?.click()} className="relative">
-                  <GroupStackedAvatars chat={chat} memberUsers={memberUsers} size={88} />
+                  <GroupSplitAvatar
+                    chatId={chat.id}
+                    name={chat.name || "مجموعة"}
+                    avatar={chat.avatar}
+                    memberUsers={memberUsers}
+                    viewerId={me.id}
+                    size={88}
+                    className="mx-auto"
+                  />
                 </button>
               </div>
               <input

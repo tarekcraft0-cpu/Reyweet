@@ -3,8 +3,8 @@
 /** عرض منطقة الحافة اليمنى لبدء سحب الرجوع */
 export const CHAT_NAV_EDGE_PX = 44;
 export const CHAT_NAV_COMMIT_FRACTION = 0.28;
-export const CHAT_NAV_MS = 220;
-export const CHAT_NAV_OPEN_MS = 300;
+export const CHAT_NAV_MS = 200;
+export const CHAT_NAV_OPEN_MS = 220;
 export const CHAT_NAV_EASE = "cubic-bezier(0.32, 0.72, 0, 1)";
 export const CHAT_NAV_OPEN_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
 /** px/ms — سحب سريع لليسار يكمل الرجوع */
@@ -148,7 +148,7 @@ export function applyChatNavOpenTransforms(
   }
   if (layers.roomEl) {
     layers.roomEl.style.visibility = "";
-    layers.roomEl.style.pointerEvents = t > 0.02 ? "auto" : "none";
+    layers.roomEl.style.pointerEvents = t > 0.32 ? "auto" : "none";
     layers.roomEl.style.opacity = "1";
     layers.roomEl.style.transformOrigin = "center right";
     layers.roomEl.style.transform = room;

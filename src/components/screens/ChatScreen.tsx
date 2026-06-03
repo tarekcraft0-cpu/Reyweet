@@ -42,6 +42,7 @@ import {
   readSafeViewportWidth,
 } from "@/lib/safeLayoutDimensions";
 import { ChatStackRoomGestureShell } from "../chat/ChatStackRoomGestureShell";
+import { GroupSplitAvatar } from "../chat/GroupSplitAvatar";
 import { SlideDismissBackButton, SlideDismissContext, SlideDismissShell } from "../SlideDismissShell";
 import { QURAN_CHANNEL_ID, isProfileNoteActive, useAppActions, useAppLanguage, useAppTheme, useAppSelector, useAppState, useChats, useCurrentUser, useIsGuestSelector, useAccountSessionKey, userById, visibleChatMessages } from "@/lib/store";
 import {
@@ -385,7 +386,20 @@ function ForwardChatSheet({
                     onClose();
                   }}
                 >
-                  <Avatar name={label} src={av} size={40} />
+                  {c.isGroup ? (
+                    <GroupSplitAvatar
+                      chatId={c.id}
+                      name={label}
+                      avatar={c.avatar}
+                      memberUsers={c.members
+                        .map(id => users.find(u => u.id === id))
+                        .filter((u): u is NonNullable<typeof u> => !!u)}
+                      viewerId={me.id}
+                      size={40}
+                    />
+                  ) : (
+                    <Avatar name={label} src={av} size={40} />
+                  )}
                   <span className="min-w-0 flex-1 truncate font-medium">{label}</span>
                 </button>
               );
@@ -1100,6 +1114,12 @@ const ChatListRowWithPeek = memo(function ChatListRowWithPeek({
   const peerOnlineInList = isPeerOnline(c, otherId);
   const displayName = (c.isGroup || c.isChannel) ? c.name || "?" : other?.username || "?";
   const avatarSrc = (c.isGroup || c.isChannel) ? c.avatar : other?.avatar;
+  const groupMemberUsers = useMemo(() => {
+    if (!c.isGroup) return [];
+    return c.members
+      .map(id => users.find(u => u.id === id))
+      .filter((u): u is NonNullable<typeof u> => !!u);
+  }, [c.isGroup, c.members, users]);
   const isQuranPeek = c.id === QURAN_CHANNEL_ID;
   const peekScrollRef = useRef<HTMLDivElement>(null);
   const [peekPrivacyMenuOpen, setPeekPrivacyMenuOpen] = useState(false);
@@ -1756,7 +1776,18 @@ const ChatListRowWithPeek = memo(function ChatListRowWithPeek({
               if (otherId) startTransition(() => onOpenProfile(otherId));
             }}
           >
-            <RSocialAvatar name={displayName} src={avatarSrc} size={58} />
+            {c.isGroup ? (
+              <GroupSplitAvatar
+                chatId={c.id}
+                name={displayName}
+                avatar={c.avatar}
+                memberUsers={groupMemberUsers}
+                viewerId={me.id}
+                size={58}
+              />
+            ) : (
+              <RSocialAvatar name={displayName} src={avatarSrc} size={58} />
+            )}
             {peerOnlineInList && !c.isGroup && !c.isChannel && (
               <span
                 className="absolute rounded-full bg-emerald-500 ring-2 ring-background"
@@ -2301,6 +2332,10 @@ export function ChatScreen({
           }
           stackRoomDismissDraggingRef.current = false;
           applyNavDismissPull(pullPx, false);
+          if (!stackClosingId && openChat) {
+            const key = resolveOpenChatId(openChat);
+            beginCloseChatThreadRef.current(key);
+          }
           return;
         }
         if (stackCloseCommitRef.current) return;
@@ -2323,7 +2358,7 @@ export function ChatScreen({
         }, CHAT_NAV_MS);
       }
     },
-    [openChat, applyNavDismissPull, onExitNavRevealProgress],
+    [openChat, applyNavDismissPull, onExitNavRevealProgress, stackClosingId, resolveOpenChatId],
   );
 
   const syncStackProgressFromRoom = useCallback(
@@ -2506,7 +2541,9 @@ export function ChatScreen({
         releaseStackTransitionLock();
         ensureOpenChatInteractive();
         applyStackLayerTransforms(1, false);
-      }, 480);
+      }, 320);
+
+      void loadChatMessages(canonical);
 
       stackOpenAnimCancelRef.current = runChatNavOpenAnimation(
         cap,
@@ -2533,10 +2570,6 @@ export function ChatScreen({
           requestStackRoomScrollBottom();
         },
       );
-
-      startTransition(() => {
-        void loadChatMessages(canonical);
-      });
     },
     [
       resolveOpenChatId,
@@ -4121,7 +4154,7 @@ function CreateGroup({ mode, onBack, onCreated }: { mode: "group" | "channel"; o
   const me = currentUser!;
   const [step, setStep] = useState<1 | 2>(1);
   const [name, setName] = useState("");
-  const [avatar, setAvatar] = useState(mode === "channel" ? "📢" : "👥");
+  const [avatar, setAvatar] = useState(mode === "channel" ? "📢" : "");
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const [memberSearch, setMemberSearch] = useState("");
@@ -6446,11 +6479,24 @@ function ChatRoom({
           }}
           className="relative z-[10] flex min-w-0 flex-1 items-center gap-2 text-start justify-start touch-manipulation"
         >
-          <Avatar
-            name={chat.isGroup ? chat.name! : other?.username || "?"}
-            src={chat.isGroup ? chat.avatar : other?.avatar}
-            size={36}
-          />
+          {chat.isGroup ? (
+            <GroupSplitAvatar
+              chatId={chat.id}
+              name={chat.name || "?"}
+              avatar={chat.avatar}
+              memberUsers={chat.members
+                .map(id => state.users.find(u => u.id === id))
+                .filter((u): u is NonNullable<typeof u> => !!u)}
+              viewerId={viewerId}
+              size={36}
+            />
+          ) : (
+            <Avatar
+              name={other?.username || "?"}
+              src={other?.avatar}
+              size={36}
+            />
+          )}
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 truncate text-sm font-semibold">
               {chat.isChannel && <Megaphone size={14} />}
