@@ -3,6 +3,6 @@
   "apiUrl": "https://reyweet.vercel.app",
   "siteUrl": "https://reyweet.vercel.app",
   "bundleId": "com.reyweet.app",
-  "bundled": true,
-  "builtAt": "2026-06-03T13:10:51.034Z"
+  "sourceIpa": "Retweet-unsigned (58) (1).ipa",
+  "builtAt": "2026-06-03T16:12:42.014Z"
 }

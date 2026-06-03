@@ -158,8 +158,8 @@
               hidden
               class="mt-4 max-w-xl rounded-2xl border border-amber-300/90 bg-amber-50 px-4 py-3 text-sm leading-relaxed text-amber-950 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-100"
             >
-              ملف IPA على الموقع <strong>غير موقّع بعد</strong> — زر التثبيت يعمل بعد بناء
-              <strong>retweet-ios-ota-signed</strong> على Codemagic (راجع <code class="text-xs">IOS_OTA_SETUP.md</code>).
+              التطبيق مدمج مع الموقع والخادم. حمّل ملف IPA ثم ثبّته عبر
+              <strong>Sideloadly</strong> أو <strong>تطبيق بلس</strong> على الكمبيوتر، أو وقّعه بشهادة Apple ثم ثبّته من Safari.
             </p>
             <div class="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2">
               <a
@@ -625,36 +625,50 @@
       (function () {
         var origin = location.origin;
         var manifestUrl = origin + "/downloads/manifest.plist";
+        var ipaDownloadUrl = origin + "/downloads/retweet.ipa";
         var iosMain = document.getElementById("ios-install");
         var iosFooter = document.getElementById("footer-ios-install");
         var iosLabel = document.getElementById("ios-install-label");
         var iosHint = document.getElementById("ios-version-hint");
         var iosNotice = document.getElementById("ios-unsigned-notice");
-
-        function wireOta(el) {
-          if (!el) return;
-          el.href =
-            "itms-services://?action=download-manifest&url=" + encodeURIComponent(manifestUrl);
-        }
-
         var iosInline = document.getElementById("ios-install-inline");
-        wireOta(iosMain);
-        wireOta(iosFooter);
-        wireOta(iosInline);
+
+        function wireIosInstall(el, info) {
+          if (!el) return;
+          el.classList.remove("pointer-events-none", "opacity-50");
+          el.removeAttribute("aria-disabled");
+          if (info && info.signed === true) {
+            el.href =
+              "itms-services://?action=download-manifest&url=" + encodeURIComponent(manifestUrl);
+            el.removeAttribute("download");
+          } else {
+            el.href = info && info.ipaUrl ? info.ipaUrl : ipaDownloadUrl;
+            el.setAttribute("download", "Retweet.ipa");
+          }
+        }
 
         fetch("/downloads/ios-version.json?t=" + Date.now(), { cache: "no-store" })
           .then(function (r) {
             return r.ok ? r.json() : null;
           })
           .then(function (info) {
-            if (!info) return;
+            if (!info) {
+              wireIosInstall(iosMain, null);
+              wireIosInstall(iosFooter, null);
+              wireIosInstall(iosInline, null);
+              return;
+            }
+            wireIosInstall(iosMain, info);
+            wireIosInstall(iosFooter, info);
+            wireIosInstall(iosInline, info);
+
             if (info.ipaStale === true) {
               if (iosNotice) {
                 iosNotice.hidden = false;
                 iosNotice.textContent =
-                  "⚠️ ملف IPA على الموقع قديم ويسبب خطأ showOnboarding. استخدم التطبيق من Safari: " +
-                  (info.useWebAppUrl || "https://reyweet.vercel.app/app/") +
-                  " — أو ابنِ IPA جديد من Codemagic (retweet-ios-ota-signed) ثم npm run ios:ota-ready.";
+                  "⚠️ ملف IPA على الموقع قديم. استخدم التطبيق من Safari: " +
+                  (info.useWebAppUrl || info.webAppUrl || "https://reyweet.vercel.app/app/") +
+                  " — أو ارفع IPA جديد ثم npm run ios:ota-ready.";
               }
               [iosMain, iosFooter, iosInline].forEach(function (el) {
                 if (!el) return;
@@ -663,19 +677,28 @@
                 el.setAttribute("aria-disabled", "true");
               });
               if (iosLabel) iosLabel.textContent = "تثبيت iOS — IPA قيد التحديث";
-            } else if (info.signed !== true && iosNotice) {
-              iosNotice.hidden = false;
+            } else {
+              if (info.signed !== true && iosNotice) iosNotice.hidden = false;
+              if (iosLabel) {
+                iosLabel.textContent = info.signed === true ? "تثبيت على iPhone" : "تحميل IPA لـ iPhone";
+              }
             }
             if (iosHint) {
+              var size = info.ipaSizeMb ? " · " + info.ipaSizeMb + " MB" : "";
               iosHint.textContent = info.ipaStale
                 ? "الويب محدّث · IPA قديم — لا تثبّت حتى بناء جديد"
                 : "iOS v" +
                   (info.version || "1.0.0") +
-                  (info.signed ? " — جاهز للتثبيت من Safari" : " — ينتظر IPA موقّع") +
+                  (info.signed ? " — تثبيت مباشر من Safari" : " — تحميل كامل ثم توقيع/تثبيت") +
+                  size +
                   " · نفس الموقع والخادم.";
             }
           })
-          .catch(function () {});
+          .catch(function () {
+            wireIosInstall(iosMain, null);
+            wireIosInstall(iosFooter, null);
+            wireIosInstall(iosInline, null);
+          });
       })();
 
       (function () {
