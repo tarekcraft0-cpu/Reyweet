@@ -13,17 +13,35 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createGzip } from "node:zlib";
 import { pipeline } from "node:stream/promises";
-import { createReadStream, createWriteStream } from "node:fs";
+import { createReadStream, createWriteStream, existsSync } from "node:fs";
+import dotenv from "dotenv";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const backendRoot = path.join(__dirname, "..");
 
+dotenv.config({ path: path.join(backendRoot, ".env") });
+
+function defaultDataRoot() {
+  const fromEnv = (process.env.DATA_ROOT || "").trim();
+  if (fromEnv) return path.resolve(fromEnv);
+  const vps = "/var/lib/retweet";
+  if (process.platform !== "win32" && existsSync(path.join(vps, "db"))) return vps;
+  return path.resolve("D:/RetweetSocial");
+}
+
 function loadConfig() {
-  const DATA_ROOT = path.resolve(process.env.DATA_ROOT || "D:/RetweetSocial");
+  const DATA_ROOT = defaultDataRoot();
+  const includeMedia =
+    process.env.RETWEET_BACKUP_INCLUDE_MEDIA === "1" ||
+    process.env.RETWEET_BACKUP_INCLUDE_MEDIA === "true" ||
+    process.env.RETWEET_BACKUP_FULL === "1";
   return {
     DATA_ROOT,
     DB_DIR: path.join(DATA_ROOT, "db"),
     SNAPSHOTS_DIR: path.join(DATA_ROOT, "snapshots"),
+    MEDIA_DIR: path.join(DATA_ROOT, "media"),
+    UPLOADS_DIR: path.join(DATA_ROOT, "uploads"),
+    includeMedia,
   };
 }
 
@@ -47,7 +65,8 @@ async function gzipFile(inputPath, outputPath) {
 }
 
 async function main() {
-  const { DATA_ROOT, DB_DIR, SNAPSHOTS_DIR } = loadConfig();
+  const { DATA_ROOT, DB_DIR, SNAPSHOTS_DIR, MEDIA_DIR, UPLOADS_DIR, includeMedia } =
+    loadConfig();
   const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
   const backupRoot =
     process.env.RETWEET_BACKUP_DIR || path.join(DATA_ROOT, "backups");
@@ -61,12 +80,26 @@ async function main() {
   } catch {
     /* snapshots optional */
   }
+  if (includeMedia) {
+    for (const [src, name] of [
+      [MEDIA_DIR, "media"],
+      [UPLOADS_DIR, "uploads"],
+    ]) {
+      try {
+        await copyDir(src, path.join(workDir, name));
+        console.log(`[backup] included ${name}`);
+      } catch {
+        /* optional */
+      }
+    }
+  }
   await fs.writeFile(
     path.join(workDir, "manifest.json"),
     JSON.stringify(
       {
         createdAt: new Date().toISOString(),
         dataRoot: DATA_ROOT,
+        includeMedia,
         node: process.version,
       },
       null,

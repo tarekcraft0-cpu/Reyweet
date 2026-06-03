@@ -22,6 +22,8 @@ _vercel_site
 .env
 .env.*
 backups-local/
+secrets/apns/*.p8
+secrets/**/*.p8
 !.env.example
 mobile/.env
 

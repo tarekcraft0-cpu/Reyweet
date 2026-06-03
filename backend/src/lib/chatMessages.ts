@@ -70,11 +70,22 @@ export function messageToRow(chatId: string, m: Message, receiverId: string | nu
   };
 }
 
+/** أقصى رسائل تُدمج في لقطة app-state — الباقي عبر GET /v1/chats/:id/messages */
+const APP_STATE_MESSAGES_PER_CHAT = Math.min(
+  200,
+  Math.max(10, Number(process.env.APP_STATE_MESSAGES_PER_CHAT || 40)),
+);
+
+export function trimMessagesForSnapshot(messages: Message[]): Message[] {
+  if (messages.length <= APP_STATE_MESSAGES_PER_CHAT) return messages;
+  return messages.slice(-APP_STATE_MESSAGES_PER_CHAT);
+}
+
 export function mergeMessageLists(local: Message[], remote: Message[]): Message[] {
   const byId = new Map<string, Message>();
   for (const m of local) byId.set(m.id, m);
   for (const m of remote) byId.set(m.id, m);
-  return [...byId.values()].sort((a, b) => a.createdAt - b.createdAt);
+  return trimMessagesForSnapshot([...byId.values()].sort((a, b) => a.createdAt - b.createdAt));
 }
 
 export function resolveReceiverId(chat: Chat, senderId: string): string | null {

@@ -1,7 +1,5 @@
 import UIKit
 import Capacitor
-import FirebaseCore
-import FirebaseMessaging
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -20,24 +18,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             UIMenuController.shared.hideMenu()
         }
 
-        if Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist") != nil {
-            FirebaseApp.configure()
-            Messaging.messaging().delegate = self
-        }
-
         return true
     }
 
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
-        if FirebaseApp.app() != nil {
-            Messaging.messaging().apnsToken = deviceToken
-            Messaging.messaging().token { token, _ in
-                guard let token, !token.isEmpty else { return }
-                DispatchQueue.main.async {
-                    self.deliverFcmTokenToWeb(token)
-                }
-            }
-        }
         NotificationCenter.default.post(name: .capacitorDidRegisterForRemoteNotifications, object: deviceToken)
     }
 
@@ -52,13 +36,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func applicationWillEnterForeground(_ application: UIApplication) {
-        guard FirebaseApp.app() != nil else { return }
-        Messaging.messaging().token { token, _ in
-            guard let token, !token.isEmpty else { return }
-            DispatchQueue.main.async {
-                self.deliverFcmTokenToWeb(token)
-            }
-        }
     }
 
     func applicationDidBecomeActive(_ application: UIApplication) {
@@ -75,27 +52,4 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         return ApplicationDelegateProxy.shared.application(application, continue: userActivity, restorationHandler: restorationHandler)
     }
 
-    private func deliverFcmTokenToWeb(_ token: String) {
-        guard let vc = window?.rootViewController as? CAPBridgeViewController else { return }
-        guard let jsonData = try? JSONSerialization.data(withJSONObject: ["token": token], options: []),
-              let json = String(data: jsonData, encoding: .utf8) else { return }
-        let js = """
-        (function(){
-          var d=\(json);
-          window.__retweetNativeFcmToken=d.token;
-          window.dispatchEvent(new CustomEvent('retweet-fcm-token',{detail:d}));
-        })();
-        """
-        vc.webView?.evaluateJavaScript(js, completionHandler: nil)
-    }
-
-}
-
-extension AppDelegate: MessagingDelegate {
-    func messaging(_ messaging: Messaging, didReceiveRegistrationToken fcmToken: String?) {
-        guard let token = fcmToken, !token.isEmpty else { return }
-        DispatchQueue.main.async {
-            self.deliverFcmTokenToWeb(token)
-        }
-    }
 }

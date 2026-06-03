@@ -1,4 +1,5 @@
 import type { Socket } from "socket.io-client";
+import { buildIceServers } from "./iceServers";
 
 export type CallSignalPayload = {
   fromUserId: string;
@@ -32,7 +33,19 @@ let active: ActiveCall | null = null;
 let socketRef: Socket | null = null;
 
 export function bindCallSocket(socket: Socket | null): void {
+  if (socketRef) {
+    socketRef.off("call:ended");
+  }
   socketRef = socket;
+  if (!socket) return;
+  socket.on("call:ended", () => {
+    void endCall();
+  });
+}
+
+export function emitCallReject(toUserId: string, chatId: string): void {
+  if (!socketRef?.connected) return;
+  socketRef.emit("call:reject", { toUserId, chatId });
 }
 
 export function emitCallRing(toUserId: string, chatId: string, video: boolean): void {
@@ -81,7 +94,7 @@ export async function prepareCalleeCall(opts: {
     audio: true,
     video: opts.video,
   });
-  const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+  const pc = new RTCPeerConnection({ iceServers: buildIceServers() });
   for (const track of localStream.getTracks()) {
     pc.addTrack(track, localStream);
   }
@@ -126,7 +139,7 @@ export async function startOutgoingCall(opts: {
     audio: true,
     video: opts.video,
   });
-  const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+  const pc = new RTCPeerConnection({ iceServers: buildIceServers() });
   for (const track of localStream.getTracks()) {
     pc.addTrack(track, localStream);
   }

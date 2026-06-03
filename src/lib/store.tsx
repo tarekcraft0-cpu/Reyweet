@@ -1432,7 +1432,15 @@ interface Ctx {
   toggleBlock: (userId: ID) => void;
   toggleBlockWithSync: (userId: ID) => Promise<{ ok: true } | { ok: false; error: string }>;
   toggleCloseFriend: (userId: ID) => void;
-  createPost: (p: { type: Post["type"]; text: string; image?: string; video?: string; audio?: string }) => void;
+  createPost: (p: {
+    type: Post["type"];
+    text: string;
+    image?: string;
+    video?: string;
+    audio?: string;
+    musicTitle?: string;
+    musicArtist?: string;
+  }) => void;
   toggleLike: (postId: ID) => void;
   toggleStoryLike: (storyId: ID) => void;
   /** تسجيل أن المستخدم الحالي شاهد ستوري شخص آخر (مرة واحدة لكل ستوري) */

@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, memo } from "react";
 import { isNativeCapacitorShell } from "@/lib/apiUrlPolicy";
 import { isNativeMobileApp, isNativePostLoginQuietPeriod } from "@/lib/nativeStability";
-import { SimpleHomeFeed } from "../home/SimpleHomeFeed";
 import { VirtualizedHomeFeed } from "../home/VirtualizedHomeFeed";
 import { useTabPanelScrollRef } from "@/lib/tabPanelScrollContext";
 import { useIsTabActive } from "@/lib/tabActiveContext";
@@ -319,8 +318,6 @@ export const HomeScreen = memo(function HomeScreen({
       <section aria-label="الخلاصة" className="relative z-0 flex flex-col bg-background">
         {nativeShell && !nativeFeedReady ? (
           <p className="py-10 text-center text-sm text-muted-foreground">جاري تحميل الخلاصة…</p>
-        ) : nativeShell ? (
-          <SimpleHomeFeed posts={feed} feedActions={feedActions} />
         ) : (
           <VirtualizedHomeFeed
             posts={feed}

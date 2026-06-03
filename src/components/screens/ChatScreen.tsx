@@ -134,7 +134,8 @@ import {
   userFromSearchResult,
 } from "@/lib/apiBackend";
 import { INCOMING_CALL_WINDOW_EVENT } from "@/lib/store";
-import type { IncomingCallRing } from "@/lib/webrtcCall";
+import { apiSearchChatMessages, type MessageSearchHit } from "@/lib/chatSearchApi";
+import { emitCallReject, type IncomingCallRing } from "@/lib/webrtcCall";
 import { emitUiToast } from "@/lib/uiToast";
 import { CallScreen } from "./CallScreen";
 
@@ -2622,6 +2623,20 @@ export function ChatScreen({
 
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search.trim().toLowerCase(), 160);
+  const [globalMsgHits, setGlobalMsgHits] = useState<MessageSearchHit[]>([]);
+  useEffect(() => {
+    if (debouncedSearch.length < 2) {
+      setGlobalMsgHits([]);
+      return;
+    }
+    let cancelled = false;
+    void apiSearchChatMessages(debouncedSearch, 20).then(hits => {
+      if (!cancelled) setGlobalMsgHits(hits);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedSearch]);
   const inboxListScrollRef = useRef<HTMLDivElement>(null);
   const inboxVirtualListAnchorRef = useRef<HTMLDivElement>(null);
   const [inboxVirtualScrollMargin, setInboxVirtualScrollMargin] = useState(0);
@@ -3320,6 +3335,23 @@ export function ChatScreen({
               style={{ paddingInlineStart: "2.55rem", paddingInlineEnd: "1rem" }}
             />
           </label>
+          {debouncedSearch.length >= 2 && globalMsgHits.length > 0 ? (
+            <div className="mt-2 max-h-36 space-y-1 overflow-y-auto rounded-xl bg-secondary/60 p-2">
+              <p className="px-1 text-[11px] font-semibold text-muted-foreground">
+                {isRtl ? "نتائج في الرسائل" : "Message matches"}
+              </p>
+              {globalMsgHits.map(h => (
+                <button
+                  key={`${h.chatId}-${h.messageId}`}
+                  type="button"
+                  className="flex w-full flex-col rounded-lg px-2 py-1.5 text-start hover:bg-background/80"
+                  onClick={() => openChatDirect(h.chatId)}
+                >
+                  <span className="truncate text-xs font-medium text-foreground">{h.preview}</span>
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
 
       {/* Guest banner */}
@@ -3765,7 +3797,10 @@ export function ChatScreen({
             <button
               type="button"
               className="rounded-full bg-secondary px-3 py-2 text-xs font-semibold"
-              onClick={() => setIncomingCall(null)}
+              onClick={() => {
+                emitCallReject(incomingCall.fromUserId, incomingCall.chatId);
+                setIncomingCall(null);
+              }}
             >
               رفض
             </button>
@@ -4491,6 +4526,14 @@ function ChatRoom({
     return [...visibleMessages, ...vanishMessages].slice().sort((a, b) => a.createdAt - b.createdAt);
   }, [isDmRoom, visibleMessages, vanishMessages]);
 
+  const [roomSearchOpen, setRoomSearchOpen] = useState(false);
+  const [roomSearchQ, setRoomSearchQ] = useState("");
+  const displayMessagesForView = useMemo(() => {
+    const q = roomSearchQ.trim().toLowerCase();
+    if (!q) return displayMessages;
+    return displayMessages.filter(m => String(m.content || "").toLowerCase().includes(q));
+  }, [displayMessages, roomSearchQ]);
+
   /** عدد الرسائل المعروضة في النافذة — يبدأ بـ 60 ويزيد عند التمرير للأعلى */
   const [visibleWindowCount, setVisibleWindowCount] = useState(60);
   const [loadingOlderUi, setLoadingOlderUi] = useState(false);
@@ -4572,9 +4615,9 @@ function ChatRoom({
 
   /** الرسائل المعروضة فعلياً — آخر N رسالة فقط */
   const windowedMessages = useMemo(() => {
-    if (displayMessages.length <= visibleWindowCount) return displayMessages;
-    return displayMessages.slice(displayMessages.length - visibleWindowCount);
-  }, [displayMessages, visibleWindowCount]);
+    if (displayMessagesForView.length <= visibleWindowCount) return displayMessagesForView;
+    return displayMessagesForView.slice(displayMessagesForView.length - visibleWindowCount);
+  }, [displayMessagesForView, visibleWindowCount]);
 
   const hasOlderMessages = displayMessages.length > visibleWindowCount;
   const noMessagesYet = displayMessages.length === 0;
@@ -6239,6 +6282,16 @@ function ChatRoom({
         </div>
 
         <div className="flex shrink-0 items-center gap-3">
+          {!isQuranChannel && (
+            <button
+              type="button"
+              aria-label="بحث في المحادثة"
+              onClick={() => setRoomSearchOpen(v => !v)}
+              className={useIgDm && dmPalette ? dmPalette.iconBtnClass + " touch-manipulation p-1" : undefined}
+            >
+              <Search size={20} />
+            </button>
+          )}
           {!isQuranChannel && !chat.isChannel && (
             <>
               <button
@@ -6402,6 +6455,22 @@ function ChatRoom({
           onOpenProfile={() => startTransition(() => onOpenProfile(otherId!))}
         />
       )}
+
+      {roomSearchOpen ? (
+        <div className="shrink-0 border-b border-border bg-card px-3 py-2">
+          <input
+            type="search"
+            value={roomSearchQ}
+            onChange={e => setRoomSearchQ(e.target.value)}
+            placeholder={lang === "ar" ? "بحث في الرسائل…" : "Search messages…"}
+            className="w-full rounded-xl border border-border bg-input px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            autoFocus
+          />
+          {roomSearchQ.trim() && displayMessagesForView.length === 0 ? (
+            <p className="mt-2 text-center text-xs text-muted-foreground">لا نتائج</p>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="relative z-10 flex min-h-0 flex-1 flex-col overflow-hidden">
         {useIgDm && chatTimelineRows && (

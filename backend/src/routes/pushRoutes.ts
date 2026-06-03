@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { z } from "zod";
 import { isPlatformAdmin } from "../lib/verificationAdmin.js";
-import { isFcmConfigured, sendPushToUser } from "../lib/fcmAdmin.js";
+import { isPushConfigured, sendPushToUser } from "../lib/fcmAdmin.js";
 import {
   listPushTokensForUser,
   removePushToken,
@@ -60,8 +60,8 @@ async function handleSendNotification(req: Request, res: Response): Promise<void
     res.status(400).json({ error: "بيانات غير صالحة", success: false });
     return;
   }
-  if (!isFcmConfigured()) {
-    res.status(503).json({ error: "FCM غير مُعدّ على الخادم", success: false });
+  if (!isPushConfigured()) {
+    res.status(503).json({ error: "إشعارات الدفع غير مُعدّة على الخادم (APNs)", success: false });
     return;
   }
 
@@ -75,7 +75,7 @@ async function handleSendNotification(req: Request, res: Response): Promise<void
   const tokens = await listPushTokensForUser(targetId);
   if (!tokens.length) {
     res.status(404).json({
-      error: "لا يوجد FCM token مسجّل لهذا المستخدم",
+      error: "لا يوجد توكن APNs مسجّل لهذا المستخدم (افتح التطبيق وفعّل الإشعارات)",
       success: false,
       noTokens: true,
     });
@@ -117,8 +117,19 @@ export function registerPushRoutes(
     const userId = (req as AuthedReq).userId;
     const tokens = await listPushTokensForUser(userId);
     const prefs = await getNotificationPrefsForUser(userId);
+    const { isApnsConfigured } = await import("../lib/apnsSend.js");
+    const { isFcmAndroidConfigured } = await import("../lib/fcmAndroid.js");
     return res.json({
-      configured: isFcmConfigured(),
+      configured: isPushConfigured(),
+      provider: isApnsConfigured() && isFcmAndroidConfigured()
+        ? "apns+fcm"
+        : isApnsConfigured()
+          ? "apns-direct"
+          : isFcmAndroidConfigured()
+            ? "fcm-android"
+            : "none",
+      pushIos: isApnsConfigured(),
+      pushAndroid: isFcmAndroidConfigured(),
       store: (process.env.PUSH_TOKEN_STORE || "file").trim(),
       tokenCount: tokens.length,
       prefs,

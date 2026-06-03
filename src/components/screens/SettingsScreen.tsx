@@ -351,7 +351,7 @@ function NotificationsSettingsPanel({ onBack }: { onBack: () => void }) {
     "loading",
   );
   const [tokenCount, setTokenCount] = useState<number | null>(null);
-  const [fcmReady, setFcmReady] = useState<boolean | null>(null);
+  const [pushServerReady, setPushServerReady] = useState<boolean | null>(null);
   const [testBusy, setTestBusy] = useState(false);
   const t = useT();
 
@@ -363,7 +363,7 @@ function NotificationsSettingsPanel({ onBack }: { onBack: () => void }) {
       m.apiFetchPushStatus().then(st => {
         if (!st) return;
         setTokenCount(st.tokenCount);
-        setFcmReady(st.configured);
+        setPushServerReady(st.configured);
       }),
     );
   }, []);
@@ -439,7 +439,7 @@ function NotificationsSettingsPanel({ onBack }: { onBack: () => void }) {
       <SettingsHeader title={t("notificationsSettings")} onBack={onBack} navScope="local" />
       <div className="mx-4 mt-4 rounded-xl border border-border bg-card p-4 space-y-3">
         <p className="text-xs leading-relaxed text-muted-foreground">
-          إشعارات الدفع الحقيقية (FCM) للرسائل والتفاعلات — مع تنبيهات داخل التطبيق.
+          إشعارات الدفع من سيرفر ريتويت (APNs) للرسائل والتفاعلات — مع تنبيهات داخل التطبيق.
         </p>
         <div className="rounded-lg bg-secondary/50 px-3 py-2 text-xs text-muted-foreground space-y-1">
           <p>
@@ -448,11 +448,11 @@ function NotificationsSettingsPanel({ onBack }: { onBack: () => void }) {
           </p>
           <p>
             <span className="font-semibold text-foreground">الخادم: </span>
-            {fcmReady === null
+            {pushServerReady === null
               ? "…"
-              : fcmReady
-                ? "FCM جاهز"
-                : "FCM غير مُعدّ — أضف مفاتيح Firebase للخادم"}
+              : pushServerReady
+                ? "السيرفر جاهز للإرسال"
+                : "APNs غير مُعدّ على VPS — أضف مفتاح Apple Push"}
           </p>
           {tokenCount != null ? (
             <p>
@@ -473,7 +473,7 @@ function NotificationsSettingsPanel({ onBack }: { onBack: () => void }) {
         {prefs.pushEnabled && permState === "granted" ? (
           <button
             type="button"
-            disabled={testBusy || fcmReady === false}
+            disabled={testBusy || pushServerReady === false}
             className="w-full rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold disabled:opacity-50"
             onClick={sendTest}
           >
@@ -918,7 +918,11 @@ function SecuritySettingsPanel({ onBack }: { onBack: () => void }) {
     }
     setSummary(r.data);
     setPwd("");
-    setMsg(enabled ? "تم تفعيل التحقق بخطوتين" : "تم إيقاف التحقق بخطوتين");
+    setMsg(
+      enabled
+        ? "تم تفعيل التحقق — سيُرسل كود إلى بريدك عند تسجيل الدخول"
+        : "تم إيقاف التحقق بخطوتين",
+    );
   };
 
   const revokeDevices = async () => {
@@ -1736,7 +1740,7 @@ export function SettingsScreen({
                   onClick={() => openSubViewFromAccountsCenter("timeManagement")}
                 >
                   <Globe size={24} className="mb-3 text-sky-300" />
-                  <div className="text-sm font-semibold text-foreground">نظارات الذكاء</div>
+                  <div className="text-sm font-semibold text-foreground">إدارة الوقت</div>
                 </button>
               </div>
 

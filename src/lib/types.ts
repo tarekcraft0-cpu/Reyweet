@@ -225,6 +225,9 @@ export interface Post {
   reposts: ID[];
   comments: Comment[];
   createdAt: number;
+  /** موسيقى الريل (اختياري) */
+  musicTitle?: string;
+  musicArtist?: string;
 }
 
 export type MessageDeliveryStatus = "sent" | "delivered" | "read" | "failed";

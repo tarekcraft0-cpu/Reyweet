@@ -163,7 +163,30 @@ export function attachRealtimeSocket(httpServer: HttpServer): Server {
         return;
       }
       emitToUser(toUserId, "call:ring", { fromUserId: userId, chatId, video: video === true });
+      void import("./fcmAdmin.js").then(({ sendIncomingCallPush }) =>
+        sendIncomingCallPush({
+          recipientUserId: toUserId,
+          callerUserId: userId,
+          chatId,
+          video: video === true,
+        }),
+      );
       ack?.({ ok: true });
+    });
+
+    socket.on("call:reject", raw => {
+      const parsed = z
+        .object({
+          toUserId: z.string().min(1),
+          chatId: z.string().min(1),
+        })
+        .safeParse(raw);
+      if (!parsed.success || !userId) return;
+      emitToUser(parsed.data.toUserId, "call:ended", {
+        fromUserId: userId,
+        chatId: parsed.data.chatId,
+        reason: "rejected",
+      });
     });
   });
 

@@ -2,7 +2,6 @@ import { Capacitor } from "@capacitor/core";
 import { PushNotifications } from "@capacitor/push-notifications";
 import { isNativeCapacitorShell } from "./apiUrlPolicy";
 import { apiRegisterPushToken, apiUnregisterPushToken, type PushPlatform } from "./pushApi";
-import { isFirebaseWebConfigured, readFirebaseWebConfig } from "./firebaseClient";
 import { routePushNotificationTap, type PushDeepLinkPayload } from "./pushDeepLink";
 import { readNotificationPrefs } from "./notificationPrefs";
 import { emitUiToast } from "./uiToast";
@@ -11,7 +10,6 @@ import { consumePendingPushTap, stashPendingPushTap } from "./pendingPushTap";
 const PERMISSION_ASKED_KEY = "retweet_push_permission_asked_v1";
 const ANDROID_CHANNEL_ID = "retweet_high";
 let nativeListenersBound = false;
-let webMessagingBound = false;
 let lastRegisteredToken: string | null = null;
 let resumeBound = false;
 let androidChannelReady = false;
@@ -92,28 +90,6 @@ async function ensureAndroidNotificationChannel(): Promise<void> {
   }
 }
 
-/** iOS: تسجيل توكن FCM (وليس APNs فقط) عند توفر Firebase في الحزمة */
-async function syncIosFcmToken(force = false): Promise<void> {
-  if (Capacitor.getPlatform() !== "ios") return;
-  try {
-    const w = window as Window & {
-      __retweetNativeFcmToken?: string;
-      __retweetSyncIosFcmToken?: () => void;
-    };
-    if (w.__retweetNativeFcmToken) {
-      await registerToken(w.__retweetNativeFcmToken, "ios", force);
-      return;
-    }
-    w.__retweetSyncIosFcmToken?.();
-    await new Promise(r => setTimeout(r, 1200));
-    if (w.__retweetNativeFcmToken) {
-      await registerToken(w.__retweetNativeFcmToken, "ios", force);
-    }
-  } catch (e) {
-    console.warn("[push] ios fcm token sync", e);
-  }
-}
-
 function bindResumeSync(): void {
   if (resumeBound || typeof document === "undefined") return;
   resumeBound = true;
@@ -125,34 +101,14 @@ function bindResumeSync(): void {
   });
 }
 
-function bindNativeFcmTokenBridge(): void {
-  if (typeof window === "undefined") return;
-  const w = window as Window & { __retweetFcmBridgeBound?: boolean };
-  if (w.__retweetFcmBridgeBound) return;
-  w.__retweetFcmBridgeBound = true;
-  window.addEventListener("retweet-fcm-token", ev => {
-    const token = (ev as CustomEvent<{ token?: string }>).detail?.token?.trim();
-    if (!token) return;
-    (window as Window & { __retweetNativeFcmToken?: string }).__retweetNativeFcmToken = token;
-    void registerToken(token, "ios", true);
-  });
-}
-
 function bindNativePushListeners(): void {
   if (nativeListenersBound) return;
   nativeListenersBound = true;
-  bindNativeFcmTokenBridge();
 
   void PushNotifications.addListener("registration", reg => {
     const token = reg.value?.trim();
     if (!token) return;
-    void (async () => {
-      if (Capacitor.getPlatform() === "ios") {
-        await syncIosFcmToken(true);
-        if (lastRegisteredToken) return;
-      }
-      await registerToken(token, platformForNative(), true);
-    })();
+    void registerToken(token, platformForNative(), true);
   });
 
   void PushNotifications.addListener("registrationError", err => {
@@ -211,11 +167,7 @@ export async function getPushPermissionState(): Promise<PushPermissionState> {
       return "unsupported";
     }
   }
-  if (!isFirebaseWebConfigured() || typeof window === "undefined") return "unsupported";
-  if (!("Notification" in window)) return "unsupported";
-  if (Notification.permission === "granted") return "granted";
-  if (Notification.permission === "denied") return "denied";
-  return "prompt";
+  return "unsupported";
 }
 
 /** طلب إذن النظام وتسجيل التوكن — يُستدعى عند تفعيل الإشعارات من الإعدادات */
@@ -244,33 +196,11 @@ export async function requestPushPermissionAndRegister(): Promise<{
     }
     lastRegisteredToken = null;
     await PushNotifications.register();
-    if (Capacitor.getPlatform() === "ios") await syncIosFcmToken(true);
     return { ok: true, state: "granted" };
   }
 
-  if (!isFirebaseWebConfigured()) {
-    emitUiToast("إشعارات الويب غير مُعدّة على الخادم");
-    return { ok: false, state: "unsupported" };
-  }
-
-  if (typeof window !== "undefined" && "Notification" in window) {
-    if (Notification.permission === "default") {
-      try {
-        localStorage.setItem(PERMISSION_ASKED_KEY, "1");
-      } catch {
-        /* ignore */
-      }
-      const p = await Notification.requestPermission();
-      if (p !== "granted") return { ok: false, state: p === "denied" ? "denied" : "prompt" };
-    } else if (Notification.permission === "denied") {
-      return { ok: false, state: "denied" };
-    }
-  }
-
-  lastRegisteredToken = null;
-  await initWebPush();
-  const state = await getPushPermissionState();
-  return { ok: state === "granted" && !!lastRegisteredToken, state };
+  emitUiToast("إشعارات الدفع متاحة في تطبيق iPhone فقط");
+  return { ok: false, state: "unsupported" };
 }
 
 async function initNativePush(): Promise<void> {
@@ -291,104 +221,17 @@ async function initNativePush(): Promise<void> {
   if (perm.receive !== "granted") return;
 
   await PushNotifications.register();
-  if (Capacitor.getPlatform() === "ios") await syncIosFcmToken(true);
 }
 
-async function initWebPush(): Promise<void> {
-  if (!isFirebaseWebConfigured() || typeof window === "undefined") return;
-  if (!("Notification" in window) || !("serviceWorker" in navigator)) return;
-
-  const cfg = readFirebaseWebConfig();
-  if (!cfg) return;
-
-  if (Notification.permission === "default") {
-    try {
-      if (!localStorage.getItem(PERMISSION_ASKED_KEY)) {
-        localStorage.setItem(PERMISSION_ASKED_KEY, "1");
-      }
-    } catch {
-      /* ignore */
-    }
-    const perm = await Notification.requestPermission();
-    if (perm !== "granted") return;
-  } else if (Notification.permission !== "granted") {
-    return;
-  }
-
-  const { initializeApp, getApps } = await import("firebase/app");
-  const { getMessaging, getToken, onMessage, isSupported } = await import("firebase/messaging");
-
-  if (!(await isSupported())) return;
-
-  const app = getApps()[0] ?? initializeApp(cfg);
-  const messaging = getMessaging(app);
-
-  const swPath = `${import.meta.env.BASE_URL || "/app/"}firebase-messaging-sw.js`.replace(
-    "//",
-    "/",
-  );
-  const swUrl = new URL(swPath, window.location.origin).href;
-  const registration = await navigator.serviceWorker.register(swUrl, {
-    scope: import.meta.env.BASE_URL || "/app/",
-  });
-
-  await navigator.serviceWorker.ready;
-
-  const token = await getToken(messaging, {
-    vapidKey: cfg.vapidKey,
-    serviceWorkerRegistration: registration,
-  });
-  if (token) await registerToken(token, "web", true);
-
-  if (!webMessagingBound) {
-    webMessagingBound = true;
-    onMessage(messaging, payload => {
-      const data = normalizePushData(payload.data as Record<string, unknown> | undefined);
-      const title = payload.notification?.title || String(data?.title || "Reyweet");
-      const body = payload.notification?.body || String(data?.body || "");
-      if (document.visibilityState === "visible") {
-        dispatchInAppPush({ title, body, data });
-        return;
-      }
-      if (Notification.permission === "granted") {
-        const n = new Notification(title, { body, data: data as NotificationOptions["data"] });
-        n.onclick = () => {
-          handlePushTap(data);
-          n.close();
-        };
-      }
-    });
-  }
-
-  navigator.serviceWorker.addEventListener("message", ev => {
-    const msg = ev.data as PushDeepLinkPayload & { type?: string } | undefined;
-    if (!msg) return;
-    if (msg.type === "open_chat" && msg.chatId) {
-      handlePushTap({ type: "MESSAGE", chatId: msg.chatId });
-      return;
-    }
-    if (msg.type === "open_push" || msg.type === "push_tap") {
-      handlePushTap(msg);
-    }
-  });
-
-  bindResumeSync();
-}
-
-/** إعادة تسجيل التوكن — عند فتح التطبيق أو بعد تحديث FCM */
+/** إعادة تسجيل توكن APNs على الخادم */
 export async function syncPushRegistration(force = false): Promise<void> {
   try {
     if (!readNotificationPrefs().pushEnabled) return;
-    if (isNativeCapacitorShell()) {
-      const perm = await PushNotifications.checkPermissions();
-      if (perm.receive !== "granted") return;
-      if (force) lastRegisteredToken = null;
-      await PushNotifications.register();
-      if (Capacitor.getPlatform() === "ios") await syncIosFcmToken(force);
-      return;
-    }
+    if (!isNativeCapacitorShell()) return;
+    const perm = await PushNotifications.checkPermissions();
+    if (perm.receive !== "granted") return;
     if (force) lastRegisteredToken = null;
-    await initWebPush();
+    await PushNotifications.register();
   } catch (e) {
     console.warn("[push] sync failed", e);
   }
@@ -398,11 +241,8 @@ export async function initPushNotifications(): Promise<void> {
   try {
     initNativePushDeliveryShell();
     if (!readNotificationPrefs().pushEnabled) return;
-    if (isNativeCapacitorShell()) {
-      await initNativePush();
-      return;
-    }
-    await initWebPush();
+    if (!isNativeCapacitorShell()) return;
+    await initNativePush();
   } catch (e) {
     console.warn("[push] init failed", e);
   }

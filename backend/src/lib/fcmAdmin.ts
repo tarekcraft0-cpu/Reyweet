@@ -1,3 +1,6 @@
+/**
+ * إرسال إشعارات الدفع من VPS — APNs (iOS) + FCM (Android اختياري).
+ */
 import type { Notification } from "../../../src/lib/types.js";
 import { getUserById } from "../db/engine.js";
 import {
@@ -5,103 +8,57 @@ import {
   removePushTokens,
   type PushTokenRow,
 } from "../db/pushTokens.js";
-import { buildProductionFcmMessage, stringifyFcmData } from "./fcmMessage.js";
 import { buildPushFromNotification } from "./pushPresentation.js";
+import { isApnsConfigured, sendApnsToDevice } from "./apnsSend.js";
+import { isFcmAndroidConfigured, sendFcmToDevice } from "./fcmAndroid.js";
+import type { PushDataPayload } from "./pushPayload.js";
 
-export type FcmDataPayload = Record<string, string>;
+export { isApnsConfigured };
 
-function env(key: string): string {
-  return (process.env[key] || "").trim();
+export function isPushConfigured(): boolean {
+  return isApnsConfigured() || isFcmAndroidConfigured();
 }
 
+/** @deprecated */
 export function isFcmConfigured(): boolean {
-  if (env("FIREBASE_SERVICE_ACCOUNT_JSON")) return true;
-  return !!(env("FIREBASE_PROJECT_ID") && env("FIREBASE_CLIENT_EMAIL") && env("FIREBASE_PRIVATE_KEY"));
+  return isPushConfigured();
 }
 
-function serviceAccountFromEnv(): Record<string, string> | null {
-  const json = env("FIREBASE_SERVICE_ACCOUNT_JSON");
-  if (json) {
-    try {
-      return JSON.parse(json) as Record<string, string>;
-    } catch {
-      return null;
-    }
-  }
-  const projectId = env("FIREBASE_PROJECT_ID");
-  const clientEmail = env("FIREBASE_CLIENT_EMAIL");
-  let privateKey = env("FIREBASE_PRIVATE_KEY");
-  if (!projectId || !clientEmail || !privateKey) return null;
-  privateKey = privateKey.replace(/\\n/g, "\n");
-  return { project_id: projectId, client_email: clientEmail, private_key: privateKey };
-}
-
-type Messaging = import("firebase-admin/messaging").Messaging;
-
-let messagingPromise: Promise<Messaging | null> | null = null;
-
-async function getMessaging(): Promise<Messaging | null> {
-  if (!isFcmConfigured()) return null;
-  if (!messagingPromise) {
-    messagingPromise = (async () => {
-      const sa = serviceAccountFromEnv();
-      if (!sa) return null;
-      const { cert, getApps, initializeApp } = await import("firebase-admin/app");
-      const { getMessaging } = await import("firebase-admin/messaging");
-      const existing = getApps()[0];
-      const app =
-        existing ??
-        initializeApp({
-          credential: cert(sa as Parameters<typeof cert>[0]),
-        });
-      return getMessaging(app);
-    })().catch(e => {
-      console.warn("[fcm] init failed", e);
-      return null;
-    });
-  }
-  return messagingPromise;
-}
+export type FcmDataPayload = PushDataPayload;
 
 async function sendToToken(
-  messaging: Messaging,
   row: PushTokenRow,
   title: string,
   body: string,
-  data: FcmDataPayload,
+  data: PushDataPayload,
 ): Promise<boolean> {
-  const payload = stringifyFcmData({ ...data, type: data.type || "CUSTOM" });
-  const message = buildProductionFcmMessage({
-    token: row.token,
-    title,
-    body,
-    data: payload,
-    platform: row.platform,
-  });
-  try {
-    await messaging.send(message);
-    return true;
-  } catch (e: unknown) {
-    const code = (e as { code?: string })?.code;
-    if (
-      code === "messaging/registration-token-not-registered" ||
-      code === "messaging/invalid-registration-token"
-    ) {
-      await removePushTokens([row.token]);
-    }
-    console.warn("[fcm] send failed", code || e);
-    return false;
+  const dataStr: Record<string, string> = {};
+  for (const [k, v] of Object.entries(data)) {
+    if (v != null) dataStr[k] = String(v);
   }
+
+  if (row.platform === "ios") {
+    const r = await sendApnsToDevice(row.token, title, body, data);
+    if (r.unregistered) await removePushTokens([row.token]);
+    return r.ok;
+  }
+
+  if (row.platform === "android") {
+    const r = await sendFcmToDevice(row.token, title, body, dataStr);
+    if (r.unregistered) await removePushTokens([row.token]);
+    return r.ok;
+  }
+
+  return false;
 }
 
 export async function sendPushToUser(
   userId: string,
   title: string,
   body: string,
-  data: FcmDataPayload = {},
+  data: PushDataPayload = {},
 ): Promise<{ sent: number; failed: number; noTokens: boolean }> {
-  const messaging = await getMessaging();
-  if (!messaging) return { sent: 0, failed: 0, noTokens: false };
+  if (!isPushConfigured()) return { sent: 0, failed: 0, noTokens: false };
 
   const { getNotificationPrefsForUser, shouldSendPushType } = await import(
     "../push/notificationPrefs.js"
@@ -113,12 +70,13 @@ export async function sendPushToUser(
   }
 
   const rows = await listPushTokensForUser(userId);
-  if (!rows.length) return { sent: 0, failed: 0, noTokens: true };
+  const pushRows = rows.filter(r => r.platform === "ios" || r.platform === "android");
+  if (!pushRows.length) return { sent: 0, failed: 0, noTokens: true };
 
   let sent = 0;
   let failed = 0;
-  for (const row of rows) {
-    const ok = await sendToToken(messaging, row, title, body, data);
+  for (const row of pushRows) {
+    const ok = await sendToToken(row, title, body, data);
     if (ok) sent++;
     else failed++;
   }
@@ -146,7 +104,28 @@ export async function sendNewChatMessagePush(opts: {
     type: "MESSAGE",
     chatId: opts.chatId,
     senderId: opts.senderUserId,
-  }).catch(e => console.warn("[fcm] message push failed", e));
+  }).catch(e => console.warn("[push] message push failed", e));
+}
+
+export async function sendIncomingCallPush(opts: {
+  recipientUserId: string;
+  callerUserId: string;
+  chatId: string;
+  video?: boolean;
+}): Promise<void> {
+  if (!opts.recipientUserId || opts.recipientUserId === opts.callerUserId) return;
+  const caller = await getUserById(opts.callerUserId);
+  const name = caller?.displayName?.trim() || caller?.username?.trim() || "مكالمة";
+  void sendPushToUser(
+    opts.recipientUserId,
+    opts.video ? "مكالمة فيديو" : "مكالمة صوتية",
+    name,
+    {
+      type: "CALL",
+      chatId: opts.chatId,
+      senderId: opts.callerUserId,
+    },
+  ).catch(e => console.warn("[push] call push failed", e));
 }
 
 export async function sendInAppNotificationPush(
@@ -165,6 +144,6 @@ export async function sendInAppNotificationPush(
   if (!notif.userId || notif.userId === notif.fromId) return;
   const { title, body, data } = await buildPushFromNotification(notif);
   void sendPushToUser(notif.userId, title, body, data).catch(e =>
-    console.warn("[fcm] social push failed", e),
+    console.warn("[push] social push failed", e),
   );
 }

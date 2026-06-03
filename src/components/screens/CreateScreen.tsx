@@ -63,6 +63,7 @@ export function CreateScreen({
   const previewObjectUrlRef = useRef<string | null>(null);
   const reelPreviewVideoRef = useRef<HTMLVideoElement | null>(null);
   const [reelCover, setReelCover] = useState("");
+  const [reelMusic, setReelMusic] = useState("صوت أصلي");
   const reelMediaReady =
     type === "reel" &&
     hasCreateAttachmentMedia(media, !!storyFileRef.current) &&
@@ -333,6 +334,8 @@ export function CreateScreen({
         text,
         video: resolvedVideo,
         image: coverUrl && !isVideoMediaRef(coverUrl) ? coverUrl : "🎬",
+        musicTitle: reelMusic.trim() || "صوت أصلي",
+        musicArtist: me.username,
       });
     } else if (
       type === "tweet" &&
@@ -584,9 +587,22 @@ export function CreateScreen({
 
         <div>
         {type === "reel" && (
-          <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
-            عمودي 9:16 (1080×1920) · MP4 H.264 · حتى {REEL_MAX_UPLOAD_MB} ميجا — يُعاد ترميز الفيديو على الخادم
-          </p>
+          <>
+            <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
+              عمودي 9:16 (1080×1920) · MP4 H.264 · حتى {REEL_MAX_UPLOAD_MB} ميجا — يُعاد ترميز الفيديو على الخادم
+            </p>
+            <label className="mt-2 block text-xs font-medium text-muted-foreground">
+              موسيقى / صوت الريل
+              <input
+                type="text"
+                value={reelMusic}
+                onChange={e => setReelMusic(e.target.value)}
+                maxLength={80}
+                placeholder="صوت أصلي"
+                className="mt-1 w-full rounded-xl border border-border bg-input px-3 py-2 text-sm text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              />
+            </label>
+          </>
         )}
         {type === "reel" && !media && (
           <p className="mt-1 text-xs text-muted-foreground">لا يمكن نشر ريلز بدون فيديو</p>

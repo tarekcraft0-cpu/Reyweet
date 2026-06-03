@@ -197,9 +197,14 @@ app.get("/health", async (_req, res) => {
     console.error("[health] db", e);
   }
   let pushConfigured = false;
+  let pushIos = false;
+  let pushAndroid = false;
   try {
-    const { isFcmConfigured } = await import("./lib/fcmAdmin.js");
-    pushConfigured = isFcmConfigured();
+    const { isPushConfigured, isApnsConfigured } = await import("./lib/fcmAdmin.js");
+    const { isFcmAndroidConfigured } = await import("./lib/fcmAndroid.js");
+    pushConfigured = isPushConfigured();
+    pushIos = isApnsConfigured();
+    pushAndroid = isFcmAndroidConfigured();
   } catch {
     pushConfigured = false;
   }
@@ -212,6 +217,8 @@ app.get("/health", async (_req, res) => {
     usersCount,
     smtpConfigured: isSmtpConfigured(),
     pushConfigured,
+    pushIos,
+    pushAndroid,
     stripeConfigured: !!process.env.STRIPE_SECRET_KEY?.trim(),
     passwordResetUsesLink: passwordResetUsesLink(),
   });
@@ -1325,6 +1332,16 @@ app.post("/v1/messages", authMiddleware, async (req, res) => {
     const msg = e instanceof Error ? e.message : "فشل إرسال الرسالة";
     return res.status(500).json({ error: msg });
   }
+});
+
+app.get("/v1/chats/search-messages", authMiddleware, async (req, res) => {
+  setNoStoreApi(res);
+  const userId = (req as Request & { userId: string }).userId;
+  const q = String(req.query.q ?? "").trim();
+  const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 30));
+  const { searchMessagesForUser } = await import("./lib/chatMessageSearch.js");
+  const hits = await searchMessagesForUser(userId, q, limit);
+  return res.json({ ok: true, hits });
 });
 
 app.get("/v1/chats/:chatId/messages", authMiddleware, async (req, res) => {

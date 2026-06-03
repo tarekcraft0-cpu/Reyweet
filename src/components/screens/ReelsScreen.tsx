@@ -977,7 +977,13 @@ export const ReelsScreen = memo(function ReelsScreen({
                 <div className="mt-1.5 flex items-center gap-1.5 text-white/70">
                   <Music2 size={13} className="shrink-0" />
                   <span className="text-[11px] truncate">
-                    {u?.username ? `${u.username} · صوت أصلي` : "صوت أصلي"}
+                    {r.musicTitle?.trim()
+                      ? r.musicArtist?.trim()
+                        ? `${r.musicArtist.trim()} · ${r.musicTitle.trim()}`
+                        : r.musicTitle.trim()
+                      : u?.username
+                        ? `${u.username} · صوت أصلي`
+                        : "صوت أصلي"}
                   </span>
                 </div>
               </div>

@@ -155,15 +155,15 @@ function buildRemoteEnv(local) {
     `SMTP_PASS=${local.SMTP_PASS || local.EMAIL_PASS || ""}`,
     `SMTP_FROM=${local.SMTP_FROM || '"Retweet <noreply@example.com>"'}`,
     `PUSH_TOKEN_STORE=${local.PUSH_TOKEN_STORE || "file"}`,
-    `FCM_NOTIFICATION_SOUND=${local.FCM_NOTIFICATION_SOUND || "default"}`,
+    `APNS_NOTIFICATION_SOUND=${local.APNS_NOTIFICATION_SOUND || local.FCM_NOTIFICATION_SOUND || "default"}`,
   ];
-  if (local.FIREBASE_SERVICE_ACCOUNT_JSON) {
-    lines.push(`FIREBASE_SERVICE_ACCOUNT_JSON=${local.FIREBASE_SERVICE_ACCOUNT_JSON}`);
-  } else {
-    if (local.FIREBASE_PROJECT_ID) lines.push(`FIREBASE_PROJECT_ID=${local.FIREBASE_PROJECT_ID}`);
-    if (local.FIREBASE_CLIENT_EMAIL) lines.push(`FIREBASE_CLIENT_EMAIL=${local.FIREBASE_CLIENT_EMAIL}`);
-    if (local.FIREBASE_PRIVATE_KEY) lines.push(`FIREBASE_PRIVATE_KEY=${local.FIREBASE_PRIVATE_KEY}`);
-  }
+  if (local.APNS_KEY_ID) lines.push(`APNS_KEY_ID=${local.APNS_KEY_ID}`);
+  if (local.APNS_TEAM_ID) lines.push(`APNS_TEAM_ID=${local.APNS_TEAM_ID}`);
+  if (local.APNS_BUNDLE_ID) lines.push(`APNS_BUNDLE_ID=${local.APNS_BUNDLE_ID}`);
+  if (local.APNS_KEY_PATH) lines.push(`APNS_KEY_PATH=${local.APNS_KEY_PATH}`);
+  if (local.APNS_KEY_P8) lines.push(`APNS_KEY_P8=${local.APNS_KEY_P8}`);
+  if (local.APNS_PRODUCTION != null && local.APNS_PRODUCTION !== "")
+    lines.push(`APNS_PRODUCTION=${local.APNS_PRODUCTION}`);
   if (local.STRIPE_SECRET_KEY) lines.push(`STRIPE_SECRET_KEY=${local.STRIPE_SECRET_KEY}`);
   if (local.STRIPE_PUBLISHABLE_KEY) lines.push(`STRIPE_PUBLISHABLE_KEY=${local.STRIPE_PUBLISHABLE_KEY}`);
   if (local.STRIPE_VERIFIED_PRICE_ID) lines.push(`STRIPE_VERIFIED_PRICE_ID=${local.STRIPE_VERIFIED_PRICE_ID}`);
@@ -187,16 +187,19 @@ async function readRemoteEnv(conn) {
   }
 }
 
-function mergeFirebaseFromRemote(local, remote) {
+function mergeApnsFromRemote(local, remote) {
   const out = { ...local };
-  if (out.FIREBASE_SERVICE_ACCOUNT_JSON || out.FIREBASE_PROJECT_ID) return out;
-  if (remote.FIREBASE_SERVICE_ACCOUNT_JSON) {
-    out.FIREBASE_SERVICE_ACCOUNT_JSON = remote.FIREBASE_SERVICE_ACCOUNT_JSON;
-    return out;
+  if (out.APNS_KEY_ID && (out.APNS_KEY_P8 || out.APNS_KEY_PATH)) return out;
+  for (const k of [
+    "APNS_KEY_ID",
+    "APNS_TEAM_ID",
+    "APNS_BUNDLE_ID",
+    "APNS_KEY_PATH",
+    "APNS_KEY_P8",
+    "APNS_PRODUCTION",
+  ]) {
+    if (!out[k] && remote[k]) out[k] = remote[k];
   }
-  if (remote.FIREBASE_PROJECT_ID) out.FIREBASE_PROJECT_ID = remote.FIREBASE_PROJECT_ID;
-  if (remote.FIREBASE_CLIENT_EMAIL) out.FIREBASE_CLIENT_EMAIL = remote.FIREBASE_CLIENT_EMAIL;
-  if (remote.FIREBASE_PRIVATE_KEY) out.FIREBASE_PRIVATE_KEY = remote.FIREBASE_PRIVATE_KEY;
   return out;
 }
 
@@ -296,7 +299,7 @@ async function main() {
 
   console.log("\n[5/6] ملف .env للإنتاج…");
   const remoteEnv = await readRemoteEnv(conn);
-  const mergedLocal = mergeFirebaseFromRemote(readLocalEnv(), remoteEnv);
+  const mergedLocal = mergeApnsFromRemote(readLocalEnv(), remoteEnv);
   const envBody = buildRemoteEnv({
     ...mergedLocal,
     JWT_SECRET: remoteEnv.JWT_SECRET || mergedLocal.JWT_SECRET,

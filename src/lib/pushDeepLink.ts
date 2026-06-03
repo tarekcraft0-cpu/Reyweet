@@ -1,4 +1,4 @@
-/** توجيه النقر على إشعار FCM داخل التطبيق */
+/** توجيه النقر على إشعار الدفع داخل التطبيق */
 
 export type PushDeepLinkPayload = {
   type?: string;
@@ -24,6 +24,11 @@ export function routePushNotificationTap(data?: PushDeepLinkPayload | null): voi
       : typeof data.chat_id === "string"
         ? data.chat_id
         : "";
+
+  if (type === "CALL" && chatId) {
+    window.dispatchEvent(new CustomEvent("retweet-open-chat", { detail: { chatId } }));
+    return;
+  }
 
   if (type === "MESSAGE" || chatId) {
     if (chatId) {
