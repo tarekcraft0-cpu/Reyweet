@@ -14,6 +14,7 @@ import { useScreenPerf } from "@/lib/useScreenPerf";
 import {
   useAppActions,
   useCurrentUser,
+  useCurrentUserId,
   useIsGuestSelector,
   usePosts,
   useAppSelector,
@@ -317,7 +318,9 @@ export const ReelsScreen = memo(function ReelsScreen({
   const isTabActive = useIsTabActive("reels");
   useScreenPerf("ReelsScreen", { active: isTabActive });
   const t = useT();
-  const me = currentUser!;
+  const meId = useCurrentUserId() ?? "";
+  const meFollowing = currentUser?.following ?? [];
+  const meBlocked = currentUser?.blocked ?? [];
 
   const guestBlock = () => {
     if (!isGuest) return false;
@@ -337,7 +340,7 @@ export const ReelsScreen = memo(function ReelsScreen({
     getLikeCount,
     getCommentCount,
     isLiked: isReelLiked,
-  } = useReelsFeed(me.id, me.blocked ?? [], me.following ?? [], tab);
+  } = useReelsFeed(meId, meBlocked, meFollowing, tab);
   const reels = useMemo(() => {
     return [...reelsFeed].sort((a, b) => {
       const ua = users.find(u => u.id === a.userId);
@@ -735,15 +738,15 @@ export const ReelsScreen = memo(function ReelsScreen({
           }
           const u = users.find(x => x.id === r.userId);
           const friendReposterId = (r.reposts || []).find(
-            uid => uid !== me.id && me.following.includes(uid),
+            uid => uid !== meId && meFollowing.includes(uid),
           );
           const friendReposter = friendReposterId ? users.find(x => x.id === friendReposterId) : null;
           const media = normalizePostMedia(r);
           const liked = isReelLiked(r);
-          const reposted = r.reposts.includes(me.id);
+          const reposted = (r.reposts ?? []).includes(meId);
           const likeCount = getLikeCount(r);
           const commentCount = getCommentCount(r);
-          const notes = visibleMediaNotes(state, "post", r.id, me.id).slice(0, 8);
+          const notes = visibleMediaNotes(state, "post", r.id, meId).slice(0, 8);
           const isActive = isTabActive && activeReelId === r.id;
 
           return (
@@ -773,7 +776,7 @@ export const ReelsScreen = memo(function ReelsScreen({
               />
 
               {/* ── خيارات الريل (صاحبه فقط) ── */}
-              {r.userId === me.id && (
+              {meId && r.userId === meId && (
                 <div className="absolute top-[calc(var(--sat)+3.5rem)] end-4 z-30">
                   <button
                     type="button"
@@ -921,9 +924,10 @@ export const ReelsScreen = memo(function ReelsScreen({
                     {notes.map(n => {
                       const nu = userById(state, n.authorId);
                       if (!nu) return null;
-                      const show = n.authorId === me.id || isMutual(state, me.id, n.authorId);
+                      const show =
+                        !meId || n.authorId === meId || isMutual(state, meId, n.authorId);
                       if (!show) return null;
-                      const canReplyNote = n.authorId !== me.id;
+                      const canReplyNote = meId && n.authorId !== meId;
                       return (
                         <div
                           key={n.id}
@@ -1028,8 +1032,8 @@ export const ReelsScreen = memo(function ReelsScreen({
 
             <div className="flex items-center justify-between px-4 pb-3">
               <span className="text-[15px] font-semibold text-white">
-                {commentsFor.comments.length > 0
-                  ? `${commentsFor.comments.length} تعليق`
+                {(commentsFor.comments?.length ?? 0) > 0
+                  ? `${commentsFor.comments?.length} تعليق`
                   : "تعليقات"}
               </span>
               <button type="button" onClick={() => setCommentsFor(null)} aria-label="إغلاق">
@@ -1038,7 +1042,7 @@ export const ReelsScreen = memo(function ReelsScreen({
             </div>
 
             <div className="flex-1 overflow-y-auto px-4 pb-2 space-y-4 no-scrollbar">
-              {commentsFor.comments.map(c => {
+              {(commentsFor.comments ?? []).map(c => {
                 const cu = userById(state, c.userId);
                 return (
                   <div key={c.id} className="flex gap-2.5 text-sm">
@@ -1072,7 +1076,7 @@ export const ReelsScreen = memo(function ReelsScreen({
                       </button>{" "}
                       <span className="text-white/75">{c.text}</span>
                     </div>
-                    {c.userId === me.id && (
+                    {meId && c.userId === meId && (
                       <div className="relative shrink-0">
                         <button
                           type="button"
@@ -1097,7 +1101,7 @@ export const ReelsScreen = memo(function ReelsScreen({
                   </div>
                 );
               })}
-              {commentsFor.comments.length === 0 && (
+              {(commentsFor.comments?.length ?? 0) === 0 && (
                 <p className="py-8 text-center text-white/40 text-sm">لا تعليقات بعد</p>
               )}
             </div>
@@ -1116,7 +1120,7 @@ export const ReelsScreen = memo(function ReelsScreen({
                       addComment(commentsFor.id, draft);
                       setCommentsFor({
                         ...commentsFor,
-                        comments: [...commentsFor.comments, res.comment],
+                        comments: [...(commentsFor.comments ?? []), res.comment],
                       });
                       setCommentDraft("");
                       return;
@@ -1126,7 +1130,12 @@ export const ReelsScreen = memo(function ReelsScreen({
                   setCommentDraft("");
                 }}
               >
-                <Avatar name={me.username} src={me.avatar} size={32} className="shrink-0" />
+                <Avatar
+                  name={currentUser?.username ?? ""}
+                  src={currentUser?.avatar}
+                  size={32}
+                  className="shrink-0"
+                />
                 <input
                   value={commentDraft}
                   onChange={e => setCommentDraft(e.target.value)}

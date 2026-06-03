@@ -39,12 +39,13 @@ export function useReelsFeed(
 
   const applyFeedPage = useCallback(
     (append: boolean, data: ReelsFeedResponse) => {
-      const posts = data.reels.map(r => {
+      const rows = Array.isArray(data.reels) ? data.reels : [];
+      const posts = rows.map(r => {
         const norm = normalizeReelMediaUrls(r);
         return reelPublicToPost(norm, meId);
       });
       const meta: Record<string, ReelMeta> = {};
-      for (const r of data.reels) {
+      for (const r of rows) {
         const norm = normalizeReelMediaUrls(r);
         meta[norm.postId || norm.id] = reelMetaFromPublic(norm);
       }
@@ -122,17 +123,17 @@ export function useReelsFeed(
   }, []);
 
   const getLikeCount = useCallback(
-    (post: Post) => reelMeta[post.id]?.likesCount ?? post.likes.length,
+    (post: Post) => reelMeta[post.id]?.likesCount ?? post.likes?.length ?? 0,
     [reelMeta],
   );
 
   const getCommentCount = useCallback(
-    (post: Post) => reelMeta[post.id]?.commentsCount ?? post.comments.length,
+    (post: Post) => reelMeta[post.id]?.commentsCount ?? post.comments?.length ?? 0,
     [reelMeta],
   );
 
   const isLiked = useCallback(
-    (post: Post) => reelMeta[post.id]?.likedByMe ?? post.likes.includes(meId),
+    (post: Post) => reelMeta[post.id]?.likedByMe ?? (post.likes?.includes(meId) ?? false),
     [reelMeta, meId],
   );
 
