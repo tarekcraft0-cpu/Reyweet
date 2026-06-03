@@ -156,6 +156,8 @@ export function App() {
     !!scheduleEnt?.hasScheduledPosts,
   );
 
+  const [showOnboarding, setShowOnboarding] = useState(false);
+
   useEffect(() => startPerfSession(), []);
   useEffect(() => {
     bindUnhandledTelemetry();
@@ -261,7 +263,6 @@ export function App() {
   const [storyGalleryOpen, setStoryGalleryOpen] = useState(false);
   const [storyInstagramCameraOpen, setStoryInstagramCameraOpen] = useState(false);
   const [storyCameraDraft, setStoryCameraDraft] = useState<CameraComposeDraft | null>(null);
-  const [showOnboarding, setShowOnboarding] = useState(false);
   const [showWelcome, setShowWelcome] = useState(false);
   /** إعادة فتح منشور/تعليقات بعد الرجوع من بروفايل (لا يُفوَّض لحدث لأن الشاشة كانت مُزالة من الشجرة) */
   const [restorePostContext, setRestorePostContext] = useState<ProfileReturnContext | null>(null);
