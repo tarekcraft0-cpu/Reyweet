@@ -17,6 +17,7 @@ import {
 import { Avatar } from "../Avatar";
 import { VerifiedBadge } from "../VerifiedBadge";
 import { notifyCameraClose, notifyCameraOpen } from "@/lib/camera/cameraEvents";
+import { stampChatCameraImage } from "@/lib/chatCameraBrandStamp";
 import type { CameraComposeDraft } from "../chat/ChatCameraComposeModal";
 import { useApp, userById } from "@/lib/store";
 import { notifyGuestActionBlocked } from "@/lib/guestBlocked";
@@ -170,12 +171,21 @@ export function CameraCaptureShareScreen({
       return;
     }
     const note = caption.trim();
-    onSendToChat({
-      type: draft.kind,
-      content: draft.dataUrl,
-      ...(note ? { shareText: note } : {}),
-    });
-    closeAll();
+    setBusy(true);
+    void (async () => {
+      try {
+        const content =
+          draft.kind === "image" ? await stampChatCameraImage(draft.dataUrl) : draft.dataUrl;
+        onSendToChat({
+          type: draft.kind,
+          content,
+          ...(note ? { shareText: note } : {}),
+        });
+        closeAll();
+      } finally {
+        setBusy(false);
+      }
+    })();
   }, [busy, caption, closeAll, draft, isGuest, onSendToChat]);
 
   const previewLayer = (

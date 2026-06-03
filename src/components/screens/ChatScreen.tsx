@@ -243,26 +243,18 @@ function chatBubbleFilledClass(
     return (
       base +
       (mine
-        ? "bg-emerald-950/90 text-emerald-50 shadow-sm"
-        : "bg-zinc-800 text-zinc-100 shadow-sm")
+        ? "bg-emerald-950/90 text-emerald-50 shadow-none"
+        : "bg-zinc-800 text-zinc-100 shadow-none")
     );
   }
   if (igDm) {
     if (mine) {
-      // رسالتي: أبيض ناصع — Liquid Glass
-      return (
-        base +
-        "bg-white text-black shadow-[0_2px_16px_rgba(0,0,0,0.18)]"
-      );
+      return base + "bg-white text-black shadow-none";
     }
-    // رسالة الآخر: Glass شفاف
-    return (
-      base +
-      "shadow-[0_1px_8px_rgba(0,0,0,0.12)]"
-    );
+    return base + "shadow-none";
   }
   if (mine) {
-    return base + chatMineAccentClass(theme, false) + " shadow-sm";
+    return base + chatMineAccentClass(theme, false) + " shadow-none";
   }
   return base + "bg-zinc-200 text-zinc-900 dark:bg-[#262626] dark:text-zinc-100";
 }
@@ -6468,9 +6460,7 @@ function ChatRoom({
             (isQuranChannel ? "bg-zinc-950" : chromeOnWallpaper ? "bg-transparent" : "")
           }
           style={{
-            paddingBottom: kbSnap.open
-              ? "calc(8px + var(--chat-composer-h, 72px) + var(--retweet-composer-kb-lift, 0px))"
-              : "calc(12px + var(--chat-composer-h, 0px))",
+            paddingBottom: "8px",
           }}
         >
         {(hasOlderMessages || loadingOlderUi) && (

@@ -125,7 +125,7 @@ html.retweet-native-shell select {
 .chat-scroll-pane {
   will-change: scroll-position;
   -webkit-overflow-scrolling: touch;
-  scroll-padding-bottom: var(--chat-scroll-padding-bottom, calc(12px + var(--chat-composer-h, 0px)));
+  scroll-padding-bottom: var(--chat-scroll-padding-bottom, 8px);
   overflow-x: clip;
   overflow-y: auto;
   overscroll-behavior-y: contain;
