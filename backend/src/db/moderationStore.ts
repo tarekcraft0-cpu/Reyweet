@@ -88,6 +88,7 @@ export async function getReport(id: string): Promise<ModerationReport | null> {
 export async function listReports(filter?: {
   status?: string;
   reportedUserId?: string;
+  reporterId?: string;
   q?: string;
   limit?: number;
 }): Promise<ModerationReport[]> {
@@ -95,6 +96,7 @@ export async function listReports(filter?: {
   let rows = db.reports;
   if (filter?.status) rows = rows.filter(r => r.status === filter.status);
   if (filter?.reportedUserId) rows = rows.filter(r => r.reportedUserId === filter.reportedUserId);
+  if (filter?.reporterId) rows = rows.filter(r => r.reporterId === filter.reporterId);
   if (filter?.q?.trim()) {
     const q = filter.q.toLowerCase();
     rows = rows.filter(

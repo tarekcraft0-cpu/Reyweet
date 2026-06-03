@@ -6,6 +6,7 @@ import {
   ReportError,
   submitReport,
   getReportForReporter,
+  listReportsForReporter,
 } from "../moderation/reportService.js";
 import {
   AppealError,
@@ -112,6 +113,16 @@ export function createModerationRouter(authMiddleware: (req: Request, res: Respo
         category: parsed.data.category as import("../../../src/lib/moderationTypes.js").ReportCategoryId,
       });
       return res.status(201).json({ ok: true, reportId: report.id, ticketId: report.id });
+    } catch (e) {
+      return handleReportErr(res, e);
+    }
+  });
+
+  router.get("/v1/moderation/my-reports", authMiddleware, async (req, res) => {
+    try {
+      const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 100));
+      const reports = await listReportsForReporter(uid(req), limit);
+      return res.json({ reports });
     } catch (e) {
       return handleReportErr(res, e);
     }

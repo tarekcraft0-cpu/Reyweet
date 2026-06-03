@@ -65,6 +65,13 @@ export async function apiGetMyReport(reportId: string) {
   );
 }
 
+export async function apiListMyReports(limit = 100) {
+  const qs = limit ? `?limit=${encodeURIComponent(String(limit))}` : "";
+  return modFetch<{
+    reports: Array<ModerationReport & { reportedUsername?: string; categoryLabelAr?: string }>;
+  }>(`/v1/moderation/my-reports${qs}`, { method: "GET" });
+}
+
 export async function apiGetMyModerationStatus() {
   return modFetch<{
     accountStatus: string;

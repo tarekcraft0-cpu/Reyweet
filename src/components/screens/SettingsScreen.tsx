@@ -52,6 +52,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
+  Flag,
   Globe,
   Heart,
   HelpCircle,
@@ -78,6 +79,8 @@ import { StoriesArchiveScreen } from "./StoriesArchiveScreen";
 import { readNotificationPrefs, updateNotificationPrefs } from "@/lib/notificationPrefs";
 import { emitUiToast } from "@/lib/uiToast";
 import { AboutPanel, HelpPanel, TermsPanel } from "../settings/HelpAboutPanels";
+import { MyReportsPanel, type ReportUiStatus } from "../settings/MyReportsPanel";
+import { ReportStatusScreen } from "../moderation/ReportStatusScreen";
 
 type SubView =
   | null
@@ -95,7 +98,8 @@ type SubView =
   | "deleteAccount"
   | "help"
   | "about"
-  | "terms";
+  | "terms"
+  | "myReports";
 
 const PRIVACY_POLICY_URL = `${VERCEL_SITE_URL}/privacy.html`;
 const TERMS_URL = `${VERCEL_SITE_URL}/terms.html`;
@@ -1374,6 +1378,7 @@ export function SettingsScreen({
 
   const closeSubView = useCallback(() => {
     const returnToAccountsCenter = subViewReturnToAccountsCenter;
+    setReportDetail(null);
     setSubView(null);
     setSubViewReturnToAccountsCenter(false);
     setSubscriptionSheetOpen(false);
@@ -1416,6 +1421,9 @@ export function SettingsScreen({
       closeSubView();
     }
   }, [subView, me, closeSubView]);
+  const [reportDetail, setReportDetail] = useState<{ id: string; status?: ReportUiStatus } | null>(
+    null,
+  );
   const [accountsCenterDragY, setAccountsCenterDragY] = useState(0);
   const [accountsCenterDragging, setAccountsCenterDragging] = useState(false);
   const accountsCenterDragRef = React.useRef<{
@@ -1527,9 +1535,28 @@ export function SettingsScreen({
       help: "help",
       about: "about",
       terms: "terms",
+      myReports: "myReports",
     };
     return k && k in map ? t(map[k as keyof typeof map]) : "";
   };
+
+  if (subView === "myReports") {
+    return (
+      <>
+        <MyReportsPanel
+          onBack={closeSubView}
+          onOpenReport={(id, status) => setReportDetail({ id, status })}
+        />
+        {reportDetail && (
+          <ReportStatusScreen
+            reportId={reportDetail.id}
+            initialStatus={reportDetail.status}
+            onClose={() => setReportDetail(null)}
+          />
+        )}
+      </>
+    );
+  }
 
   if (subView === "help") {
     return <HelpPanel onBack={closeSubView} />;
@@ -1834,6 +1861,14 @@ export function SettingsScreen({
                   label="معلوماتك والأذونات"
                   onClick={() => openSubViewFromAccountsCenter("accountInfo")}
                 />
+                {apiBackendEnabled() && currentUser && !isGuestUserId(currentUser.id) ? (
+                  <AccountsCenterRow
+                    icon={Flag}
+                    label={t("myReports")}
+                    subtitle={t("myReportsHint")}
+                    onClick={() => openSubViewFromAccountsCenter("myReports")}
+                  />
+                ) : null}
                 <AccountsCenterRow
                   icon={Bell}
                   label="تفضيلات الإعلانات"
@@ -2026,6 +2061,14 @@ export function SettingsScreen({
       <SectionGap />
       <SectionTitle>{t("support")}</SectionTitle>
       <SettingsCard>
+        {apiBackendEnabled() && currentUser && !isGuestUserId(currentUser.id) ? (
+          <SettingsRow
+            icon={Flag}
+            label={t("myReports")}
+            chevron
+            onClick={() => setSubView("myReports")}
+          />
+        ) : null}
         {apiBackendEnabled() && currentUser && !isGuestUserId(currentUser.id) ? (
           <SettingsRow
             icon={Archive}

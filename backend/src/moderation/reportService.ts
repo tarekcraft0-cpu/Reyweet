@@ -13,6 +13,7 @@ import {
   findDuplicateReport,
   getReport,
   linkDeviceAndIp,
+  listReports,
   saveReport,
 } from "../db/moderationStore.js";
 import { rateLimitClientKey, rateLimitHit } from "../lib/rateLimit.js";
@@ -126,6 +127,24 @@ export async function submitReport(
   await notifyReporterReportSubmitted(report).catch(() => {});
 
   return report;
+}
+
+export async function listReportsForReporter(
+  reporterId: string,
+  limit = 100,
+): Promise<Array<ModerationReport & { reportedUsername?: string; categoryLabelAr?: string }>> {
+  const rows = await listReports({ reporterId, limit });
+  const out: Array<ModerationReport & { reportedUsername?: string; categoryLabelAr?: string }> = [];
+  for (const report of rows) {
+    const reported = await getUserById(report.reportedUserId);
+    const cat = REPORT_CATEGORIES.find(c => c.id === report.category);
+    out.push({
+      ...report,
+      reportedUsername: reported?.username,
+      categoryLabelAr: cat?.labelAr,
+    });
+  }
+  return out;
 }
 
 export async function getReportForReporter(
