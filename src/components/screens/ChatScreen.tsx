@@ -3830,6 +3830,7 @@ function RequestsList({
 }) {
   const { acceptRequest, deleteChat } = useAppActions();
   const allChats = useChats();
+  const state = useAppState();
   const currentUser = useCurrentUser();
   const t = useT();
   const me = currentUser!;
@@ -4311,6 +4312,7 @@ function ChatRoom({
   const dispatchSendRef = useRef<(msg: Omit<Message, "id" | "senderId" | "createdAt">) => boolean>(
     () => false,
   );
+  const lastComposerHRef = useRef(0);
   const composerInputRef = useRef<HTMLTextAreaElement>(null);
   const composingRef = useRef(false);
   /** يمنع onInput/onChange من استرجاع النص بعد تفريغ الحقل عند الإرسال */
@@ -4519,6 +4521,7 @@ function ChatRoom({
   useEffect(() => {
     isLoadingOlderRef.current = false;
     setLoadingOlderUi(false);
+    lastComposerHRef.current = 0;
     const draft = meId ? loadChatDraft(meId, sendChatId) : "";
     setText(draft);
     if (composerInputRef.current) {
@@ -4588,9 +4591,14 @@ function ChatRoom({
       typeof document !== "undefined" &&
       document.documentElement.classList.contains("chat-keyboard-open");
     const h = Math.ceil(rect.height) + (kbOpen ? 0 : 4);
-    if (h > 0) {
+    if (h > 0 && Math.abs(h - lastComposerHRef.current) > 1) {
+      lastComposerHRef.current = h;
       document.documentElement.style.setProperty("--chat-composer-h", `${h}px`);
     }
+  }, []);
+
+  const scrollDistanceFromBottom = useCallback((el: HTMLDivElement) => {
+    return el.scrollHeight - el.scrollTop - el.clientHeight;
   }, []);
 
   const cancelIntroScroll = useCallback(() => {
@@ -4694,6 +4702,8 @@ function ChatRoom({
     syncComposerDockHeight();
     const ro = new ResizeObserver(() => {
       syncComposerDockHeight();
+      const scrollEl = messagesScrollRef.current;
+      if (!scrollEl || scrollDistanceFromBottom(scrollEl) < 4) return;
       scheduleScrollToBottom();
     });
     ro.observe(el);
@@ -4706,6 +4716,7 @@ function ChatRoom({
     plusAttachOpen,
     syncComposerDockHeight,
     scheduleScrollToBottom,
+    scrollDistanceFromBottom,
   ]);
 
   useEffect(() => {
@@ -4969,11 +4980,12 @@ function ChatRoom({
     const ro = new ResizeObserver(() => {
       if (introScrollActiveRef.current) return;
       if (!forceScrollToBottom && !stickToBottomRef.current) return;
+      if (scrollDistanceFromBottom(el) < 4) return;
       scheduleScrollToBottom({ instant: true });
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, [chat.id, scheduleScrollToBottom, forceScrollToBottom]);
+  }, [chat.id, scheduleScrollToBottom, forceScrollToBottom, scrollDistanceFromBottom]);
 
   useLayoutEffect(() => {
     cancelIntroScroll();
