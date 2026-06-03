@@ -14,6 +14,7 @@ import {
   shouldUseVercelApiProxy,
   VERCEL_SITE_URL,
 } from "./lib/read-public-api-url.mjs";
+import { injectNativeCrashFallback } from "./lib/fix-capacitor-html.mjs";
 
 const root = process.cwd();
 const landingDir = path.join(root, "landing");
@@ -186,6 +187,7 @@ for (const rel of appCandidates) {
       `src="/app/native-no-select-bootstrap.js?v=${bootV}"`,
     );
     html = html.replace("</head>", `${apiTag}\n${buildTag}\n${cacheBustTag}\n</head>`);
+    html = injectNativeCrashFallback(html);
     writeFileSync(indexPath, html, "utf8");
   }
   break;

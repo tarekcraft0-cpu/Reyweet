@@ -1,0 +1,38 @@
+# يشغّل بناء iOS على Codemagic عند push إلى main (يتطلب CODEMAGIC_API_TOKEN في Secrets).
+name: Trigger Codemagic iOS
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "codemagic.yaml"
+      - "scripts/prepare-capacitor-ios.mjs"
+      - ".github/workflows/codemagic-ios.yml"
+
+concurrency:
+  group: codemagic-ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Trigger Codemagic OTA signed build
+        env:
+          CODEMAGIC_API_TOKEN: ${{ secrets.CODEMAGIC_API_TOKEN }}
+          CODEMAGIC_WORKFLOW: retweet-ios-ota-signed
+          CODEMAGIC_BRANCH: main
+        run: |
+          if [ -z "$CODEMAGIC_API_TOKEN" ]; then
+            echo "::warning::CODEMAGIC_API_TOKEN غير مضبوط — أضفه في GitHub → Settings → Secrets"
+            exit 0
+          fi
+          node scripts/trigger-codemagic-ios.mjs

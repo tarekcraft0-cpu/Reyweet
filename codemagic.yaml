@@ -19,6 +19,7 @@ workflows:
         bundle_identifier: com.reyweet.app
       vars:
         BUNDLE_ID: com.reyweet.app
+        CAPACITOR_REMOTE_WEB: "1"
         CAPACITOR_WEB_APP_URL: https://reyweet.vercel.app/app
         CAPACITOR_API_URL: https://reyweet.vercel.app
         RETWEET_PUBLIC_API_URL: https://reyweet.vercel.app
@@ -42,6 +43,7 @@ workflows:
           export CAPACITOR_WEB_APP_URL="${CAPACITOR_WEB_APP_URL:-https://reyweet.vercel.app/app}"
           export CAPACITOR_API_URL="${CAPACITOR_API_URL:-https://reyweet.vercel.app}"
           export RETWEET_PUBLIC_API_URL="${RETWEET_PUBLIC_API_URL:-https://reyweet.vercel.app}"
+          export CAPACITOR_REMOTE_WEB="${CAPACITOR_REMOTE_WEB:-1}"
           export CAPACITOR_NATIVE=1
           node scripts/prepare-capacitor-ios.mjs
           npm run ios:icon
@@ -204,6 +206,7 @@ workflows:
           export CAPACITOR_WEB_APP_URL="${CAPACITOR_WEB_APP_URL:-https://reyweet.vercel.app/app}"
           export CAPACITOR_API_URL="${CAPACITOR_API_URL:-https://reyweet.vercel.app}"
           export RETWEET_PUBLIC_API_URL="${RETWEET_PUBLIC_API_URL:-https://reyweet.vercel.app}"
+          export CAPACITOR_REMOTE_WEB="${CAPACITOR_REMOTE_WEB:-1}"
           export CAPACITOR_NATIVE=1
           node scripts/prepare-capacitor-ios.mjs
           node scripts/verify-ios-api-bundle.mjs
@@ -301,6 +304,7 @@ workflows:
           export CAPACITOR_WEB_APP_URL="${CAPACITOR_WEB_APP_URL:-https://reyweet.vercel.app/app}"
           export CAPACITOR_API_URL="${CAPACITOR_API_URL:-https://reyweet.vercel.app}"
           export RETWEET_PUBLIC_API_URL="${RETWEET_PUBLIC_API_URL:-https://reyweet.vercel.app}"
+          export CAPACITOR_REMOTE_WEB="${CAPACITOR_REMOTE_WEB:-1}"
           export CAPACITOR_NATIVE=1
           node scripts/prepare-capacitor-ios.mjs
           node scripts/verify-ios-api-bundle.mjs

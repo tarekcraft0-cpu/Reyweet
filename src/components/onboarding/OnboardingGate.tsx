@@ -1,25 +1,12 @@
-import { useEffect, useState } from "react";
 import type { User } from "@/lib/types";
-import { OnboardingOverlay, isOnboardingDone } from "./OnboardingOverlay";
 
-/** بوابة التعريف — حالة مستقلة عن App لتجنب أخطاء المرجع في الحزمة الأصلية */
-export function OnboardingGate({
-  currentUser,
-  isGuest,
-}: {
+/**
+ * التعريف معطّل مؤقتاً — كان يسبب ReferenceError في IPA القديم (showOnboarding).
+ * يُعاد تفعيله بعد نشر IPA جديد من Codemagic.
+ */
+export function OnboardingGate(_props: {
   currentUser: User | null | undefined;
   isGuest: boolean;
 }) {
-  const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    if (!currentUser || isGuest) {
-      setOpen(false);
-      return;
-    }
-    if (!isOnboardingDone()) setOpen(true);
-  }, [currentUser?.id, isGuest]);
-
-  if (!open || !currentUser || isGuest) return null;
-  return <OnboardingOverlay onDone={() => setOpen(false)} />;
+  return null;
 }

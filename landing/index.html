@@ -648,13 +648,31 @@
           })
           .then(function (info) {
             if (!info) return;
-            if (info.signed !== true && iosNotice) iosNotice.hidden = false;
+            if (info.ipaStale === true) {
+              if (iosNotice) {
+                iosNotice.hidden = false;
+                iosNotice.textContent =
+                  "⚠️ ملف IPA على الموقع قديم ويسبب خطأ showOnboarding. استخدم التطبيق من Safari: " +
+                  (info.useWebAppUrl || "https://reyweet.vercel.app/app/") +
+                  " — أو ابنِ IPA جديد من Codemagic (retweet-ios-ota-signed) ثم npm run ios:ota-ready.";
+              }
+              [iosMain, iosFooter, iosInline].forEach(function (el) {
+                if (!el) return;
+                el.removeAttribute("href");
+                el.classList.add("pointer-events-none", "opacity-50");
+                el.setAttribute("aria-disabled", "true");
+              });
+              if (iosLabel) iosLabel.textContent = "تثبيت iOS — IPA قيد التحديث";
+            } else if (info.signed !== true && iosNotice) {
+              iosNotice.hidden = false;
+            }
             if (iosHint) {
-              iosHint.textContent =
-                "iOS v" +
-                (info.version || "1.0.0") +
-                (info.signed ? " — جاهز للتثبيت من Safari" : " — ينتظر IPA موقّع") +
-                " · نفس الموقع والخادم.";
+              iosHint.textContent = info.ipaStale
+                ? "الويب محدّث · IPA قديم — لا تثبّت حتى بناء جديد"
+                : "iOS v" +
+                  (info.version || "1.0.0") +
+                  (info.signed ? " — جاهز للتثبيت من Safari" : " — ينتظر IPA موقّع") +
+                  " · نفس الموقع والخادم.";
             }
           })
           .catch(function () {});

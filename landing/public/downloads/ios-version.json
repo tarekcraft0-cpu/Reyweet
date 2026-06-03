@@ -1,5 +1,5 @@
 {
-  "version": "1.0.0",
+  "version": "1.0.1",
   "bundleId": "com.reyweet.app",
   "title": "Reyweet",
   "signed": false,
@@ -7,5 +7,10 @@
   "ipaUrl": "https://reyweet.vercel.app/downloads/retweet.ipa",
   "manifestUrl": "https://reyweet.vercel.app/downloads/manifest.plist",
   "webAppUrl": "https://reyweet.vercel.app/app/",
-  "builtAt": "2026-06-02T10:16:55.639Z"
+  "builtAt": "2026-06-02T10:16:55.639Z",
+  "minSourceCommit": "caf3dfe",
+  "ipaStale": true,
+  "staleReason": "ملف retweet.ipa على الموقع قديم (قبل إصلاح showOnboarding). شغّل Codemagic workflow retweet-ios-ota-signed من main ثم npm run ios:ota-ready.",
+  "webAppOk": true,
+  "useWebAppUrl": "https://reyweet.vercel.app/app/"
 }
