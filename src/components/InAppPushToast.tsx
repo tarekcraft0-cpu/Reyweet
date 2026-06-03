@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Bell, X } from "lucide-react";
 import type { InAppPushDetail } from "@/lib/pushNotifications";
 import { routePushNotificationTap, type PushDeepLinkPayload } from "@/lib/pushDeepLink";
+import { readNotificationPrefs } from "@/lib/notificationPrefs";
 
 const TOAST_MS = 4500;
 
@@ -43,6 +44,7 @@ export function InAppPushToast() {
   };
 
   if (!visible || !payload) return null;
+  if (!readNotificationPrefs().pushInAppToast) return null;
 
   return (
     <div

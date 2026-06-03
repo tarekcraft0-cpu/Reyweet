@@ -4,6 +4,7 @@ import { ChatDrawingCanvas } from "./ChatDrawingCanvas";
 import { parseDrawingPayload } from "./drawingPayload";
 import { X, Sparkles, Type as TypeIcon, PenLine, Sticker, Music, Download, LayoutGrid, Infinity, Eye } from "lucide-react";
 import { Avatar } from "../Avatar";
+import { emitUiToast } from "@/lib/uiToast";
 
 function loadImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -47,6 +48,8 @@ export function ChatCameraComposeModal({
   const [preview, setPreview] = useState("");
   const [kind, setKind] = useState<"image" | "video">("image");
   const [viewOnce, setViewOnce] = useState(true);
+  const [textOverlayOpen, setTextOverlayOpen] = useState(false);
+  const [textOverlayValue, setTextOverlayValue] = useState("");
   const splitInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -61,7 +64,7 @@ export function ChatCameraComposeModal({
 
   const applyTextOnImage = useCallback(() => {
     if (kind !== "image" || !draft) return;
-    const t = window.prompt("اكتب على الصورة", "");
+    const t = textOverlayValue.trim();
     if (t == null || !t.trim()) return;
     void (async () => {
       try {
@@ -86,11 +89,13 @@ export function ChatCameraComposeModal({
         ctx.strokeText(line, cx, cy);
         ctx.fillText(line, cx, cy);
         setPreview(canvas.toDataURL("image/jpeg", 0.92));
+        setTextOverlayOpen(false);
+        setTextOverlayValue("");
       } catch {
-        alert("تعذّر تطبيق النص");
+        emitUiToast("تعذّر تطبيق النص");
       }
     })();
-  }, [kind, preview, draft]);
+  }, [kind, preview, draft, textOverlayValue]);
 
   const onPickSecondLayout = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -105,7 +110,7 @@ export function ChatCameraComposeModal({
             const merged = await mergeTwoImagesSideBySide(preview || draft.dataUrl, second);
             setPreview(merged);
           } catch {
-            alert("تعذّر تجميع الصورتين");
+            emitUiToast("تعذّر تجميع الصورتين");
           }
         })();
       };
@@ -135,19 +140,25 @@ export function ChatCameraComposeModal({
           <X size={20} />
         </button>
         <div className="flex min-w-0 flex-1 justify-end gap-2 overflow-x-auto py-1 pe-1 [scrollbar-width:none]">
-          <button type="button" className={toolBtn} aria-label="فلاتر" onClick={() => alert("الفلاتر قريباً")}>
+          <button type="button" className={toolBtn} aria-label="فلاتر" onClick={() => emitUiToast("الفلاتر قريباً")}>
             <Sparkles size={18} />
           </button>
-          <button type="button" className={toolBtn} aria-label="نص" onClick={applyTextOnImage} disabled={kind !== "image"}>
+          <button
+            type="button"
+            className={toolBtn}
+            aria-label="نص"
+            onClick={() => setTextOverlayOpen(true)}
+            disabled={kind !== "image"}
+          >
             <TypeIcon size={18} className={kind !== "image" ? "opacity-40" : ""} />
           </button>
-          <button type="button" className={toolBtn} aria-label="رسم" onClick={() => alert("الرسم قريباً")}>
+          <button type="button" className={toolBtn} aria-label="رسم" onClick={() => emitUiToast("الرسم قريباً")}>
             <PenLine size={18} />
           </button>
-          <button type="button" className={toolBtn} aria-label="ملصقات" onClick={() => alert("الملصقات قريباً")}>
+          <button type="button" className={toolBtn} aria-label="ملصقات" onClick={() => emitUiToast("الملصقات قريباً")}>
             <Sticker size={18} />
           </button>
-          <button type="button" className={toolBtn} aria-label="موسيقى" onClick={() => alert("الموسيقى قريباً")}>
+          <button type="button" className={toolBtn} aria-label="موسيقى" onClick={() => emitUiToast("الموسيقى قريباً")}>
             <Music size={18} />
           </button>
           <button type="button" className={toolBtn} aria-label="تنزيل" onClick={downloadMedia}>
@@ -184,7 +195,7 @@ export function ChatCameraComposeModal({
           </button>
           <button
             type="button"
-            onClick={() => alert("تكرار الفيديو (بوميرانغ) قريباً")}
+            onClick={() => emitUiToast("تكرار الفيديو (بوميرانغ) قريباً")}
             disabled={kind !== "video"}
             className={
               "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium " +
@@ -218,6 +229,39 @@ export function ChatCameraComposeModal({
           إرسال
         </button>
       </div>
+      {textOverlayOpen && kind === "image" && (
+        <div className="absolute inset-0 z-20 flex items-end bg-black/55 p-3">
+          <div className="w-full rounded-2xl border border-white/15 bg-zinc-950 p-3">
+            <p className="mb-2 text-sm font-semibold text-white">اكتب على الصورة</p>
+            <input
+              value={textOverlayValue}
+              onChange={e => setTextOverlayValue(e.target.value)}
+              placeholder="اكتب النص…"
+              className="w-full rounded-xl border border-white/20 bg-black/40 px-3 py-2 text-sm text-white outline-none"
+              autoFocus
+            />
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                className="flex-1 rounded-xl bg-white py-2 text-sm font-semibold text-black"
+                onClick={applyTextOnImage}
+              >
+                تطبيق
+              </button>
+              <button
+                type="button"
+                className="flex-1 rounded-xl border border-white/25 py-2 text-sm text-white"
+                onClick={() => {
+                  setTextOverlayOpen(false);
+                  setTextOverlayValue("");
+                }}
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 

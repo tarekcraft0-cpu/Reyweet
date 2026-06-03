@@ -5733,6 +5733,47 @@ export function AppProvider({
           const storageId =
             isDm && peer ? dmChatId(meId, peer) : payload.chatId!;
           emitMessagesDelivered(storageId, [incoming.id]);
+
+          void import("./notificationPrefs").then(({ readNotificationPrefs }) => {
+            if (!readNotificationPrefs().dmInAppBanner) return;
+            void import("./activeChatFocus").then(({ getActiveChatFocus }) => {
+              const focus = getActiveChatFocus();
+              if (focus && (focus === payload.chatId || focus === storageId)) return;
+              setState(s => {
+                if (!s.currentUserId || s.currentUserId !== meId) return s;
+                const meRow = s.users.find(u => u.id === meId);
+                const mutedIds = meRow?.mutedChatIds || [];
+                const chatKey = storageId;
+                if (mutedIds.includes(chatKey) || mutedIds.includes(payload.chatId!)) return s;
+                const preview =
+                  incoming.type === "text"
+                    ? incoming.content.length > 160
+                      ? `${incoming.content.slice(0, 160)}…`
+                      : incoming.content
+                    : incoming.type === "sticker"
+                      ? "ملصق"
+                      : incoming.type === "image"
+                        ? "صورة"
+                        : "رسالة جديدة";
+                const notifId = `live-${incoming.id}`;
+                if ((s.notifications || []).some(n => n.id === notifId)) return s;
+                const notif: Notification = {
+                  id: notifId,
+                  userId: meId,
+                  fromId: incoming.senderId,
+                  type: "message",
+                  chatId: chatKey,
+                  text: preview,
+                  createdAt: incoming.createdAt ?? Date.now(),
+                  read: false,
+                };
+                return {
+                  ...s,
+                  notifications: [notif, ...(s.notifications || [])].slice(0, 200),
+                };
+              });
+            });
+          });
         }
         return;
       }

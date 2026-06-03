@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo, type ReactNode } from "react";
 import { clearRetweetLocalSession, describeUiError } from "@/lib/uiErrorMessage";
+import { captureUiError } from "@/lib/telemetry";
 
 type Props = { children: ReactNode; label?: string };
 type State = { error: Error | null; componentStack?: string };
@@ -14,6 +15,12 @@ export class AppErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
     console.error("[Retweet] UI crash:", error.message, info.componentStack);
+    captureUiError({
+      message: error.message,
+      stack: error.stack,
+      componentStack: info.componentStack ?? undefined,
+      label: this.props.label,
+    });
     this.setState({ componentStack: info.componentStack ?? undefined });
   }
 

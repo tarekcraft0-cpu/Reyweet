@@ -45,6 +45,12 @@ export function buildProductionFcmMessage(opts: {
     ...(opts.data ?? {}),
   });
 
+  const messageType = data.type || "CUSTOM";
+  const collapseKey =
+    messageType === "MESSAGE" && data.chatId
+      ? `msg_${data.chatId}`.slice(0, 64)
+      : undefined;
+
   return {
     token: opts.token,
     notification: { title: opts.title, body: opts.body },
@@ -52,11 +58,15 @@ export function buildProductionFcmMessage(opts: {
     android: {
       priority: "high",
       ttl: 86_400_000,
+      collapseKey,
       notification: {
         channelId: "retweet_high",
         sound: androidSound,
         priority: "high",
         visibility: "public",
+        defaultSound: true,
+        defaultVibrateTimings: true,
+        notificationCount: 1,
       },
     },
     apns: {
@@ -71,8 +81,21 @@ export function buildProductionFcmMessage(opts: {
           badge: 1,
           "content-available": 1,
           "mutable-content": 1,
+          "thread-id": collapseKey || messageType,
         },
       },
+      fcmOptions: {
+        analyticsLabel: messageType,
+      },
+    },
+    webpush: {
+      headers: { Urgency: "high" },
+      notification: {
+        title: opts.title,
+        body: opts.body,
+        icon: "/app/favicon.png",
+      },
+      fcmOptions: { link: "/" },
     },
   };
 }

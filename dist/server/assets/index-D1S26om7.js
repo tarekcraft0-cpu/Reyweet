@@ -1,10 +1,10 @@
-import { r as reactExports, a2 as getAugmentedNamespace, S as getDefaultExportFromCjs, W as jsxRuntimeExports, V as React__default, a3 as React } from "./server-CwkBbFjQ.js";
+import { r as reactExports, a2 as getAugmentedNamespace, S as getDefaultExportFromCjs, W as jsxRuntimeExports, V as React__default, a3 as React } from "./server-3EhgLyV0.js";
 import require$$0 from "fs";
 import require$$1 from "url";
-import { n as notImplementedClass, a as notImplemented } from "./worker-entry-B0L4pACP.js";
+import { n as notImplementedClass, a as notImplemented } from "./worker-entry-8WRFKG0u.js";
 import require$$3 from "http";
 import require$$4 from "https";
-import { r as reactDomExports, R as ReactDOM } from "./router-CFFoT6fT.js";
+import { r as reactDomExports, R as ReactDOM } from "./router-DGvLW1uF.js";
 import require$$0$1 from "util";
 import require$$1$1 from "stream";
 import require$$1$2 from "zlib";
@@ -13356,6 +13356,37 @@ function AppProvider({
           const peer = payload.members?.find((id) => id !== meId);
           const storageId = isDm && peer ? dmChatId(meId, peer) : payload.chatId;
           emitMessagesDelivered(storageId, [incoming.id]);
+          void Promise.resolve().then(() => notificationPrefs).then(({ readNotificationPrefs: readNotificationPrefs2 }) => {
+            if (!readNotificationPrefs2().dmInAppBanner) return;
+            void import("./activeChatFocus-TXMffFn0.js").then(({ getActiveChatFocus }) => {
+              const focus2 = getActiveChatFocus();
+              if (focus2 && (focus2 === payload.chatId || focus2 === storageId)) return;
+              setState((s) => {
+                if (!s.currentUserId || s.currentUserId !== meId) return s;
+                const meRow = s.users.find((u) => u.id === meId);
+                const mutedIds = meRow?.mutedChatIds || [];
+                const chatKey = storageId;
+                if (mutedIds.includes(chatKey) || mutedIds.includes(payload.chatId)) return s;
+                const preview = incoming.type === "text" ? incoming.content.length > 160 ? `${incoming.content.slice(0, 160)}…` : incoming.content : incoming.type === "sticker" ? "ملصق" : incoming.type === "image" ? "صورة" : "رسالة جديدة";
+                const notifId = `live-${incoming.id}`;
+                if ((s.notifications || []).some((n) => n.id === notifId)) return s;
+                const notif = {
+                  id: notifId,
+                  userId: meId,
+                  fromId: incoming.senderId,
+                  type: "message",
+                  chatId: chatKey,
+                  text: preview,
+                  createdAt: incoming.createdAt ?? Date.now(),
+                  read: false
+                };
+                return {
+                  ...s,
+                  notifications: [notif, ...s.notifications || []].slice(0, 200)
+                };
+              });
+            });
+          });
         }
         return;
       }
@@ -21983,6 +22014,68 @@ const uiErrorMessage = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defi
   clearRetweetLocalSession,
   describeUiError
 }, Symbol.toStringTag, { value: "Module" }));
+const TELEMETRY_KEY = "retweet_recent_telemetry_v1";
+function persistLocal(payload) {
+  if (typeof window === "undefined") return;
+  try {
+    const raw = localStorage.getItem(TELEMETRY_KEY);
+    const prev = raw ? JSON.parse(raw) : [];
+    const next = [payload, ...prev].slice(0, 20);
+    localStorage.setItem(TELEMETRY_KEY, JSON.stringify(next));
+  } catch {
+  }
+}
+function sendToEndpoint(payload) {
+  if (typeof navigator === "undefined") return;
+  try {
+    const body = JSON.stringify(payload);
+    if (navigator.sendBeacon) {
+      const blob = new Blob([body], { type: "application/json" });
+      navigator.sendBeacon("/api/client-telemetry", blob);
+      return;
+    }
+    void fetch("/api/client-telemetry", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body,
+      keepalive: true
+    });
+  } catch {
+  }
+}
+function captureUiError(input) {
+  const payload = {
+    type: "ui_error",
+    message: input.message,
+    stack: input.stack,
+    componentStack: input.componentStack,
+    label: input.label,
+    ts: Date.now()
+  };
+  persistLocal(payload);
+  sendToEndpoint(payload);
+}
+function bindUnhandledTelemetry() {
+  if (typeof window === "undefined") return;
+  const marker = "__retweet_telemetry_bound__";
+  if (window[marker]) return;
+  window[marker] = true;
+  window.addEventListener("error", (ev) => {
+    captureUiError({
+      message: ev.message || "window.error",
+      stack: ev.error?.stack,
+      label: "window-error"
+    });
+  });
+  window.addEventListener("unhandledrejection", (ev) => {
+    const reason = ev.reason instanceof Error ? ev.reason : new Error(String(ev.reason));
+    captureUiError({
+      message: reason.message || "unhandledrejection",
+      stack: reason.stack,
+      label: "window-unhandledrejection"
+    });
+  });
+}
 class AppErrorBoundary extends reactExports.Component {
   state = { error: null };
   static getDerivedStateFromError(error) {
@@ -21990,6 +22083,12 @@ class AppErrorBoundary extends reactExports.Component {
   }
   componentDidCatch(error, info) {
     console.error("[Retweet] UI crash:", error.message, info.componentStack);
+    captureUiError({
+      message: error.message,
+      stack: error.stack,
+      componentStack: info.componentStack ?? void 0,
+      label: this.props.label
+    });
     this.setState({ componentStack: info.componentStack ?? void 0 });
   }
   render() {
@@ -30514,6 +30613,10 @@ function ChatDrawingCanvas({
     }
   );
 }
+function emitUiToast(message) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent("retweet-ui-toast", { detail: { message } }));
+}
 function ViewOnceMediaOverlay({
   media,
   src,
@@ -30551,6 +30654,8 @@ function ChatDrawComposeModal({
   const [penColor, setPenColor] = reactExports.useState("#ffffff");
   const [penWidth, setPenWidth] = reactExports.useState(5);
   const [viewOnce, setViewOnce] = reactExports.useState(false);
+  const [textInputOpen, setTextInputOpen] = reactExports.useState(false);
+  const [textInputValue, setTextInputValue] = reactExports.useState("");
   const draftRef = reactExports.useRef(null);
   const PEN_COLORS = ["#ffffff", "#000000", "#ff3040", "#fcb045", "#833ab4", "#4fce5d", "#00c9ff", "#ffe500"];
   const redraw = reactExports.useCallback(() => {
@@ -30607,7 +30712,7 @@ function ChatDrawComposeModal({
   const addTextCenter = reactExports.useCallback(() => {
     const canvas2 = canvasRef.current;
     if (!canvas2) return;
-    const raw = window.prompt("اكتب على الشاشة", "");
+    const raw = textInputValue.trim();
     if (raw == null || !raw.trim()) return;
     const fontSize = Math.max(22, Math.round(canvas2.width / 14));
     setLayers((prev) => [
@@ -30621,7 +30726,9 @@ function ChatDrawComposeModal({
         fontSize
       }
     ]);
-  }, [penColor]);
+    setTextInputOpen(false);
+    setTextInputValue("");
+  }, [penColor, textInputValue]);
   const onPointerDown = (e) => {
     if (!canvasRef.current) return;
     e.preventDefault();
@@ -30731,7 +30838,7 @@ function ChatDrawComposeModal({
               w
             )),
             /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: undo, className: toolBtn + " ms-auto", "aria-label": "تراجع", disabled: !layers2.length, children: /* @__PURE__ */ jsxRuntimeExports.jsx(Undo2, { size: 18, className: layers2.length ? "" : "opacity-40" }) }),
-            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: addTextCenter, className: toolBtn, "aria-label": "نص", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Type, { size: 18 }) }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { type: "button", onClick: () => setTextInputOpen(true), className: toolBtn, "aria-label": "نص", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Type, { size: 18 }) }),
             /* @__PURE__ */ jsxRuntimeExports.jsx(
               "button",
               {
@@ -30770,7 +30877,43 @@ function ChatDrawComposeModal({
               ]
             }
           )
-        ] })
+        ] }),
+        textInputOpen && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 z-10 flex items-end bg-black/55 p-3", children: /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "w-full rounded-2xl border border-white/15 bg-zinc-950 p-3", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mb-2 text-sm font-semibold text-white", children: "اكتب على الشاشة" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(
+            "input",
+            {
+              value: textInputValue,
+              onChange: (e) => setTextInputValue(e.target.value),
+              placeholder: "اكتب النص…",
+              className: "w-full rounded-xl border border-white/20 bg-black/40 px-3 py-2 text-sm text-white outline-none",
+              autoFocus: true
+            }
+          ),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mt-3 flex gap-2", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                type: "button",
+                className: "flex-1 rounded-xl bg-white py-2 text-sm font-semibold text-black",
+                onClick: addTextCenter,
+                children: "تطبيق"
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                type: "button",
+                className: "flex-1 rounded-xl border border-white/25 py-2 text-sm text-white",
+                onClick: () => {
+                  setTextInputOpen(false);
+                  setTextInputValue("");
+                },
+                children: "إلغاء"
+              }
+            )
+          ] })
+        ] }) })
       ]
     }
   );
@@ -31925,14 +32068,14 @@ async function ensureNativeKeyboardBridge() {
   nativeListenersReady = true;
   try {
     const [{ Keyboard }, { Capacitor: Capacitor2 }] = await Promise.all([
-      import("./index-BsNFNSkY.js"),
+      import("./index-BvTMBYsz.js"),
       Promise.resolve().then(() => index$1)
     ]);
     if (!Capacitor2.isNativePlatform()) return;
     useNativeKeyboardHeight = true;
     document.documentElement.classList.add("retweet-kb-body-resize");
     try {
-      const { KeyboardResize } = await import("./index-BsNFNSkY.js");
+      const { KeyboardResize } = await import("./index-BvTMBYsz.js");
       await Keyboard.setResizeMode({ mode: KeyboardResize.None });
     } catch {
     }
@@ -35065,11 +35208,11 @@ function MentionComposerField({
     )
   ] });
 }
-const KEY$1 = "retweet-quick-replies";
+const KEY$2 = "retweet-quick-replies";
 function loadQuickReplies(userId) {
   if (typeof localStorage === "undefined") return [];
   try {
-    const raw = localStorage.getItem(`${KEY$1}:${userId}`);
+    const raw = localStorage.getItem(`${KEY$2}:${userId}`);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed.filter((x) => x && typeof x.text === "string").slice(0, 20) : [];
@@ -35079,7 +35222,7 @@ function loadQuickReplies(userId) {
 }
 function saveQuickReplies(userId, items) {
   if (typeof localStorage === "undefined") return;
-  localStorage.setItem(`${KEY$1}:${userId}`, JSON.stringify(items.slice(0, 20)));
+  localStorage.setItem(`${KEY$2}:${userId}`, JSON.stringify(items.slice(0, 20)));
 }
 const DEFAULT_QUICK_REPLIES_AR = [
   "شكراً لك 🙏",
@@ -39023,7 +39166,7 @@ function CreateGroup({ mode: mode2, onBack, onCreated }) {
             setAvatar(up.url);
             return;
           }
-          alert(up.error || "فشل رفع الصورة");
+          emitUiToast(up.error || "فشل رفع الصورة");
           return;
         }
         const r2 = new FileReader();
@@ -39081,7 +39224,7 @@ function CreateGroup({ mode: mode2, onBack, onCreated }) {
         {
           type: "button",
           onClick: () => {
-            if (!name.trim()) return alert("اكتب اسم");
+            if (!name.trim()) return emitUiToast("اكتب اسم");
             setStep(2);
           },
           className: "w-full rounded-2xl bg-primary py-3 font-semibold text-primary-foreground",
@@ -39171,7 +39314,7 @@ function PoolGameInviteBubble({
       });
       if (!r2.ok) {
         setStatus("pending");
-        alert("تعذّر إنشاء الغرفة");
+        emitUiToast("تعذّر إنشاء الغرفة");
         return;
       }
       const data = await r2.json();
@@ -39259,10 +39402,12 @@ function ChatRoom({
   const [vanishMessages, setVanishMessages] = reactExports.useState([]);
   const [showPoolInviteModal, setShowPoolInviteModal] = reactExports.useState(false);
   const [localPoolRoomId, setLocalPoolRoomId] = reactExports.useState(null);
+  const [offlineQueuedCount, setOfflineQueuedCount] = reactExports.useState(0);
   const recRef = reactExports.useRef(null);
   const chunksRef = reactExports.useRef([]);
   const recordStartRef = reactExports.useRef(0);
   const sendChatId = reactExports.useMemo(() => chatMergeKey(chat, meId), [chat, meId]);
+  const offlineQueueKey = reactExports.useMemo(() => `retweet_chat_offline_queue_${meId}_${sendChatId}`, [meId, sendChatId]);
   const chatIdRef = reactExports.useRef(sendChatId);
   chatIdRef.current = sendChatId;
   reactExports.useEffect(() => {
@@ -39382,6 +39527,50 @@ function ChatRoom({
   const isLoadingOlderRef = reactExports.useRef(false);
   const draftSaveTimerRef = reactExports.useRef(0);
   const [sendPulse, setSendPulse] = reactExports.useState(false);
+  const enqueueOfflineText = reactExports.useCallback((content) => {
+    if (!content.trim()) return;
+    try {
+      const raw = localStorage.getItem(offlineQueueKey);
+      const list = raw ? JSON.parse(raw) : [];
+      const next = [...list, content].slice(-30);
+      localStorage.setItem(offlineQueueKey, JSON.stringify(next));
+      setOfflineQueuedCount(next.length);
+      emitUiToast("تم حفظ الرسالة مؤقتاً وسيتم إرسالها عند عودة الاتصال");
+    } catch {
+      emitUiToast("تعذر حفظ الرسالة المؤجلة");
+    }
+  }, [offlineQueueKey]);
+  reactExports.useEffect(() => {
+    try {
+      const raw = localStorage.getItem(offlineQueueKey);
+      const list = raw ? JSON.parse(raw) : [];
+      setOfflineQueuedCount(Array.isArray(list) ? list.length : 0);
+    } catch {
+      setOfflineQueuedCount(0);
+    }
+  }, [offlineQueueKey]);
+  reactExports.useEffect(() => {
+    const flushOffline = () => {
+      if (!navigator.onLine) return;
+      try {
+        const raw = localStorage.getItem(offlineQueueKey);
+        const list = raw ? JSON.parse(raw) : [];
+        if (!Array.isArray(list) || list.length === 0) return;
+        let sent = 0;
+        for (const body of list) {
+          const ok = dispatchSendRef.current({ type: "text", content: body });
+          if (ok) sent += 1;
+        }
+        localStorage.removeItem(offlineQueueKey);
+        setOfflineQueuedCount(0);
+        if (sent > 0) emitUiToast(`تم إرسال ${sent} رسالة مؤجلة`);
+      } catch {
+      }
+    };
+    window.addEventListener("online", flushOffline);
+    flushOffline();
+    return () => window.removeEventListener("online", flushOffline);
+  }, [offlineQueueKey]);
   reactExports.useEffect(() => {
     setVisibleWindowCount(60);
     isLoadingOlderRef.current = false;
@@ -39606,7 +39795,7 @@ function ChatRoom({
       recordStartRef.current = 0;
     };
     window.retweetOnVoiceRecordError = (message) => {
-      window.alert(message);
+      emitUiToast(message);
       setRecording(false);
       recordStartRef.current = 0;
     };
@@ -39928,7 +40117,7 @@ function ChatRoom({
         const isVid = file.type.startsWith("video/");
         const isAud = file.type.startsWith("audio/");
         if (!isVid && !isAud) {
-          window.alert("اختر مقطع فيديو أو ملف صوتي (مثل m4a أو mp3).");
+          emitUiToast("اختر مقطع فيديو أو ملف صوتي (مثل m4a أو mp3).");
           return;
         }
         const durationSec = isVid ? await readVideoDurationSec(file) : await readAudioDurationSec(file);
@@ -39955,7 +40144,7 @@ function ChatRoom({
           reader.readAsDataURL(compressed);
         } catch (err) {
           console.error("[gallery-voice] failed:", err);
-          window.alert("تعذّر إرسال المقطع كرسالة صوتية. جرّب من جديد أو قصّر طول الفيديو.");
+          emitUiToast("تعذّر إرسال المقطع كرسالة صوتية. جرّب من جديد أو قصّر طول الفيديو.");
         }
       })();
     },
@@ -40081,17 +40270,17 @@ function ChatRoom({
       return;
     }
     if (typeof window !== "undefined" && !window.isSecureContext) {
-      window.alert(
+      emitUiToast(
         "التسجيل الصوتي يتطلب اتصالاً آمناً (HTTPS). في تطبيق Expo يُفعَّل تلقائياً — أعد فتح التطبيق بعد التحديث."
       );
       return;
     }
     if (typeof window === "undefined" || !navigator.mediaDevices?.getUserMedia) {
-      window.alert("التسجيل الصوتي غير متاح في هذا المتصفّح.");
+      emitUiToast("التسجيل الصوتي غير متاح في هذا المتصفّح.");
       return;
     }
     if (typeof MediaRecorder === "undefined") {
-      window.alert("المتصفّح لا يدعم تسجيل الصوت. جرّب متصفّحاً محدّثاً أو حدّث النظام.");
+      emitUiToast("المتصفّح لا يدعم تسجيل الصوت. جرّب متصفّحاً محدّثاً أو حدّث النظام.");
       return;
     }
     try {
@@ -40118,7 +40307,7 @@ function ChatRoom({
         const flushAndSend = () => {
           const blob = new Blob(chunksRef.current, { type: rec.mimeType || "audio/webm" });
           if (blob.size < 64) {
-            window.alert("التسجيل قصير جداً أو فارغ — اضغط الميكروفون ثم «إيقاف» بعد ثانية على الأقل.");
+            emitUiToast("التسجيل قصير جداً أو فارغ — اضغط الميكروفون ثم «إيقاف» بعد ثانية على الأقل.");
             return;
           }
           const reader = new FileReader();
@@ -40142,7 +40331,7 @@ function ChatRoom({
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       const low = msg.toLowerCase();
-      window.alert(
+      emitUiToast(
         low.includes("notallowed") || low.includes("permission") || low.includes("denied") ? "يُرفض الميكروفون — من إعدادات المتصفّح أو التطبيق اسمح بالميكروفون لهذا الموقع ثم أعد المحاولة." : "لم يُسمح بالميكروفون أو تعذّر التسجيل."
       );
     }
@@ -40536,6 +40725,11 @@ function ChatRoom({
     if (!body) return;
     const replyTarget = replyingTo;
     const rt = replyTarget ? { id: replyTarget.id, content: chatReplyPreview(replyTarget), type: replyTarget.type } : void 0;
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      clearComposer();
+      enqueueOfflineText(body);
+      return;
+    }
     clearComposer();
     blockMicUntilRef.current = Date.now() + 520;
     setComposerMicCooldown(true);
@@ -40566,7 +40760,7 @@ function ChatRoom({
       scrollMessagesToBottom({ instant: true });
       requestAnimationFrame(() => scrollMessagesToBottom({ instant: true }));
     });
-  }, [readComposerBody, replyingTo, dispatchSend, clearComposer, syncComposerDockHeight, scrollMessagesToBottom, cancelIntroScroll, chat.id]);
+  }, [readComposerBody, replyingTo, dispatchSend, clearComposer, syncComposerDockHeight, scrollMessagesToBottom, cancelIntroScroll, chat.id, enqueueOfflineText]);
   const edgeSwipeBackBlocked = reactExports.useMemo(
     () => !!messageContext || !!forwardingMessage || !!cameraCompose || instagramCameraOpen || drawComposeOpen || !!viewOnceOverlay || !!inlineMediaViewer || !!shareFeedOpen || showStickers || recording || showPrivacyMenu,
     [
@@ -41230,7 +41424,7 @@ function ChatRoom({
                           } catch {
                           }
                         }
-                        alert(t("msgCopied"));
+                        emitUiToast(t("msgCopied"));
                         closeCtx();
                       };
                       const forwardContext = () => {
@@ -41325,7 +41519,7 @@ function ChatRoom({
                                 className: "flex w-full items-center gap-3 border-t border-white/5 px-4 py-3.5 text-start text-sm hover:bg-white/5",
                                 onClick: () => {
                                   addFavoriteStickerContent(m.content);
-                                  alert(t("stickerFavoriteAdded"));
+                                  emitUiToast(t("stickerFavoriteAdded"));
                                   closeCtx();
                                 },
                                 children: [
@@ -41384,7 +41578,7 @@ function ChatRoom({
                                 type: "button",
                                 className: "flex w-full items-center gap-3 border-t border-white/5 px-4 py-3.5 text-start text-sm text-red-400 hover:bg-red-500/10",
                                 onClick: () => {
-                                  alert(t("msgReportThanks"));
+                                  emitUiToast(t("msgReportThanks"));
                                   closeCtx();
                                 },
                                 children: [
@@ -41398,7 +41592,7 @@ function ChatRoom({
                               {
                                 type: "button",
                                 className: "flex w-full items-center gap-3 border-t border-white/5 px-4 py-3.5 text-start text-sm text-zinc-300 hover:bg-white/5",
-                                onClick: () => alert(t("msgMoreSoon")),
+                                onClick: () => emitUiToast(t("msgMoreSoon")),
                                 children: [
                                   /* @__PURE__ */ jsxRuntimeExports.jsx(Ellipsis, { size: 20, className: "shrink-0 opacity-80" }),
                                   /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "flex-1", children: t("msgMore") }),
@@ -41507,6 +41701,11 @@ function ChatRoom({
                           {
                             className: isQuranChannel ? "border-t border-zinc-700 bg-zinc-900" : "bg-transparent",
                             children: [
+                              typeof navigator !== "undefined" && !navigator.onLine && /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "px-3 pt-2 text-center text-xs text-amber-600", children: "غير متصل: سيتم حفظ الرسائل مؤقتًا حتى عودة الإنترنت." }),
+                              offlineQueuedCount > 0 && /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { className: "px-3 pt-2 text-center text-xs text-muted-foreground", children: [
+                                "رسائل مؤجلة: ",
+                                offlineQueuedCount
+                              ] }),
                               /* @__PURE__ */ jsxRuntimeExports.jsx(ChatQuickRepliesBar, { me, onPick: (t2) => setText((prev) => prev ? `${prev} ${t2}` : t2) }),
                               replyingTo && /* @__PURE__ */ jsxRuntimeExports.jsx(
                                 ChatComposerReplyBar,
@@ -42244,11 +42443,11 @@ const ProfileTabPanel = reactExports.memo(function ProfileTabPanel2({
 }) {
   return /* @__PURE__ */ jsxRuntimeExports.jsx(TabPanelShell, { lockScroll, fullHeight: true, children: lockScroll ? /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "absolute inset-0 z-0 flex min-h-0 flex-col overflow-hidden", children }) : children });
 });
-const KEY = "retweet-scheduled-posts";
+const KEY$1 = "retweet-scheduled-posts";
 function loadScheduledPosts(userId) {
   if (typeof localStorage === "undefined") return [];
   try {
-    const raw = localStorage.getItem(`${KEY}:${userId}`);
+    const raw = localStorage.getItem(`${KEY$1}:${userId}`);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
@@ -42258,7 +42457,7 @@ function loadScheduledPosts(userId) {
 }
 function saveScheduledPosts(userId, items) {
   if (typeof localStorage === "undefined") return;
-  localStorage.setItem(`${KEY}:${userId}`, JSON.stringify(items.slice(0, 50)));
+  localStorage.setItem(`${KEY$1}:${userId}`, JSON.stringify(items.slice(0, 50)));
 }
 function addScheduledPost(userId, draft) {
   const item = {
@@ -52254,6 +52453,73 @@ function StoriesArchiveScreen({ onBack }) {
     )
   ] });
 }
+const KEY = "retweet_notification_prefs_v1";
+const DEFAULT_PREFS = {
+  pushEnabled: true,
+  dmInAppBanner: true,
+  pushInAppToast: true,
+  mentionPush: true,
+  followPush: true
+};
+function readNotificationPrefs() {
+  if (typeof window === "undefined") return DEFAULT_PREFS;
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return DEFAULT_PREFS;
+    const parsed = JSON.parse(raw);
+    return {
+      pushEnabled: parsed.pushEnabled !== false,
+      dmInAppBanner: parsed.dmInAppBanner !== false,
+      pushInAppToast: parsed.pushInAppToast !== false,
+      mentionPush: parsed.mentionPush !== false,
+      followPush: parsed.followPush !== false
+    };
+  } catch {
+    return DEFAULT_PREFS;
+  }
+}
+function writeNotificationPrefs(next) {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(KEY, JSON.stringify(next));
+    window.dispatchEvent(new CustomEvent("retweet-notification-prefs-changed", { detail: next }));
+  } catch {
+  }
+}
+function updateNotificationPrefs(patch) {
+  const next = { ...readNotificationPrefs(), ...patch };
+  writeNotificationPrefs(next);
+  void import("./pushApi-Clx6jtmM.js").then((m) => m.apiSyncNotificationPrefs(next));
+  return next;
+}
+function mergeServerNotificationPrefs(server2) {
+  const local = readNotificationPrefs();
+  const next = {
+    pushEnabled: server2.pushEnabled ?? local.pushEnabled,
+    dmInAppBanner: server2.dmInAppBanner ?? local.dmInAppBanner,
+    pushInAppToast: server2.pushInAppToast ?? local.pushInAppToast,
+    mentionPush: server2.mentionPush ?? local.mentionPush,
+    followPush: server2.followPush ?? local.followPush
+  };
+  writeNotificationPrefs(next);
+  return next;
+}
+async function hydrateNotificationPrefsFromServer() {
+  try {
+    const { apiFetchNotificationPrefsFromServer } = await import("./pushApi-Clx6jtmM.js");
+    const remote = await apiFetchNotificationPrefsFromServer();
+    if (remote) mergeServerNotificationPrefs(remote);
+  } catch {
+  }
+}
+const notificationPrefs = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.defineProperty({
+  __proto__: null,
+  hydrateNotificationPrefsFromServer,
+  mergeServerNotificationPrefs,
+  readNotificationPrefs,
+  updateNotificationPrefs,
+  writeNotificationPrefs
+}, Symbol.toStringTag, { value: "Module" }));
 function AppErrorBoundaryLocal({ children, label }) {
   return /* @__PURE__ */ jsxRuntimeExports.jsx(AppErrorBoundary, { label, children });
 }
@@ -52464,6 +52730,139 @@ function PlaceholderPanel({ title, hint, onBack }) {
       /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-secondary border border-border", children: /* @__PURE__ */ jsxRuntimeExports.jsx(Info, { size: 28, className: "text-muted-foreground" }) }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-sm leading-relaxed text-muted-foreground", children: hint }),
       /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mt-3 text-xs text-muted-foreground/80", children: t("comingSoonPanel") })
+    ] })
+  ] });
+}
+function NotificationsSettingsPanel({ onBack }) {
+  const [prefs, setPrefs] = reactExports.useState(() => readNotificationPrefs());
+  const [permState, setPermState] = reactExports.useState(
+    "loading"
+  );
+  const [tokenCount, setTokenCount] = reactExports.useState(null);
+  const [fcmReady, setFcmReady] = reactExports.useState(null);
+  const [testBusy, setTestBusy] = reactExports.useState(false);
+  const t = useT();
+  const refreshStatus = reactExports.useCallback(() => {
+    void import("./pushNotifications-DstEF_-7.js").then(
+      (m) => m.getPushPermissionState().then((s) => setPermState(s))
+    );
+    void import("./pushApi-Clx6jtmM.js").then(
+      (m) => m.apiFetchPushStatus().then((st) => {
+        if (!st) return;
+        setTokenCount(st.tokenCount);
+        setFcmReady(st.configured);
+      })
+    );
+  }, []);
+  reactExports.useEffect(() => {
+    refreshStatus();
+    const onPrefs = () => setPrefs(readNotificationPrefs());
+    window.addEventListener("retweet-notification-prefs-changed", onPrefs);
+    return () => window.removeEventListener("retweet-notification-prefs-changed", onPrefs);
+  }, [refreshStatus]);
+  const permLabel = permState === "loading" ? "…" : permState === "granted" ? "مفعّل على الجهاز" : permState === "denied" ? "مرفوض — فعّله من إعدادات النظام" : permState === "prompt" ? "يحتاج موافقتك" : "غير مدعوم على هذا الجهاز";
+  const toggle = (patch) => {
+    const next = updateNotificationPrefs(patch);
+    setPrefs(next);
+    if (patch.pushEnabled === false) {
+      void import("./pushNotifications-DstEF_-7.js").then((m) => m.teardownPushNotifications());
+      refreshStatus();
+      emitUiToast(t("save"));
+      return;
+    }
+    if (patch.pushEnabled === true) {
+      void import("./pushNotifications-DstEF_-7.js").then(async (m) => {
+        const r2 = await m.requestPushPermissionAndRegister();
+        refreshStatus();
+        if (!r2.ok) {
+          emitUiToast(
+            r2.state === "denied" ? "فعّل الإشعارات من إعدادات iOS ثم أعد المحاولة" : "لم يُمنح إذن الإشعارات"
+          );
+          return;
+        }
+        emitUiToast("تم تفعيل إشعارات الدفع");
+      });
+      return;
+    }
+    emitUiToast(t("save"));
+  };
+  const enableSystemPermission = () => {
+    void import("./pushNotifications-DstEF_-7.js").then(async (m) => {
+      const r2 = await m.requestPushPermissionAndRegister();
+      refreshStatus();
+      if (r2.ok) emitUiToast("تم تسجيل الجهاز للإشعارات");
+      else if (r2.state === "denied") emitUiToast("الإذن مرفوض — افتح إعدادات النظام");
+      else emitUiToast("تعذّر طلب الإذن");
+    });
+  };
+  const sendTest = () => {
+    setTestBusy(true);
+    void import("./pushApi-Clx6jtmM.js").then(async (m) => {
+      const r2 = await m.apiSendTestPush();
+      setTestBusy(false);
+      refreshStatus();
+      emitUiToast(r2.ok ? "أُرسل إشعار تجريبي" : r2.error || "فشل الإرسال");
+    });
+  };
+  return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "settings-screen-root min-h-full w-full overflow-x-hidden bg-background pb-8", children: [
+    /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsHeader, { title: t("notificationsSettings"), onBack, navScope: "local" }),
+    /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mx-4 mt-4 rounded-xl border border-border bg-card p-4 space-y-3", children: [
+      /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs leading-relaxed text-muted-foreground", children: "إشعارات الدفع الحقيقية (FCM) للرسائل والتفاعلات — مع تنبيهات داخل التطبيق." }),
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "rounded-lg bg-secondary/50 px-3 py-2 text-xs text-muted-foreground space-y-1", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "font-semibold text-foreground", children: "إذن الجهاز: " }),
+          permLabel
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "font-semibold text-foreground", children: "الخادم: " }),
+          fcmReady === null ? "…" : fcmReady ? "FCM جاهز" : "FCM غير مُعدّ — أضف مفاتيح Firebase للخادم"
+        ] }),
+        tokenCount != null ? /* @__PURE__ */ jsxRuntimeExports.jsxs("p", { children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { className: "font-semibold text-foreground", children: "أجهزتك المسجّلة: " }),
+          tokenCount
+        ] }) : null
+      ] }),
+      permState !== "granted" && permState !== "loading" && permState !== "unsupported" ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          type: "button",
+          className: "w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground",
+          onClick: enableSystemPermission,
+          children: "السماح بالإشعارات"
+        }
+      ) : null,
+      prefs.pushEnabled && permState === "granted" ? /* @__PURE__ */ jsxRuntimeExports.jsx(
+        "button",
+        {
+          type: "button",
+          disabled: testBusy || fcmReady === false,
+          className: "w-full rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold disabled:opacity-50",
+          onClick: sendTest,
+          children: testBusy ? "جاري الإرسال…" : "إرسال إشعار تجريبي"
+        }
+      ) : null,
+      /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "space-y-3 pt-1", children: [
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "flex items-center justify-between gap-3 text-sm", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "إشعارات الدفع" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(IgToggle, { on: prefs.pushEnabled, onToggle: () => toggle({ pushEnabled: !prefs.pushEnabled }) })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "flex items-center justify-between gap-3 text-sm", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "تنبيهات الرسائل داخل التطبيق" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(IgToggle, { on: prefs.dmInAppBanner, onToggle: () => toggle({ dmInAppBanner: !prefs.dmInAppBanner }) })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "flex items-center justify-between gap-3 text-sm", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "تنبيهات الدفع داخل التطبيق" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(IgToggle, { on: prefs.pushInAppToast, onToggle: () => toggle({ pushInAppToast: !prefs.pushInAppToast }) })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "flex items-center justify-between gap-3 text-sm", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "إشعارات المنشن" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(IgToggle, { on: prefs.mentionPush, onToggle: () => toggle({ mentionPush: !prefs.mentionPush }) })
+        ] }),
+        /* @__PURE__ */ jsxRuntimeExports.jsxs("label", { className: "flex items-center justify-between gap-3 text-sm", children: [
+          /* @__PURE__ */ jsxRuntimeExports.jsx("span", { children: "إشعارات المتابعة" }),
+          /* @__PURE__ */ jsxRuntimeExports.jsx(IgToggle, { on: prefs.followPush, onToggle: () => toggle({ followPush: !prefs.followPush }) })
+        ] })
+      ] })
     ] })
   ] });
 }
@@ -53131,7 +53530,7 @@ function SettingsScreen({
     return /* @__PURE__ */ jsxRuntimeExports.jsx(PlaceholderPanel, { title: t("timeManagement"), hint: t("timeMgmtHint"), onBack: closeSubView });
   }
   if (subView === "notifications") {
-    return /* @__PURE__ */ jsxRuntimeExports.jsx(PlaceholderPanel, { title: t("notificationsSettings"), hint: t("comingSoonPanel"), onBack: closeSubView });
+    return /* @__PURE__ */ jsxRuntimeExports.jsx(NotificationsSettingsPanel, { onBack: closeSubView });
   }
   if (subView === "security") {
     return /* @__PURE__ */ jsxRuntimeExports.jsx(SecuritySettingsPanel, { onBack: closeSubView });
@@ -53631,6 +54030,7 @@ function SettingsScreen({
             /* @__PURE__ */ jsxRuntimeExports.jsx(SettingsRow, { icon: Info, label: t("about"), chevron: true })
           ] }),
           resyncMsg ? /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mx-4 mt-2 text-center text-sm text-muted-foreground", children: resyncMsg }) : null,
+          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "mx-4 mt-3 text-center text-xs text-muted-foreground", children: buildLabel }),
           /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "mx-4 mt-6 mb-2", children: /* @__PURE__ */ jsxRuntimeExports.jsxs(
             "button",
             {
@@ -59523,6 +59923,7 @@ function NotificationBanner() {
     setActive(null);
   };
   if (!visible || !active2 || active2.type !== "message") return null;
+  if (!readNotificationPrefs().dmInAppBanner) return null;
   const from = userById(state2, active2.fromId);
   const preview = (active2.text || "").trim() || "رسالة جديدة";
   return /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "fixed left-0 right-0 z-[100] max-w-md mx-auto w-full bg-card/95 backdrop-blur-md border-b border-border shadow-lg px-2 py-2 flex items-start gap-1 top-[var(--sat,env(safe-area-inset-top,0px))]", children: [
@@ -59585,7 +59986,7 @@ function routePushNotificationTap(data) {
   }
   window.dispatchEvent(new CustomEvent("retweet-open-notifications"));
 }
-const TOAST_MS = 4500;
+const TOAST_MS$1 = 4500;
 function InAppPushToast() {
   const [visible, setVisible] = reactExports.useState(false);
   const [payload, setPayload] = reactExports.useState(null);
@@ -59600,7 +60001,7 @@ function InAppPushToast() {
       timerRef.current = setTimeout(() => {
         timerRef.current = null;
         setVisible(false);
-      }, TOAST_MS);
+      }, TOAST_MS$1);
     };
     window.addEventListener("retweet-push-received", onPush);
     return () => {
@@ -59620,6 +60021,7 @@ function InAppPushToast() {
     dismiss();
   };
   if (!visible || !payload) return null;
+  if (!readNotificationPrefs().pushInAppToast) return null;
   return /* @__PURE__ */ jsxRuntimeExports.jsx(
     "div",
     {
@@ -59654,6 +60056,30 @@ function InAppPushToast() {
       ] })
     }
   );
+}
+const TOAST_MS = 2600;
+function GlobalUiToast() {
+  const [message, setMessage] = reactExports.useState(null);
+  const timerRef = reactExports.useRef(null);
+  reactExports.useEffect(() => {
+    const onToast = (ev) => {
+      const msg = ev.detail?.message?.trim();
+      if (!msg) return;
+      setMessage(msg);
+      if (timerRef.current != null) window.clearTimeout(timerRef.current);
+      timerRef.current = window.setTimeout(() => {
+        timerRef.current = null;
+        setMessage(null);
+      }, TOAST_MS);
+    };
+    window.addEventListener("retweet-ui-toast", onToast);
+    return () => {
+      window.removeEventListener("retweet-ui-toast", onToast);
+      if (timerRef.current != null) window.clearTimeout(timerRef.current);
+    };
+  }, []);
+  if (!message) return null;
+  return /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "pointer-events-none fixed inset-x-0 bottom-[calc(var(--sab,env(safe-area-inset-bottom,0px))+4.6rem)] z-[140] mx-auto w-full max-w-md px-3", children: /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "rounded-xl border border-border bg-card/95 px-3 py-2 text-center text-sm text-foreground shadow-lg backdrop-blur", children: message }) });
 }
 function PerfHUD() {
   const [visible, setVisible] = reactExports.useState(false);
@@ -60385,16 +60811,37 @@ function App() {
     !!scheduleEnt?.hasScheduledPosts
   );
   reactExports.useEffect(() => startPerfSession(), []);
+  reactExports.useEffect(() => bindUnhandledTelemetry(), []);
+  reactExports.useEffect(() => {
+    void import("./pushNotifications-DstEF_-7.js").then((m) => m.initNativePushDeliveryShell());
+  }, []);
   reactExports.useEffect(() => {
     if (!currentUser || isGuest) return;
-    void import("./pushNotifications-ChxQQg5d.js").then((m) => {
-      void m.initPushNotifications();
-      void m.syncPushRegistration();
+    void import("./pushNotifications-DstEF_-7.js").then((m) => {
+      m.consumePendingPushTap();
+      void m.clearNativeBadge();
     });
-    return () => {
-      void import("./pushNotifications-ChxQQg5d.js").then((m) => m.teardownPushNotifications());
+    void hydrateNotificationPrefsFromServer();
+    const bootPush = () => {
+      if (!readNotificationPrefs().pushEnabled) return;
+      void import("./pushNotifications-DstEF_-7.js").then((m) => {
+        void m.initPushNotifications();
+        void m.syncPushRegistration();
+      });
     };
+    bootPush();
+    const onPrefs = () => {
+      if (readNotificationPrefs().pushEnabled) bootPush();
+      else void import("./pushNotifications-DstEF_-7.js").then((m) => m.teardownPushNotifications());
+    };
+    window.addEventListener("retweet-notification-prefs-changed", onPrefs);
+    return () => window.removeEventListener("retweet-notification-prefs-changed", onPrefs);
   }, [currentUser?.id, isGuest]);
+  reactExports.useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.documentElement.lang = language;
+    document.documentElement.dir = language === "ar" ? "rtl" : "ltr";
+  }, [language]);
   reactExports.useEffect(() => {
     if (typeof window === "undefined") return;
     try {
@@ -61102,6 +61549,7 @@ function App() {
     setRestorePostContext(null);
   }, []);
   const onActiveChatChange = reactExports.useCallback((chatId) => {
+    void import("./activeChatFocus-TXMffFn0.js").then((m) => m.setActiveChatFocus(chatId));
     setActiveChatId(chatId);
     if (!chatId) setOpenChatId(null);
   }, []);
@@ -61380,6 +61828,7 @@ function App() {
         switchFailToast && /* @__PURE__ */ jsxRuntimeExports.jsx("div", { className: "fixed left-3 right-3 top-[max(0.75rem,var(--sat,0px))] z-[501] mx-auto max-w-md rounded-2xl border border-destructive/40 bg-card px-4 py-3 text-start text-sm text-destructive shadow-lg", children: switchFailToast }),
         currentUser && !isGuest && /* @__PURE__ */ jsxRuntimeExports.jsx(InAppPushToast, {}),
         !storyFullscreen && !chatOccupiesShell && !postImmersiveMode && !settingsImmersive && /* @__PURE__ */ jsxRuntimeExports.jsx(NotificationBanner, {}),
+        /* @__PURE__ */ jsxRuntimeExports.jsx(GlobalUiToast, {}),
         /* @__PURE__ */ jsxRuntimeExports.jsx(PerfHUD, {}),
         !hideAppHeader && /* @__PURE__ */ jsxRuntimeExports.jsx(
           "header",
@@ -61720,8 +62169,26 @@ function App() {
             "@",
             currentUser.username
           ] }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "text-xs text-muted-foreground mb-5", children: "تطبيق من تطوير و برمجه الشيخ/د/أ/ المهندس طارق الكثيري" }),
-          /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => setShowWelcome(false), className: "w-full bg-primary text-primary-foreground rounded-2xl py-2 font-semibold", children: "ابدأ الآن" })
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "mb-4 rounded-2xl border border-border bg-card p-3 text-start text-xs text-muted-foreground", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { className: "font-semibold text-foreground mb-1", children: "بداية سريعة:" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "1) كمّل بيانات حسابك من الإعدادات" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "2) فعّل الإشعارات حتى ما يفوتك شيء" }),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("p", { children: "3) جرّب إرسال أول رسالة" })
+          ] }),
+          /* @__PURE__ */ jsxRuntimeExports.jsxs("div", { className: "flex gap-2", children: [
+            /* @__PURE__ */ jsxRuntimeExports.jsx(
+              "button",
+              {
+                onClick: () => {
+                  setShowWelcome(false);
+                  setModal("settings");
+                },
+                className: "flex-1 rounded-2xl border border-border py-2 text-sm font-semibold",
+                children: "الإعدادات"
+              }
+            ),
+            /* @__PURE__ */ jsxRuntimeExports.jsx("button", { onClick: () => setShowWelcome(false), className: "flex-1 bg-primary text-primary-foreground rounded-2xl py-2 font-semibold", children: "ابدأ الآن" })
+          ] })
         ] }) }),
         /* @__PURE__ */ jsxRuntimeExports.jsx(
           StoryGalleryPicker,
@@ -62113,10 +62580,12 @@ const index = /* @__PURE__ */ Object.freeze(/* @__PURE__ */ Object.definePropert
 }, Symbol.toStringTag, { value: "Module" }));
 export {
   Capacitor as C,
-  apiFetch$1 as a,
-  routePushNotificationTap as b,
-  apiBackend as c,
-  index as d,
+  routePushNotificationTap as a,
+  readNotificationPrefs as b,
+  apiFetch$1 as c,
+  apiBackend as d,
+  emitUiToast as e,
+  index as f,
   isNativeCapacitorShell as i,
   registerPlugin as r
 };

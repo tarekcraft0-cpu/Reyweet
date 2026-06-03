@@ -59,6 +59,17 @@ if (iosApp) {
 const plist = fs.readFileSync(path.join(root, "ios", "App", "App", "Info.plist"), "utf8");
 must(plist.includes("NSCameraUsageDescription"), "Info.plist missing camera usage");
 must(plist.includes("ITSAppUsesNonExemptEncryption"), "Info.plist missing encryption export key");
+must(plist.includes("remote-notification"), "Info.plist missing UIBackgroundModes remote-notification");
+
+const capJsonPath = path.join(root, "ios", "App", "App", "capacitor.config.json");
+if (fs.existsSync(capJsonPath)) {
+  const capJson = JSON.parse(fs.readFileSync(capJsonPath, "utf8"));
+  const list = capJson.packageClassList || [];
+  must(
+    list.includes("PushNotificationsPlugin"),
+    "capacitor.config.json missing PushNotificationsPlugin",
+  );
+}
 
 const podfile = fs.readFileSync(path.join(root, "ios", "App", "Podfile"), "utf8");
 must(podfile.includes("CapacitorKeyboard"), "Podfile missing CapacitorKeyboard pod");

@@ -207,6 +207,31 @@ app.get("/health", async (_req, res) => {
   });
 });
 
+app.post("/api/client-telemetry", (req, res) => {
+  try {
+    const body = req.body as {
+      type?: string;
+      message?: string;
+      label?: string;
+      ts?: number;
+    };
+    const msg = String(body?.message || "").trim();
+    if (!msg) {
+      res.status(400).json({ ok: false, error: "missing_message" });
+      return;
+    }
+    console.warn("[client-telemetry]", {
+      type: body?.type || "unknown",
+      label: body?.label || "",
+      message: msg.slice(0, 400),
+      ts: typeof body?.ts === "number" ? body.ts : Date.now(),
+    });
+    res.json({ ok: true });
+  } catch {
+    res.status(500).json({ ok: false });
+  }
+});
+
 app.get("/auth/config", (_req, res) => {
   res.json({
     signupOtpRequired: isSignupOtpRequired(),

@@ -80,6 +80,7 @@ import { NotificationsPanel } from "./NotificationsPanel";
 import { ReportStatusScreen } from "./moderation/ReportStatusScreen";
 import { NotificationBanner } from "./NotificationBanner";
 import { InAppPushToast } from "./InAppPushToast";
+import { GlobalUiToast } from "./GlobalUiToast";
 import { PerfHUD } from "./dev/PerfHUD";
 import { Avatar } from "./Avatar";
 import { AccountSwitcherSheet } from "./rsocial/AccountSwitcherSheet";
@@ -107,6 +108,11 @@ import {
   type AccountModerationEventDetail,
 } from "@/lib/accountModerationBridge";
 import type { ModerationUserNotice } from "@/lib/moderationTypes";
+import {
+  hydrateNotificationPrefsFromServer,
+  readNotificationPrefs,
+} from "@/lib/notificationPrefs";
+import { bindUnhandledTelemetry } from "@/lib/telemetry";
 
 type Tab = "home" | "search" | "reels" | "chat" | "profile";
 type Modal = null | "settings" | "create" | "edit" | "switcher" | "addAccount" | "notifications" | "visitors";
@@ -148,17 +154,40 @@ export function App() {
   );
 
   useEffect(() => startPerfSession(), []);
+  useEffect(() => bindUnhandledTelemetry(), []);
+
+  useEffect(() => {
+    void import("@/lib/pushNotifications").then(m => m.initNativePushDeliveryShell());
+  }, []);
 
   useEffect(() => {
     if (!currentUser || isGuest) return;
     void import("@/lib/pushNotifications").then(m => {
-      void m.initPushNotifications();
-      void m.syncPushRegistration();
+      m.consumePendingPushTap();
+      void m.clearNativeBadge();
     });
-    return () => {
-      void import("@/lib/pushNotifications").then(m => m.teardownPushNotifications());
+    void hydrateNotificationPrefsFromServer();
+    const bootPush = () => {
+      if (!readNotificationPrefs().pushEnabled) return;
+      void import("@/lib/pushNotifications").then(m => {
+        void m.initPushNotifications();
+        void m.syncPushRegistration();
+      });
     };
+    bootPush();
+    const onPrefs = () => {
+      if (readNotificationPrefs().pushEnabled) bootPush();
+      else void import("@/lib/pushNotifications").then(m => m.teardownPushNotifications());
+    };
+    window.addEventListener("retweet-notification-prefs-changed", onPrefs);
+    return () => window.removeEventListener("retweet-notification-prefs-changed", onPrefs);
   }, [currentUser?.id, isGuest]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    document.documentElement.lang = language;
+    document.documentElement.dir = language === "ar" ? "rtl" : "ltr";
+  }, [language]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -956,6 +985,7 @@ export function App() {
 
   /** يُزامِن activeChatId مع openChatId — منع إعادة فتح المحادثة بعد سحب الخروج */
   const onActiveChatChange = useCallback((chatId: string | null) => {
+    void import("@/lib/activeChatFocus").then(m => m.setActiveChatFocus(chatId));
     setActiveChatId(chatId);
     if (!chatId) setOpenChatId(null);
   }, []);
@@ -1309,6 +1339,7 @@ export function App() {
       )}
       {currentUser && !isGuest && <InAppPushToast />}
       {!storyFullscreen && !chatOccupiesShell && !postImmersiveMode && !settingsImmersive && <NotificationBanner />}
+      <GlobalUiToast />
       <PerfHUD />
       {!hideAppHeader && (
       <header
@@ -1671,8 +1702,24 @@ export function App() {
             <h2 className="text-2xl font-extrabold mb-2">مرحبا بك</h2>
             <p className="text-sm mb-1">اهلا بك في Retweet</p>
             <p className="text-sm mb-3">@{currentUser.username}</p>
-            <p className="text-xs text-muted-foreground mb-5">تطبيق من تطوير و برمجه الشيخ/د/أ/ المهندس طارق الكثيري</p>
-            <button onClick={() => setShowWelcome(false)} className="w-full bg-primary text-primary-foreground rounded-2xl py-2 font-semibold">ابدأ الآن</button>
+            <div className="mb-4 rounded-2xl border border-border bg-card p-3 text-start text-xs text-muted-foreground">
+              <p className="font-semibold text-foreground mb-1">بداية سريعة:</p>
+              <p>1) كمّل بيانات حسابك من الإعدادات</p>
+              <p>2) فعّل الإشعارات حتى ما يفوتك شيء</p>
+              <p>3) جرّب إرسال أول رسالة</p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setShowWelcome(false);
+                  setModal("settings");
+                }}
+                className="flex-1 rounded-2xl border border-border py-2 text-sm font-semibold"
+              >
+                الإعدادات
+              </button>
+              <button onClick={() => setShowWelcome(false)} className="flex-1 bg-primary text-primary-foreground rounded-2xl py-2 font-semibold">ابدأ الآن</button>
+            </div>
           </div>
         </div>
       )}

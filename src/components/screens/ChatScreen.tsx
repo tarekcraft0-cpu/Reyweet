@@ -135,6 +135,7 @@ import {
 } from "@/lib/apiBackend";
 import { INCOMING_CALL_WINDOW_EVENT } from "@/lib/store";
 import type { IncomingCallRing } from "@/lib/webrtcCall";
+import { emitUiToast } from "@/lib/uiToast";
 import { CallScreen } from "./CallScreen";
 
 const PREVIEW_MAX = 96;
@@ -4038,7 +4039,7 @@ function CreateGroup({ mode, onBack, onCreated }: { mode: "group" | "channel"; o
             setAvatar(up.url);
             return;
           }
-          alert(up.error || "فشل رفع الصورة");
+          emitUiToast(up.error || "فشل رفع الصورة");
           return;
         }
         const r = new FileReader();
@@ -4106,7 +4107,7 @@ function CreateGroup({ mode, onBack, onCreated }: { mode: "group" | "channel"; o
             <button
               type="button"
               onClick={() => {
-                if (!name.trim()) return alert("اكتب اسم");
+                if (!name.trim()) return emitUiToast("اكتب اسم");
                 setStep(2);
               }}
               className="w-full rounded-2xl bg-primary py-3 font-semibold text-primary-foreground"
@@ -4208,7 +4209,7 @@ function PoolGameInviteBubble({
           inviteMessageId: message.id,
         }),
       });
-      if (!r.ok) { setStatus("pending"); alert("تعذّر إنشاء الغرفة"); return; }
+      if (!r.ok) { setStatus("pending"); emitUiToast("تعذّر إنشاء الغرفة"); return; }
       const data = await r.json() as { room: { roomId: string } };
       setStatus("active");
       onJoin(data.room.roomId);
@@ -4320,10 +4321,12 @@ function ChatRoom({
   const [vanishMessages, setVanishMessages] = useState<Message[]>([]);
   const [showPoolInviteModal, setShowPoolInviteModal] = useState(false);
   const [localPoolRoomId, setLocalPoolRoomId] = useState<string | null>(null);
+  const [offlineQueuedCount, setOfflineQueuedCount] = useState(0);
   const recRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const recordStartRef = useRef<number>(0);
   const sendChatId = useMemo(() => chatMergeKey(chat, meId), [chat, meId]);
+  const offlineQueueKey = useMemo(() => `retweet_chat_offline_queue_${meId}_${sendChatId}`, [meId, sendChatId]);
   const chatIdRef = useRef(sendChatId);
   chatIdRef.current = sendChatId;
 
@@ -4490,6 +4493,54 @@ function ChatRoom({
   const isLoadingOlderRef = useRef(false);
   const draftSaveTimerRef = useRef(0);
   const [sendPulse, setSendPulse] = useState(false);
+
+  const enqueueOfflineText = useCallback((content: string) => {
+    if (!content.trim()) return;
+    try {
+      const raw = localStorage.getItem(offlineQueueKey);
+      const list = raw ? (JSON.parse(raw) as string[]) : [];
+      const next = [...list, content].slice(-30);
+      localStorage.setItem(offlineQueueKey, JSON.stringify(next));
+      setOfflineQueuedCount(next.length);
+      emitUiToast("تم حفظ الرسالة مؤقتاً وسيتم إرسالها عند عودة الاتصال");
+    } catch {
+      emitUiToast("تعذر حفظ الرسالة المؤجلة");
+    }
+  }, [offlineQueueKey]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(offlineQueueKey);
+      const list = raw ? (JSON.parse(raw) as string[]) : [];
+      setOfflineQueuedCount(Array.isArray(list) ? list.length : 0);
+    } catch {
+      setOfflineQueuedCount(0);
+    }
+  }, [offlineQueueKey]);
+
+  useEffect(() => {
+    const flushOffline = () => {
+      if (!navigator.onLine) return;
+      try {
+        const raw = localStorage.getItem(offlineQueueKey);
+        const list = raw ? (JSON.parse(raw) as string[]) : [];
+        if (!Array.isArray(list) || list.length === 0) return;
+        let sent = 0;
+        for (const body of list) {
+          const ok = dispatchSendRef.current({ type: "text", content: body });
+          if (ok) sent += 1;
+        }
+        localStorage.removeItem(offlineQueueKey);
+        setOfflineQueuedCount(0);
+        if (sent > 0) emitUiToast(`تم إرسال ${sent} رسالة مؤجلة`);
+      } catch {
+        /* ignore */
+      }
+    };
+    window.addEventListener("online", flushOffline);
+    flushOffline();
+    return () => window.removeEventListener("online", flushOffline);
+  }, [offlineQueueKey]);
 
   /** إعادة ضبط النافذة عند تبديل المحادثة + استعادة المسودة */
   useEffect(() => {
@@ -4739,7 +4790,7 @@ function ChatRoom({
       recordStartRef.current = 0;
     };
     window.retweetOnVoiceRecordError = (message: string) => {
-      window.alert(message);
+      emitUiToast(message);
       setRecording(false);
       recordStartRef.current = 0;
     };
@@ -5104,7 +5155,7 @@ function ChatRoom({
         const isVid = file.type.startsWith("video/");
         const isAud = file.type.startsWith("audio/");
         if (!isVid && !isAud) {
-          window.alert("اختر مقطع فيديو أو ملف صوتي (مثل m4a أو mp3).");
+          emitUiToast("اختر مقطع فيديو أو ملف صوتي (مثل m4a أو mp3).");
           return;
         }
         const durationSec = isVid ? await readVideoDurationSec(file) : await readAudioDurationSec(file);
@@ -5135,7 +5186,7 @@ function ChatRoom({
           reader.readAsDataURL(compressed);
         } catch (err) {
           console.error("[gallery-voice] failed:", err);
-          window.alert("تعذّر إرسال المقطع كرسالة صوتية. جرّب من جديد أو قصّر طول الفيديو.");
+          emitUiToast("تعذّر إرسال المقطع كرسالة صوتية. جرّب من جديد أو قصّر طول الفيديو.");
         }
       })();
     },
@@ -5275,17 +5326,17 @@ function ChatRoom({
     }
 
     if (typeof window !== "undefined" && !window.isSecureContext) {
-      window.alert(
+      emitUiToast(
         "التسجيل الصوتي يتطلب اتصالاً آمناً (HTTPS). في تطبيق Expo يُفعَّل تلقائياً — أعد فتح التطبيق بعد التحديث.",
       );
       return;
     }
     if (typeof window === "undefined" || !navigator.mediaDevices?.getUserMedia) {
-      window.alert("التسجيل الصوتي غير متاح في هذا المتصفّح.");
+      emitUiToast("التسجيل الصوتي غير متاح في هذا المتصفّح.");
       return;
     }
     if (typeof MediaRecorder === "undefined") {
-      window.alert("المتصفّح لا يدعم تسجيل الصوت. جرّب متصفّحاً محدّثاً أو حدّث النظام.");
+      emitUiToast("المتصفّح لا يدعم تسجيل الصوت. جرّب متصفّحاً محدّثاً أو حدّث النظام.");
       return;
     }
     try {
@@ -5312,7 +5363,7 @@ function ChatRoom({
         const flushAndSend = () => {
           const blob = new Blob(chunksRef.current, { type: rec.mimeType || "audio/webm" });
           if (blob.size < 64) {
-            window.alert("التسجيل قصير جداً أو فارغ — اضغط الميكروفون ثم «إيقاف» بعد ثانية على الأقل.");
+            emitUiToast("التسجيل قصير جداً أو فارغ — اضغط الميكروفون ثم «إيقاف» بعد ثانية على الأقل.");
             return;
           }
           const reader = new FileReader();
@@ -5337,7 +5388,7 @@ function ChatRoom({
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       const low = msg.toLowerCase();
-      window.alert(
+      emitUiToast(
         low.includes("notallowed") || low.includes("permission") || low.includes("denied")
           ? "يُرفض الميكروفون — من إعدادات المتصفّح أو التطبيق اسمح بالميكروفون لهذا الموقع ثم أعد المحاولة."
           : "لم يُسمح بالميكروفون أو تعذّر التسجيل.",
@@ -5796,6 +5847,11 @@ function ChatRoom({
     const rt = replyTarget
       ? { id: replyTarget.id, content: chatReplyPreview(replyTarget), type: replyTarget.type }
       : undefined;
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      clearComposer();
+      enqueueOfflineText(body);
+      return;
+    }
     clearComposer();
     blockMicUntilRef.current = Date.now() + 520;
     setComposerMicCooldown(true);
@@ -5826,7 +5882,7 @@ function ChatRoom({
       scrollMessagesToBottom({ instant: true });
       requestAnimationFrame(() => scrollMessagesToBottom({ instant: true }));
     });
-  }, [readComposerBody, replyingTo, dispatchSend, clearComposer, syncComposerDockHeight, scrollMessagesToBottom, cancelIntroScroll, chat.id]);
+  }, [readComposerBody, replyingTo, dispatchSend, clearComposer, syncComposerDockHeight, scrollMessagesToBottom, cancelIntroScroll, chat.id, enqueueOfflineText]);
 
   const edgeSwipeBackBlocked = useMemo(
     () =>
@@ -6682,7 +6738,7 @@ function ChatRoom({
                 /* ignore */
               }
             }
-            alert(t("msgCopied"));
+            emitUiToast(t("msgCopied"));
             closeCtx();
           };
 
@@ -6786,7 +6842,7 @@ function ChatRoom({
                         className="flex w-full items-center gap-3 border-t border-white/5 px-4 py-3.5 text-start text-sm hover:bg-white/5"
                         onClick={() => {
                           addFavoriteStickerContent(m.content);
-                          alert(t("stickerFavoriteAdded"));
+                          emitUiToast(t("stickerFavoriteAdded"));
                           closeCtx();
                         }}
                       >
@@ -6834,7 +6890,7 @@ function ChatRoom({
                       type="button"
                       className="flex w-full items-center gap-3 border-t border-white/5 px-4 py-3.5 text-start text-sm text-red-400 hover:bg-red-500/10"
                       onClick={() => {
-                        alert(t("msgReportThanks"));
+                        emitUiToast(t("msgReportThanks"));
                         closeCtx();
                       }}
                     >
@@ -6844,7 +6900,7 @@ function ChatRoom({
                     <button
                       type="button"
                       className="flex w-full items-center gap-3 border-t border-white/5 px-4 py-3.5 text-start text-sm text-zinc-300 hover:bg-white/5"
-                      onClick={() => alert(t("msgMoreSoon"))}
+                      onClick={() => emitUiToast(t("msgMoreSoon"))}
                     >
                       <MoreHorizontal size={20} className="shrink-0 opacity-80" />
                       <span className="flex-1">{t("msgMore")}</span>
@@ -6957,6 +7013,16 @@ function ChatRoom({
               : "bg-transparent"
           }
         >
+          {typeof navigator !== "undefined" && !navigator.onLine && (
+            <p className="px-3 pt-2 text-center text-xs text-amber-600">
+              غير متصل: سيتم حفظ الرسائل مؤقتًا حتى عودة الإنترنت.
+            </p>
+          )}
+          {offlineQueuedCount > 0 && (
+            <p className="px-3 pt-2 text-center text-xs text-muted-foreground">
+              رسائل مؤجلة: {offlineQueuedCount}
+            </p>
+          )}
           <ChatQuickRepliesBar me={me} onPick={t => setText(prev => (prev ? `${prev} ${t}` : t))} />
           {replyingTo && (
             <ChatComposerReplyBar

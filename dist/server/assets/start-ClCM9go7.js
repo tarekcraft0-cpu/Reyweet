@@ -1,4 +1,4 @@
-import { r as renderErrorPage } from "./worker-entry-B0L4pACP.js";
+import { r as renderErrorPage } from "./worker-entry-8WRFKG0u.js";
 import "node:events";
 var createMiddleware = (options, __opts) => {
   const resolvedOptions = {

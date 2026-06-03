@@ -62,5 +62,9 @@
 	<string>Reyweet needs photo library access to share images and videos.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Reyweet saves photos and videos you capture to your library when you choose to.</string>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+	</array>
 </dict>
 </plist>

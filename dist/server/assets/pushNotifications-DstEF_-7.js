@@ -1,30 +1,78 @@
-import { Capacitor } from "@capacitor/core";
-import { PushNotifications } from "@capacitor/push-notifications";
-import { isNativeCapacitorShell } from "./apiUrlPolicy";
-import { apiRegisterPushToken, apiUnregisterPushToken, type PushPlatform } from "./pushApi";
-import { isFirebaseWebConfigured, readFirebaseWebConfig } from "./firebaseClient";
-import { routePushNotificationTap, type PushDeepLinkPayload } from "./pushDeepLink";
-import { readNotificationPrefs } from "./notificationPrefs";
-import { emitUiToast } from "./uiToast";
-import { consumePendingPushTap, stashPendingPushTap } from "./pendingPushTap";
-
+import { r as registerPlugin, a as routePushNotificationTap, i as isNativeCapacitorShell, b as readNotificationPrefs, C as Capacitor, e as emitUiToast } from "./index-D1S26om7.js";
+import { apiUnregisterPushToken, apiRegisterPushToken } from "./pushApi-Clx6jtmM.js";
+import "./server-3EhgLyV0.js";
+import "node:async_hooks";
+import "node:stream/web";
+import "node:stream";
+import "fs";
+import "url";
+import "./worker-entry-8WRFKG0u.js";
+import "node:events";
+import "http";
+import "https";
+import "./router-DGvLW1uF.js";
+import "util";
+import "stream";
+import "zlib";
+import "assert";
+import "buffer";
+const PushNotifications = registerPlugin("PushNotifications", {});
+function readFirebaseWebConfig() {
+  return null;
+}
+function isFirebaseWebConfigured() {
+  return readFirebaseWebConfig() !== null;
+}
+const STORAGE_KEY = "retweet_pending_push_tap_v1";
+let memory = null;
+function readStored() {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+function writeStored(data) {
+  if (typeof window === "undefined") return;
+  try {
+    if (!data) localStorage.removeItem(STORAGE_KEY);
+    else localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  } catch {
+  }
+}
+function stashPendingPushTap(data) {
+  if (!data || typeof window === "undefined") return;
+  const payload = {
+    type: data.type,
+    chatId: data.chatId || data.chat_id,
+    chat_id: data.chat_id || data.chatId,
+    fromId: data.fromId,
+    postId: data.postId,
+    storyId: data.storyId,
+    userId: data.userId
+  };
+  memory = payload;
+  writeStored(payload);
+}
+function consumePendingPushTap() {
+  const payload = memory ?? readStored();
+  if (!payload) return false;
+  memory = null;
+  writeStored(null);
+  routePushNotificationTap(payload);
+  return true;
+}
 const PERMISSION_ASKED_KEY = "retweet_push_permission_asked_v1";
 const ANDROID_CHANNEL_ID = "retweet_high";
 let nativeListenersBound = false;
 let webMessagingBound = false;
-let lastRegisteredToken: string | null = null;
+let lastRegisteredToken = null;
 let resumeBound = false;
 let androidChannelReady = false;
-
-export type PushPermissionState = "granted" | "denied" | "prompt" | "unsupported";
-
-export type InAppPushDetail = {
-  title: string;
-  body: string;
-  data?: Record<string, unknown>;
-};
-
-function normalizePushData(raw?: Record<string, unknown>): Record<string, unknown> {
+function normalizePushData(raw) {
   if (!raw) return {};
   const data = { ...raw };
   if (!data.type && data.messageType) data.type = data.messageType;
@@ -32,8 +80,7 @@ function normalizePushData(raw?: Record<string, unknown>): Record<string, unknow
   if (!data.fromId && data.senderId) data.fromId = data.senderId;
   return data;
 }
-
-function dispatchInAppPush(detail: InAppPushDetail): void {
+function dispatchInAppPush(detail) {
   if (typeof window === "undefined") return;
   if (document.visibilityState !== "visible") return;
   const prefs = readNotificationPrefs();
@@ -43,37 +90,28 @@ function dispatchInAppPush(detail: InAppPushDetail): void {
   if (!prefs.followPush && (type === "FOLLOW" || type === "FOLLOW_REQUEST")) return;
   window.dispatchEvent(new CustomEvent("retweet-push-received", { detail }));
 }
-
-function handlePushTap(data?: Record<string, unknown>): void {
+function handlePushTap(data) {
   const normalized = normalizePushData(data);
-  stashPendingPushTap(normalized as PushDeepLinkPayload);
+  stashPendingPushTap(normalized);
   try {
-    routePushNotificationTap(normalized as PushDeepLinkPayload);
+    routePushNotificationTap(normalized);
   } catch {
-    /* ignore */
   }
 }
-
-function platformForNative(): PushPlatform {
+function platformForNative() {
   const p = Capacitor.getPlatform();
   if (p === "ios") return "ios";
   if (p === "android") return "android";
   return "web";
 }
-
-async function registerToken(
-  token: string,
-  platform: PushPlatform,
-  forceServer = false,
-): Promise<void> {
+async function registerToken(token, platform, forceServer = false) {
   if (!token) return;
   if (!readNotificationPrefs().pushEnabled) return;
   if (!forceServer && token === lastRegisteredToken) return;
   const r = await apiRegisterPushToken(token, platform);
   if (r.ok) lastRegisteredToken = token;
 }
-
-async function ensureAndroidNotificationChannel(): Promise<void> {
+async function ensureAndroidNotificationChannel() {
   if (Capacitor.getPlatform() !== "android" || androidChannelReady) return;
   try {
     await PushNotifications.createChannel({
@@ -84,28 +122,23 @@ async function ensureAndroidNotificationChannel(): Promise<void> {
       visibility: 1,
       sound: "default",
       vibration: true,
-      lights: true,
+      lights: true
     });
     androidChannelReady = true;
   } catch (e) {
     console.warn("[push] android channel", e);
   }
 }
-
-/** iOS: تسجيل توكن FCM (وليس APNs فقط) عند توفر Firebase في الحزمة */
-async function syncIosFcmToken(force = false): Promise<void> {
+async function syncIosFcmToken(force = false) {
   if (Capacitor.getPlatform() !== "ios") return;
   try {
-    const w = window as Window & {
-      __retweetNativeFcmToken?: string;
-      __retweetSyncIosFcmToken?: () => void;
-    };
+    const w = window;
     if (w.__retweetNativeFcmToken) {
       await registerToken(w.__retweetNativeFcmToken, "ios", force);
       return;
     }
     w.__retweetSyncIosFcmToken?.();
-    await new Promise(r => setTimeout(r, 1200));
+    await new Promise((r) => setTimeout(r, 1200));
     if (w.__retweetNativeFcmToken) {
       await registerToken(w.__retweetNativeFcmToken, "ios", force);
     }
@@ -113,8 +146,7 @@ async function syncIosFcmToken(force = false): Promise<void> {
     console.warn("[push] ios fcm token sync", e);
   }
 }
-
-function bindResumeSync(): void {
+function bindResumeSync() {
   if (resumeBound || typeof document === "undefined") return;
   resumeBound = true;
   document.addEventListener("visibilitychange", () => {
@@ -124,26 +156,23 @@ function bindResumeSync(): void {
     }
   });
 }
-
-function bindNativeFcmTokenBridge(): void {
+function bindNativeFcmTokenBridge() {
   if (typeof window === "undefined") return;
-  const w = window as Window & { __retweetFcmBridgeBound?: boolean };
+  const w = window;
   if (w.__retweetFcmBridgeBound) return;
   w.__retweetFcmBridgeBound = true;
-  window.addEventListener("retweet-fcm-token", ev => {
-    const token = (ev as CustomEvent<{ token?: string }>).detail?.token?.trim();
+  window.addEventListener("retweet-fcm-token", (ev) => {
+    const token = ev.detail?.token?.trim();
     if (!token) return;
-    (window as Window & { __retweetNativeFcmToken?: string }).__retweetNativeFcmToken = token;
+    window.__retweetNativeFcmToken = token;
     void registerToken(token, "ios", true);
   });
 }
-
-function bindNativePushListeners(): void {
+function bindNativePushListeners() {
   if (nativeListenersBound) return;
   nativeListenersBound = true;
   bindNativeFcmTokenBridge();
-
-  void PushNotifications.addListener("registration", reg => {
+  void PushNotifications.addListener("registration", (reg) => {
     const token = reg.value?.trim();
     if (!token) return;
     void (async () => {
@@ -154,41 +183,31 @@ function bindNativePushListeners(): void {
       await registerToken(token, platformForNative(), true);
     })();
   });
-
-  void PushNotifications.addListener("registrationError", err => {
+  void PushNotifications.addListener("registrationError", (err) => {
     console.warn("[push] native registration error", err);
   });
-
-  void PushNotifications.addListener("pushNotificationActionPerformed", action => {
+  void PushNotifications.addListener("pushNotificationActionPerformed", (action) => {
     const data = normalizePushData(
-      action.notification.data as Record<string, unknown> | undefined,
+      action.notification.data
     );
     handlePushTap(data);
   });
-
-  void PushNotifications.addListener("pushNotificationReceived", notification => {
-    const data = normalizePushData((notification.data || {}) as Record<string, unknown>);
-    const title =
-      notification.title?.trim() ||
-      String(data.title || data.notification_title || "Reyweet");
-    const body =
-      notification.body?.trim() ||
-      String(data.body || data.notification_body || "");
+  void PushNotifications.addListener("pushNotificationReceived", (notification) => {
+    const data = normalizePushData(notification.data || {});
+    const title = notification.title?.trim() || String(data.title || data.notification_title || "Reyweet");
+    const body = notification.body?.trim() || String(data.body || data.notification_body || "");
     if (document.visibilityState === "visible") {
       dispatchInAppPush({ title, body, data });
     }
   });
 }
-
-/** ربط مستمعي النقر/الاستقبال — يعمل حتى خارج التطبيق (بعد فتحه من الإشعار) */
-export function initNativePushDeliveryShell(): void {
+function initNativePushDeliveryShell() {
   if (!isNativeCapacitorShell()) return;
   bindNativePushListeners();
   bindResumeSync();
   void ensureAndroidNotificationChannel();
 }
-
-export async function clearNativeBadge(): Promise<void> {
+async function clearNativeBadge() {
   if (!isNativeCapacitorShell()) return;
   try {
     const delivered = await PushNotifications.getDeliveredNotifications();
@@ -196,11 +215,9 @@ export async function clearNativeBadge(): Promise<void> {
       await PushNotifications.removeAllDeliveredNotifications();
     }
   } catch {
-    /* ignore */
   }
 }
-
-export async function getPushPermissionState(): Promise<PushPermissionState> {
+async function getPushPermissionState() {
   if (isNativeCapacitorShell()) {
     try {
       const perm = await PushNotifications.checkPermissions();
@@ -217,17 +234,11 @@ export async function getPushPermissionState(): Promise<PushPermissionState> {
   if (Notification.permission === "denied") return "denied";
   return "prompt";
 }
-
-/** طلب إذن النظام وتسجيل التوكن — يُستدعى عند تفعيل الإشعارات من الإعدادات */
-export async function requestPushPermissionAndRegister(): Promise<{
-  ok: boolean;
-  state: PushPermissionState;
-}> {
+async function requestPushPermissionAndRegister() {
   initNativePushDeliveryShell();
   if (!readNotificationPrefs().pushEnabled) {
     return { ok: false, state: await getPushPermissionState() };
   }
-
   if (isNativeCapacitorShell()) {
     await ensureAndroidNotificationChannel();
     let perm = await PushNotifications.checkPermissions();
@@ -235,7 +246,6 @@ export async function requestPushPermissionAndRegister(): Promise<{
       try {
         localStorage.setItem(PERMISSION_ASKED_KEY, "1");
       } catch {
-        /* ignore */
       }
       perm = await PushNotifications.requestPermissions();
     }
@@ -247,18 +257,15 @@ export async function requestPushPermissionAndRegister(): Promise<{
     if (Capacitor.getPlatform() === "ios") await syncIosFcmToken(true);
     return { ok: true, state: "granted" };
   }
-
   if (!isFirebaseWebConfigured()) {
     emitUiToast("إشعارات الويب غير مُعدّة على الخادم");
     return { ok: false, state: "unsupported" };
   }
-
   if (typeof window !== "undefined" && "Notification" in window) {
     if (Notification.permission === "default") {
       try {
         localStorage.setItem(PERMISSION_ASKED_KEY, "1");
       } catch {
-        /* ignore */
       }
       const p = await Notification.requestPermission();
       if (p !== "granted") return { ok: false, state: p === "denied" ? "denied" : "prompt" };
@@ -266,17 +273,14 @@ export async function requestPushPermissionAndRegister(): Promise<{
       return { ok: false, state: "denied" };
     }
   }
-
   lastRegisteredToken = null;
   await initWebPush();
   const state = await getPushPermissionState();
   return { ok: state === "granted" && !!lastRegisteredToken, state };
 }
-
-async function initNativePush(): Promise<void> {
+async function initNativePush() {
   if (!isNativeCapacitorShell()) return;
   initNativePushDeliveryShell();
-
   let perm = await PushNotifications.checkPermissions();
   if (perm.receive === "prompt") {
     try {
@@ -284,66 +288,53 @@ async function initNativePush(): Promise<void> {
         localStorage.setItem(PERMISSION_ASKED_KEY, "1");
       }
     } catch {
-      /* ignore */
     }
     perm = await PushNotifications.requestPermissions();
   }
   if (perm.receive !== "granted") return;
-
   await PushNotifications.register();
   if (Capacitor.getPlatform() === "ios") await syncIosFcmToken(true);
 }
-
-async function initWebPush(): Promise<void> {
+async function initWebPush() {
   if (!isFirebaseWebConfigured() || typeof window === "undefined") return;
   if (!("Notification" in window) || !("serviceWorker" in navigator)) return;
-
   const cfg = readFirebaseWebConfig();
   if (!cfg) return;
-
   if (Notification.permission === "default") {
     try {
       if (!localStorage.getItem(PERMISSION_ASKED_KEY)) {
         localStorage.setItem(PERMISSION_ASKED_KEY, "1");
       }
     } catch {
-      /* ignore */
     }
     const perm = await Notification.requestPermission();
     if (perm !== "granted") return;
   } else if (Notification.permission !== "granted") {
     return;
   }
-
-  const { initializeApp, getApps } = await import("firebase/app");
-  const { getMessaging, getToken, onMessage, isSupported } = await import("firebase/messaging");
-
-  if (!(await isSupported())) return;
-
+  const { initializeApp, getApps } = await import("./index.esm-CrSwngUQ.js");
+  const { getMessaging, getToken, onMessage, isSupported } = await import("./index.esm-CM5rD4SC.js");
+  if (!await isSupported()) return;
   const app = getApps()[0] ?? initializeApp(cfg);
   const messaging = getMessaging(app);
-
-  const swPath = `${import.meta.env.BASE_URL || "/app/"}firebase-messaging-sw.js`.replace(
+  const swPath = `${"/"}firebase-messaging-sw.js`.replace(
     "//",
-    "/",
+    "/"
   );
   const swUrl = new URL(swPath, window.location.origin).href;
   const registration = await navigator.serviceWorker.register(swUrl, {
-    scope: import.meta.env.BASE_URL || "/app/",
+    scope: "/"
   });
-
   await navigator.serviceWorker.ready;
-
   const token = await getToken(messaging, {
     vapidKey: cfg.vapidKey,
-    serviceWorkerRegistration: registration,
+    serviceWorkerRegistration: registration
   });
   if (token) await registerToken(token, "web", true);
-
   if (!webMessagingBound) {
     webMessagingBound = true;
-    onMessage(messaging, payload => {
-      const data = normalizePushData(payload.data as Record<string, unknown> | undefined);
+    onMessage(messaging, (payload) => {
+      const data = normalizePushData(payload.data);
       const title = payload.notification?.title || String(data?.title || "Reyweet");
       const body = payload.notification?.body || String(data?.body || "");
       if (document.visibilityState === "visible") {
@@ -351,7 +342,7 @@ async function initWebPush(): Promise<void> {
         return;
       }
       if (Notification.permission === "granted") {
-        const n = new Notification(title, { body, data: data as NotificationOptions["data"] });
+        const n = new Notification(title, { body, data });
         n.onclick = () => {
           handlePushTap(data);
           n.close();
@@ -359,9 +350,8 @@ async function initWebPush(): Promise<void> {
       }
     });
   }
-
-  navigator.serviceWorker.addEventListener("message", ev => {
-    const msg = ev.data as PushDeepLinkPayload & { type?: string } | undefined;
+  navigator.serviceWorker.addEventListener("message", (ev) => {
+    const msg = ev.data;
     if (!msg) return;
     if (msg.type === "open_chat" && msg.chatId) {
       handlePushTap({ type: "MESSAGE", chatId: msg.chatId });
@@ -371,12 +361,9 @@ async function initWebPush(): Promise<void> {
       handlePushTap(msg);
     }
   });
-
   bindResumeSync();
 }
-
-/** إعادة تسجيل التوكن — عند فتح التطبيق أو بعد تحديث FCM */
-export async function syncPushRegistration(force = false): Promise<void> {
+async function syncPushRegistration(force = false) {
   try {
     if (!readNotificationPrefs().pushEnabled) return;
     if (isNativeCapacitorShell()) {
@@ -393,8 +380,7 @@ export async function syncPushRegistration(force = false): Promise<void> {
     console.warn("[push] sync failed", e);
   }
 }
-
-export async function initPushNotifications(): Promise<void> {
+async function initPushNotifications() {
   try {
     initNativePushDeliveryShell();
     if (!readNotificationPrefs().pushEnabled) return;
@@ -407,13 +393,19 @@ export async function initPushNotifications(): Promise<void> {
     console.warn("[push] init failed", e);
   }
 }
-
-/** إلغاء التوكن من الخادم فقط */
-export async function teardownPushNotifications(): Promise<void> {
+async function teardownPushNotifications() {
   if (lastRegisteredToken) {
     await apiUnregisterPushToken(lastRegisteredToken);
     lastRegisteredToken = null;
   }
 }
-
-export { consumePendingPushTap };
+export {
+  clearNativeBadge,
+  consumePendingPushTap,
+  getPushPermissionState,
+  initNativePushDeliveryShell,
+  initPushNotifications,
+  requestPushPermissionAndRegister,
+  syncPushRegistration,
+  teardownPushNotifications
+};

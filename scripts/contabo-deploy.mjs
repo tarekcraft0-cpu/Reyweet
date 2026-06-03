@@ -154,8 +154,50 @@ function buildRemoteEnv(local) {
     `SMTP_USER=${local.SMTP_USER || local.EMAIL_USER || ""}`,
     `SMTP_PASS=${local.SMTP_PASS || local.EMAIL_PASS || ""}`,
     `SMTP_FROM=${local.SMTP_FROM || '"Retweet <noreply@example.com>"'}`,
+    `PUSH_TOKEN_STORE=${local.PUSH_TOKEN_STORE || "file"}`,
+    `FCM_NOTIFICATION_SOUND=${local.FCM_NOTIFICATION_SOUND || "default"}`,
   ];
+  if (local.FIREBASE_SERVICE_ACCOUNT_JSON) {
+    lines.push(`FIREBASE_SERVICE_ACCOUNT_JSON=${local.FIREBASE_SERVICE_ACCOUNT_JSON}`);
+  } else {
+    if (local.FIREBASE_PROJECT_ID) lines.push(`FIREBASE_PROJECT_ID=${local.FIREBASE_PROJECT_ID}`);
+    if (local.FIREBASE_CLIENT_EMAIL) lines.push(`FIREBASE_CLIENT_EMAIL=${local.FIREBASE_CLIENT_EMAIL}`);
+    if (local.FIREBASE_PRIVATE_KEY) lines.push(`FIREBASE_PRIVATE_KEY=${local.FIREBASE_PRIVATE_KEY}`);
+  }
+  if (local.STRIPE_SECRET_KEY) lines.push(`STRIPE_SECRET_KEY=${local.STRIPE_SECRET_KEY}`);
+  if (local.STRIPE_PUBLISHABLE_KEY) lines.push(`STRIPE_PUBLISHABLE_KEY=${local.STRIPE_PUBLISHABLE_KEY}`);
+  if (local.STRIPE_VERIFIED_PRICE_ID) lines.push(`STRIPE_VERIFIED_PRICE_ID=${local.STRIPE_VERIFIED_PRICE_ID}`);
   return lines.join("\n") + "\n";
+}
+
+async function readRemoteEnv(conn) {
+  try {
+    const raw = await exec(conn, `test -f ${APP_REMOTE}/.env && cat ${APP_REMOTE}/.env || true`);
+    const map = {};
+    for (const line of raw.split(/\r?\n/)) {
+      const t = line.trim();
+      if (!t || t.startsWith("#")) continue;
+      const i = t.indexOf("=");
+      if (i < 1) continue;
+      map[t.slice(0, i).trim()] = t.slice(i + 1).trim();
+    }
+    return map;
+  } catch {
+    return {};
+  }
+}
+
+function mergeFirebaseFromRemote(local, remote) {
+  const out = { ...local };
+  if (out.FIREBASE_SERVICE_ACCOUNT_JSON || out.FIREBASE_PROJECT_ID) return out;
+  if (remote.FIREBASE_SERVICE_ACCOUNT_JSON) {
+    out.FIREBASE_SERVICE_ACCOUNT_JSON = remote.FIREBASE_SERVICE_ACCOUNT_JSON;
+    return out;
+  }
+  if (remote.FIREBASE_PROJECT_ID) out.FIREBASE_PROJECT_ID = remote.FIREBASE_PROJECT_ID;
+  if (remote.FIREBASE_CLIENT_EMAIL) out.FIREBASE_CLIENT_EMAIL = remote.FIREBASE_CLIENT_EMAIL;
+  if (remote.FIREBASE_PRIVATE_KEY) out.FIREBASE_PRIVATE_KEY = remote.FIREBASE_PRIVATE_KEY;
+  return out;
 }
 
 async function packBackend() {
@@ -253,7 +295,15 @@ async function main() {
   }
 
   console.log("\n[5/6] ملف .env للإنتاج…");
-  const envBody = buildRemoteEnv(readLocalEnv());
+  const remoteEnv = await readRemoteEnv(conn);
+  const mergedLocal = mergeFirebaseFromRemote(readLocalEnv(), remoteEnv);
+  const envBody = buildRemoteEnv({
+    ...mergedLocal,
+    JWT_SECRET: remoteEnv.JWT_SECRET || mergedLocal.JWT_SECRET,
+    SMTP_USER: mergedLocal.SMTP_USER || mergedLocal.EMAIL_USER || remoteEnv.SMTP_USER,
+    SMTP_PASS: mergedLocal.SMTP_PASS || mergedLocal.EMAIL_PASS || remoteEnv.SMTP_PASS,
+    SMTP_FROM: mergedLocal.SMTP_FROM || remoteEnv.SMTP_FROM,
+  });
   const envLocal = path.join(root, "backups-local", ".env.production.generated");
   writeFileSync(envLocal, envBody, "utf8");
   await uploadFile(sftp, envLocal, `${APP_REMOTE}/.env`);

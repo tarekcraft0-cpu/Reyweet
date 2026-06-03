@@ -43,6 +43,8 @@ export function ChatDrawComposeModal({
   const [penColor, setPenColor] = useState("#ffffff");
   const [penWidth, setPenWidth] = useState(5);
   const [viewOnce, setViewOnce] = useState(false);
+  const [textInputOpen, setTextInputOpen] = useState(false);
+  const [textInputValue, setTextInputValue] = useState("");
   const draftRef = useRef<{ color: string; width: number; points: [number, number][] } | null>(null);
 
   const PEN_COLORS = ["#ffffff", "#000000", "#ff3040", "#fcb045", "#833ab4", "#4fce5d", "#00c9ff", "#ffe500"];
@@ -110,7 +112,7 @@ export function ChatDrawComposeModal({
   const addTextCenter = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const raw = window.prompt("اكتب على الشاشة", "");
+    const raw = textInputValue.trim();
     if (raw == null || !raw.trim()) return;
     const fontSize = Math.max(22, Math.round(canvas.width / 14));
     setLayers(prev => [
@@ -124,7 +126,9 @@ export function ChatDrawComposeModal({
         fontSize,
       },
     ]);
-  }, [penColor]);
+    setTextInputOpen(false);
+    setTextInputValue("");
+  }, [penColor, textInputValue]);
 
   const onPointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!canvasRef.current) return;
@@ -267,7 +271,7 @@ export function ChatDrawComposeModal({
           <button type="button" onClick={undo} className={toolBtn + " ms-auto"} aria-label="تراجع" disabled={!layers.length}>
             <Undo2 size={18} className={layers.length ? "" : "opacity-40"} />
           </button>
-          <button type="button" onClick={addTextCenter} className={toolBtn} aria-label="نص">
+          <button type="button" onClick={() => setTextInputOpen(true)} className={toolBtn} aria-label="نص">
             <Type size={18} />
           </button>
           <button
@@ -305,6 +309,39 @@ export function ChatDrawComposeModal({
           إرسال الرسمة
         </button>
       </div>
+      {textInputOpen && (
+        <div className="absolute inset-0 z-10 flex items-end bg-black/55 p-3">
+          <div className="w-full rounded-2xl border border-white/15 bg-zinc-950 p-3">
+            <p className="mb-2 text-sm font-semibold text-white">اكتب على الشاشة</p>
+            <input
+              value={textInputValue}
+              onChange={e => setTextInputValue(e.target.value)}
+              placeholder="اكتب النص…"
+              className="w-full rounded-xl border border-white/20 bg-black/40 px-3 py-2 text-sm text-white outline-none"
+              autoFocus
+            />
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                className="flex-1 rounded-xl bg-white py-2 text-sm font-semibold text-black"
+                onClick={addTextCenter}
+              >
+                تطبيق
+              </button>
+              <button
+                type="button"
+                className="flex-1 rounded-xl border border-white/25 py-2 text-sm text-white"
+                onClick={() => {
+                  setTextInputOpen(false);
+                  setTextInputValue("");
+                }}
+              >
+                إلغاء
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

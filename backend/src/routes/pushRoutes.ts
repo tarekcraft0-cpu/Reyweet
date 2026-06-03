@@ -8,6 +8,10 @@ import {
   upsertPushToken,
   type PushPlatform,
 } from "../db/pushTokens.js";
+import {
+  getNotificationPrefsForUser,
+  setNotificationPrefsForUser,
+} from "../push/notificationPrefs.js";
 
 type AuthedReq = Request & { userId: string };
 
@@ -96,15 +100,45 @@ async function handleSendNotification(req: Request, res: Response): Promise<void
   });
 }
 
+const prefsSchema = z.object({
+  pushEnabled: z.boolean().optional(),
+  dmInAppBanner: z.boolean().optional(),
+  pushInAppToast: z.boolean().optional(),
+  mentionPush: z.boolean().optional(),
+  followPush: z.boolean().optional(),
+  messagePush: z.boolean().optional(),
+});
+
 export function registerPushRoutes(
   app: Express,
   authMiddleware: (req: Request, res: Response, next: NextFunction) => void,
 ): void {
-  app.get("/v1/push/status", authMiddleware, (_req, res) => {
+  app.get("/v1/push/status", authMiddleware, async (req, res) => {
+    const userId = (req as AuthedReq).userId;
+    const tokens = await listPushTokensForUser(userId);
+    const prefs = await getNotificationPrefsForUser(userId);
     return res.json({
       configured: isFcmConfigured(),
       store: (process.env.PUSH_TOKEN_STORE || "file").trim(),
+      tokenCount: tokens.length,
+      prefs,
     });
+  });
+
+  app.get("/v1/push/prefs", authMiddleware, async (req, res) => {
+    const userId = (req as AuthedReq).userId;
+    const prefs = await getNotificationPrefsForUser(userId);
+    return res.json({ ok: true, prefs });
+  });
+
+  app.put("/v1/push/prefs", authMiddleware, async (req, res) => {
+    const userId = (req as AuthedReq).userId;
+    const parsed = prefsSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ error: "بيانات غير صالحة", success: false });
+    }
+    const prefs = await setNotificationPrefsForUser(userId, parsed.data);
+    return res.json({ ok: true, success: true, prefs });
   });
 
   app.post("/v1/push/register", authMiddleware, handleRegisterToken);

@@ -23,17 +23,26 @@ loadConfig()
       firebase.initializeApp(cfg);
     }
     messaging = firebase.messaging();
+    function dTitle(p) {
+      return (p.data && (p.data.title || p.data.notification_title)) || "";
+    }
+    function dBody(p) {
+      return (p.data && (p.data.body || p.data.notification_body)) || "";
+    }
     messaging.onBackgroundMessage(payload => {
-      const title = payload.notification?.title || "Retweet";
-      const body = payload.notification?.body || "";
       const d = payload.data || {};
+      const title = payload.notification?.title || dTitle(payload) || "Reyweet";
+      const body = payload.notification?.body || dBody(payload) || "";
       self.registration.showNotification(title, {
         body,
         icon: `${baseFromScope()}/favicon.png`,
+        badge: `${baseFromScope()}/favicon.png`,
+        tag: d.chatId ? `chat-${d.chatId}` : d.type || "retweet",
+        renotify: true,
         data: {
           type: d.type || "MESSAGE",
-          chatId: d.chatId || "",
-          fromId: d.fromId || "",
+          chatId: d.chatId || d.chat_id || "",
+          fromId: d.fromId || d.senderId || "",
           postId: d.postId || "",
           storyId: d.storyId || "",
         },

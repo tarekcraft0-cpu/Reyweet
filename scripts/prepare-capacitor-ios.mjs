@@ -63,7 +63,7 @@ function injectNativeShellIndex(indexPath) {
   const apiDebug =
     process.env.CAPACITOR_API_DEBUG === "1" || process.env.NODE_ENV === "development";
   const debugPart = apiDebug ? "window.__RETWEET_API_DEBUG__=true;" : "";
-  const tag = `<script>window.__RETWEET_NATIVE_SHELL__=true;window.__RETWEET_NO_SELECT_BOOT__=true;${debugPart}window.__RETWEET_API_URL__=${JSON.stringify(apiUrl)};document.documentElement.classList.add("retweet-native-shell");document.documentElement.setAttribute("data-native-app","1");if(document.body)document.body.setAttribute("data-native-app","1");window.dispatchEvent(new Event("retweet-api-config-ready"));</script>`;
+  const tag = `<script>window.__RETWEET_NATIVE_SHELL__=true;window.__RETWEET_NO_SELECT_BOOT__=true;${debugPart}window.__RETWEET_API_URL__=${JSON.stringify(apiUrl)};document.documentElement.classList.add("retweet-native-shell");document.documentElement.setAttribute("data-native-app","1");if(document.body)document.body.setAttribute("data-native-app","1");window.addEventListener("retweet-fcm-token",function(e){var t=e&&e.detail&&e.detail.token;if(t)window.__retweetNativeFcmToken=t;});window.dispatchEvent(new Event("retweet-api-config-ready"));</script>`;
   html = html.replace(/<script>window\.__RETWEET[^<]*<\/script>\s*/gi, "");
   html = html.replace(/<html([^>]*)>/i, (m, attrs) => {
     if (/retweet-native-shell/i.test(attrs)) return m;
@@ -195,6 +195,13 @@ function patchIosEmbeddedCapConfig() {
   if (rootCap.plugins) {
     capJson.plugins = { ...(capJson.plugins || {}), ...rootCap.plugins };
   }
+  capJson.plugins = {
+    ...(capJson.plugins || {}),
+    PushNotifications: {
+      presentationOptions: ["badge", "sound", "alert"],
+      ...((capJson.plugins || {}).PushNotifications || {}),
+    },
+  };
   if (!Array.isArray(capJson.packageClassList)) {
     capJson.packageClassList = [];
   }
@@ -237,9 +244,16 @@ function ensureCapacitorIosPods() {
       changed = true;
     }
   }
+  if (!pod.includes("FirebaseCore")) {
+    pod = pod.replace(
+      /target 'App' do\n  capacitor_pods\n/,
+      "target 'App' do\n  capacitor_pods\n  pod 'FirebaseCore'\n  pod 'FirebaseMessaging'\n",
+    );
+    changed = true;
+  }
   if (changed) {
     fs.writeFileSync(podfile, pod, "utf8");
-    console.log("  ✓ Podfile (+ CapacitorKeyboard / PushNotifications)");
+    console.log("  ✓ Podfile (+ CapacitorKeyboard / PushNotifications / Firebase)");
   }
 }
 

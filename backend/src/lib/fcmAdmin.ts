@@ -103,6 +103,15 @@ export async function sendPushToUser(
   const messaging = await getMessaging();
   if (!messaging) return { sent: 0, failed: 0, noTokens: false };
 
+  const { getNotificationPrefsForUser, shouldSendPushType } = await import(
+    "../push/notificationPrefs.js"
+  );
+  const prefs = await getNotificationPrefsForUser(userId);
+  const pushType = data.type || "CUSTOM";
+  if (!shouldSendPushType(prefs, pushType)) {
+    return { sent: 0, failed: 0, noTokens: false };
+  }
+
   const rows = await listPushTokensForUser(userId);
   if (!rows.length) return { sent: 0, failed: 0, noTokens: true };
 

@@ -221,6 +221,8 @@ export async function deliverGroupMessageToMembers(
     await setSnapshot(uid, stripPasswords(state));
     broadcastSseToUser(uid, "message_new", payload);
     emitToUsers([uid], "message_new", payload);
+    broadcastSseToUser(uid, "social_update", { notification: notif });
+    emitToUsers([uid], "social_update", { notification: notif });
   }
 }
 

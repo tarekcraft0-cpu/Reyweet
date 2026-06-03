@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useApp, userById } from "@/lib/store";
 import type { Notification } from "@/lib/types";
 import { MessageCircle, X } from "lucide-react";
+import { readNotificationPrefs } from "@/lib/notificationPrefs";
 
 const DM_TOAST_MS = 2000;
 
@@ -68,6 +69,7 @@ export function NotificationBanner() {
   };
 
   if (!visible || !active || active.type !== "message") return null;
+  if (!readNotificationPrefs().dmInAppBanner) return null;
 
   const from = userById(state, active.fromId);
   const preview = (active.text || "").trim() || "رسالة جديدة";

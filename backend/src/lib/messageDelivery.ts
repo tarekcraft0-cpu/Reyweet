@@ -13,6 +13,8 @@ import { mergeSocialGraphIntoAppState } from "./mergeSocialGraph.js";
 import { messageRowToClient, mergeMessageLists } from "./chatMessages.js";
 import { canonicalizeDmChatId, dmChatId } from "./dmChatId.js";
 import { scopeAppStateToOwner } from "./scopeAppState.js";
+import { broadcastSseToUser } from "./realtimeHub.js";
+import { emitToUsers } from "./realtimeSocket.js";
 
 function stripPasswords(state: AppState): AppState {
   return {
@@ -250,4 +252,6 @@ async function persistDirectMessageSnapshot(
   });
 
   await setSnapshot(receiverId, stripPasswords(state));
+  broadcastSseToUser(receiverId, "social_update", { notification: notif });
+  emitToUsers([receiverId], "social_update", { notification: notif });
 }

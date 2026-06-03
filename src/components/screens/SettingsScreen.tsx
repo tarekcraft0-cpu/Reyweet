@@ -68,6 +68,8 @@ import { RSocialAvatar } from "../rsocial/RSocialAvatar";
 import { SlideDismissBackButton } from "../SlideDismissShell";
 import { writeDeviceTheme } from "@/lib/deviceTheme";
 import { StoriesArchiveScreen } from "./StoriesArchiveScreen";
+import { readNotificationPrefs, updateNotificationPrefs } from "@/lib/notificationPrefs";
+import { emitUiToast } from "@/lib/uiToast";
 
 type SubView =
   | null
@@ -340,6 +342,168 @@ function PlaceholderPanel({ title, hint, onBack }: { title: string; hint: string
   );
 }
 
+function NotificationsSettingsPanel({ onBack }: { onBack: () => void }) {
+  const [prefs, setPrefs] = useState(() => readNotificationPrefs());
+  const [permState, setPermState] = useState<"granted" | "denied" | "prompt" | "unsupported" | "loading">(
+    "loading",
+  );
+  const [tokenCount, setTokenCount] = useState<number | null>(null);
+  const [fcmReady, setFcmReady] = useState<boolean | null>(null);
+  const [testBusy, setTestBusy] = useState(false);
+  const t = useT();
+
+  const refreshStatus = useCallback(() => {
+    void import("@/lib/pushNotifications").then(m =>
+      m.getPushPermissionState().then(s => setPermState(s)),
+    );
+    void import("@/lib/pushApi").then(m =>
+      m.apiFetchPushStatus().then(st => {
+        if (!st) return;
+        setTokenCount(st.tokenCount);
+        setFcmReady(st.configured);
+      }),
+    );
+  }, []);
+
+  useEffect(() => {
+    refreshStatus();
+    const onPrefs = () => setPrefs(readNotificationPrefs());
+    window.addEventListener("retweet-notification-prefs-changed", onPrefs);
+    return () => window.removeEventListener("retweet-notification-prefs-changed", onPrefs);
+  }, [refreshStatus]);
+
+  const permLabel =
+    permState === "loading"
+      ? "…"
+      : permState === "granted"
+        ? "مفعّل على الجهاز"
+        : permState === "denied"
+          ? "مرفوض — فعّله من إعدادات النظام"
+          : permState === "prompt"
+            ? "يحتاج موافقتك"
+            : "غير مدعوم على هذا الجهاز";
+
+  const toggle = (patch: Partial<ReturnType<typeof readNotificationPrefs>>) => {
+    const next = updateNotificationPrefs(patch);
+    setPrefs(next);
+    if (patch.pushEnabled === false) {
+      void import("@/lib/pushNotifications").then(m => m.teardownPushNotifications());
+      refreshStatus();
+      emitUiToast(t("save"));
+      return;
+    }
+    if (patch.pushEnabled === true) {
+      void import("@/lib/pushNotifications").then(async m => {
+        const r = await m.requestPushPermissionAndRegister();
+        refreshStatus();
+        if (!r.ok) {
+          emitUiToast(
+            r.state === "denied"
+              ? "فعّل الإشعارات من إعدادات iOS ثم أعد المحاولة"
+              : "لم يُمنح إذن الإشعارات",
+          );
+          return;
+        }
+        emitUiToast("تم تفعيل إشعارات الدفع");
+      });
+      return;
+    }
+    emitUiToast(t("save"));
+  };
+
+  const enableSystemPermission = () => {
+    void import("@/lib/pushNotifications").then(async m => {
+      const r = await m.requestPushPermissionAndRegister();
+      refreshStatus();
+      if (r.ok) emitUiToast("تم تسجيل الجهاز للإشعارات");
+      else if (r.state === "denied") emitUiToast("الإذن مرفوض — افتح إعدادات النظام");
+      else emitUiToast("تعذّر طلب الإذن");
+    });
+  };
+
+  const sendTest = () => {
+    setTestBusy(true);
+    void import("@/lib/pushApi").then(async m => {
+      const r = await m.apiSendTestPush();
+      setTestBusy(false);
+      refreshStatus();
+      emitUiToast(r.ok ? "أُرسل إشعار تجريبي" : r.error || "فشل الإرسال");
+    });
+  };
+
+  return (
+    <div className="settings-screen-root min-h-full w-full overflow-x-hidden bg-background pb-8">
+      <SettingsHeader title={t("notificationsSettings")} onBack={onBack} navScope="local" />
+      <div className="mx-4 mt-4 rounded-xl border border-border bg-card p-4 space-y-3">
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          إشعارات الدفع الحقيقية (FCM) للرسائل والتفاعلات — مع تنبيهات داخل التطبيق.
+        </p>
+        <div className="rounded-lg bg-secondary/50 px-3 py-2 text-xs text-muted-foreground space-y-1">
+          <p>
+            <span className="font-semibold text-foreground">إذن الجهاز: </span>
+            {permLabel}
+          </p>
+          <p>
+            <span className="font-semibold text-foreground">الخادم: </span>
+            {fcmReady === null
+              ? "…"
+              : fcmReady
+                ? "FCM جاهز"
+                : "FCM غير مُعدّ — أضف مفاتيح Firebase للخادم"}
+          </p>
+          {tokenCount != null ? (
+            <p>
+              <span className="font-semibold text-foreground">أجهزتك المسجّلة: </span>
+              {tokenCount}
+            </p>
+          ) : null}
+        </div>
+        {permState !== "granted" && permState !== "loading" && permState !== "unsupported" ? (
+          <button
+            type="button"
+            className="w-full rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground"
+            onClick={enableSystemPermission}
+          >
+            السماح بالإشعارات
+          </button>
+        ) : null}
+        {prefs.pushEnabled && permState === "granted" ? (
+          <button
+            type="button"
+            disabled={testBusy || fcmReady === false}
+            className="w-full rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold disabled:opacity-50"
+            onClick={sendTest}
+          >
+            {testBusy ? "جاري الإرسال…" : "إرسال إشعار تجريبي"}
+          </button>
+        ) : null}
+        <div className="space-y-3 pt-1">
+          <label className="flex items-center justify-between gap-3 text-sm">
+            <span>إشعارات الدفع</span>
+            <IgToggle on={prefs.pushEnabled} onToggle={() => toggle({ pushEnabled: !prefs.pushEnabled })} />
+          </label>
+          <label className="flex items-center justify-between gap-3 text-sm">
+            <span>تنبيهات الرسائل داخل التطبيق</span>
+            <IgToggle on={prefs.dmInAppBanner} onToggle={() => toggle({ dmInAppBanner: !prefs.dmInAppBanner })} />
+          </label>
+          <label className="flex items-center justify-between gap-3 text-sm">
+            <span>تنبيهات الدفع داخل التطبيق</span>
+            <IgToggle on={prefs.pushInAppToast} onToggle={() => toggle({ pushInAppToast: !prefs.pushInAppToast })} />
+          </label>
+          <label className="flex items-center justify-between gap-3 text-sm">
+            <span>إشعارات المنشن</span>
+            <IgToggle on={prefs.mentionPush} onToggle={() => toggle({ mentionPush: !prefs.mentionPush })} />
+          </label>
+          <label className="flex items-center justify-between gap-3 text-sm">
+            <span>إشعارات المتابعة</span>
+            <IgToggle on={prefs.followPush} onToggle={() => toggle({ followPush: !prefs.followPush })} />
+          </label>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AccountInfoPanel({
   me,
   updateProfile,
@@ -544,6 +708,7 @@ function SecurityDarkInput(props: React.InputHTMLAttributes<HTMLInputElement>) {
 function SecuritySettingsPanel({ onBack }: { onBack: () => void }) {
   const { currentUser, changeOwnPassword } = useApp();
   const t = useT();
+  const buildLabel = `v${(import.meta as any).env?.VITE_APP_VERSION || "dev"} · ${(import.meta as any).env?.VITE_APP_BUILD || "local"}`;
   const me = currentUser!;
   const [view, setView] = useState<SecurityView>("menu");
   const [comingSoonTitle, setComingSoonTitle] = useState("");
@@ -1114,7 +1279,7 @@ export function SettingsScreen({
     return <PlaceholderPanel title={t("timeManagement")} hint={t("timeMgmtHint")} onBack={closeSubView} />;
   }
   if (subView === "notifications") {
-    return <PlaceholderPanel title={t("notificationsSettings")} hint={t("comingSoonPanel")} onBack={closeSubView} />;
+    return <NotificationsSettingsPanel onBack={closeSubView} />;
   }
 
   if (subView === "security") {
@@ -1596,6 +1761,7 @@ export function SettingsScreen({
       {resyncMsg ? (
         <p className="mx-4 mt-2 text-center text-sm text-muted-foreground">{resyncMsg}</p>
       ) : null}
+      <p className="mx-4 mt-3 text-center text-xs text-muted-foreground">{buildLabel}</p>
 
       <div className="mx-4 mt-6 mb-2">
         <button
