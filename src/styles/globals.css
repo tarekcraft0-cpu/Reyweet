@@ -409,6 +409,14 @@ html.retweet-native-shell select {
 }
 
 /**
+ * IPA + resize:none — تقليص عمود الرسائل+الشريط فوق الكيبورد (آخر رسالة تبقى فوق شريط الكتابة).
+ */
+html.retweet-native-shell.chat-keyboard-open [data-chat-room] .chat-bottom-lift,
+html.chat-keyboard-open [data-chat-room] .chat-bottom-lift {
+  max-height: calc(100% - var(--chat-viewport-kb-trim, 0px));
+}
+
+/**
  * iOS + resize:body — الكيبورد يتحرك قبل أن يتقلص body.
  * رفع فوري يُلغى تلقائياً عندما يلحق body (انظر chatKeyboardInsets.ts).
  */

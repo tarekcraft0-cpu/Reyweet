@@ -4734,6 +4734,7 @@ function ChatRoom({
   }, [syncComposerDockHeight, scheduleScrollFromResize]);
 
   const kbOpenPrevRef = useRef(false);
+  const kbWasOpenForCloseRef = useRef(false);
   useLayoutEffect(() => {
     if (!kbSnap.open) return;
     syncComposerDockHeight();
@@ -4748,6 +4749,57 @@ function ChatRoom({
     scheduleScrollToBottom({ afterMs: 80 });
     scheduleScrollToBottom({ afterMs: 280 });
   }, [kbSnap.open, scheduleScrollToBottom]);
+
+  const reconcileScrollAfterKeyboard = useCallback(() => {
+    syncComposerDockHeight();
+    const el = messagesScrollRef.current;
+    const inner = messagesListInnerRef.current;
+    if (!el) return;
+    const h = el.clientHeight;
+    if (inner && h > 0) inner.style.minHeight = `${h}px`;
+    const maxTop = Math.max(0, el.scrollHeight - el.clientHeight);
+    if (stickToBottomRef.current || el.scrollTop > maxTop - 16) {
+      try {
+        el.scrollTo({ top: maxTop, behavior: "instant" });
+      } catch {
+        el.scrollTop = maxTop;
+      }
+    } else {
+      el.scrollTop = Math.min(el.scrollTop, maxTop);
+    }
+  }, [syncComposerDockHeight]);
+
+  useLayoutEffect(() => {
+    const wasOpen = kbWasOpenForCloseRef.current;
+    kbWasOpenForCloseRef.current = kbSnap.open;
+    if (kbSnap.open) return;
+    if (!wasOpen) return;
+    reconcileScrollAfterKeyboard();
+    const t1 = window.setTimeout(reconcileScrollAfterKeyboard, 60);
+    const t2 = window.setTimeout(reconcileScrollAfterKeyboard, 200);
+    const t3 = window.setTimeout(reconcileScrollAfterKeyboard, 400);
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      window.clearTimeout(t3);
+    };
+  }, [kbSnap.open, reconcileScrollAfterKeyboard]);
+
+  useEffect(() => {
+    const onKbLayout = () => {
+      if (!document.documentElement.classList.contains("chat-keyboard-open")) return;
+      stickToBottomRef.current = true;
+      syncComposerDockHeight();
+      scheduleScrollToBottom({ instant: true });
+      scheduleScrollToBottom({ afterMs: 48 });
+    };
+    window.addEventListener("retweet-keyboard-layout-change", onKbLayout, { passive: true });
+    window.addEventListener("retweet-chat-keyboard-sync", onKbLayout, { passive: true });
+    return () => {
+      window.removeEventListener("retweet-keyboard-layout-change", onKbLayout);
+      window.removeEventListener("retweet-chat-keyboard-sync", onKbLayout);
+    };
+  }, [syncComposerDockHeight, scheduleScrollToBottom]);
   const scrollAnchorRef = useRef({ chatId: "", msgCount: 0 });
   const cameraCaptureRef = useRef<HTMLInputElement>(null);
   const galleryMediaInputRef = useRef<HTMLInputElement>(null);
