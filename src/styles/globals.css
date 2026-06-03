@@ -125,7 +125,7 @@ html.retweet-native-shell select {
 .chat-scroll-pane {
   will-change: scroll-position;
   -webkit-overflow-scrolling: touch;
-  scroll-padding-bottom: var(--chat-scroll-padding-bottom, 8px);
+  scroll-padding-bottom: var(--chat-scroll-padding-bottom, 4px);
   overflow-x: clip;
   overflow-y: auto;
   overscroll-behavior-y: contain;
@@ -134,6 +134,14 @@ html.retweet-native-shell select {
 /* صفوف الرسائل — layer منفصلة لكل رسالة */
 .chat-msg-row {
   contain: layout style;
+}
+
+/* فقاعات المحادثة — بدون ظل أو إطار خفيف */
+.chat-message-bubble {
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+  -webkit-box-shadow: none !important;
 }
 
 @keyframes chat-send-pulse-keyframes {

@@ -237,7 +237,7 @@ function chatBubbleFilledClass(
 ): string {
   // Liquid Glass bubble — rounded corners أكبر
   const base =
-    "inline-block w-max max-w-full rounded-[20px] text-[15px] leading-[1.4] align-top select-text " +
+    "chat-message-bubble inline-block w-max max-w-full rounded-[20px] border-0 outline-none ring-0 text-[15px] leading-[1.4] align-top select-text " +
     (igDm ? "px-[15px] py-[10px] " : "px-[14px] py-[10px] ");
   if (isQuran) {
     return (
@@ -4458,6 +4458,7 @@ function ChatRoom({
   }, [isDmRoom, visibleMessages, vanishMessages]);
 
   const [showDmDetails, setShowDmDetails] = useState(false);
+  const [dmDetailsRestoreSearch, setDmDetailsRestoreSearch] = useState(false);
   const dmDetailsPopStepRef = useRef<() => boolean>(() => false);
   const displayMessagesForView = displayMessages;
 
@@ -5967,7 +5968,13 @@ function ChatRoom({
     roomBackAtRef.current = now;
     if (showDmDetails) {
       if (dmDetailsPopStepRef.current()) return;
+      setDmDetailsRestoreSearch(false);
       setShowDmDetails(false);
+      return;
+    }
+    if (dmDetailsRestoreSearch) {
+      setDmDetailsRestoreSearch(false);
+      setShowDmDetails(true);
       return;
     }
     if (embedInStack && onAnimatedBack) {
@@ -5975,7 +5982,7 @@ function ChatRoom({
       return;
     }
     onBack();
-  }, [showDmDetails, embedInStack, onAnimatedBack, onBack]);
+  }, [showDmDetails, dmDetailsRestoreSearch, embedInStack, onAnimatedBack, onBack]);
 
 
   const {
@@ -6203,6 +6210,7 @@ function ChatRoom({
               return;
             }
             if (isDmRoom && other) {
+              setDmDetailsRestoreSearch(false);
               setShowDmDetails(true);
               return;
             }
@@ -6443,7 +6451,7 @@ function ChatRoom({
         onPointerCancel={handleVanishPullUp}
         dir="ltr"
         className={
-          "chat-scroll-pane chat-no-select no-scrollbar relative min-h-0 flex-1 touch-pan-y overscroll-none " +
+          "chat-scroll-pane chat-no-select no-scrollbar relative flex min-h-0 flex-1 flex-col touch-pan-y overscroll-none " +
           (drawComposeOpen ? "overflow-hidden " : "overflow-y-auto ") +
           (isQuranChannel ? "bg-zinc-950" : chromeOnWallpaper ? "bg-transparent" : useIgDm ? "" : "bg-background")
         }
@@ -6456,12 +6464,9 @@ function ChatRoom({
       >
         <div
           className={
-            "flex min-h-full w-full flex-col justify-end gap-2 px-3 pt-2 " +
+            "mt-auto flex w-full flex-col gap-2 px-3 pt-2 pb-0.5 " +
             (isQuranChannel ? "bg-zinc-950" : chromeOnWallpaper ? "bg-transparent" : "")
           }
-          style={{
-            paddingBottom: "8px",
-          }}
         >
         {(hasOlderMessages || loadingOlderUi) && (
           <div className="flex w-full justify-center py-2" aria-busy={loadingOlderUi}>
@@ -7097,7 +7102,7 @@ function ChatRoom({
             {useIgDm ? (
             <div dir="ltr" className="relative flex min-h-[44px] items-end gap-2.5">
               <div
-                dir="ltr"
+                dir={lang === "ar" ? "rtl" : "ltr"}
                 className="flex min-h-[44px] min-w-0 flex-1 flex-nowrap items-center gap-0.5 rounded-[24px] px-2 py-1"
                 style={
                   dmPalette
@@ -7187,7 +7192,7 @@ function ChatRoom({
               <MentionComposerField
                 textareaRef={composerInputRef}
                 rows={1}
-                dir="auto"
+                textDir={lang === "ar" ? "rtl" : "ltr"}
                 value={text}
                 onChange={onComposerChange}
                 mentionVariant="composer"
@@ -7470,7 +7475,7 @@ function ChatRoom({
               <MentionComposerField
                 textareaRef={composerInputRef}
                 rows={1}
-                dir="auto"
+                textDir={lang === "ar" ? "rtl" : "ltr"}
                 value={text}
                 onChange={onComposerChange}
                 mentionVariant={isQuranChannel ? "composerQuran" : "composer"}
@@ -7704,11 +7709,20 @@ function ChatRoom({
           }
         >
           <ChatDmDetailsScreen
+            key={dmDetailsRestoreSearch ? "dm-details-search" : "dm-details"}
             chat={chat}
             peer={other}
             messages={displayMessages}
+            initialSubView={dmDetailsRestoreSearch ? "search" : null}
+            onJumpToMessage={messageId => {
+              setDmDetailsRestoreSearch(true);
+              dmDetailsPopStepRef.current = () => false;
+              setShowDmDetails(false);
+              scrollToMessageId(messageId);
+            }}
             onBack={() => {
               dmDetailsPopStepRef.current = () => false;
+              setDmDetailsRestoreSearch(false);
               setShowDmDetails(false);
             }}
             onOpenProfile={userId => {

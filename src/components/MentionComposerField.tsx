@@ -13,6 +13,8 @@ type Props = Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "value" | "onChan
   overlayClassName?: string;
   /** كلاسات تُطبَّق على الـ div الخارجي — استخدمها لخلفية الحاوية (bg-input…) بدل تمريرها للـ textarea */
   wrapperClassName?: string;
+  /** اتجاه النص — يُطبَّق على الطبقة والحقل معاً (مهم للعربية) */
+  textDir?: "rtl" | "ltr" | "auto";
 };
 
 export function MentionComposerField({
@@ -32,8 +34,9 @@ export function MentionComposerField({
     <div className={cn("relative min-w-0 flex-1", wrapperClassName)}>
       <div
         aria-hidden
+        dir={textDir}
         className={cn(
-          "pointer-events-none absolute inset-0 z-0 overflow-hidden whitespace-pre-wrap break-words",
+          "pointer-events-none absolute inset-0 z-0 overflow-hidden whitespace-pre-wrap break-words text-start",
           overlayClassName,
           !value && "opacity-0",
         )}
@@ -43,10 +46,11 @@ export function MentionComposerField({
       <textarea
         {...rest}
         ref={ref}
+        dir={textDir}
         value={value}
         onChange={e => onChange(e.target.value)}
         className={cn(
-          "relative z-[1] w-full resize-none caret-current selection:bg-primary/25",
+          "relative z-[1] w-full resize-none text-start caret-current selection:bg-primary/25",
           value ? "text-transparent" : "text-inherit",
           className,
         )}

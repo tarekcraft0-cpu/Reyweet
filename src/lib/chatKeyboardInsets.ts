@@ -112,7 +112,7 @@ function applyChatKeyboardCss() {
   root.style.setProperty("--vv-keyboard-inset", `${snap.keyboardInset}px`);
   root.style.setProperty("--chat-sab-effective", snap.open ? "0px" : "var(--sab)");
   root.classList.toggle("chat-keyboard-open", snap.open);
-  root.style.setProperty("--chat-scroll-padding-bottom", "8px");
+  root.style.setProperty("--chat-scroll-padding-bottom", "4px");
   applyComposerKeyboardLift();
   return snap;
 }

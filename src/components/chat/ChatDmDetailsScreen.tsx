@@ -74,6 +74,8 @@ export function ChatDmDetailsScreen({
   isMuted,
   onToggleMute,
   onRegisterPopStep,
+  initialSubView = null,
+  onJumpToMessage,
 }: {
   chat: Chat;
   peer: User;
@@ -86,11 +88,15 @@ export function ChatDmDetailsScreen({
   onToggleMute: () => void;
   /** يُستدعى عند الرجوع خطوة واحدة (بحث → التفاصيل) قبل إغلاق الشاشة */
   onRegisterPopStep?: (pop: () => boolean) => void;
+  /** فتح شاشة البحث مباشرة (مثلاً بعد الرجوع من المحادثة) */
+  initialSubView?: SubView;
+  /** الانتقال لرسالة مع إبقاء مسار الرجوع (بحث ← إعدادات) */
+  onJumpToMessage?: (messageId: string) => void;
 }) {
   const { state, currentUser } = useApp();
   const t = useT();
   const me = currentUser!;
-  const [subView, setSubView] = useState<SubView>(null);
+  const [subView, setSubView] = useState<SubView>(initialSubView);
   const [searchQ, setSearchQ] = useState("");
   const [showOptions, setShowOptions] = useState(false);
 
@@ -163,9 +169,18 @@ export function ChatDmDetailsScreen({
     setSubView(null);
     setSearchQ("");
     setShowOptions(false);
+    if (onJumpToMessage) {
+      onJumpToMessage(messageId);
+      return;
+    }
     onBack();
     window.setTimeout(() => onScrollToMessage(messageId), 0);
   };
+
+  useEffect(() => {
+    setSubView(initialSubView);
+    if (initialSubView === "search") setSearchQ("");
+  }, [initialSubView]);
 
   const closeSearch = () => {
     setSubView(null);
