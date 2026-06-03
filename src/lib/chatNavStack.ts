@@ -3,10 +3,17 @@
 /** عرض منطقة الحافة اليمنى لبدء سحب الرجوع */
 export const CHAT_NAV_EDGE_PX = 44;
 export const CHAT_NAV_COMMIT_FRACTION = 0.28;
-export const CHAT_NAV_MS = 220;
+export const CHAT_NAV_MS = 260;
+export const CHAT_NAV_OPEN_MS = 300;
 export const CHAT_NAV_EASE = "cubic-bezier(0.32, 0.72, 0, 1)";
+export const CHAT_NAV_OPEN_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
 /** px/ms — سحب سريع لليسار يكمل الرجوع */
 export const CHAT_NAV_FLING_VX = 0.34;
+
+function easeOutCubic(t: number): number {
+  const p = Math.max(0, Math.min(1, t));
+  return 1 - Math.pow(1 - p, 3);
+}
 
 export type ChatNavLayerRefs = {
   inboxEl: HTMLDivElement | null;
@@ -43,13 +50,14 @@ export function chatNavDismissTransforms(pullPx: number, widthPx: number) {
   const pull = Math.max(0, Math.min(w, Number.isFinite(pullPx) ? pullPx : 0));
   const progress = pull / w;
   const openProgress = 1 - progress;
-  const roomRadius = Math.round(progress * 14);
+  const roomRadius = Math.round(progress * 12 + progress * progress * 4);
+  const scale = 1 - progress * 0.048;
   return {
     progress: openProgress,
     pullPx: pull,
     dismissPull: progress,
     roomRadius,
-    room: `translate3d(${-pull}px, 0, 0)`,
+    room: `translate3d(${-pull}px, 0, 0) scale(${scale.toFixed(4)})`,
   };
 }
 
@@ -62,17 +70,26 @@ export function chatNavCompleteMs(pullPx: number, widthPx: number): number {
 }
 
 /** t: 0 = مغلق (غرفة خارج الشاشة يميناً)، 1 = مفتوح */
-export function chatNavOpenTransforms(t: number, _widthPx: number) {
+export function chatNavOpenTransforms(t: number, widthPx: number) {
   const p = Math.max(0, Math.min(1, t));
-  /** نسبة مئوية — تطابق عرض الحاوية دائماً (يمنع فراغاً على iOS عند اختلاف cap عن العرض الفعلي) */
+  const w = chatNavWidth(widthPx);
+  const roomPct = 100 * (1 - p);
+  const roomScale = 0.94 + 0.06 * p;
   const room =
     p >= 0.999
       ? "none"
-      : `translate3d(${(100 * (1 - p)).toFixed(4)}%, 0, 0)`;
-  /** القائمة لا تتحرك أفقياً — parallax كان يُسبب انزياحاً ظاهراً على iOS/RTL */
+      : `translate3d(${roomPct.toFixed(4)}%, 0, 0) scale(${roomScale.toFixed(4)})`;
+  const inboxTx = Math.round(-p * w * 0.2);
+  const inboxScale = 1 - p * 0.035;
+  const inbox =
+    p < 0.001
+      ? "none"
+      : `translate3d(${inboxTx}px, 0, 0) scale(${inboxScale.toFixed(4)})`;
   return {
     room,
-    inbox: "none",
+    inbox,
+    openProgress: p,
+    dismissPull: 1 - p,
   };
 }
 
@@ -97,9 +114,11 @@ export function applyChatNavDismissTransforms(
   if (layers.inboxEl) {
     layers.inboxEl.style.transition = "none";
     layers.inboxEl.style.transform = "none";
-    layers.inboxEl.style.transformOrigin = "";
+    layers.inboxEl.style.transformOrigin = "center right";
+    layers.inboxEl.style.filter = "";
   }
   if (layers.roomEl) {
+    layers.roomEl.style.transformOrigin = "center right";
     layers.roomEl.style.transform = room;
     layers.roomEl.style.transition = transition;
     layers.roomEl.style.setProperty("--retweet-chat-room-radius", `${roomRadius}px`);
@@ -113,23 +132,65 @@ export function applyChatNavOpenTransforms(
   widthPx: number,
   layers: ChatNavLayerRefs,
   animate: boolean,
+  tapOpen = false,
 ): void {
   const { room, inbox } = chatNavOpenTransforms(t, widthPx);
-  const transition = animate ? `transform ${CHAT_NAV_MS}ms ${CHAT_NAV_EASE}` : "none";
+  const ms = tapOpen ? CHAT_NAV_OPEN_MS : CHAT_NAV_MS;
+  const ease = tapOpen ? CHAT_NAV_OPEN_EASE : CHAT_NAV_EASE;
+  const transition = animate ? `transform ${ms}ms ${ease}, filter ${ms}ms ease` : "none";
   if (layers.inboxEl) {
-    layers.inboxEl.style.transform = "none";
-    layers.inboxEl.style.transformOrigin = "";
-    layers.inboxEl.style.transition = "none";
+    layers.inboxEl.style.transform = inbox;
+    layers.inboxEl.style.transformOrigin = "center right";
+    layers.inboxEl.style.transition = transition;
+    layers.inboxEl.style.filter = t > 0.02 ? `brightness(${1 - t * 0.06})` : "";
     if (t < 0.001) layers.inboxEl.dataset.inboxAtRest = "true";
     else delete layers.inboxEl.dataset.inboxAtRest;
   }
   if (layers.roomEl) {
     layers.roomEl.style.visibility = "";
+    layers.roomEl.style.pointerEvents = t > 0.02 ? "auto" : "none";
+    layers.roomEl.style.opacity = "1";
+    layers.roomEl.style.transformOrigin = "center right";
     layers.roomEl.style.transform = room;
     layers.roomEl.style.transition = transition;
     layers.roomEl.style.removeProperty("--retweet-chat-room-radius");
-    layers.roomEl.style.removeProperty("--retweet-chat-dismiss-pull");
+    layers.roomEl.style.setProperty("--retweet-chat-dismiss-pull", String(Math.max(0, 1 - t)));
   }
+}
+
+/**
+ * فتح تفاعلي بالنقر — غرفة من اليمين + القائمة تتحرك قليلاً (Instagram DM).
+ * يُرجع إلغاء الرسوم إن لزم.
+ */
+export function runChatNavOpenAnimation(
+  widthPx: number,
+  layers: ChatNavLayerRefs,
+  onFrame: (t: number) => void,
+  onDone: () => void,
+): () => void {
+  let cancelled = false;
+  const cap = chatNavWidth(widthPx);
+  applyChatNavOpenTransforms(0, cap, layers, false);
+  onFrame(0);
+  const start = performance.now();
+  const tick = (now: number) => {
+    if (cancelled) return;
+    const raw = Math.min(1, (now - start) / CHAT_NAV_OPEN_MS);
+    const t = easeOutCubic(raw);
+    applyChatNavOpenTransforms(t, cap, layers, false);
+    onFrame(t);
+    if (raw < 1) {
+      requestAnimationFrame(tick);
+      return;
+    }
+    applyChatNavOpenTransforms(1, cap, layers, false);
+    onFrame(1);
+    onDone();
+  };
+  requestAnimationFrame(tick);
+  return () => {
+    cancelled = true;
+  };
 }
 
 export function snapChatNavInboxRest(layers: ChatNavLayerRefs, widthPx?: number): void {

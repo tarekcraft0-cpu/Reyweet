@@ -22,6 +22,7 @@ import type { ChatScrollIntroHandle } from "@/lib/chatScrollIntro";
 import {
   applyChatNavDismissTransforms,
   applyChatNavOpenTransforms,
+  runChatNavOpenAnimation,
   CHAT_NAV_MS,
   chatNavCompleteMs,
   chatNavReleaseTarget,
@@ -1135,22 +1136,32 @@ const ChatListRowWithPeek = memo(function ChatListRowWithPeek({
   const rowShellRef = useRef<HTMLDivElement>(null);
   const chatRowOpenId = openChatIdFor(c, me.id);
 
+  const setRowPressedVisual = useCallback((pressed: boolean) => {
+    const el = rowShellRef.current;
+    if (!el) return;
+    el.classList.toggle("is-pressed", pressed);
+  }, []);
+
+  const flashRowLaunchVisual = useCallback(() => {
+    const el = rowShellRef.current;
+    if (!el) return;
+    el.classList.remove("is-pressed");
+    el.classList.add("is-launching");
+    window.setTimeout(() => {
+      el.classList.remove("is-launching");
+    }, 220);
+  }, []);
+
   const openChatFromRowTap = useCallback(() => {
     if (rowOpenCommittedRef.current) return;
     rowOpenCommittedRef.current = true;
+    flashRowLaunchVisual();
     window.setTimeout(() => {
       rowOpenCommittedRef.current = false;
     }, 450);
     if (onRowOpenCommit) onRowOpenCommit(chatRowOpenId);
     else startTransition(() => onOpenChat(chatRowOpenId));
-  }, [onRowOpenCommit, onOpenChat, chatRowOpenId]);
-
-  const setRowPressedVisual = (pressed: boolean) => {
-    const el = rowShellRef.current;
-    if (!el) return;
-    el.classList.toggle("bg-secondary/60", pressed);
-    el.style.transform = pressed ? "scale(0.985)" : "";
-  };
+  }, [onRowOpenCommit, onOpenChat, chatRowOpenId, flashRowLaunchVisual]);
 
   const scrollPeekToBottom = useCallback(() => {
     const el = peekScrollRef.current;
@@ -1728,9 +1739,16 @@ const ChatListRowWithPeek = memo(function ChatListRowWithPeek({
       <div className="relative overflow-visible">
         <div
           ref={rowShellRef}
-          className="relative z-20 flex flex-row items-center bg-background transition-[background-color,transform] duration-100 ease-out will-change-transform"
+          className="chat-inbox-row-shell relative z-20 flex flex-row items-center bg-background will-change-transform"
           style={{ minHeight: "84px" }}
           title={t("chatRowLongPressHint")}
+          onPointerDown={e => {
+            if (e.button !== 0) return;
+            setRowPressedVisual(true);
+          }}
+          onPointerUp={() => setRowPressedVisual(false)}
+          onPointerCancel={() => setRowPressedVisual(false)}
+          onPointerLeave={() => setRowPressedVisual(false)}
         >
           {/* [A] Avatar — FAR RIGHT in RTL / FAR LEFT in LTR */}
           <div
@@ -2060,6 +2078,7 @@ export function ChatScreen({
   /** قفل أثناء انزلاق فتح/إغلاق المكدس — يمنع سحباً ثانياً أو ارتداداً */
   const stackTransitionLockRef = useRef(false);
   const stackSwipeOpeningRef = useRef(false);
+  const stackOpenAnimCancelRef = useRef<(() => void) | null>(null);
   const stackNavTargetRef = useRef<string | null>(null);
   const stackNavGenerationRef = useRef(0);
   /** يمنع commit مزدوج من pointerend / tap / سحب لأي صف */
@@ -2131,7 +2150,7 @@ export function ChatScreen({
           cap = readSafeStackCapPx(stackInboxRef.current, stackCapRef);
           stackCapRef.current = cap;
         }
-        applyChatNavOpenTransforms(p, cap, layers, animate);
+        applyChatNavOpenTransforms(p, cap, layers, animate, stackTapTransitionRef.current);
       } catch (err) {
         console.warn("[chat-stack-transform]", err);
       }
@@ -2400,20 +2419,51 @@ export function ChatScreen({
         stackCapRef.current = cap;
       }
 
+      stackOpenAnimCancelRef.current?.();
+      stackOpenAnimCancelRef.current = null;
+      stackTapTransitionRef.current = true;
+      stackTransitionLockRef.current = true;
+      setStackGestureLocked(true);
+
       flushSync(() => {
         setOpenChat(canonical);
-        stackProgressRef.current = 1;
-        setStackProgress(1);
+        stackProgressRef.current = 0;
+        setStackProgress(0);
         setStackSpring(false);
       });
       onActiveChatChange?.(canonical);
 
-      applyChatNavOpenTransforms(1, cap, stackLayers(), false);
-      publishChatStackCssProgress(1);
-      syncStackNavHideProgress(null);
-      onExitNavRevealProgress?.(null);
-      releaseStackTransitionLock();
-      requestStackRoomScrollBottom();
+      const layers = stackLayers();
+      if (roomEl) {
+        roomEl.style.visibility = "";
+        roomEl.style.opacity = "1";
+        roomEl.style.pointerEvents = "none";
+      }
+
+      stackOpenAnimCancelRef.current = runChatNavOpenAnimation(
+        cap,
+        layers,
+        (t) => {
+          stackProgressRef.current = t;
+          publishStackProgressVisual(t, false, false);
+          if (t > 0.02) {
+            syncStackNavHideProgress(t);
+            onExitNavRevealProgress?.(t);
+          }
+        },
+        () => {
+          stackOpenAnimCancelRef.current = null;
+          stackProgressRef.current = 1;
+          setStackProgress(1);
+          publishChatStackCssProgress(1);
+          syncStackNavHideProgress(null);
+          onExitNavRevealProgress?.(null);
+          stackTapTransitionRef.current = false;
+          releaseStackTransitionLock();
+          requestStackRoomScrollBottom();
+        },
+      );
+
       startTransition(() => {
         void loadChatMessages(canonical);
       });
@@ -2439,6 +2489,8 @@ export function ChatScreen({
   );
 
   const closeOpenChat = useCallback(() => {
+    stackOpenAnimCancelRef.current?.();
+    stackOpenAnimCancelRef.current = null;
     ++stackNavGenerationRef.current;
     stackCloseCommitRef.current = false;
     if (stackSnapBackTimerRef.current != null) {
@@ -2747,6 +2799,8 @@ export function ChatScreen({
   }, [onThreadOpen, onHideBottomNav, onExitNavRevealProgress]);
 
   const beginCloseChatThread = useCallback(function beginCloseChatThreadImpl(closingKey: string) {
+      stackOpenAnimCancelRef.current?.();
+      stackOpenAnimCancelRef.current = null;
       if (stackClosingId) return;
       if (stackCloseTimerRef.current != null) {
         window.clearTimeout(stackCloseTimerRef.current);

@@ -836,6 +836,7 @@ html.retweet-native-shell .notifications-panel-scroll {
 
 /* غرفة المحادثة أثناء سحب الخروج — ظل وزوايا مثل WhatsApp / Instagram Direct */
 .chat-room-stack-dismiss {
+  transform-origin: center right;
   border-top-left-radius: var(--retweet-chat-room-radius, 0);
   border-bottom-left-radius: var(--retweet-chat-room-radius, 0);
   box-shadow: calc(-1 * var(--retweet-chat-dismiss-pull, 0) * 14px) 0
@@ -845,7 +846,29 @@ html.retweet-native-shell .notifications-panel-scroll {
   backface-visibility: hidden;
 }
 
-/* transform-origin يُضبط من JS أثناء سحب الإغلاق فقط — لا على القائمة في الراحة */
+.chat-inbox-pane[data-inbox-at-rest="true"] {
+  transform: none !important;
+  filter: none !important;
+}
+
+.chat-inbox-row-shell {
+  transition:
+    transform 0.14s cubic-bezier(0.22, 1, 0.36, 1),
+    background-color 0.12s ease;
+}
+
+.chat-inbox-row-shell.is-pressed {
+  transform: scale(0.982);
+  background-color: color-mix(in srgb, var(--secondary) 55%, transparent);
+}
+
+.chat-inbox-row-shell.is-launching {
+  transform: scale(0.97);
+  opacity: 0.92;
+  transition-duration: 0.2s;
+}
+
+/* transform-origin يُضبط من JS أثناء سحب الإغلاق — القائمة ثابتة في الراحة */
 
 /* لوحات التطبيق (تنبيهات، إعدادات، …) */
 .app-dismiss-sheet-panel,
