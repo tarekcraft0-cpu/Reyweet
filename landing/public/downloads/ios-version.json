@@ -3,7 +3,7 @@
   "bundleId": "com.reyweet.app",
   "title": "Reyweet",
   "signed": false,
-  "installMethod": "download",
+  "installMethod": "ota",
   "ipaUrl": "https://reyweet.vercel.app/downloads/retweet.ipa",
   "manifestUrl": "https://reyweet.vercel.app/downloads/manifest.plist",
   "webAppUrl": "https://reyweet.vercel.app/app/",

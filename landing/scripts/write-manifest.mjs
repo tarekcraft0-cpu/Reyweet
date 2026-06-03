@@ -29,7 +29,7 @@ const ipaUrl = base
   ? `${base}/downloads/retweet.ipa`
   : "https://YOUR-DOMAIN.example/downloads/retweet.ipa";
 
-const iconUrl = base ? `${base}/public/logo.png` : "";
+const iconUrl = base ? `${base}/public/apple-touch-icon.png` : "";
 
 const bundleId = process.env.IOS_BUNDLE_ID?.trim() || "com.reyweet.app";
 const bundleVersion = process.env.IOS_BUNDLE_VERSION?.trim() || "1.0.0";

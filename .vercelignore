@@ -11,8 +11,15 @@ capacitor.config.ts
 .user-ipa-inspect
 .ipa-verify
 backups-local
-*.ipa
-*.apk
+ios/**/*.ipa
+dist/**/*.ipa
+mobile/**/*.ipa
+.ipa-package-work/**
+.ipa-inspect/**
+.ipa-verify/**
+.user-ipa-inspect/**
+android/**/*.apk
+mobile/dist-ipa/**
 .env
 .env.*
 agent-transcripts

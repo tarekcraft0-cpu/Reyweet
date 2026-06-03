@@ -173,9 +173,10 @@
                 >الوثوق بالشهادة</a
               >
               <a
+                id="ios-ipa-file-download"
                 href="/downloads/retweet.ipa"
                 class="text-sm font-semibold text-slate-600 underline dark:text-neutral-400"
-                >تحميل ملف IPA</a
+                >تحميل ملف IPA (كمبيوتر)</a
               >
             </div>
             <p class="mt-4 max-w-xl text-sm leading-relaxed text-slate-500 dark:text-neutral-500">
@@ -633,18 +634,27 @@
         var iosNotice = document.getElementById("ios-unsigned-notice");
         var iosInline = document.getElementById("ios-install-inline");
 
+        function isAppleMobile() {
+          var ua = navigator.userAgent || "";
+          return (
+            /iPhone|iPad|iPod/i.test(ua) ||
+            (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1)
+          );
+        }
+
         function wireIosInstall(el, info) {
           if (!el) return;
           el.classList.remove("pointer-events-none", "opacity-50");
           el.removeAttribute("aria-disabled");
-          if (info && info.signed === true) {
+          el.removeAttribute("download");
+          var stale = info && info.ipaStale === true;
+          if (!stale && (isAppleMobile() || (info && info.signed === true))) {
             el.href =
               "itms-services://?action=download-manifest&url=" + encodeURIComponent(manifestUrl);
-            el.removeAttribute("download");
-          } else {
-            el.href = info && info.ipaUrl ? info.ipaUrl : ipaDownloadUrl;
-            el.setAttribute("download", "Retweet.ipa");
+            return;
           }
+          el.href = info && info.ipaUrl ? info.ipaUrl : ipaDownloadUrl;
+          if (!isAppleMobile()) el.setAttribute("download", "Retweet.ipa");
         }
 
         fetch("/downloads/ios-version.json?t=" + Date.now(), { cache: "no-store" })
@@ -680,7 +690,7 @@
             } else {
               if (info.signed !== true && iosNotice) iosNotice.hidden = false;
               if (iosLabel) {
-                iosLabel.textContent = info.signed === true ? "تثبيت على iPhone" : "تحميل IPA لـ iPhone";
+                iosLabel.textContent = isAppleMobile() ? "تثبيت على iPhone" : "تحميل IPA لـ iPhone";
               }
             }
             if (iosHint) {
@@ -689,16 +699,31 @@
                 ? "الويب محدّث · IPA قديم — لا تثبّت حتى بناء جديد"
                 : "iOS v" +
                   (info.version || "1.0.0") +
-                  (info.signed ? " — تثبيت مباشر من Safari" : " — تحميل كامل ثم توقيع/تثبيت") +
+                  (isAppleMobile()
+                    ? " — تثبيت من Safari (OTA)"
+                    : info.signed
+                      ? " — تثبيت مباشر"
+                      : " — تحميل للكمبيوتر") +
                   size +
                   " · نفس الموقع والخادم.";
             }
           })
           .catch(function () {
-            wireIosInstall(iosMain, null);
-            wireIosInstall(iosFooter, null);
-            wireIosInstall(iosInline, null);
+        wireIosInstall(iosMain, null);
+              wireIosInstall(iosFooter, null);
+              wireIosInstall(iosInline, null);
           });
+
+        var ipaFileLink = document.getElementById("ios-ipa-file-download");
+        if (ipaFileLink) {
+          ipaFileLink.addEventListener("click", function (e) {
+            if (isAppleMobile()) {
+              e.preventDefault();
+              window.location.href =
+                "itms-services://?action=download-manifest&url=" + encodeURIComponent(manifestUrl);
+            }
+          });
+        }
       })();
 
       (function () {

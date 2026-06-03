@@ -2,7 +2,7 @@
  * Copies `landing/` into `_vercel_site/` for Vercel static hosting,
  * excluding `node_modules`. Run after `npm run build --prefix landing`.
  */
-import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import {
@@ -56,6 +56,16 @@ const manifestRun = spawnSync(process.execPath, [manifestScript, siteOutDir], {
 if (manifestRun.status !== 0) {
   process.exit(manifestRun.status ?? 1);
 }
+
+const publishedIpa = path.join(siteOutDir, "public", "downloads", "retweet.ipa");
+if (!existsSync(publishedIpa)) {
+  console.error(
+    "prepare-vercel-static: retweet.ipa مفقود — شغّل: COPY_IPA_PATH=... node scripts/package-ready-ipa.mjs",
+  );
+  process.exit(1);
+}
+const ipaMb = (statSync(publishedIpa).size / (1024 * 1024)).toFixed(1);
+console.log(`prepare-vercel-static: ✓ retweet.ipa (${ipaMb} MB) جاهز للنشر`);
 
 function readRepoApiUrl() {
   for (const rel of ["spa/public/web-auth-config.json", "landing/public/app-config.json"]) {
@@ -218,6 +228,8 @@ const apiProxyRewrites = useApiProxy
 const siteVercel = {
   $schema: "https://openapi.vercel.sh/vercel.json",
   framework: null,
+  installCommand: "",
+  buildCommand: "",
   rewrites: [
     ...apiProxyRewrites,
     { source: "/downloads/:path*", destination: "/public/downloads/:path*" },
@@ -231,7 +243,7 @@ const siteVercel = {
       source: "/downloads/(.*\\.ipa)",
       headers: [
         { key: "Content-Type", value: "application/octet-stream" },
-        { key: "Content-Disposition", value: 'attachment; filename="Retweet.ipa"' },
+        { key: "Cache-Control", value: "public, max-age=3600" },
       ],
     },
     {
@@ -293,7 +305,21 @@ if (useApiProxy) {
 }
 
 writeFileSync(path.join(siteOutDir, "vercel.json"), JSON.stringify(siteVercel, null, 2) + "\n", "utf8");
+writeFileSync(
+  path.join(siteOutDir, ".vercelignore"),
+  "node_modules\n.git\n",
+  "utf8",
+);
 if (siteOutDir !== outDir) {
   writeFileSync(path.join(root, ".vercel-deploy-dir.txt"), siteOutDir + "\n", "utf8");
+  try {
+    rmSync(outDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 300 });
+    cpSync(siteOutDir, outDir, { recursive: true });
+    console.log(`prepare-vercel-static: نسخ إلى ${path.basename(outDir)}/ (outputDirectory لـ Vercel)`);
+  } catch (e) {
+    console.warn(
+      `prepare-vercel-static: تعذّر النسخ إلى ${path.basename(outDir)}/ — أغلق الملفات المفتوحة ثم أعد التشغيل`,
+    );
+  }
 }
 console.log(`prepare-vercel-static: ✓ ${path.basename(siteOutDir)}/vercel.json (SPA على Vercel + بروكسي API)`);
