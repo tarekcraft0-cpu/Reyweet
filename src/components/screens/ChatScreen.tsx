@@ -44,7 +44,10 @@ import {
 import { ChatStackRoomGestureShell } from "../chat/ChatStackRoomGestureShell";
 import { SlideDismissBackButton, SlideDismissContext, SlideDismissShell } from "../SlideDismissShell";
 import { QURAN_CHANNEL_ID, isProfileNoteActive, useAppActions, useAppLanguage, useAppTheme, useAppSelector, useAppState, useChats, useCurrentUser, useIsGuestSelector, useAccountSessionKey, userById, visibleChatMessages } from "@/lib/store";
-import { parseGroupSystemEvent } from "@/lib/groupSystemMessages";
+import {
+  isGroupMembershipSystemContent,
+  parseGroupSystemEvent,
+} from "@/lib/groupSystemMessages";
 import { getChatMessageSyncMeta } from "@/lib/chatMessageSync";
 import { useProfiledRender } from "@/lib/renderProfiler";
 import { useTypingUsers } from "@/lib/typingContext";
@@ -2087,7 +2090,14 @@ export function ChatScreen({
   const stackSnapBackTimerRef = useRef<number | null>(null);
   const [stackGestureLocked, setStackGestureLocked] = useState(false);
   /** سحب خروج نشط — يبقي إيماءة الإغلاق مفعّلة حتى لو انخفض stackProgress أثناء السحب */
+  const stackRoomDismissDraggingRef = useRef(false);
   const [stackRoomDismissDragging, setStackRoomDismissDragging] = useState(false);
+  const stackDismissPullRafRef = useRef(0);
+  const stackDismissPullPendingRef = useRef<{
+    pullPx: number;
+    phase: ChatSwipeBackPhase;
+    velocityX: number;
+  } | null>(null);
 
   useEffect(() => {
     try {
@@ -2264,43 +2274,37 @@ export function ChatScreen({
     [publishStackProgressVisual],
   );
 
-  const syncStackProgressFromRoom = useCallback(
-    (pullPx: number, phase: ChatSwipeBackPhase = "move", velocityX = 0) => {
-      if (stackCloseCommitRef.current && phase === "end" && pullPx < 8) return;
-      if (phase === "end" && pullPx < 8 && lastRoomDismissPullRef.current > 24) {
-        pullPx = lastRoomDismissPullRef.current;
-      }
-      if (openChat) {
-        const cap = Math.max(260, stackCapRef.current);
-        if (phase === "start" || phase === "move") {
-          if (phase === "start") {
-            stackCloseCommitRef.current = false;
-            if (stackSnapBackTimerRef.current != null) {
-              window.clearTimeout(stackSnapBackTimerRef.current);
-              stackSnapBackTimerRef.current = null;
-            }
-            setStackRoomDismissDragging(true);
-            lastRoomDismissPullRef.current = 0;
-            stackNavDismissProgressRef.current = -1;
-            onExitNavRevealProgress?.(null);
-          }
-          stackRoomDriveRef.current = "close";
-          stackRoomDismissRef.current = true;
-          applyNavDismissPull(pullPx, false);
-          return;
+  const applyStackDismissPullFrame = useCallback(
+    (pullPx: number, phase: ChatSwipeBackPhase, velocityX: number) => {
+      if (!openChat) return;
+      const cap = Math.max(260, stackCapRef.current);
+      if (phase === "start") {
+        stackCloseCommitRef.current = false;
+        if (stackSnapBackTimerRef.current != null) {
+          window.clearTimeout(stackSnapBackTimerRef.current);
+          stackSnapBackTimerRef.current = null;
         }
+        stackRoomDismissDraggingRef.current = true;
+        lastRoomDismissPullRef.current = 0;
+        stackNavDismissProgressRef.current = -1;
+        onExitNavRevealProgress?.(null);
+      }
+      stackRoomDriveRef.current = "close";
+      stackRoomDismissRef.current = true;
+      applyNavDismissPull(pullPx, false);
+      if (phase === "end") {
         const closing = chatNavReleaseTarget(pullPx, cap, velocityX) > 0;
         if (closing) {
           if (stackSnapBackTimerRef.current != null) {
             window.clearTimeout(stackSnapBackTimerRef.current);
             stackSnapBackTimerRef.current = null;
           }
-          setStackRoomDismissDragging(false);
+          stackRoomDismissDraggingRef.current = false;
           applyNavDismissPull(pullPx, false);
           return;
         }
         if (stackCloseCommitRef.current) return;
-        setStackRoomDismissDragging(false);
+        stackRoomDismissDraggingRef.current = false;
         stackNavDismissProgressRef.current = -1;
         stackRoomDriveRef.current = "idle";
         stackRoomDismissRef.current = false;
@@ -2314,13 +2318,42 @@ export function ChatScreen({
           setStackSpring(false);
           stackRoomDriveRef.current = "idle";
           stackRoomDismissRef.current = false;
-          setStackRoomDismissDragging(false);
+          stackRoomDismissDraggingRef.current = false;
           onExitNavRevealProgress?.(null);
         }, CHAT_NAV_MS);
-        return;
       }
     },
     [openChat, applyNavDismissPull, onExitNavRevealProgress],
+  );
+
+  const syncStackProgressFromRoom = useCallback(
+    (pullPx: number, phase: ChatSwipeBackPhase = "move", velocityX = 0) => {
+      if (stackCloseCommitRef.current && phase === "end" && pullPx < 8) return;
+      if (phase === "end" && pullPx < 8 && lastRoomDismissPullRef.current > 24) {
+        pullPx = lastRoomDismissPullRef.current;
+      }
+      if (openChat) {
+        if (phase === "move") {
+          stackDismissPullPendingRef.current = { pullPx, phase, velocityX };
+          if (!stackDismissPullRafRef.current) {
+            stackDismissPullRafRef.current = requestAnimationFrame(() => {
+              stackDismissPullRafRef.current = 0;
+              const pending = stackDismissPullPendingRef.current;
+              if (!pending) return;
+              applyStackDismissPullFrame(pending.pullPx, pending.phase, pending.velocityX);
+            });
+          }
+          return;
+        }
+        if (stackDismissPullRafRef.current) {
+          cancelAnimationFrame(stackDismissPullRafRef.current);
+          stackDismissPullRafRef.current = 0;
+        }
+        stackDismissPullPendingRef.current = null;
+        applyStackDismissPullFrame(pullPx, phase, velocityX);
+      }
+    },
+    [openChat, applyStackDismissPullFrame],
   );
 
   const releaseChatChromeAfterGesture = useCallback(() => {
@@ -2739,11 +2772,15 @@ export function ChatScreen({
 
   useEffect(() => {
     const exitingChatBySwipe =
-      stackRoomDismissDragging || !!stackClosingId || stackRoomDriveRef.current === "close";
+      stackRoomDismissDraggingRef.current ||
+      stackRoomDismissDragging ||
+      !!stackClosingId ||
+      stackRoomDriveRef.current === "close";
     const fullyOpen =
       !!openChat &&
       !stackDragChatId &&
       !stackClosingId &&
+      !stackRoomDismissDraggingRef.current &&
       !stackRoomDismissDragging &&
       stackProgressRef.current >= 0.98;
     /** ثبات تخطيط الشاشة طوال سحب الخروج — لا وميض SafeArea/الشريط السفلي */
@@ -3241,6 +3278,7 @@ export function ChatScreen({
 
   const showInboxStackActive = !!(activeStackChatId && stackChat);
   const exitingChatBySwipe =
+    stackRoomDismissDraggingRef.current ||
     stackRoomDismissDragging ||
     stackClosingId ||
     stackRoomDriveRef.current === "close";
@@ -4591,6 +4629,14 @@ function ChatRoom({
   useEffect(() => {
     setRenderMessageCount(CHAT_RENDER_INITIAL);
   }, [chat.id, sendChatId]);
+
+  useEffect(() => {
+    if (!chat.isGroup && !chat.isChannel) return;
+    const msgs = chat.messages || [];
+    const last = msgs[msgs.length - 1];
+    if (!last?.content || !isGroupMembershipSystemContent(last.content)) return;
+    setRenderMessageCount(c => Math.max(c, msgs.length));
+  }, [chat.id, chat.isGroup, chat.isChannel, chat.messages?.length, chat.messages]);
 
   const windowedMessages = useMemo(() => {
     const all = displayMessagesForView;

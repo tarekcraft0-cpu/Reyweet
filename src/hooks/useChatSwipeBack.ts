@@ -79,10 +79,34 @@ export function useChatSwipeBack({
   const edgePendingRef = useRef<{ pointerId: number; startX: number; startY: number } | null>(null);
   const panelPendingRef = useRef<{ pointerId: number; startX: number; startY: number } | null>(null);
 
+  const pullRafRef = useRef(0);
+  const pendingPullRef = useRef<{
+    pull: number;
+    phase: ChatSwipeBackPhase;
+    velocityX?: number;
+  } | null>(null);
+
   const flushPull = useCallback(
     (pull: number, phase: ChatSwipeBackPhase = "move", velocityX?: number) => {
       livePullRef.current = pull;
       maxPullRef.current = Math.max(maxPullRef.current, pull);
+      if (phase === "move") {
+        pendingPullRef.current = { pull, phase, velocityX };
+        if (!pullRafRef.current) {
+          pullRafRef.current = requestAnimationFrame(() => {
+            pullRafRef.current = 0;
+            const p = pendingPullRef.current;
+            if (!p) return;
+            onPullRef.current(p.pull, p.phase, p.velocityX);
+          });
+        }
+        return;
+      }
+      if (pullRafRef.current) {
+        cancelAnimationFrame(pullRafRef.current);
+        pullRafRef.current = 0;
+      }
+      pendingPullRef.current = null;
       onPullRef.current(pull, phase, velocityX);
     },
     [],

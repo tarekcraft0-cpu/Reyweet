@@ -16,6 +16,15 @@ export function buildGroupMuteSystemContent(
   return `${actor} كتم ${target} لمدة ${durationLabel}`;
 }
 
+export function buildGroupUnmuteSystemContent(
+  actorUsername: string,
+  targetUsername: string,
+): string {
+  const actor = actorUsername.startsWith("@") ? actorUsername : `@${actorUsername}`;
+  const target = targetUsername.startsWith("@") ? targetUsername : `@${targetUsername}`;
+  return `${actor} ألغى كتم ${target}`;
+}
+
 export function muteDurationLabelAr(durationMinutes: number | null): string {
   if (durationMinutes == null) return "للأبد";
   if (durationMinutes === 5) return "5 دقائق";

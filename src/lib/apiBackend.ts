@@ -21,7 +21,7 @@ import { formatFetchError, logApi, redactBody, shouldLogApi } from "./apiDebug";
 import { isGuestUserId } from "./guestUser";
 import { scopeAppStateToAccount } from "./scopeAppState";
 import { isReactNativeWebView } from "./nativeShell";
-import { isGroupMembershipSystemContent } from "./groupSystemMessages";
+import { dedupeGroupSystemMessages } from "./groupSystemMessages";
 import { getDeviceLabel, getOrCreateDeviceFingerprint } from "./deviceFingerprint";
 import { normalizeRemoteAppState } from "./stateNormalizeBridge";
 import { apiCacheGet, apiCacheGetOrFetch, apiCacheInvalidate, apiCacheSet } from "./apiCache";
@@ -923,19 +923,8 @@ export function mergeChatMessages(local: Message[], remote: Message[]): Message[
   const byId = new Map<string, Message>();
   for (const m of local) byId.set(m.id, m);
   for (const m of remote) byId.set(m.id, m);
-  const remoteSystemContent = new Set(
-    remote
-      .filter(m => m.type === "text" && isGroupMembershipSystemContent(m.content))
-      .map(m => m.content.trim()),
-  );
-  for (const m of local) {
-    if (m.type !== "text" || byId.has(m.id)) continue;
-    const t = m.content.trim();
-    if (isGroupMembershipSystemContent(t) && !remoteSystemContent.has(t)) {
-      byId.set(m.id, m);
-    }
-  }
-  return [...byId.values()].sort((a, b) => a.createdAt - b.createdAt);
+  const sorted = [...byId.values()].sort((a, b) => a.createdAt - b.createdAt);
+  return dedupeGroupSystemMessages(sorted);
 }
 
 /** دمج محادثة من استجابة API مع النسخة المحلية دون فقدان الرسائل */

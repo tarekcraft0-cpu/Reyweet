@@ -8,6 +8,7 @@ import {
   GroupAuthError,
   loadGroupContext,
   muteMember,
+  unmuteMember,
   requirePermission,
   setMemberRole,
   transferOwnership,
@@ -160,6 +161,23 @@ export function createGroupRouter(authMiddleware: (req: Request, res: Response, 
       return handleError(res, e);
     }
   });
+
+  router.delete(
+    "/v1/groups/:chatId/members/:userId/mute",
+    authMiddleware,
+    async (req, res) => {
+      try {
+        const chat = await unmuteMember(
+          String(req.params.chatId),
+          actorId(req),
+          String(req.params.userId),
+        );
+        return res.json({ chat });
+      } catch (e) {
+        return handleError(res, e);
+      }
+    },
+  );
 
   router.delete("/v1/groups/:chatId", authMiddleware, async (req, res) => {
     try {

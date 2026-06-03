@@ -24,6 +24,7 @@ import {
 } from "../lib/groupChatDelivery.js";
 import {
   buildGroupMuteSystemContent,
+  buildGroupUnmuteSystemContent,
   muteDurationLabelAr,
 } from "../lib/groupSystemMessages.js";
 import { registerGroupInvite } from "../db/groupInvites.js";
@@ -284,6 +285,50 @@ export async function muteMember(
   });
   const m = record.members.find(x => x.userId === targetUserId);
   if (m) m.mutedUntil = untilMs;
+  await saveGroupRecord(record);
+  return loadGroupContext(chatId, actorId).then(c => c.chat);
+}
+
+export async function unmuteMember(
+  chatId: string,
+  actorId: string,
+  targetUserId: string,
+): Promise<Chat> {
+  await requirePermission(chatId, actorId, "members.mute");
+  const { chat, record } = await loadGroupContext(chatId, actorId);
+  const muted = { ...(chat.mutedUserIds || {}) };
+  const hadMute = (muted[targetUserId] ?? 0) > Date.now();
+  delete muted[targetUserId];
+  const actorRow = await getUserById(actorId);
+  const targetRow = await getUserById(targetUserId);
+  const actorName = actorRow?.username || "مشرف";
+  const targetName = targetRow?.username || "عضو";
+  const systemMessage = hadMute
+    ? {
+        id: randomUUID(),
+        senderId: actorId,
+        type: "text" as const,
+        content: buildGroupUnmuteSystemContent(actorName, targetName),
+        createdAt: Date.now(),
+      }
+    : null;
+  await appendGroupAudit({
+    chatId,
+    actorId,
+    action: "member.unmuted",
+    targetUserId,
+  });
+  const nextMessages = systemMessage
+    ? [...(chat.messages || []), systemMessage]
+    : chat.messages || [];
+  await patchGroupChatForMembers(chatId, chat.members, {
+    groupPatch: {
+      mutedUserIds: muted,
+      messages: nextMessages,
+    },
+  });
+  const m = record.members.find(x => x.userId === targetUserId);
+  if (m) delete m.mutedUntil;
   await saveGroupRecord(record);
   return loadGroupContext(chatId, actorId).then(c => c.chat);
 }

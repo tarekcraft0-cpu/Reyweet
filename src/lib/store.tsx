@@ -204,7 +204,7 @@ import {
   apiAddPostComment,
   apiRecordStoryView,
 } from "./apiBackend";
-import { apiMuteGroupMember } from "./groupApi";
+import { apiMuteGroupMember, apiUnmuteGroupMember } from "./groupApi";
 import { subscribeRealtimeEvents, USER_REGISTERED_WINDOW_EVENT } from "./realtimeEvents";
 import { isNativeCapacitorShell } from "./apiUrlPolicy";
 import { beginNativePostLoginQuietPeriod } from "./nativeStability";
@@ -307,6 +307,8 @@ import { normalizeChatMessage, normalizeChatRecord } from "./chatNormalize";
 import {
   buildGroupKickSystemContent,
   buildGroupMuteSystemContent,
+  buildGroupUnmuteSystemContent,
+  dedupeGroupSystemMessages,
 } from "./groupSystemMessages";
 import { chatMergeKey, dmChatId, findChatByOpenId, parseDmChatId } from "./dmChatId";
 import {
@@ -1503,6 +1505,7 @@ interface Ctx {
   toggleGroupAdmin: (chatId: ID, userId: ID) => void;
   kickMember: (chatId: ID, userId: ID) => void;
   muteGroupMember: (chatId: ID, userId: ID, durationMinutes: number | null) => void;
+  unmuteGroupMember: (chatId: ID, userId: ID) => void;
   setGroupPublic: (chatId: ID, isPublic: boolean) => void;
   joinGroupByInviteCode: (
     code: string,
@@ -4455,42 +4458,43 @@ export function AppProvider({
       ),
     }));
   const kickMember = (chatId: ID, userId: ID) => {
-    setState((s) => ({
+    const useApi = !!(getApiToken() && apiBackendEnabled());
+    const actorName =
+      stateRef.current.users.find(u => u.id === stateRef.current.currentUserId)?.username || "مشرف";
+    const targetName = stateRef.current.users.find(u => u.id === userId)?.username || "عضو";
+    setState(s => ({
       ...s,
-      chats: s.chats.map((c) =>
-        c.id === chatId
-          ? {
-              ...c,
-              members: c.members.filter((x) => x !== userId),
-              admins: c.admins.filter((x) => x !== userId),
-              hosts: (c.hosts || []).filter((x) => x !== userId),
-              messages: [
-                ...(c.messages || []),
-                {
-                  id: uid(),
-                  senderId: s.currentUserId || c.ownerId || userId,
-                  type: "text",
-                  content: buildGroupKickSystemContent(
-                    s.users.find(u => u.id === s.currentUserId)?.username || "مشرف",
-                    s.users.find(u => u.id === userId)?.username || "عضو",
-                  ),
-                  createdAt: Date.now(),
-                },
-              ],
-            }
-          : c,
-      ),
+      chats: s.chats.map(c => {
+        if (c.id !== chatId) return c;
+        const next: Chat = {
+          ...c,
+          members: c.members.filter(x => x !== userId),
+          admins: c.admins.filter(x => x !== userId),
+          hosts: (c.hosts || []).filter(x => x !== userId),
+        };
+        if (!useApi) {
+          next.messages = [
+            ...(c.messages || []),
+            {
+              id: uid(),
+              senderId: s.currentUserId || c.ownerId || userId,
+              type: "text",
+              content: buildGroupKickSystemContent(actorName, targetName),
+              createdAt: Date.now(),
+            },
+          ];
+        }
+        return next;
+      }),
     }));
     const token = getApiToken();
     if (token && apiBackendEnabled()) {
       groupSyncBusyRef.current = true;
-      void apiKickGroupMember(token, chatId, userId)
-        .then(() => scheduleRemoteSync())
-        .finally(() => {
-          window.setTimeout(() => {
-            groupSyncBusyRef.current = false;
-          }, 2000);
-        });
+      void apiKickGroupMember(token, chatId, userId).finally(() => {
+        window.setTimeout(() => {
+          groupSyncBusyRef.current = false;
+        }, 2000);
+      });
     }
   };
 
@@ -4514,27 +4518,30 @@ export function AppProvider({
               ? "ساعة"
               : `${durationMinutes} دقيقة`;
 
+    const useApi = !!(getApiToken() && apiBackendEnabled());
     setState(s => ({
       ...s,
       chats: s.chats.map(c => {
         if (c.id !== chatId) return c;
         const mutedMap = { ...(c.mutedUserIds || {}), [userId]: mutedUntil };
-        const systemMsg: Message = {
-          id: uid(),
-          senderId: meId,
-          type: "text",
-          content: buildGroupMuteSystemContent(
-            meUser?.username || "مشرف",
-            targetUser?.username || "عضو",
-            muteLabel,
-          ),
-          createdAt: now,
-        };
-        return {
-          ...c,
-          mutedUserIds: mutedMap,
-          messages: [...(c.messages || []), systemMsg],
-        };
+        const next: Chat = { ...c, mutedUserIds: mutedMap };
+        if (!useApi) {
+          next.messages = [
+            ...(c.messages || []),
+            {
+              id: uid(),
+              senderId: meId,
+              type: "text",
+              content: buildGroupMuteSystemContent(
+                meUser?.username || "مشرف",
+                targetUser?.username || "عضو",
+                muteLabel,
+              ),
+              createdAt: now,
+            },
+          ];
+        }
+        return next;
       }),
     }));
 
@@ -4549,7 +4556,57 @@ export function AppProvider({
               chats: s.chats.map(c => (c.id === chatId ? mergeChatRecord(c, r.data.chat!) : c)),
             }));
           }
-          scheduleRemoteSync();
+        })
+        .finally(() => {
+          window.setTimeout(() => {
+            groupSyncBusyRef.current = false;
+          }, 1200);
+        });
+    }
+  };
+
+  const unmuteGroupMember: Ctx["unmuteGroupMember"] = (chatId, userId) => {
+    const meId = stateRef.current.currentUserId;
+    if (!meId || isGuestUserId(meId)) return;
+    const meUser = stateRef.current.users.find(u => u.id === meId);
+    const targetUser = stateRef.current.users.find(u => u.id === userId);
+    const useApi = !!(getApiToken() && apiBackendEnabled());
+    setState(s => ({
+      ...s,
+      chats: s.chats.map(c => {
+        if (c.id !== chatId) return c;
+        const mutedMap = { ...(c.mutedUserIds || {}) };
+        delete mutedMap[userId];
+        const next: Chat = { ...c, mutedUserIds: mutedMap };
+        if (!useApi) {
+          next.messages = [
+            ...(c.messages || []),
+            {
+              id: uid(),
+              senderId: meId,
+              type: "text",
+              content: buildGroupUnmuteSystemContent(
+                meUser?.username || "مشرف",
+                targetUser?.username || "عضو",
+              ),
+              createdAt: Date.now(),
+            },
+          ];
+        }
+        return next;
+      }),
+    }));
+    const token = getApiToken();
+    if (token && apiBackendEnabled()) {
+      groupSyncBusyRef.current = true;
+      void apiUnmuteGroupMember(chatId, userId)
+        .then(r => {
+          if (r.ok && r.data.chat) {
+            setState(s => ({
+              ...s,
+              chats: s.chats.map(c => (c.id === chatId ? mergeChatRecord(c, r.data.chat!) : c)),
+            }));
+          }
         })
         .finally(() => {
           window.setTimeout(() => {
@@ -6259,6 +6316,7 @@ export function AppProvider({
     toggleGroupAdmin,
     kickMember,
     muteGroupMember,
+    unmuteGroupMember,
     setGroupPublic,
     joinGroupByInviteCode,
     respondGroupJoinRequest,
@@ -6379,9 +6437,9 @@ export function userById(state: AppState, id: ID) {
 export function visibleChatMessages(chat: Chat, viewerId: ID): Message[] {
   const base = (chat.messages || []).filter(m => messageBelongsToChatForOwner(m, chat, viewerId));
   const hid = chat.hiddenMessageIdsByUser?.[viewerId];
-  if (!hid?.length) return base;
-  const hidden = new Set(hid);
-  return base.filter(m => !hidden.has(m.id));
+  const visible = !hid?.length ? base : base.filter(m => !new Set(hid).has(m.id));
+  if (chat.isGroup || chat.isChannel) return dedupeGroupSystemMessages(visible);
+  return visible;
 }
 
 export function isMutual(state: AppState, a: ID, b: ID) {

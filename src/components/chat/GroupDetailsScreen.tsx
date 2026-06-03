@@ -207,6 +207,7 @@ export function GroupDetailsScreen({
     toggleGroupAdmin,
     kickMember,
     muteGroupMember,
+    unmuteGroupMember,
     toggleHost,
     leaveChat,
     addGroupMembers,
@@ -1198,17 +1199,31 @@ export function GroupDetailsScreen({
                 >
                   طرد من المجموعة
                 </button>
-                <button
-                  type="button"
-                  className="flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-[15px] text-foreground hover:bg-secondary/50"
-                  onClick={() => {
-                    setMuteTarget(memberMenuTarget);
-                    setMemberMenuTarget(null);
-                  }}
-                >
-                  <MicOff size={18} className="shrink-0" />
-                  كتم العضو
-                </button>
+                {(chat.mutedUserIds?.[memberMenuTarget.id] ?? 0) > Date.now() ? (
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-[15px] font-semibold text-primary hover:bg-secondary/50"
+                    onClick={() => {
+                      unmuteGroupMember(chat.id, memberMenuTarget.id);
+                      setMemberMenuTarget(null);
+                    }}
+                  >
+                    <MicOff size={18} className="shrink-0" />
+                    إلغاء الكتم
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-[15px] text-foreground hover:bg-secondary/50"
+                    onClick={() => {
+                      setMuteTarget(memberMenuTarget);
+                      setMemberMenuTarget(null);
+                    }}
+                  >
+                    <MicOff size={18} className="shrink-0" />
+                    كتم العضو
+                  </button>
+                )}
               </>
             )}
             {chat.isChannel && (

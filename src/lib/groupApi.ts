@@ -64,6 +64,13 @@ export async function apiMuteGroupMember(chatId: ID, userId: ID, durationMinutes
   );
 }
 
+export async function apiUnmuteGroupMember(chatId: ID, userId: ID) {
+  return groupFetch<{ chat: Chat }>(
+    `/v1/groups/${encodeURIComponent(chatId)}/members/${encodeURIComponent(userId)}/mute`,
+    { method: "DELETE" },
+  );
+}
+
 export async function apiDeleteGroup(chatId: ID) {
   return groupFetch<{ ok: true }>(`/v1/groups/${encodeURIComponent(chatId)}`, {
     method: "DELETE",
