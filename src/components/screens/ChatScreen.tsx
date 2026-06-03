@@ -24,6 +24,7 @@ import {
   applyChatNavOpenTransforms,
   runChatNavOpenAnimation,
   CHAT_NAV_MS,
+  CHAT_NAV_OPEN_INTERACT_AT,
   chatNavCompleteMs,
   chatNavReleaseTarget,
   snapChatNavInboxRest,
@@ -1160,7 +1161,7 @@ const ChatListRowWithPeek = memo(function ChatListRowWithPeek({
     el.classList.add("is-launching");
     window.setTimeout(() => {
       el.classList.remove("is-launching");
-    }, 220);
+    }, 168);
   }, []);
 
   const openChatFromRowTap = useCallback(() => {
@@ -2120,6 +2121,9 @@ export function ChatScreen({
   const stackCloseCommitRef = useRef(false);
   const stackSnapBackTimerRef = useRef<number | null>(null);
   const [stackGestureLocked, setStackGestureLocked] = useState(false);
+  /** لمس الغرفة + سحب الرجوع — يُفعَّل مبكراً أثناء انزلاق الفتح */
+  const [stackRoomInteract, setStackRoomInteract] = useState(() => !!initialChatId);
+  const stackRoomInteractRef = useRef(!!initialChatId);
   /** سحب خروج نشط — يبقي إيماءة الإغلاق مفعّلة حتى لو انخفض stackProgress أثناء السحب */
   const stackRoomDismissDraggingRef = useRef(false);
   const [stackRoomDismissDragging, setStackRoomDismissDragging] = useState(false);
@@ -2435,20 +2439,40 @@ export function ChatScreen({
     setStackGestureLocked(false);
   }, []);
 
+  /** أثناء runChatNavOpenAnimation — تحديث CSS فقط دون إعادة تطبيق transform مرتين */
+  const syncOpenAnimationProgress = useCallback(
+    (t: number) => {
+      const clamped = publishChatStackCssProgress(t);
+      stackProgressRef.current = clamped;
+      if (t > 0.02) syncStackNavHideProgress(clamped);
+      if (t >= CHAT_NAV_OPEN_INTERACT_AT && !stackRoomInteractRef.current) {
+        stackRoomInteractRef.current = true;
+        setStackRoomInteract(true);
+        setStackGestureLocked(false);
+        const { roomEl } = stackLayers();
+        if (roomEl) roomEl.style.pointerEvents = "auto";
+      }
+      if (t >= 0.42 && stackTransitionLockRef.current) releaseStackTransitionLock();
+    },
+    [stackLayers, releaseStackTransitionLock],
+  );
+
   const ensureOpenChatInteractive = useCallback(() => {
     stackRoomDismissDraggingRef.current = false;
     setStackRoomDismissDragging(false);
     stackRoomDriveRef.current = "idle";
     stackRoomDismissRef.current = false;
     if (stackCloseCommitRef.current || stackClosingId) return;
-    if (stackProgressRef.current < 0.35 && !openChat) return;
-    if (stackProgressRef.current >= 0.98 || openChat) {
+    if (stackProgressRef.current < CHAT_NAV_OPEN_INTERACT_AT && !openChat) return;
+    if (stackProgressRef.current >= CHAT_NAV_OPEN_INTERACT_AT || openChat) {
+      stackRoomInteractRef.current = true;
+      setStackRoomInteract(true);
       releaseStackTransitionLock();
       const { roomEl } = stackLayers();
       if (roomEl) {
         roomEl.style.visibility = "";
         roomEl.style.opacity = "1";
-        roomEl.style.pointerEvents = "";
+        roomEl.style.pointerEvents = "auto";
       }
     }
   }, [openChat, stackClosingId, stackLayers, releaseStackTransitionLock]);
@@ -2513,22 +2537,26 @@ export function ChatScreen({
       stackOpenAnimCancelRef.current = null;
       stackTapTransitionRef.current = true;
       stackTransitionLockRef.current = true;
+      stackRoomInteractRef.current = false;
+      setStackRoomInteract(false);
       setStackGestureLocked(true);
 
-      flushSync(() => {
-        setOpenChat(canonical);
-        stackProgressRef.current = 0;
-        setStackProgress(0);
-        setStackSpring(false);
-      });
+      setOpenChat(canonical);
+      stackProgressRef.current = 0;
+      setStackProgress(0);
+      setStackSpring(false);
       onActiveChatChange?.(canonical);
 
       const layers = stackLayers();
+      applyChatNavOpenTransforms(0, cap, layers, false);
+      publishChatStackCssProgress(0);
       if (roomEl) {
         roomEl.style.visibility = "";
         roomEl.style.opacity = "1";
         roomEl.style.pointerEvents = "none";
       }
+
+      void loadChatMessages(canonical);
 
       const openSafetyTimer = window.setTimeout(() => {
         if (stackNavTargetRef.current !== canonical) return;
@@ -2538,38 +2566,43 @@ export function ChatScreen({
         publishChatStackCssProgress(1);
         syncStackNavHideProgress(null);
         stackTapTransitionRef.current = false;
+        stackRoomInteractRef.current = true;
+        setStackRoomInteract(true);
         releaseStackTransitionLock();
         ensureOpenChatInteractive();
         applyStackLayerTransforms(1, false);
-      }, 320);
+      }, 220);
 
-      void loadChatMessages(canonical);
+      const startOpenAnimation = () => {
+        stackOpenAnimCancelRef.current = runChatNavOpenAnimation(
+          cap,
+          layers,
+          t => {
+            syncOpenAnimationProgress(t);
+            if (t > 0.02) onExitNavRevealProgress?.(t);
+          },
+          () => {
+            window.clearTimeout(openSafetyTimer);
+            stackOpenAnimCancelRef.current = null;
+            stackProgressRef.current = 1;
+            setStackProgress(1);
+            publishChatStackCssProgress(1);
+            syncStackNavHideProgress(null);
+            onExitNavRevealProgress?.(null);
+            stackTapTransitionRef.current = false;
+            stackRoomInteractRef.current = true;
+            setStackRoomInteract(true);
+            releaseStackTransitionLock();
+            ensureOpenChatInteractive();
+            applyStackLayerTransforms(1, false);
+            requestStackRoomScrollBottom();
+          },
+        );
+      };
 
-      stackOpenAnimCancelRef.current = runChatNavOpenAnimation(
-        cap,
-        layers,
-        (t) => {
-          stackProgressRef.current = t;
-          publishStackProgressVisual(t, false, false);
-          if (t > 0.02) {
-            syncStackNavHideProgress(t);
-            onExitNavRevealProgress?.(t);
-          }
-        },
-        () => {
-          window.clearTimeout(openSafetyTimer);
-          stackOpenAnimCancelRef.current = null;
-          stackProgressRef.current = 1;
-          setStackProgress(1);
-          publishChatStackCssProgress(1);
-          syncStackNavHideProgress(null);
-          onExitNavRevealProgress?.(null);
-          stackTapTransitionRef.current = false;
-          releaseStackTransitionLock();
-          ensureOpenChatInteractive();
-          requestStackRoomScrollBottom();
-        },
-      );
+      requestAnimationFrame(() => {
+        requestAnimationFrame(startOpenAnimation);
+      });
     },
     [
       resolveOpenChatId,
@@ -2583,6 +2616,7 @@ export function ChatScreen({
       ensureOpenChatInteractive,
       applyStackLayerTransforms,
       requestStackRoomScrollBottom,
+      syncOpenAnimationProgress,
     ],
   );
 
@@ -2606,6 +2640,8 @@ export function ChatScreen({
     setStackDragChatId(null);
     setStackClosingId(null);
     stackTapTransitionRef.current = false;
+    stackRoomInteractRef.current = false;
+    setStackRoomInteract(false);
     stackChromeHiddenRef.current = false;
     setStackChromeHidden(false);
     onActiveChatChange?.(null);
@@ -2836,6 +2872,8 @@ export function ChatScreen({
     setStackClosingId(null);
     setStackSpring(false);
     setShowGroupSettings(false);
+    stackRoomInteractRef.current = false;
+    setStackRoomInteract(false);
     stackChromeHiddenRef.current = false;
     setStackChromeHidden(false);
     syncStackProgress(0);
@@ -3128,6 +3166,7 @@ export function ChatScreen({
 
   useLayoutEffect(() => {
     if (!openChat || !stackChat || stackProgressRef.current < 0.5) return;
+    if (stackTapTransitionRef.current) return;
     if (
       stackDismissFinalizingRef.current ||
       stackOpenDragRef.current ||
@@ -3904,14 +3943,14 @@ export function ChatScreen({
         <ChatStackRoomGestureShell
           roomRef={stackRoomRef}
           widthCapRef={stackCapRef}
-          interactive={!!openChat}
+          interactive={!!openChat && stackRoomInteract}
         >
           {(openChat || stackClosingId) && stackChat ? (
             <ChatRoom
               key={`${accountSessionKey}-${stackChat.id}`}
               chat={stackChat}
               embedInStack
-              stackFullyOpen={!!openChat}
+              stackFullyOpen={!!openChat && stackRoomInteract}
               roomDismissBlocked={chatRoomDismissBlocked}
               forceScrollToBottom={stackRoomForceScrollBottom}
               onStackProgress={openChat ? syncStackProgressFromRoom : undefined}

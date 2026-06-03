@@ -799,7 +799,7 @@ html.retweet-overscroll-lock body {
 
 @media (prefers-reduced-motion: no-preference) {
   .chat-stack-scene::after {
-    backdrop-filter: blur(calc(var(--retweet-chat-stack-progress, 0) * 5px));
+    backdrop-filter: blur(calc(var(--retweet-chat-stack-progress, 0) * 3px));
   }
 }
 
