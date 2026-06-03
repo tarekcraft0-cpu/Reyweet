@@ -1,6 +1,5 @@
 import UIKit
 import Capacitor
-import UserNotifications
 import FirebaseCore
 import FirebaseMessaging
 
@@ -25,9 +24,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
             FirebaseApp.configure()
             Messaging.messaging().delegate = self
         }
-
-        UNUserNotificationCenter.current().delegate = self
-        application.registerForRemoteNotifications()
 
         return true
     }
@@ -93,29 +89,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         vc.webView?.evaluateJavaScript(js, completionHandler: nil)
     }
 
-}
-
-extension AppDelegate: UNUserNotificationCenterDelegate {
-    func userNotificationCenter(
-        _ center: UNUserNotificationCenter,
-        willPresent notification: UNNotification,
-        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
-    ) {
-        if #available(iOS 14.0, *) {
-            completionHandler([.banner, .sound, .badge, .list])
-        } else {
-            completionHandler([.alert, .sound, .badge])
-        }
-    }
-
-    func userNotificationCenter(
-        _ center: UNUserNotificationCenter,
-        didReceive response: UNNotificationResponse,
-        withCompletionHandler completionHandler: @escaping () -> Void
-    ) {
-        NotificationCenter.default.post(name: .capacitorDidReceiveRemoteNotification, object: response)
-        completionHandler()
-    }
 }
 
 extension AppDelegate: MessagingDelegate {
