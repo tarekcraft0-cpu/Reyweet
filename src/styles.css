@@ -259,7 +259,14 @@
 .feed-post-card {
   content-visibility: auto;
   contain-intrinsic-size: auto 420px;
-  contain: layout style paint;
+  contain: layout style;
+}
+
+/** iOS/WebView: contain:paint يمنع رسم صور التغريدات داخل البطاقة */
+.feed-post-card--has-media {
+  content-visibility: visible;
+  contain: layout style;
+  contain-intrinsic-size: auto 520px;
 }
 
 /** شاشة الإعدادات — يتبع ثيم التطبيق (صباحي/ليلي) */

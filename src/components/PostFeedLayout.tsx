@@ -1,7 +1,6 @@
 import type { ReactNode } from "react";
 import { MoreHorizontal } from "lucide-react";
 import { Avatar } from "./Avatar";
-import { ProgressiveImage } from "./ProgressiveImage";
 import { VerifiedMarkForUser } from "./VerifiedBadge";
 import type { Post } from "@/lib/types";
 import type { User } from "@/lib/types";
@@ -200,7 +199,65 @@ export function PostFeedMedia({
   );
 }
 
-/** وسائط البطاقة: منشور/ريلز فقط — التغريدة بدون مساحة صورة */
+/** صورة/فيديو تغريدة في الخلاصة — نفس البروفايل (يعمل على iOS بدون content-visibility) */
+export function FeedInlinePostMedia({
+  post,
+  postMedia,
+  onOpen,
+}: {
+  post: Pick<Post, "type" | "image" | "video" | "audio" | "text">;
+  postMedia: NormalizedPostMedia;
+  onOpen?: () => void;
+}) {
+  if (!postShowsFeedMedia(post)) return null;
+
+  if (postMedia.hasImage && !postMedia.hasVideo) {
+    return (
+      <button
+        type="button"
+        onClick={onOpen}
+        className="mt-2 block w-full overflow-hidden rounded-2xl border border-border/50 bg-muted/30 text-start active:opacity-95"
+      >
+        <img
+          src={postMedia.imageUrl}
+          alt=""
+          loading="eager"
+          decoding="async"
+          draggable={false}
+          className="max-h-[min(420px,55vh)] w-full object-cover"
+        />
+      </button>
+    );
+  }
+
+  if (postMedia.hasAudio && postMedia.audioUrl) {
+    return (
+      <div className="mt-2 w-full shrink-0">
+        <TweetVoicePlayer src={postMedia.audioUrl} />
+      </div>
+    );
+  }
+
+  if (postMedia.hasVideo) {
+    return (
+      <div className="mt-2 overflow-hidden rounded-2xl border border-border/50 bg-zinc-900">
+        <video
+          src={postMedia.videoUrl}
+          poster={postMedia.posterUrl || undefined}
+          controls
+          playsInline
+          preload="metadata"
+          className="max-h-[min(420px,55vh)] w-full object-cover"
+          onClick={e => e.stopPropagation()}
+        />
+      </div>
+    );
+  }
+
+  return null;
+}
+
+/** وسائط البطاقة: منشور/ريلز — تغريدة بصورة تستخدم FeedInlinePostMedia */
 export function PostFeedMediaBlock({
   post,
   postMedia,
@@ -216,15 +273,21 @@ export function PostFeedMediaBlock({
 }) {
   if (!postShowsFeedMedia(post)) return null;
 
+  if (post.type === "tweet") {
+    return <FeedInlinePostMedia post={post} postMedia={postMedia} onOpen={onOpen} />;
+  }
+
   if (postMedia.hasImage) {
     return (
       <PostFeedMedia aspect={post.type === "reel" ? "video" : "square"} onClick={onOpen} profileInset={profileInset}>
         {notesOverlay}
-        <ProgressiveImage
-          src={postMedia.imageUrl!}
+        <img
+          src={postMedia.imageUrl}
           alt=""
-          priority
-          className="absolute inset-0 h-full w-full"
+          loading="lazy"
+          decoding="async"
+          draggable={false}
+          className="absolute inset-0 h-full w-full object-cover"
         />
       </PostFeedMedia>
     );

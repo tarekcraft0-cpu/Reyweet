@@ -1,5 +1,5 @@
 import type { Post } from "./types";
-import { isRenderableMediaUrl, resolveMediaUrl } from "./mediaUrl";
+import { isRenderableMediaUrl, resolveMediaUrl, toStoredMediaRef } from "./mediaUrl";
 import { isVoicePlaybackVideoSrc } from "./voiceMedia";
 
 const POST_PLACEHOLDER_MEDIA = new Set(["🖼️", "📝", "🎬"]);
@@ -84,6 +84,23 @@ export function isVideoMediaRef(s?: string | null): boolean {
   return t.includes("/media/videos/") || t.includes("/uploads/reels/");
 }
 
+function resolvePostImageDisplayUrl(imageRaw: string): string {
+  if (!imageRaw || isVideoMediaRef(imageRaw)) return "";
+  const direct = resolveMediaUrl(imageRaw);
+  if (direct && isRenderableMediaUrl(direct)) return direct;
+  const stored = toStoredMediaRef(imageRaw);
+  if (stored && stored !== imageRaw) {
+    const viaStored = resolveMediaUrl(stored);
+    if (viaStored && isRenderableMediaUrl(viaStored)) return viaStored;
+  }
+  const slashPath = imageRaw.startsWith("/") ? imageRaw : `/${imageRaw}`;
+  if (isRenderableMediaUrl(slashPath)) {
+    const viaPath = resolveMediaUrl(slashPath);
+    if (viaPath && isRenderableMediaUrl(viaPath)) return viaPath;
+  }
+  return "";
+}
+
 /** يفصل صورة الغلاف عن رابط الفيديو (منشورات قديمة تخزّن الفيديو في image) */
 export function normalizePostMedia(post: Pick<Post, "image" | "video" | "audio" | "type">) {
   let imageRaw = post.image?.trim() || "";
@@ -95,8 +112,7 @@ export function normalizePostMedia(post: Pick<Post, "image" | "video" | "audio" 
     imageRaw = "";
   }
 
-  const imageUrl =
-    imageRaw && !isVideoMediaRef(imageRaw) ? resolveMediaUrl(imageRaw) : "";
+  const imageUrl = resolvePostImageDisplayUrl(imageRaw);
   const videoUrl = videoRaw ? resolveMediaUrl(videoRaw) : "";
   const posterUrl =
     imageUrl && isRenderableMediaUrl(imageUrl) ? imageUrl : "";
@@ -110,7 +126,10 @@ export function normalizePostMedia(post: Pick<Post, "image" | "video" | "audio" 
     imageUrl,
     videoUrl,
     posterUrl,
-    hasImage: !!imageUrl && isRenderableMediaUrl(imageUrl) && !isVideoMediaRef(imageRaw),
+    hasImage:
+      !!imageUrl &&
+      isRenderableMediaUrl(imageUrl) &&
+      !isVideoMediaRef(imageRaw),
     hasVideo:
       !voiceTweet && !!videoRaw && isVideoMediaRef(videoRaw) && !!videoUrl,
     hasAudio:

@@ -25,6 +25,7 @@ import {
   PostFeedCaption,
   ProfilePostMetaRow,
   PostFeedMediaBlock,
+  FeedInlinePostMedia,
 } from "./PostFeedLayout";
 
 interface Props {
@@ -175,6 +176,12 @@ function PostCardInner({
     ) : null;
 
   const showFeedMedia = postShowsFeedMedia({ ...post, type: displayType });
+  const isTweetWithMedia =
+    displayType === "tweet" &&
+    (postMedia.hasImage || postMedia.hasVideo || postMedia.hasAudio);
+  const feedCardHasMedia =
+    showFeedMedia &&
+    (postMedia.hasImage || postMedia.hasVideo || postMedia.hasAudio);
   const isAudioOnlyMedia =
     postMedia.hasAudio && !postMedia.hasImage && !postMedia.hasVideo;
   const mediaLazyMinH =
@@ -191,7 +198,11 @@ function PostCardInner({
   );
 
   return (
-    <article className="feed-post-card border-b border-border">
+    <article
+      className={
+        "feed-post-card border-b border-border" + (feedCardHasMedia ? " feed-post-card--has-media" : "")
+      }
+    >
       <FeedPostColumnShell author={author} onOpenAuthor={() => openAuthorProfile(author.id)}>
         <ProfilePostMetaRow
           author={author}
@@ -212,7 +223,13 @@ function PostCardInner({
           </PostFeedCaption>
         )}
 
-        {showFeedMedia && !isAudioOnlyMedia && postMedia.hasImage ? (
+        {isTweetWithMedia ? (
+          <FeedInlinePostMedia
+            post={{ ...post, type: displayType }}
+            postMedia={postMedia}
+            onOpen={onOpen}
+          />
+        ) : showFeedMedia && !isAudioOnlyMedia && postMedia.hasImage ? (
           mediaBlock
         ) : showFeedMedia && !isAudioOnlyMedia ? (
           <LazyInView minHeight={mediaLazyMinH} rootMargin="320px 0px">
