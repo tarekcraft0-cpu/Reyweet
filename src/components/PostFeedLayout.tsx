@@ -223,7 +223,8 @@ export function PostFeedMediaBlock({
         <ProgressiveImage
           src={postMedia.imageUrl!}
           alt=""
-          className="h-full w-full"
+          priority
+          className="absolute inset-0 h-full w-full"
         />
       </PostFeedMedia>
     );
@@ -250,7 +251,7 @@ export function PostFeedMediaBlock({
             playsInline
             preload="none"
             className={
-              "h-full w-full " +
+              "absolute inset-0 h-full w-full " +
               (reelGrid ? "object-cover object-center" : "object-cover")
             }
             onClick={e => e.stopPropagation()}

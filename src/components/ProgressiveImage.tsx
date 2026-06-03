@@ -20,9 +20,12 @@ export function ProgressiveImage({ src, alt = "", className, priority = false, o
   const [visible, setVisible] = useState(priority);
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
+  /** المصغّر قد لا يكون موجوداً على الخادم — نرجع للأصل عند فشل thumb */
+  const [skipThumb, setSkipThumb] = useState(false);
 
   const resolved = useMemo(() => resolveMediaUrl(src) || src, [src]);
   const thumb = useMemo(() => thumbnailMediaUrl(resolved), [resolved]);
+  const displaySrc = skipThumb || !thumb ? resolved : thumb;
 
   useEffect(() => {
     if (priority) {
@@ -50,9 +53,10 @@ export function ProgressiveImage({ src, alt = "", className, priority = false, o
   useEffect(() => {
     setLoaded(false);
     setFailed(false);
+    setSkipThumb(false);
   }, [resolved]);
 
-  const showSrc = visible && !failed ? (loaded || !thumb ? resolved : thumb) : undefined;
+  const showSrc = visible && !failed ? displaySrc : undefined;
 
   const inner = (
     <div ref={rootRef} className={cn("relative overflow-hidden bg-muted/40", className)}>
@@ -74,7 +78,7 @@ export function ProgressiveImage({ src, alt = "", className, priority = false, o
             loaded ? "opacity-100" : "opacity-0",
           )}
           onLoad={() => {
-            if (showSrc === thumb && thumb !== resolved) {
+            if (showSrc === thumb && thumb !== resolved && !skipThumb) {
               const full = new Image();
               full.src = resolved;
               full.onload = () => setLoaded(true);
@@ -82,7 +86,14 @@ export function ProgressiveImage({ src, alt = "", className, priority = false, o
               setLoaded(true);
             }
           }}
-          onError={() => setFailed(true)}
+          onError={() => {
+            if (!skipThumb && thumb && displaySrc === thumb) {
+              setSkipThumb(true);
+              setLoaded(false);
+              return;
+            }
+            setFailed(true);
+          }}
           onClick={onClick}
         />
       )}

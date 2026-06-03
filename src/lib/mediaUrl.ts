@@ -22,7 +22,9 @@ export function isRenderableMediaUrl(s: string | undefined | null): boolean {
     t.startsWith("https://") ||
     t.startsWith("blob:") ||
     t.startsWith("/media/") ||
+    t.startsWith("media/") ||
     t.startsWith("/uploads/") ||
+    t.startsWith("uploads/") ||
     t.startsWith("/stickers/") ||
     t.startsWith("/app/")
   );
@@ -107,6 +109,9 @@ export function normalizeMediaRef(src: string | undefined | null): string {
   if (v.length <= 4 && !v.startsWith("/") && !/^https?:\/\//i.test(v)) return v;
 
   let path = v;
+  if (path.startsWith("media/") || path.startsWith("uploads/") || path.startsWith("stickers/")) {
+    path = `/${path}`;
+  }
   if (/^https?:\/\//i.test(v)) {
     try {
       const u = new URL(v);

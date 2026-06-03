@@ -212,7 +212,9 @@ function PostCardInner({
           </PostFeedCaption>
         )}
 
-        {showFeedMedia && !isAudioOnlyMedia ? (
+        {showFeedMedia && !isAudioOnlyMedia && postMedia.hasImage ? (
+          mediaBlock
+        ) : showFeedMedia && !isAudioOnlyMedia ? (
           <LazyInView minHeight={mediaLazyMinH} rootMargin="320px 0px">
             {mediaBlock}
           </LazyInView>
