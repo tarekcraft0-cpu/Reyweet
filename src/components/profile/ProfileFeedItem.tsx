@@ -131,8 +131,8 @@ export const ProfileFeedItem = memo(
             users={state.users}
             onOpenAuthor={() => startTransition(() => onOpenProfile(author.id, returnCtx(false)))}
             onOpenProfile={id => startTransition(() => onOpenProfile(id, returnCtx(false)))}
-            onLike={() => startTransition(() => toggleLike(post.id))}
-            onRepost={() => startTransition(() => toggleRepost(post.id))}
+            onLike={() => toggleLike(post.id)}
+            onRepost={() => toggleRepost(post.id)}
             onAddComment={text => addComment(post.id, text)}
             onMenu={me.id === post.userId ? () => setMenuOpen(v => !v) : undefined}
             commentsAnchorId={`profile-feed-comments-${post.id}`}
@@ -192,9 +192,9 @@ export const ProfileFeedItem = memo(
           likeCount={safeLikes.length}
           commentCount={safeComments.length}
           repostCount={safeReposts.length}
-          onLike={() => startTransition(() => toggleLike(post.id))}
+          onLike={() => toggleLike(post.id)}
           onComment={() => setCommentsOpen(o => !o)}
-          onRepost={() => startTransition(() => toggleRepost(post.id))}
+          onRepost={() => toggleRepost(post.id)}
           onShare={() => setShareOpen(true)}
           profileInset
         />

@@ -323,11 +323,11 @@ export function PostDetail({ post: postProp, onBack, onOpenProfile, onOpenChat, 
       )}
 
       <div className="flex items-center gap-5 px-4 pt-3">
-        <button type="button" onClick={() => { if (guestBlock()) return; startTransition(() => toggleLike(post.id)); }} className="flex items-center gap-1">
+        <button type="button" onClick={() => { if (guestBlock()) return; toggleLike(post.id); }} className="flex items-center gap-1">
           <Heart size={24} className={liked ? "fill-[var(--color-like)] stroke-[var(--color-like)]" : ""} />
         </button>
         <button className="flex items-center gap-1"><MessageCircle size={24} /></button>
-        <button type="button" onClick={() => { if (guestBlock()) return; startTransition(() => toggleRepost(post.id)); }} className={reposted ? "text-primary" : ""}><Repeat2 size={24} /></button>
+        <button type="button" onClick={() => { if (guestBlock()) return; toggleRepost(post.id); }} className={reposted ? "text-primary" : ""}><Repeat2 size={24} /></button>
         <button type="button" className="ms-auto" onClick={() => { if (guestBlock()) return; setShareOpen(true); }} aria-label="مشاركة">
           <Send size={22} />
         </button>

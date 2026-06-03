@@ -412,7 +412,7 @@ export function PostFeedActions({
         <button
           type="button"
           onClick={() => {
-            if (!liked) burst(setLikePop, likePopTimer);
+            burst(setLikePop, likePopTimer);
             onLike();
           }}
           className={btn + (likePop ? " post-action-pop post-action-pop--like" : "")}
@@ -428,7 +428,7 @@ export function PostFeedActions({
         <button
           type="button"
           onClick={() => {
-            if (!reposted) burst(setRepostPop, repostPopTimer);
+            burst(setRepostPop, repostPopTimer);
             onRepost();
           }}
           className={

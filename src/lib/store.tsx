@@ -121,12 +121,61 @@ function mergeHomeFeedAppendIntoState(
   return { ...state, posts, users: [...usersById.values()] };
 }
 
-/** دمج قوائم الإعجاب/إعادة النشر دون فقدان تفاعل محلي أثناء مزامنة لقطة قديمة */
-function mergeSocialIdLists(local: string[] | undefined, remote: string[] | undefined): string[] {
+const PENDING_SOCIAL_TTL_MS = 15_000;
+const pendingSocialLists = new Map<string, { ids: string[]; at: number }>();
+const socialToggleSeq = new Map<string, number>();
+
+function recordPendingSocial(postId: string, field: "likes" | "reposts", ids: string[]): void {
+  pendingSocialLists.set(`${postId}:${field}`, { ids: [...ids], at: Date.now() });
+}
+
+function bumpSocialToggleSeq(postId: string, kind: "like" | "repost"): number {
+  const key = `${kind}:${postId}`;
+  const n = (socialToggleSeq.get(key) ?? 0) + 1;
+  socialToggleSeq.set(key, n);
+  return n;
+}
+
+function isSocialToggleSeqCurrent(postId: string, kind: "like" | "repost", seq: number): boolean {
+  return socialToggleSeq.get(`${kind}:${postId}`) === seq;
+}
+
+function normalizeActorInSocialList(
+  ids: string[] | undefined,
+  actorId: string,
+  active: boolean,
+): string[] {
+  const base = Array.isArray(ids) ? [...ids] : [];
+  const has = base.includes(actorId);
+  if (active) return has ? base : [...base, actorId];
+  return base.filter(id => id !== actorId);
+}
+
+/** دمج الإعجاب/الريبوست — يحترم التفاعل المحلي الأخير ولا يعيد الإلغاء عند مزامنة قديمة */
+function mergeSocialIdLists(
+  local: string[] | undefined,
+  remote: string[] | undefined,
+  postId?: string,
+  field?: "likes" | "reposts",
+): string[] {
+  const key = postId && field ? `${postId}:${field}` : "";
+  const pending = key ? pendingSocialLists.get(key) : undefined;
+  if (pending && Date.now() - pending.at < PENDING_SOCIAL_TTL_MS) return [...pending.ids];
+
   const a = Array.isArray(local) ? local : [];
   const b = Array.isArray(remote) ? remote : [];
   if (!a.length) return [...b];
   if (!b.length) return [...a];
+
+  const setA = new Set(a);
+  const setB = new Set(b);
+  const onlyInRemote = b.filter(id => !setA.has(id));
+  const onlyInLocal = a.filter(id => !setB.has(id));
+
+  if (onlyInLocal.length === 0 && onlyInRemote.length > 0) return [...a];
+  if (onlyInRemote.length === 0 && onlyInLocal.length > 0) return [...new Set([...b, ...onlyInLocal])];
+  if (a.length !== b.length) return [...a];
+
   return [...new Set([...a, ...b])];
 }
 
@@ -152,8 +201,8 @@ function mergePostsPreservingLocalDeletes(localPosts: Post[], remotePosts: Post[
     ].filter(c => !locallyRemovedCommentKeys.has(`${p.id}:${c.id}`));
     merged.push({
       ...base,
-      likes: mergeSocialIdLists(p.likes, remote?.likes),
-      reposts: mergeSocialIdLists(p.reposts, remote?.reposts),
+      likes: mergeSocialIdLists(p.likes, remote?.likes, p.id, "likes"),
+      reposts: mergeSocialIdLists(p.reposts, remote?.reposts, p.id, "reposts"),
       comments,
     });
   }
@@ -3427,6 +3476,7 @@ export function AppProvider({
   const toggleLike = (postId: ID) => {
     const token = getApiToken();
     const useApi = Boolean(token && apiBackendEnabled());
+    const seq = bumpSocialToggleSeq(postId, "like");
     let rollbackLikes: string[] | null = null;
     let postSnapshot: Post | null = null;
     let actorId: ID | null = null;
@@ -3438,57 +3488,59 @@ export function AppProvider({
       rollbackLikes = [...prevLikes];
       postSnapshot = { ...post };
       const liked = prevLikes.includes(s.currentUserId);
+      const nextLikes = liked
+        ? prevLikes.filter((x) => x !== s.currentUserId)
+        : [...prevLikes, s.currentUserId!];
+      recordPendingSocial(postId, "likes", nextLikes);
       return {
         ...s,
-        posts: s.posts.map((p) =>
-          p.id === postId
-            ? {
-                ...p,
-                likes: liked
-                  ? (Array.isArray(p.likes) ? p.likes : []).filter((x) => x !== s.currentUserId)
-                  : [...(Array.isArray(p.likes) ? p.likes : []), s.currentUserId!],
-              }
-            : p,
-        ),
+        posts: s.posts.map((p) => (p.id === postId ? { ...p, likes: nextLikes } : p)),
       };
     });
+    if (!actorId) return;
     if (useApi && token) {
       void (async () => {
-        let res = await apiTogglePostLike(token, postId);
-        if (!res.ok && /غير موجود|not found|missing/i.test(res.error || "") && postSnapshot) {
-          // ارفع المنشور فقط إذا كان يخص نفس المستخدم الحالي؛ وإلا سيمنع الخادم العملية.
-          if (actorId && postSnapshot.userId === actorId) {
-            await apiUpsertPost(token, {
-              id: postSnapshot.id,
-              type: postSnapshot.type,
-              text: postSnapshot.text || "",
-              image: postSnapshot.image,
-              video: postSnapshot.video,
-            audio: postSnapshot.audio,
-              createdAt: postSnapshot.createdAt || Date.now(),
-            });
-            res = await apiTogglePostLike(token, postId);
-          } else {
-            // منشور لشخص آخر: فقط أعد المحاولة، والخادم يتكفل باكتشافه من اللقطات إن كانت متاحة.
-            await new Promise(r => window.setTimeout(r, 120));
-            res = await apiTogglePostLike(token, postId);
+        socialSyncBusyRef.current = true;
+        try {
+          let res = await apiTogglePostLike(token, postId);
+          if (!res.ok && /غير موجود|not found|missing/i.test(res.error || "") && postSnapshot) {
+            if (actorId && postSnapshot.userId === actorId) {
+              await apiUpsertPost(token, {
+                id: postSnapshot.id,
+                type: postSnapshot.type,
+                text: postSnapshot.text || "",
+                image: postSnapshot.image,
+                video: postSnapshot.video,
+                audio: postSnapshot.audio,
+                createdAt: postSnapshot.createdAt || Date.now(),
+              });
+              res = await apiTogglePostLike(token, postId);
+            } else {
+              res = await apiTogglePostLike(token, postId);
+            }
           }
-        }
-        if (!res.ok) {
-          if (rollbackLikes) {
-            setState(s => ({
-              ...s,
-              posts: s.posts.map(p => (p.id === postId ? { ...p, likes: rollbackLikes! } : p)),
-            }));
+          if (!isSocialToggleSeqCurrent(postId, "like", seq)) return;
+          if (!res.ok) {
+            if (rollbackLikes) {
+              recordPendingSocial(postId, "likes", rollbackLikes);
+              setState(s => ({
+                ...s,
+                posts: s.posts.map(p => (p.id === postId ? { ...p, likes: rollbackLikes! } : p)),
+              }));
+            }
+            return;
           }
-          return;
+          const likes = normalizeActorInSocialList(res.likes, actorId!, res.liked);
+          recordPendingSocial(postId, "likes", likes);
+          setState(s => ({
+            ...s,
+            posts: s.posts.map(p => (p.id === postId ? { ...p, likes } : p)),
+          }));
+        } finally {
+          window.setTimeout(() => {
+            socialSyncBusyRef.current = false;
+          }, 350);
         }
-        setState(s => ({
-          ...s,
-          posts: s.posts.map(p =>
-            p.id === postId ? { ...p, likes: res.likes } : p,
-          ),
-        }));
       })();
     }
   };
@@ -3558,6 +3610,7 @@ export function AppProvider({
   const toggleRepost = (postId: ID) => {
     const token = getApiToken();
     const useApi = Boolean(token && apiBackendEnabled());
+    const seq = bumpSocialToggleSeq(postId, "repost");
     let rollbackReposts: string[] | null = null;
     let postSnapshot: Post | null = null;
     let actorId: ID | null = null;
@@ -3569,57 +3622,61 @@ export function AppProvider({
       rollbackReposts = [...prevReposts];
       postSnapshot = { ...post };
       const had = prevReposts.includes(s.currentUserId);
+      const nextReposts = had
+        ? prevReposts.filter((x) => x !== s.currentUserId)
+        : [...prevReposts, s.currentUserId!];
+      recordPendingSocial(postId, "reposts", nextReposts);
       return {
         ...s,
-        posts: s.posts.map((p) =>
-          p.id === postId
-            ? {
-                ...p,
-                reposts: had
-                  ? prevReposts.filter((x) => x !== s.currentUserId)
-                  : [...prevReposts, s.currentUserId!],
-              }
-            : p,
-        ),
+        posts: s.posts.map((p) => (p.id === postId ? { ...p, reposts: nextReposts } : p)),
       };
     });
+    if (!actorId) return;
     if (useApi && token) {
       void (async () => {
-        let res = await apiTogglePostRepost(token, postId);
-        if (!res.ok && /غير موجود|not found|missing/i.test(res.error || "") && postSnapshot) {
-          if (actorId && postSnapshot.userId === actorId) {
-            await apiUpsertPost(token, {
-              id: postSnapshot.id,
-              type: postSnapshot.type,
-              text: postSnapshot.text || "",
-              image: postSnapshot.image,
-              video: postSnapshot.video,
-              audio: postSnapshot.audio,
-              createdAt: postSnapshot.createdAt || Date.now(),
-            });
-            res = await apiTogglePostRepost(token, postId);
-          } else {
-            await new Promise(r => window.setTimeout(r, 120));
-            res = await apiTogglePostRepost(token, postId);
+        socialSyncBusyRef.current = true;
+        try {
+          let res = await apiTogglePostRepost(token, postId);
+          if (!res.ok && /غير موجود|not found|missing/i.test(res.error || "") && postSnapshot) {
+            if (actorId && postSnapshot.userId === actorId) {
+              await apiUpsertPost(token, {
+                id: postSnapshot.id,
+                type: postSnapshot.type,
+                text: postSnapshot.text || "",
+                image: postSnapshot.image,
+                video: postSnapshot.video,
+                audio: postSnapshot.audio,
+                createdAt: postSnapshot.createdAt || Date.now(),
+              });
+              res = await apiTogglePostRepost(token, postId);
+            } else {
+              res = await apiTogglePostRepost(token, postId);
+            }
           }
-        }
-        if (!res.ok) {
-          if (rollbackReposts) {
-            setState(s => ({
-              ...s,
-              posts: s.posts.map(p =>
-                p.id === postId ? { ...p, reposts: rollbackReposts! } : p,
-              ),
-            }));
+          if (!isSocialToggleSeqCurrent(postId, "repost", seq)) return;
+          if (!res.ok) {
+            if (rollbackReposts) {
+              recordPendingSocial(postId, "reposts", rollbackReposts);
+              setState(s => ({
+                ...s,
+                posts: s.posts.map(p =>
+                  p.id === postId ? { ...p, reposts: rollbackReposts! } : p,
+                ),
+              }));
+            }
+            return;
           }
-          return;
+          const reposts = normalizeActorInSocialList(res.reposts, actorId!, res.reposted);
+          recordPendingSocial(postId, "reposts", reposts);
+          setState(s => ({
+            ...s,
+            posts: s.posts.map(p => (p.id === postId ? { ...p, reposts } : p)),
+          }));
+        } finally {
+          window.setTimeout(() => {
+            socialSyncBusyRef.current = false;
+          }, 350);
         }
-        setState(s => ({
-          ...s,
-          posts: s.posts.map(p =>
-            p.id === postId ? { ...p, reposts: res.reposts } : p,
-          ),
-        }));
       })();
     }
   };
@@ -6176,12 +6233,8 @@ export function AppProvider({
                 ? {
                     ...p,
                     ...patch,
-                    likes: Array.isArray(patch.likes)
-                      ? patch.likes
-                      : mergeSocialIdLists(p.likes, patch.likes),
-                    reposts: Array.isArray(patch.reposts)
-                      ? patch.reposts
-                      : mergeSocialIdLists(p.reposts, patch.reposts),
+                    likes: mergeSocialIdLists(p.likes, patch.likes, p.id, "likes"),
+                    reposts: mergeSocialIdLists(p.reposts, patch.reposts, p.id, "reposts"),
                     comments,
                   }
                 : p,

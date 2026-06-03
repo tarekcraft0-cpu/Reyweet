@@ -247,12 +247,12 @@ function PostCardInner({
           repostCount={postReposts.length}
           onLike={() => {
             if (guestBlock()) return;
-            startTransition(() => toggleLike(post.id));
+            toggleLike(post.id);
           }}
           onComment={() => startTransition(() => (onOpenCommentsSheet ?? onOpen)())}
           onRepost={() => {
             if (guestBlock()) return;
-            startTransition(() => toggleRepost(post.id));
+            toggleRepost(post.id);
           }}
           onShare={() => {
             if (guestBlock()) return;
