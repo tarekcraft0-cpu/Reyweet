@@ -1199,6 +1199,10 @@ export function App() {
     if (getApiToken() && apiBackendEnabled()) {
       return (
         <div className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-background px-6 text-center text-sm text-muted-foreground">
+          <div
+            className="h-12 w-12 animate-spin rounded-full border-[3px] border-primary/25 border-t-primary"
+            aria-hidden
+          />
           <p className="font-medium text-foreground">جاري تحميل حسابك…</p>
           <p className="text-xs leading-relaxed">
             إن بقيت الشاشة بيضاء أكثر من ١٥ ثانية، حدّث الصفحة أو امسح الجلسة.

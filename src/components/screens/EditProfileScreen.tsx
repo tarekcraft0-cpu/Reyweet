@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { getUserEntitlements } from "@/lib/verificationEntitlements";
 import { AvatarChangeModal } from "../verification/AvatarChangeModal";
 import { useApp } from "@/lib/store";
@@ -59,7 +59,17 @@ export function EditProfileScreen({ onBack }: { onBack: () => void }) {
   const [saving, setSaving] = useState(false);
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [avatarModalOpen, setAvatarModalOpen] = useState(false);
+  const avatarFileRef = useRef<HTMLInputElement>(null);
   const ent = u ? getUserEntitlements(u) : null;
+
+  const openAvatarPicker = () => {
+    if (avatarBusy) return;
+    if (ent?.canUseAnimatedAvatar) {
+      setAvatarModalOpen(true);
+      return;
+    }
+    avatarFileRef.current?.click();
+  };
 
   const onAvatarFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const f = e.target.files?.[0];
@@ -280,20 +290,27 @@ export function EditProfileScreen({ onBack }: { onBack: () => void }) {
       </div>
 
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden overscroll-y-contain pb-[max(1.5rem,var(--sab))] pt-4 [padding-inline-start:max(1rem,var(--sal))] [padding-inline-end:max(1rem,var(--sar))]">
+      <input
+        ref={avatarFileRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/gif"
+        className="hidden"
+        onChange={onAvatarFile}
+      />
       <div className="flex flex-col items-center gap-2">
-        <button type="button" onClick={() => setAvatarModalOpen(true)} className="rounded-full">
+        <button type="button" onClick={openAvatarPicker} className="rounded-full">
           <Avatar name={username} src={avatar} size={100} />
         </button>
         <button
           type="button"
-          onClick={() => setAvatarModalOpen(true)}
+          onClick={openAvatarPicker}
           disabled={avatarBusy}
           className="text-sm font-semibold text-primary"
         >
           {avatarBusy ? "جاري الرفع…" : "تغيير الصورة"}
         </button>
         <p className="max-w-xs text-center text-[11px] text-muted-foreground">
-          {ent.canUseAnimatedAvatar
+          {ent?.canUseAnimatedAvatar
             ? "صورة عادية أو افتار GIF متحرك"
             : "صورة ثابتة — الافتار المتحرك يتطلب التوثيق"}
         </p>

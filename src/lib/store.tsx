@@ -2146,6 +2146,74 @@ export function AppProvider({
     };
   }, []);
 
+  /** توكن موجود لكن صف المستخدم غير محمّل — يمنع شاشة «جاري التحميل» العالقة */
+  useEffect(() => {
+    if (!apiBackendEnabled()) return;
+    const token = getApiToken();
+    if (!token) return;
+    const s = stateRef.current;
+    const activeId =
+      s.currentUserId ||
+      getLastActiveUserId() ||
+      listAccountSessions()[0]?.userId ||
+      null;
+    if (!activeId || isGuestUserId(activeId)) return;
+    const me = s.users.find(u => u.id === activeId);
+    if (me && s.currentUserId === activeId) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const remote = await pullRemoteAppState(token);
+        if (cancelled) return;
+        setStateRaw(prev => {
+          const resolved =
+            activeId ||
+            prev.currentUserId ||
+            getLastActiveUserId() ||
+            remote?.currentUserId ||
+            null;
+          if (!resolved || isGuestUserId(resolved)) return prev;
+          if (prev.users.find(u => u.id === resolved) && prev.currentUserId === resolved) return prev;
+          const meta = getAccountSession(resolved);
+          const apiUser = meta
+            ? {
+                id: resolved,
+                username: meta.username,
+                email: meta.email,
+                avatar: meta.avatar,
+              }
+            : undefined;
+          if (remote) {
+            return normalizePersistedAppState(
+              buildMultiAccountState(resolved, remote, prev, apiUser, { serverAuthoritative: true }),
+            );
+          }
+          return normalizePersistedAppState(
+            ensureAuthUserInState(
+              scopeAppStateToAccount(resolved, { ...prev, currentUserId: resolved }),
+              resolved,
+              apiUser,
+            ),
+          );
+        });
+        if (cancelled) return;
+        if (stateRef.current.users.some(u => u.id === activeId)) return;
+        const row = await apiFetchUserById(activeId);
+        if (cancelled || !row) return;
+        setStateRaw(prev => {
+          const user = userFromSearchResult(row);
+          const users = [...prev.users.filter(x => x.id !== activeId), user];
+          return normalizePersistedAppState({ ...prev, currentUserId: activeId, users });
+        });
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [state.currentUserId, state.users.length]);
+
   useEffect(() => {
     if (!import.meta.env.DEV) return;
     if (accountSwitching) return;

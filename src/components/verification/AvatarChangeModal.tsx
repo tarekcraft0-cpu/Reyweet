@@ -86,9 +86,9 @@ export function AvatarChangeModal({
   return (
     <Drawer.Root open={open} onOpenChange={onOpenChange}>
       <Drawer.Portal>
-        <Drawer.Overlay className="fixed inset-0 z-[200] bg-black/55" />
+        <Drawer.Overlay className="fixed inset-0 z-[360] bg-black/55" />
         <Drawer.Content
-          className="fixed inset-x-0 bottom-0 z-[201] mx-auto flex max-h-[92dvh] max-w-md flex-col rounded-t-[28px] bg-background outline-none"
+          className="fixed inset-x-0 bottom-0 z-[361] mx-auto flex max-h-[92dvh] max-w-md flex-col rounded-t-[28px] bg-background outline-none"
           dir="rtl"
         >
           <div className="mx-auto mt-3 h-1 w-10 shrink-0 rounded-full bg-muted-foreground/35" />

@@ -4,6 +4,7 @@ import { bootstrapWebAppSession } from "@/lib/webSessionBootstrap";
 import { AppProvider, readPersistedAppState } from "@/lib/store";
 import type { AppState } from "@/lib/types";
 import { App } from "@/components/App";
+import { AppErrorBoundary } from "@/components/AppErrorBoundary";
 import logo from "@/assets/logo.png";
 import { logAuthRoute } from "@/lib/authRouteDebug";
 import { clearStaleApiConfig, probeHealth } from "@/lib/apiConfig";
@@ -209,7 +210,9 @@ export function WebAppRoot() {
       {...nativeNoSelectCaptureHandlers}
     >
       <AppProvider initialState={bootState ?? undefined}>
-        <App />
+        <AppErrorBoundary label="app-root">
+          <App />
+        </AppErrorBoundary>
       </AppProvider>
     </div>
   );
