@@ -4,11 +4,11 @@
 export const CHAT_NAV_EDGE_PX = 44;
 export const CHAT_NAV_COMMIT_FRACTION = 0.28;
 export const CHAT_NAV_MS = 200;
-export const CHAT_NAV_OPEN_MS = 168;
+export const CHAT_NAV_OPEN_MS = 120;
 export const CHAT_NAV_EASE = "cubic-bezier(0.32, 0.72, 0, 1)";
 export const CHAT_NAV_OPEN_EASE = "cubic-bezier(0.22, 1, 0.36, 1)";
-/** من هذه النسبة يُسمح باللمس داخل الغرفة أثناء الانزلاق */
-export const CHAT_NAV_OPEN_INTERACT_AT = 0.14;
+/** من هذه النسبة يُسمح باللمس داخل الغرفة أثناء الانزلاق (0 = فوراً عند النقر) */
+export const CHAT_NAV_OPEN_INTERACT_AT = 0;
 /** px/ms — سحب سريع لليسار يكمل الرجوع */
 export const CHAT_NAV_FLING_VX = 0.34;
 
@@ -150,7 +150,8 @@ export function applyChatNavOpenTransforms(
   }
   if (layers.roomEl) {
     layers.roomEl.style.visibility = "";
-    layers.roomEl.style.pointerEvents = t >= CHAT_NAV_OPEN_INTERACT_AT ? "auto" : "none";
+    const allowTouch = tapOpen || t >= CHAT_NAV_OPEN_INTERACT_AT;
+    layers.roomEl.style.pointerEvents = allowTouch ? "auto" : "none";
     layers.roomEl.style.opacity = "1";
     layers.roomEl.style.transformOrigin = "center right";
     layers.roomEl.style.transform = room;
@@ -174,20 +175,20 @@ export function runChatNavOpenAnimation(
   const cap = chatNavWidth(widthPx);
   if (layers.roomEl) layers.roomEl.style.willChange = "transform";
   if (layers.inboxEl) layers.inboxEl.style.willChange = "transform, filter";
-  applyChatNavOpenTransforms(0, cap, layers, false);
+  applyChatNavOpenTransforms(0, cap, layers, false, true);
   onFrame(0);
   const start = performance.now();
   const tick = (now: number) => {
     if (cancelled) return;
     const raw = Math.min(1, (now - start) / CHAT_NAV_OPEN_MS);
     const t = easeOutCubic(raw);
-    applyChatNavOpenTransforms(t, cap, layers, false);
+    applyChatNavOpenTransforms(t, cap, layers, false, true);
     onFrame(t);
     if (raw < 1) {
       requestAnimationFrame(tick);
       return;
     }
-    applyChatNavOpenTransforms(1, cap, layers, false);
+    applyChatNavOpenTransforms(1, cap, layers, false, true);
     onFrame(1);
     if (layers.roomEl) layers.roomEl.style.willChange = "auto";
     if (layers.inboxEl) layers.inboxEl.style.willChange = "auto";
@@ -199,6 +200,17 @@ export function runChatNavOpenAnimation(
     if (layers.roomEl) layers.roomEl.style.willChange = "auto";
     if (layers.inboxEl) layers.inboxEl.style.willChange = "auto";
   };
+}
+
+/** حالة مفتوحة بالكامل بعد النقر — بدون رسم متحرك */
+export function snapChatNavOpenComplete(
+  widthPx: number,
+  layers: ChatNavLayerRefs,
+  onFrame?: (t: number) => void,
+): void {
+  const cap = chatNavWidth(widthPx);
+  applyChatNavOpenTransforms(1, cap, layers, false, true);
+  onFrame?.(1);
 }
 
 export function snapChatNavInboxRest(layers: ChatNavLayerRefs, widthPx?: number): void {
