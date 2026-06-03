@@ -18,7 +18,7 @@ import {
   SLIDE_DISMISS_MS,
 } from "@/hooks/useSlideDismissBack";
 import { useChatSwipeBack, type ChatSwipeBackPhase } from "@/hooks/useChatSwipeBack";
-import { animateChatScrollToBottom, type ChatScrollIntroHandle } from "@/lib/chatScrollIntro";
+import type { ChatScrollIntroHandle } from "@/lib/chatScrollIntro";
 import {
   applyChatNavDismissTransforms,
   applyChatNavOpenTransforms,
@@ -4625,28 +4625,10 @@ function ChatRoom({
     [syncComposerDockHeight],
   );
 
-  const runIntroScrollToBottom = useCallback(() => {
-    const el = messagesScrollRef.current;
-    if (!el || displayMessages.length === 0) return;
-    if (introDoneForChatRef.current === chat.id) return;
-    introDoneForChatRef.current = chat.id;
-    cancelIntroScroll();
-    syncComposerDockHeight();
-    introScrollActiveRef.current = true;
-    stickToBottomRef.current = true;
-    introScrollHandleRef.current = animateChatScrollToBottom(el, {
-      minMs: 280,
-      maxMs: 540,
-      onDone: () => {
-        introScrollActiveRef.current = false;
-        introScrollHandleRef.current = null;
-        scrollMessagesToBottom({ instant: true });
-      },
-    });
-  }, [chat.id, displayMessages.length, cancelIntroScroll, syncComposerDockHeight, scrollMessagesToBottom]);
-
   const scrollBottomRafRef = useRef(0);
   const scrollBottomTimerRef = useRef(0);
+  /** يمنع عشرات استدعاءات ResizeObserver في نفس الإطار (React #185) */
+  const scrollResizeCoalesceRef = useRef(0);
   const scheduleScrollToBottom = useCallback(
     (opts?: { afterMs?: number; instant?: boolean }) => {
       if (!stickToBottomRef.current) return;
@@ -4665,6 +4647,19 @@ function ChatRoom({
     },
     [scrollMessagesToBottom],
   );
+
+  const scheduleScrollFromResize = useCallback(() => {
+    if (scrollResizeCoalesceRef.current) return;
+    scrollResizeCoalesceRef.current = requestAnimationFrame(() => {
+      scrollResizeCoalesceRef.current = 0;
+      const scrollEl = messagesScrollRef.current;
+      if (!scrollEl) return;
+      if (introScrollActiveRef.current) return;
+      if (!stickToBottomRef.current) return;
+      if (scrollDistanceFromBottom(scrollEl) < 4) return;
+      scheduleScrollToBottom({ instant: true });
+    });
+  }, [scheduleScrollToBottom, scrollDistanceFromBottom]);
 
   const onComposerFocus = useCallback(() => {
     stickToBottomRef.current = true;
@@ -4704,9 +4699,7 @@ function ChatRoom({
     syncComposerDockHeight();
     const ro = new ResizeObserver(() => {
       syncComposerDockHeight();
-      const scrollEl = messagesScrollRef.current;
-      if (!scrollEl || scrollDistanceFromBottom(scrollEl) < 4) return;
-      scheduleScrollToBottom();
+      scheduleScrollFromResize();
     });
     ro.observe(el);
     return () => ro.disconnect();
@@ -4717,18 +4710,14 @@ function ChatRoom({
     mentionPick,
     plusAttachOpen,
     syncComposerDockHeight,
-    scheduleScrollToBottom,
-    scrollDistanceFromBottom,
+    scheduleScrollFromResize,
   ]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     const sync = () => {
       syncComposerDockHeight();
-      const scrollEl = messagesScrollRef.current;
-      if (!scrollEl || !stickToBottomRef.current) return;
-      if (scrollDistanceFromBottom(scrollEl) < 4) return;
-      scheduleScrollToBottom();
+      scheduleScrollFromResize();
     };
     window.addEventListener("resize", sync, { passive: true });
     window.addEventListener("orientationchange", sync, { passive: true });
@@ -4736,7 +4725,7 @@ function ChatRoom({
       window.removeEventListener("resize", sync);
       window.removeEventListener("orientationchange", sync);
     };
-  }, [syncComposerDockHeight, scheduleScrollToBottom, scrollDistanceFromBottom]);
+  }, [syncComposerDockHeight, scheduleScrollFromResize]);
 
   const kbOpenPrevRef = useRef(false);
   useLayoutEffect(() => {
@@ -4980,42 +4969,31 @@ function ChatRoom({
   }, [messageContext?.id]);
 
   useLayoutEffect(() => {
-    const el = messagesScrollRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => {
-      if (introScrollActiveRef.current) return;
-      if (!forceScrollToBottom && !stickToBottomRef.current) return;
-      if (scrollDistanceFromBottom(el) < 4) return;
-      scheduleScrollToBottom({ instant: true });
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [chat.id, scheduleScrollToBottom, forceScrollToBottom, scrollDistanceFromBottom]);
-
-  useLayoutEffect(() => {
     cancelIntroScroll();
+    if (scrollResizeCoalesceRef.current) {
+      cancelAnimationFrame(scrollResizeCoalesceRef.current);
+      scrollResizeCoalesceRef.current = 0;
+    }
     introDoneForChatRef.current = null;
     stickToBottomRef.current = true;
     const el = messagesScrollRef.current;
     if (!el) return;
-    el.scrollTop = 0;
-  }, [chat.id, cancelIntroScroll]);
+    scrollMessagesToBottom({ instant: true });
+    const id = requestAnimationFrame(() => scrollMessagesToBottom({ instant: true }));
+    return () => cancelAnimationFrame(id);
+  }, [chat.id, cancelIntroScroll, scrollMessagesToBottom]);
 
   useLayoutEffect(() => {
     if (!embedInStack) return;
-    const onViewportChange = () => {
-      if (stickToBottomRef.current && !introScrollActiveRef.current) {
-        scrollMessagesToBottom({ instant: true });
-      }
-    };
+    const onViewportChange = () => scheduleScrollFromResize();
     const onScrollBottom = () => scrollMessagesToBottom({ instant: true });
-    window.addEventListener("resize", onViewportChange);
+    window.addEventListener("resize", onViewportChange, { passive: true });
     window.addEventListener("retweet-chat-scroll-bottom", onScrollBottom);
     return () => {
       window.removeEventListener("resize", onViewportChange);
       window.removeEventListener("retweet-chat-scroll-bottom", onScrollBottom);
     };
-  }, [embedInStack, scrollMessagesToBottom]);
+  }, [embedInStack, scrollMessagesToBottom, scheduleScrollFromResize]);
 
   useLayoutEffect(() => {
     const roomReady = embedInStack ? forceScrollToBottom : true;
@@ -5026,19 +5004,16 @@ function ChatRoom({
     }
     if (displayMessages.length === 0) return;
     introDoneForChatRef.current = chat.id;
-    if (embedInStack) {
-      stickToBottomRef.current = true;
-      scrollMessagesToBottom({ instant: true });
-      return;
-    }
-    runIntroScrollToBottom();
+    stickToBottomRef.current = true;
+    scrollMessagesToBottom({ instant: true });
+    const id = requestAnimationFrame(() => scrollMessagesToBottom({ instant: true }));
+    return () => cancelAnimationFrame(id);
   }, [
     embedInStack,
     forceScrollToBottom,
     chat.id,
     displayMessages.length,
     scrollMessagesToBottom,
-    runIntroScrollToBottom,
   ]);
 
   useLayoutEffect(() => {
@@ -6475,7 +6450,7 @@ function ChatRoom({
         style={{
           scrollbarWidth: "none",
           msOverflowStyle: "none",
-          overflowAnchor: "none",
+          overflowAnchor: "auto",
           ...(useIgDm && dmPalette && !chromeOnWallpaper ? igDmSurfaceStyle : {}),
         }}
       >
