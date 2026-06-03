@@ -228,7 +228,10 @@ export function isPointerInChatDismissStartZone(
   }
   const x = clientX - containerRect.left;
   const w = containerRect.width;
-  if (w > 0 && x >= w * (1 - (opts?.panelFraction ?? CHAT_PANEL_DISMISS_ZONE_FRACTION))) {
+  const inScrollPane =
+    target instanceof HTMLElement && !!target.closest(".chat-scroll-pane");
+  /* داخل قائمة الرسائل: لا نلتقط اللمس على 42% من العرض — يجمّد التمرير العمودي على iOS */
+  if (w > 0 && !inScrollPane && x >= w * (1 - (opts?.panelFraction ?? CHAT_PANEL_DISMISS_ZONE_FRACTION))) {
     return true;
   }
   if (!(target instanceof HTMLElement)) return false;

@@ -204,6 +204,7 @@ export function MainTabStack({
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
       if (!swipeEnabled || e.button !== 0) return;
+      if (document.documentElement.dataset.chatThreadOpen === "1") return;
       if (isNativeCapacitorShell() && activeRef.current === "chat") return;
       if ((e.target as HTMLElement).closest("[data-no-tab-swipe]")) return;
       const startIdx = tabIndex(activeRef.current);
@@ -225,6 +226,7 @@ export function MainTabStack({
 
   const onPointerMove = useCallback(
     (e: React.PointerEvent) => {
+      if (document.documentElement.dataset.chatThreadOpen === "1") return;
       const d = dragRef.current;
       if (!d || e.pointerId !== d.pointerId) return;
       const adx = Math.abs(e.clientX - d.startX);

@@ -20,7 +20,8 @@ const config: CapacitorConfig = {
   },
   ios: {
     contentInset: "never",
-    scrollEnabled: false,
+    /** true — ضروري لتمرير .chat-scroll-pane داخل WKWebView؛ false يجمّد المحادثة على IPA */
+    scrollEnabled: true,
     allowsLinkPreview: false,
   },
   android: {

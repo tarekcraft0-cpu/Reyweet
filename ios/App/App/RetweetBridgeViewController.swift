@@ -41,7 +41,7 @@ class RetweetBridgeViewController: CAPBridgeViewController, WKUIDelegate, WKNavi
           document.body.style.webkitUserSelect='none';
           document.body.style.webkitTouchCallout='none';
         }
-        var css='html,body,#root{width:100%!important;max-width:100%!important;margin:0!important;left:0!important;right:0!important;overflow-x:hidden!important;transform:none!important;}[data-tab-panel]{width:100%!important;max-width:100%!important;margin-left:0!important;margin-right:0!important;transform:translate3d(0,0,0)!important;left:0!important;right:0!important;}html.retweet-native-shell,html.retweet-native-shell *,#root,#root *{-webkit-user-select:none!important;user-select:none!important;-webkit-touch-callout:none!important;-webkit-user-modify:read-only!important;}html.retweet-native-shell input,html.retweet-native-shell textarea,html.retweet-native-shell select,html.retweet-native-shell [contenteditable=true],html.retweet-native-shell .chat-allow-select,html.retweet-native-shell .chat-allow-select *{-webkit-user-select:text!important;user-select:text!important;-webkit-touch-callout:auto!important;}html.retweet-native-shell ::selection,#root ::selection{background:transparent!important;}';
+        var css='html,body,#root{width:100%!important;max-width:100%!important;margin:0!important;left:0!important;right:0!important;overflow-x:hidden!important;transform:none!important;}html.retweet-native-shell,html.retweet-native-shell body{height:100%!important;max-height:100%!important;overflow:hidden!important;overscroll-behavior:none!important;}[data-tab-panel]{width:100%!important;max-width:100%!important;margin-left:0!important;margin-right:0!important;transform:translate3d(0,0,0)!important;left:0!important;right:0!important;}.chat-scroll-pane,[data-scroll-pane]{overflow-y:scroll!important;-webkit-overflow-scrolling:touch!important;touch-action:pan-y!important;overscroll-behavior-y:contain!important;}html.retweet-native-shell,html.retweet-native-shell *,#root,#root *{-webkit-user-select:none!important;user-select:none!important;-webkit-touch-callout:none!important;-webkit-user-modify:read-only!important;}html.retweet-native-shell input,html.retweet-native-shell textarea,html.retweet-native-shell select,html.retweet-native-shell [contenteditable=true],html.retweet-native-shell .chat-allow-select,html.retweet-native-shell .chat-allow-select *{-webkit-user-select:text!important;user-select:text!important;-webkit-touch-callout:auto!important;}html.retweet-native-shell ::selection,#root ::selection{background:transparent!important;}';
         var id='retweet-ios-no-select';
         if(!document.getElementById(id)){
           var s=document.createElement('style');
@@ -227,6 +227,12 @@ class RetweetBridgeViewController: CAPBridgeViewController, WKUIDelegate, WKNavi
             wv.isFindInteractionEnabled = false
         }
         wv.scrollView.contentInsetAdjustmentBehavior = .never
+        /** تمرير داخلي للمحادثة — delaysContentTouches=false يمرّر اللمس لـ overflow-y داخل الصفحة */
+        wv.scrollView.isScrollEnabled = true
+        wv.scrollView.bounces = false
+        wv.scrollView.alwaysBounceVertical = false
+        wv.scrollView.delaysContentTouches = false
+        wv.scrollView.canCancelContentTouches = true
 
         let ucc = wv.configuration.userContentController
         let alreadyInjected = ucc.userScripts.contains { $0.source.contains("retweet-native-shell") }

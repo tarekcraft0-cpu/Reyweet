@@ -105,7 +105,7 @@ function ChatSwipeMessageRowInner({
   return (
     <div
       data-mine={mine ? "1" : "0"}
-      className="chat-msg-row chat-msg-enter w-full touch-manipulation select-none"
+      className="chat-msg-row chat-msg-enter w-full touch-pan-y select-none"
       style={{
         direction: "ltr",
         display: "flex",
@@ -113,7 +113,10 @@ function ChatSwipeMessageRowInner({
       }}
     >
       <div
-        className={"flex w-max max-w-[min(75vw,280px)] items-end gap-2 " + (mine ? "" : "flex-row")}
+        className={
+          "flex w-max max-w-[min(75vw,280px)] touch-pan-y items-end gap-2 " + (mine ? "" : "flex-row")
+        }
+        style={{ touchAction: "pan-y" }}
         onPointerDown={handleDown}
         onPointerMove={handleMove}
         onPointerUp={handleUp}

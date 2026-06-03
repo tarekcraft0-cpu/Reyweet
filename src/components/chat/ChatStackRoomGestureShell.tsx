@@ -36,7 +36,7 @@ export function ChatStackRoomGestureShell({
         className={
           "chat-no-select chat-room-stack absolute inset-0 z-[2] flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden [transform:translateZ(0)] chat-room-stack-dismiss " +
           (hasRoomContent ? "bg-background " : "pointer-events-none bg-transparent ") +
-          (interactive ? "pointer-events-auto touch-manipulation" : "pointer-events-none")
+          (interactive ? "pointer-events-auto touch-pan-y" : "pointer-events-none")
         }
       >
         {children}

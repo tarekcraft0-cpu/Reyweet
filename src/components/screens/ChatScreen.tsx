@@ -3734,6 +3734,7 @@ export function ChatScreen({
       <div
         dir="ltr"
         className="chat-stack-scene relative flex min-h-0 min-w-0 w-full max-w-full flex-1 flex-col overflow-x-clip overflow-y-hidden bg-background"
+        data-no-tab-swipe
       >
         {chatInbox}
         <ChatStackRoomGestureShell
@@ -4572,6 +4573,7 @@ function ChatRoom({
   const [inlineMediaViewer, setInlineMediaViewer] = useState<Message | null>(null);
   const [shareFeedOpen, setShareFeedOpen] = useState<null | { items: ChatShareFeedItem[]; initialIndex: number }>(null);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
+  const messagesListInnerRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLDivElement>(null);
   const chatHeaderRef = useRef<HTMLDivElement>(null);
   const kbSnap = useChatKeyboardInsets(true);
@@ -5052,9 +5054,8 @@ function ChatRoom({
       return;
     }
     if (introScrollActiveRef.current) return;
-    if (!forceScrollToBottom && !stickToBottomRef.current) return;
-    if (!forceScrollToBottom && count === prev.msgCount) return;
-    stickToBottomRef.current = true;
+    if (!stickToBottomRef.current) return;
+    if (count === prev.msgCount && !isNewChat) return;
     scheduleScrollToBottom({ instant: true });
     return () => {
       cancelAnimationFrame(scrollBottomRafRef.current);
@@ -5069,6 +5070,20 @@ function ChatRoom({
   ]);
 
   useEffect(() => () => cancelIntroScroll(), [cancelIntroScroll]);
+
+  useLayoutEffect(() => {
+    const scrollEl = messagesScrollRef.current;
+    const innerEl = messagesListInnerRef.current;
+    if (!scrollEl || !innerEl) return;
+    const applyMinHeight = () => {
+      const h = scrollEl.clientHeight;
+      if (h > 0) innerEl.style.minHeight = `${h}px`;
+    };
+    applyMinHeight();
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(applyMinHeight) : null;
+    ro?.observe(scrollEl);
+    return () => ro?.disconnect();
+  }, [chat.id, displayMessages.length, drawComposeOpen, showStickers, replyingTo]);
 
   const onMessagesScroll = useCallback(() => {
     const el = messagesScrollRef.current;
@@ -5117,8 +5132,6 @@ function ChatRoom({
   ]);
 
   const VANISH_PULL_NEED = 120;
-  /** ارتفاع النطاق من أسفل منطقة التمرير لبدء سحب الوضع المخفي */
-  const VANISH_PULL_HIT_PX = 140;
 
   const isQuranChannel = chat.id === QURAN_CHANNEL_ID;
   const useIgDm = isIgDmChat(isDmRoom, isQuranChannel);
@@ -5734,7 +5747,6 @@ function ChatRoom({
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (drawComposeOpen) return;
       if (!isDmRoom || !canPost) return;
-      e.preventDefault();
       vanishPullDragRef.current = { pointerId: e.pointerId, startY: e.clientY };
       try {
         e.currentTarget.setPointerCapture(e.pointerId);
@@ -5755,6 +5767,18 @@ function ChatRoom({
       if (dy <= 0) {
         vanishPullProgRef.current = 0;
         return;
+      }
+      if (dy > 10) {
+        try {
+          e.preventDefault();
+        } catch {
+          /* ignore */
+        }
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+        } catch {
+          /* ignore */
+        }
       }
       const p = Math.min(1, dy / VANISH_PULL_NEED);
       vanishPullProgRef.current = p;
@@ -5793,26 +5817,6 @@ function ChatRoom({
       finalizeVanishPull();
     },
     [drawComposeOpen, finalizeVanishPull],
-  );
-
-  const onMessagesVanishPointerDownCapture = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      if (drawComposeOpen) return;
-      if (!isDmRoom || !canPost) return;
-      const el = e.currentTarget;
-      const r = el.getBoundingClientRect();
-      const fromBottom = r.bottom - e.clientY;
-      if (fromBottom < 0 || fromBottom > VANISH_PULL_HIT_PX) return;
-      const fromRight = e.clientX - r.left >= r.width - 30;
-      if (fromRight) return;
-      const tgt = e.target as HTMLElement | null;
-      if (!tgt || !el.contains(tgt)) return;
-      if (tgt.closest("button, a, input, textarea, select, canvas")) return;
-      /* السماح بالبدء من فقاعات الرسائل في أسفل الشاشة — كان استبعاد .touch-manipulation يعطّل الوضع المخفي عملياً */
-      e.stopPropagation();
-      handleVanishPullDown(e);
-    },
-    [drawComposeOpen, isDmRoom, canPost, handleVanishPullDown],
   );
 
   const myOutgoing = useMemo(
@@ -6053,10 +6057,10 @@ function ChatRoom({
       data-chat-swipe-column
       className={
         (embedInStack
-          ? "chat-room-viewport relative flex h-full min-h-0 w-full flex-col overflow-hidden overscroll-none pointer-events-auto touch-manipulation "
+          ? "chat-room-viewport relative flex h-full min-h-0 w-full flex-col overflow-hidden overscroll-none pointer-events-auto touch-pan-y "
           : (nativeShell
-              ? "chat-room-solo absolute inset-0 z-[200] box-border flex w-full overflow-hidden overscroll-none pointer-events-none touch-manipulation "
-              : "chat-room-solo fixed inset-x-0 z-[200] box-border flex justify-center overflow-hidden overscroll-none pointer-events-none touch-manipulation ")) +
+              ? "chat-room-solo absolute inset-0 z-[200] box-border flex w-full overflow-hidden overscroll-none pointer-events-none touch-pan-y "
+              : "chat-room-solo fixed inset-x-0 z-[200] box-border flex justify-center overflow-hidden overscroll-none pointer-events-none touch-pan-y ")) +
         (useIgDm ? "" : "bg-background")
       }
       style={
@@ -6078,15 +6082,6 @@ function ChatRoom({
                 ...(useIgDm && dmPalette && !chromeOnWallpaper ? igDmSurfaceStyle : {}),
               }
       }
-      {...(panelDismissDown
-        ? {
-            onPointerDownCapture: panelDismissDown,
-            onPointerMoveCapture: panelDismissMove,
-            onPointerUpCapture: panelDismissUp,
-            onPointerCancelCapture: panelDismissCancel,
-            onLostPointerCapture: panelDismissLostCapture,
-          }
-        : {})}
     >
       <div {...edgeStripProps} data-chat-nav-back-edge aria-label="سحب للرجوع من الحافة اليمنى" />
       {chromeOnWallpaper ? (
@@ -6128,6 +6123,7 @@ function ChatRoom({
       >
       <div
         data-chat-room
+        data-no-tab-swipe
         className={
           "chat-no-select pointer-events-auto relative flex h-full min-h-0 max-h-full w-full flex-col overflow-hidden " +
           (embedInStack ? "" : "will-change-transform ") +
@@ -6140,13 +6136,21 @@ function ChatRoom({
             ? { ["--chat-surface" as string]: dmPalette.surface }
             : {}),
         }}
-        {...chatNoSelectCaptureHandlers}
       >
       {!showDmDetails ? (
       <div
         ref={chatHeaderRef}
         dir={useIgDm ? dmDir : "rtl"}
         data-chat-dismiss-handle
+        {...(embedInStack && panelDismissDown
+          ? {
+              onPointerDownCapture: panelDismissDown,
+              onPointerMoveCapture: panelDismissMove,
+              onPointerUpCapture: panelDismissUp,
+              onPointerCancelCapture: panelDismissCancel,
+              onLostPointerCapture: panelDismissLostCapture,
+            }
+          : {})}
         className={
           "chat-room-header flex w-full shrink-0 items-center gap-2 px-3 py-3 pt-[max(0.75rem,var(--sat))] " +
           (isQuranChannel
@@ -6460,27 +6464,28 @@ function ChatRoom({
         )}
       <div
         ref={messagesScrollRef}
+        data-scroll-pane
         onScroll={onMessagesScroll}
-        onPointerDownCapture={onMessagesVanishPointerDownCapture}
-        onPointerMove={handleVanishPullMove}
-        onPointerUp={handleVanishPullUp}
-        onPointerCancel={handleVanishPullUp}
         dir="ltr"
         className={
-          "chat-scroll-pane chat-no-select no-scrollbar relative flex min-h-0 flex-1 flex-col touch-pan-y overscroll-none " +
-          (drawComposeOpen ? "overflow-hidden " : "overflow-y-auto ") +
+          "chat-scroll-pane chat-no-select no-scrollbar relative min-h-0 flex-1 basis-0 touch-pan-y overscroll-y-contain " +
+          (drawComposeOpen ? "overflow-hidden " : "overflow-y-scroll ") +
           (isQuranChannel ? "bg-zinc-950" : chromeOnWallpaper ? "bg-transparent" : useIgDm ? "" : "bg-background")
         }
         style={{
+          flex: "1 1 0%",
+          minHeight: 0,
           scrollbarWidth: "none",
           msOverflowStyle: "none",
-          overflowAnchor: "auto",
+          WebkitOverflowScrolling: "touch",
+          touchAction: "pan-y",
           ...(useIgDm && dmPalette && !chromeOnWallpaper ? igDmSurfaceStyle : {}),
         }}
       >
         <div
+          ref={messagesListInnerRef}
           className={
-            "flex min-h-full w-full flex-col justify-end gap-2 px-3 pt-2 pb-0.5 " +
+            "flex w-full flex-col justify-end gap-2 px-3 pt-2 pb-0.5 " +
             (isQuranChannel ? "bg-zinc-950" : chromeOnWallpaper ? "bg-transparent" : "")
           }
         >
@@ -6590,10 +6595,7 @@ function ChatRoom({
             useIgDm && dmPalette && !mine && !bareMedia ? chatDmPeerBubbleStyle(dmPalette) : undefined;
           const showBubbleTime = useIgDm && !bareMedia;
           return (
-            <div
-              key={m.id}
-              style={{ contentVisibility: "auto", containIntrinsicSize: "auto 72px" }}
-            >
+            <div key={m.id}>
             <ChatSwipeMessageRow
               message={m}
               mine={mine}
@@ -6700,7 +6702,7 @@ function ChatRoom({
           <div
             role="presentation"
             aria-hidden
-            className="pointer-events-auto absolute inset-x-0 bottom-0 z-[12] h-14 touch-none"
+            className="pointer-events-none absolute inset-x-0 bottom-0 z-[12] h-10 touch-pan-y"
             onPointerDown={e => {
               if (e.pointerType === "mouse" && e.button !== 0) return;
               const t = e.target as HTMLElement;

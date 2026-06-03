@@ -7,16 +7,23 @@
       "resize": "none"
     },
     "PushNotifications": {
-      "presentationOptions": ["badge", "sound", "alert"]
+      "presentationOptions": [
+        "badge",
+        "sound",
+        "alert"
+      ]
     }
   },
   "ios": {
     "contentInset": "never",
-    "scrollEnabled": false,
+    "scrollEnabled": true,
     "allowsLinkPreview": false
   },
   "android": {
     "allowMixedContent": false
   },
-  "packageClassList": ["KeyboardPlugin", "PushNotificationsPlugin"]
+  "packageClassList": [
+    "KeyboardPlugin",
+    "PushNotificationsPlugin"
+  ]
 }

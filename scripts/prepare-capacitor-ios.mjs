@@ -201,6 +201,11 @@ function patchIosEmbeddedCapConfig() {
   } else {
     delete capJson.server;
   }
+  if (rootCap.ios) {
+    capJson.ios = { ...(capJson.ios || {}), ...rootCap.ios, scrollEnabled: true };
+  } else {
+    capJson.ios = { ...(capJson.ios || {}), contentInset: "never", scrollEnabled: true, allowsLinkPreview: false };
+  }
   if (rootCap.plugins) {
     capJson.plugins = { ...(capJson.plugins || {}), ...rootCap.plugins };
   }

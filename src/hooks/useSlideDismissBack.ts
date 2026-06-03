@@ -613,13 +613,6 @@ export function useSlideDismissBack({
         }
       }
       panelPendingRef.current = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY };
-      if (dismissProfile === "chat") {
-        try {
-          containerRef.current?.setPointerCapture(e.pointerId);
-        } catch {
-          /* ignore */
-        }
-      }
     },
     [panelSwipeDismiss, enabled, blocked, clearPanelPending, dismissProfile],
   );

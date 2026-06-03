@@ -275,6 +275,11 @@ export function useChatSwipeBack({
     [finishDrag, clearPending],
   );
 
+  const isScrollPaneTarget = useCallback((target: EventTarget | null) => {
+    if (!(target instanceof HTMLElement)) return false;
+    return !!target.closest(".chat-scroll-pane, [data-scroll-pane]");
+  }, []);
+
   const onPanelPointerDown = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>) => {
       if (!enabled || blocked || dismissingRef.current) {
@@ -282,6 +287,7 @@ export function useChatSwipeBack({
         return;
       }
       if (e.pointerType === "mouse" && e.button !== 0) return;
+      if (isScrollPaneTarget(e.target)) return;
       if (isInteractiveDismissTarget(e.target)) return;
       if (!isChatDismissStart(e.clientX, e.target)) return;
       const root = containerRef.current;
@@ -291,20 +297,22 @@ export function useChatSwipeBack({
         return;
       }
       panelPendingRef.current = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY };
-      try {
-        containerRef.current?.setPointerCapture(e.pointerId);
-      } catch {
-        /* ignore */
-      }
     },
-    [enabled, blocked, clearPending, isChatDismissStart],
+    [enabled, blocked, clearPending, isChatDismissStart, isScrollPaneTarget],
   );
 
   const onPanelPointerMove = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>) => {
+      if (
+        isScrollPaneTarget(e.target) &&
+        dragRef.current.pointerId == null &&
+        panelPendingRef.current == null
+      ) {
+        return;
+      }
       onPointerMove(e.clientX, e.clientY, e.pointerId);
     },
-    [onPointerMove],
+    [onPointerMove, isScrollPaneTarget],
   );
 
   const onPanelPointerUp = useCallback(
@@ -348,8 +356,8 @@ export function useChatSwipeBack({
     role: "presentation" as const,
     "aria-hidden": true as const,
     className:
-      "pointer-events-auto touch-none select-none bg-transparent " +
-      (!enabled || blocked ? "!pointer-events-none opacity-0" : ""),
+      "pointer-events-none touch-none select-none bg-transparent " +
+      (!enabled || blocked ? "opacity-0" : ""),
     style: edgeStripStyle,
     "data-chat-nav-back-edge": true as const,
   };
