@@ -1358,6 +1358,7 @@ export function SettingsScreen({
     dragging: false,
   });
   const t = useT();
+  const buildLabel = `v${(import.meta as any).env?.VITE_APP_VERSION || "dev"} · ${(import.meta as any).env?.VITE_APP_BUILD || "local"}`;
   const me = currentUser!;
   const [subView, setSubView] = useState<SubView>(null);
   const [subViewReturnToAccountsCenter, setSubViewReturnToAccountsCenter] = useState(false);

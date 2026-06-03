@@ -113,8 +113,8 @@ function applyChatKeyboardCss() {
   root.style.setProperty("--chat-sab-effective", snap.open ? "0px" : "var(--sab)");
   root.classList.toggle("chat-keyboard-open", snap.open);
   const scrollPad = snap.open
-    ? "calc(4px + var(--chat-composer-h, 72px))"
-    : "calc(8px + var(--chat-composer-h, 72px))";
+    ? "calc(8px + var(--chat-composer-h, 72px) + var(--retweet-composer-kb-lift, 0px))"
+    : "calc(12px + var(--chat-composer-h, 72px))";
   root.style.setProperty("--chat-scroll-padding-bottom", scrollPad);
   applyComposerKeyboardLift();
   return snap;

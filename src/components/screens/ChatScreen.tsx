@@ -4731,11 +4731,18 @@ function ChatRoom({
   }, [syncComposerDockHeight, scheduleScrollToBottom]);
 
   const kbOpenPrevRef = useRef(false);
+  useLayoutEffect(() => {
+    if (!kbSnap.open) return;
+    syncComposerDockHeight();
+    scrollMessagesToBottom({ instant: true });
+  }, [kbSnap.open, kbSnap.keyboardInset, syncComposerDockHeight, scrollMessagesToBottom]);
+
   useEffect(() => {
     const wasOpen = kbOpenPrevRef.current;
     kbOpenPrevRef.current = kbSnap.open;
     if (!kbSnap.open) return;
     if (!wasOpen) stickToBottomRef.current = true;
+    scheduleScrollToBottom({ afterMs: 80 });
     scheduleScrollToBottom({ afterMs: 280 });
   }, [kbSnap.open, scheduleScrollToBottom]);
   const scrollAnchorRef = useRef({ chatId: "", msgCount: 0 });
@@ -6475,7 +6482,9 @@ function ChatRoom({
             (isQuranChannel ? "bg-zinc-950" : chromeOnWallpaper ? "bg-transparent" : "")
           }
           style={{
-            paddingBottom: "12px",
+            paddingBottom: kbSnap.open
+              ? "calc(8px + var(--chat-composer-h, 72px) + var(--retweet-composer-kb-lift, 0px))"
+              : "calc(12px + var(--chat-composer-h, 0px))",
           }}
         >
         {(hasOlderMessages || loadingOlderUi) && (
