@@ -4810,7 +4810,8 @@ function ChatRoom({
   const composerBottomPad = chatComposerBottomPadding(kbSnap.open);
 
   useEffect(() => {
-    const roomKey = chatMergeKey(chat, me.id);
+    if (!meId) return;
+    const roomKey = chatMergeKey(chat, meId);
     const matches = (id: string) => id === chat.id || id === roomKey;
     const syncHint = () => {
       const meta = getActiveCallMeta();
@@ -4836,7 +4837,7 @@ function ChatRoom({
       window.removeEventListener(CALL_UI_ENDED_EVENT, onEnd);
       window.clearInterval(timer);
     };
-  }, [chat.id, me.id, chat.members]);
+  }, [chat.id, meId, chat.members]);
 
   /** false عندما يمرّر المستخدم لأعلى لقراءة قديم — لا نعيده للأسفل تلقائياً عند وصول رسالة جديدة */
   const stickToBottomRef = useRef(true);
