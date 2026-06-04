@@ -6843,7 +6843,21 @@ function ChatRoom({
               "font-semibold text-primary underline-offset-2 hover:underline active:opacity-80";
             const langEn = state.language === "en";
             const listConj = langEn ? " and " : " و ";
-            const targets = groupSystemEvent.targets.filter(Boolean);
+            const isAddEvent =
+              groupSystemEvent.action === "أضاف" || groupSystemEvent.action === "added";
+            const senderUser = userById(state, m.senderId);
+            const actorUsername = (
+              isAddEvent && senderUser?.username
+                ? senderUser.username
+                : groupSystemEvent.actor
+            ).replace(/^@/, "");
+            const targets = (
+              isAddEvent
+                ? groupSystemEvent.targets.filter(
+                    t => t && t.toLowerCase() !== actorUsername.toLowerCase(),
+                  )
+                : groupSystemEvent.targets
+            ).filter(Boolean);
             return (
               <div key={m.id} className="flex w-full justify-center px-3 py-3">
                 <p
@@ -6855,9 +6869,9 @@ function ChatRoom({
                   <button
                     type="button"
                     className={systemUserBtn}
-                    onClick={() => openMentionProfile(groupSystemEvent.actor)}
+                    onClick={() => openMentionProfile(actorUsername)}
                   >
-                    @{groupSystemEvent.actor}
+                    @{actorUsername}
                   </button>{" "}
                   <span className={systemMuted}>{groupSystemEvent.action}</span>{" "}
                   {targets.map((target, i) => (

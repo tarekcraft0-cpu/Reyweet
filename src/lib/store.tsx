@@ -3934,24 +3934,25 @@ export function AppProvider({
         ...s,
         chats: s.chats.map((c) => {
           if (c.id !== chatId || (!c.isGroup && !c.isChannel)) return c;
-          const added = memberIds.filter(id => !c.members.includes(id));
+          const added = memberIds.filter(id => id !== meId && !c.members.includes(id));
           const lang = s.language === "en" ? "en" : "ar";
-          const addedNames = added.map(memberId => {
-            const nu = s.users.find(u => u.id === memberId);
-            return nu?.username || "";
-          });
+          const actorName = adder?.username || "";
+          const addedNames = added
+            .map(memberId => s.users.find(u => u.id === memberId)?.username || "")
+            .filter(Boolean);
+          const addContent = buildGroupAddSystemContent(
+            actorName || (lang === "en" ? "admin" : "مشرف"),
+            addedNames,
+            lang,
+          );
           const joinMsgs: Message[] =
-            added.length > 0
+            added.length > 0 && addContent
               ? [
                   {
                     id: uid(),
                     senderId: meId,
                     type: "text" as const,
-                    content: buildGroupAddSystemContent(
-                      adder?.username || (lang === "en" ? "admin" : "مشرف"),
-                      addedNames.length > 0 ? addedNames : added.map(() => ""),
-                      lang,
-                    ),
+                    content: addContent,
                     createdAt: Date.now(),
                   },
                 ]

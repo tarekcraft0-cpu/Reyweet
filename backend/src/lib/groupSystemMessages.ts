@@ -20,13 +20,31 @@ export function formatGroupMemberList(usernames: string[], lang: "ar" | "en"): s
   return `${head}${conj}${mentions[mentions.length - 1]}`;
 }
 
+export function filterGroupAddTargetNames(actorUsername: string, targetUsernames: string[]): string[] {
+  const actorKey = bareUsername(actorUsername).toLowerCase();
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of targetUsernames) {
+    const bare = bareUsername(raw);
+    if (!bare) continue;
+    const key = bare.toLowerCase();
+    if (actorKey && key === actorKey) continue;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(bare);
+  }
+  return out;
+}
+
 export function buildGroupAddSystemContent(
   actorUsername: string,
   targetUsernames: string[],
   lang: "ar" | "en" = "ar",
 ): string {
   const actor = mentionUsername(actorUsername || (lang === "en" ? "admin" : "مشرف"), lang);
-  const list = formatGroupMemberList(targetUsernames, lang);
+  const targets = filterGroupAddTargetNames(actorUsername, targetUsernames);
+  if (targets.length === 0) return "";
+  const list = formatGroupMemberList(targets, lang);
   if (lang === "en") {
     return `${actor} added ${list}`;
   }

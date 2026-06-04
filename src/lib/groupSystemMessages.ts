@@ -50,13 +50,32 @@ export function formatGroupMemberList(usernames: string[], lang: "ar" | "en"): s
   return `${head}${conj}${mentions[mentions.length - 1]}`;
 }
 
+/** أسماء المضافين فقط — بدون من نفّذ الإضافة (الأدمن) */
+export function filterGroupAddTargetNames(actorUsername: string, targetUsernames: string[]): string[] {
+  const actorKey = bareUsername(actorUsername).toLowerCase();
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of targetUsernames) {
+    const bare = bareUsername(raw);
+    if (!bare) continue;
+    const key = bare.toLowerCase();
+    if (actorKey && key === actorKey) continue;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(bare);
+  }
+  return out;
+}
+
 export function buildGroupAddSystemContent(
   actorUsername: string,
   targetUsernames: string[],
   lang: "ar" | "en" = "ar",
 ): string {
   const actor = mentionUsername(actorUsername || (lang === "en" ? "admin" : "مشرف"), lang);
-  const list = formatGroupMemberList(targetUsernames, lang);
+  const targets = filterGroupAddTargetNames(actorUsername, targetUsernames);
+  if (targets.length === 0) return "";
+  const list = formatGroupMemberList(targets, lang);
   if (lang === "en") {
     return `${actor} added ${list}`;
   }
@@ -147,8 +166,9 @@ export function parseGroupSystemEvent(raw: string): GroupSystemEvent | null {
   if (m) return { actor: m[1], action: "أضاف", targets: [m[2]] };
   m = text.match(AR_ADD_MANY);
   if (m) {
-    const targets = parseMemberList(m[2], "ar");
-    if (targets.length > 0) return { actor: m[1], action: "أضاف", targets };
+    const actor = bareUsername(m[1]);
+    const targets = filterGroupAddTargetNames(actor, parseMemberList(m[2], "ar"));
+    if (targets.length > 0) return { actor, action: "أضاف", targets };
   }
   m = text.match(AR_KICK);
   if (m) return { actor: m[1], action: "طرد", targets: [m[2]] };
@@ -160,8 +180,9 @@ export function parseGroupSystemEvent(raw: string): GroupSystemEvent | null {
   if (m) return { actor: m[1], action: "added", targets: [m[2]] };
   m = text.match(EN_ADD_MANY);
   if (m) {
-    const targets = parseMemberList(m[2], "en");
-    if (targets.length > 0) return { actor: m[1], action: "added", targets };
+    const actor = bareUsername(m[1]);
+    const targets = filterGroupAddTargetNames(actor, parseMemberList(m[2], "en"));
+    if (targets.length > 0) return { actor, action: "added", targets };
   }
   m = text.match(EN_KICK);
   if (m) return { actor: m[1], action: "removed", targets: [m[2]] };

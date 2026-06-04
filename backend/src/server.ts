@@ -1574,19 +1574,23 @@ app.post("/v1/chats/group/:chatId/members", authMiddleware, async (req, res) => 
   const actorRow = await getUserById(actorId);
   const addedIds = requested.filter(id => !chat.members.includes(id));
   const addedRows = await Promise.all(addedIds.map(id => getUserById(id)));
-  const addedNames = addedRows.map(r => r?.username || "").filter(Boolean);
+  const actorName = actorRow?.username || "";
+  const addedNames = addedRows
+    .map(r => r?.username || "")
+    .filter(u => u && u.toLowerCase() !== actorName.toLowerCase());
+  const addContent = buildGroupAddSystemContent(
+    actorRow?.username || "مشرف",
+    addedNames.length > 0 ? addedNames : addedIds.map(() => "عضو"),
+    "ar",
+  );
   const systemMessages =
-    addedIds.length > 0
+    addedIds.length > 0 && addContent
       ? [
           {
             id: crypto.randomUUID(),
             senderId: actorId,
             type: "text" as const,
-            content: buildGroupAddSystemContent(
-              actorRow?.username || "مشرف",
-              addedNames.length > 0 ? addedNames : addedIds.map(() => "عضو"),
-              "ar",
-            ),
+            content: addContent,
             createdAt: Date.now(),
           },
         ]
