@@ -1,10 +1,10 @@
 import { VERCEL_SITE_URL } from "@/lib/apiUrlPolicy";
+import { SUPPORT_EMAIL } from "@/lib/supportContact";
 import { SlideDismissBackButton } from "../SlideDismissShell";
 import { ArrowRight, Mail, Shield, FileText, Smartphone } from "lucide-react";
 
 const PRIVACY_URL = `${VERCEL_SITE_URL}/privacy.html`;
 const TERMS_URL = `${VERCEL_SITE_URL}/terms.html`;
-const SUPPORT_EMAIL = "support@reyweet.app";
 
 function PanelShell({
   title,
@@ -112,7 +112,7 @@ export function AboutPanel({ onBack }: { onBack: () => void }) {
           className="flex items-center gap-3 rounded-2xl border border-border bg-card px-4 py-3.5 active:bg-accent"
         >
           <Mail size={20} className="text-primary" />
-          <span className="flex-1 font-medium">support@reyweet.app</span>
+          <span className="flex-1 font-medium">{SUPPORT_EMAIL}</span>
         </a>
       </div>
     </PanelShell>
