@@ -303,7 +303,12 @@ import {
   runChatMessageLoad,
   setChatMessageSyncMeta,
 } from "./chatMessageSync";
-import { handleRemoteCallSignal, type CallSignalPayload, type IncomingCallRing } from "./webrtcCall";
+import {
+  handleRemoteCallAccept,
+  handleRemoteCallSignal,
+  type CallSignalPayload,
+  type IncomingCallRing,
+} from "./webrtcCall";
 
 import { dispatchIncomingCallRing, INCOMING_CALL_WINDOW_EVENT } from "./activeCallUi";
 export { INCOMING_CALL_WINDOW_EVENT };
@@ -6000,6 +6005,10 @@ export function AppProvider({
       }
       if (event === "call:signal") {
         void handleRemoteCallSignal(data as CallSignalPayload);
+        return;
+      }
+      if (event === "call:accept") {
+        void handleRemoteCallAccept(data as { fromUserId: string; chatId: string });
         return;
       }
       if (event === "call:ring") {

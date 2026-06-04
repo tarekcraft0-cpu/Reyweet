@@ -10,7 +10,29 @@ export type OutgoingCallDetail = {
   peerUserId: string;
 };
 
+function playIncomingRingTone(): void {
+  try {
+    const Ctx = window.AudioContext || (window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = 520;
+    gain.gain.value = 0.12;
+    osc.start();
+    window.setTimeout(() => {
+      osc.stop();
+      void ctx.close();
+    }, 380);
+  } catch {
+    /* ignore */
+  }
+}
+
 export function dispatchIncomingCallRing(detail: IncomingCallRing): void {
+  playIncomingRingTone();
   window.dispatchEvent(new CustomEvent(INCOMING_CALL_WINDOW_EVENT, { detail }));
 }
 

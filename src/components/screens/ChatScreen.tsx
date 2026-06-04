@@ -145,7 +145,11 @@ import {
   getApiToken,
   userFromSearchResult,
 } from "@/lib/apiBackend";
-import { dispatchStartOutgoingCall } from "@/lib/activeCallUi";
+import {
+  CALL_UI_ENDED_EVENT,
+  INCOMING_CALL_WINDOW_EVENT,
+} from "@/lib/activeCallUi";
+import { getActiveCallMeta, type IncomingCallRing } from "@/lib/webrtcCall";
 import { apiSearchChatMessages, type MessageSearchHit } from "@/lib/chatSearchApi";
 import { emitUiToast } from "@/lib/uiToast";
 
@@ -3974,7 +3978,7 @@ export function ChatScreen({
                           "@/lib/activeCallUi"
                         );
                         const r = await dispatchStartOutgoingCallSafe({
-                          chatId: stackChat.id,
+                          chatId: openChatIdFor(stackChat, me.id),
                           video,
                           peerUserId: peer,
                         });
@@ -4791,6 +4795,7 @@ function ChatRoom({
   const [moreReactionEmoji, setMoreReactionEmoji] = useState(false);
   const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
   const [translateTextSource, setTranslateTextSource] = useState<string | null>(null);
+  const [callStatusHint, setCallStatusHint] = useState<string | null>(null);
   const [cameraCompose, setCameraCompose] = useState<CameraComposeDraft | null>(null);
   const [instagramCameraOpen, setInstagramCameraOpen] = useState(false);
   const [drawComposeOpen, setDrawComposeOpen] = useState(false);
@@ -4803,6 +4808,35 @@ function ChatRoom({
   const chatHeaderRef = useRef<HTMLDivElement>(null);
   const kbSnap = useChatKeyboardInsets(true);
   const composerBottomPad = chatComposerBottomPadding(kbSnap.open);
+
+  useEffect(() => {
+    const roomKey = chatMergeKey(chat, me.id);
+    const matches = (id: string) => id === chat.id || id === roomKey;
+    const syncHint = () => {
+      const meta = getActiveCallMeta();
+      if (meta && matches(meta.chatId)) {
+        setCallStatusHint(
+          meta.role === "caller" ? "مكالمة صادرة — بانتظار قبول الطرف الآخر" : "مكالمة واردة",
+        );
+        return;
+      }
+      setCallStatusHint(prev => (prev === "يرن الآن…" ? prev : null));
+    };
+    const onRing = (e: Event) => {
+      const d = (e as CustomEvent<IncomingCallRing>).detail;
+      if (d?.chatId && matches(d.chatId)) setCallStatusHint("يرن الآن…");
+    };
+    const onEnd = () => setCallStatusHint(null);
+    syncHint();
+    window.addEventListener(INCOMING_CALL_WINDOW_EVENT, onRing);
+    window.addEventListener(CALL_UI_ENDED_EVENT, onEnd);
+    const timer = window.setInterval(syncHint, 900);
+    return () => {
+      window.removeEventListener(INCOMING_CALL_WINDOW_EVENT, onRing);
+      window.removeEventListener(CALL_UI_ENDED_EVENT, onEnd);
+      window.clearInterval(timer);
+    };
+  }, [chat.id, me.id, chat.members]);
 
   /** false عندما يمرّر المستخدم لأعلى لقراءة قديم — لا نعيده للأسفل تلقائياً عند وصول رسالة جديدة */
   const stickToBottomRef = useRef(true);
@@ -6778,6 +6812,15 @@ function ChatRoom({
             dayPillText={dmPalette?.dayPillText}
           />
         )}
+      {callStatusHint && isDmRoom && !chat.isGroup && !chat.isChannel ? (
+        <div
+          className="mx-3 mb-1 flex items-center justify-center gap-2 rounded-xl border border-emerald-500/35 bg-emerald-500/10 px-3 py-2 text-center text-xs font-medium text-emerald-700 dark:text-emerald-300"
+          role="status"
+        >
+          <Phone size={14} className="shrink-0 animate-pulse" />
+          <span>{callStatusHint}</span>
+        </div>
+      ) : null}
       <div
         ref={messagesScrollRef}
         data-scroll-pane

@@ -77,8 +77,9 @@ export async function connectRealtimeSocket(
 
   const tokenAtConnect = token;
   const s = io(url, {
-    transports: ["websocket"],
-    upgrade: false,
+    path: "/socket.io",
+    transports: ["websocket", "polling"],
+    upgrade: true,
     auth: { token },
     reconnection: true,
     reconnectionAttempts: 12,
@@ -105,6 +106,7 @@ export async function connectRealtimeSocket(
   s.on("group_invite", forward("group_invite"));
   s.on("call:signal", forward("call:signal"));
   s.on("call:ring", forward("call:ring"));
+  s.on("call:accept", forward("call:accept"));
   s.on("typing", forward("typing"));
   s.on("message_status", forward("message_status"));
 

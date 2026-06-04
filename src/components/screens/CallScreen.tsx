@@ -34,7 +34,9 @@ export function CallScreen({
   const otherId = calleePeerId || chat?.members.find(id => id !== me.id);
   const other = otherId ? userById(state, otherId) : null;
   const [muted, setMuted] = useState(false);
-  const [status, setStatus] = useState(calleePeerId ? "جاري الرد…" : "يرن عند الطرف الآخر…");
+  const [status, setStatus] = useState(
+    calleePeerId ? "جاري الرد…" : "يرن… انتظر أن يضغط الطرف الآخر «قبول»",
+  );
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
 
@@ -81,7 +83,7 @@ export function CallScreen({
                 if (s === "connected") setStatus("متصل");
                 else if (s === "failed") setStatus("فشل الاتصال — قد تحتاج شبكة أقوى أو TURN");
                 else if (s === "disconnected") setStatus("انقطع الاتصال");
-                else setStatus("يرن… بانتظار رد الطرف الآخر");
+                else setStatus("يرن… بانتظار «قبول» من الطرف الآخر");
               }
             },
           });

@@ -17,9 +17,11 @@ type ActiveCall = {
   chatId: string;
   peerUserId: string;
   video: boolean;
+  role: "caller" | "callee";
   pc: RTCPeerConnection;
   localStream: MediaStream;
   remoteStream: MediaStream | null;
+  offerSent: boolean;
   onRemoteStream?: (stream: MediaStream) => void;
   onState?: (state: string) => void;
 };
@@ -52,19 +54,75 @@ export function getActiveCallMeta(): {
   chatId: string;
   peerUserId: string;
   video: boolean;
+  role: "caller" | "callee";
 } | null {
   if (!active) return null;
   return {
     chatId: active.chatId,
     peerUserId: active.peerUserId,
     video: active.video,
+    role: active.role,
   };
+}
+
+function setupPeerConnection(opts: {
+  chatId: string;
+  peerUserId: string;
+  video: boolean;
+  role: "caller" | "callee";
+  localStream: MediaStream;
+  onRemoteStream?: (stream: MediaStream) => void;
+  onState?: (state: string) => void;
+}): ActiveCall {
+  const pc = new RTCPeerConnection({ iceServers: buildIceServers() });
+  for (const track of opts.localStream.getTracks()) {
+    pc.addTrack(track, opts.localStream);
+  }
+  const remoteStream = new MediaStream();
+  const call: ActiveCall = {
+    chatId: opts.chatId,
+    peerUserId: opts.peerUserId,
+    video: opts.video,
+    role: opts.role,
+    pc,
+    localStream: opts.localStream,
+    remoteStream,
+    offerSent: false,
+    onRemoteStream: opts.onRemoteStream,
+    onState: opts.onState,
+  };
+  pc.ontrack = ev => {
+    if (ev.streams[0]) {
+      for (const t of ev.streams[0].getTracks()) remoteStream.addTrack(t);
+    } else if (ev.track) {
+      remoteStream.addTrack(ev.track);
+    }
+    call.onRemoteStream?.(remoteStream);
+  };
+  pc.onicecandidate = ev => {
+    if (ev.candidate && active?.chatId === opts.chatId) {
+      emitSignal(opts.peerUserId, opts.chatId, ev.candidate);
+    }
+  };
+  pc.onconnectionstatechange = () => {
+    call.onState?.(pc.connectionState);
+  };
+  return call;
+}
+
+async function sendOutgoingOffer(): Promise<void> {
+  if (!active || active.role !== "caller" || active.offerSent) return;
+  active.offerSent = true;
+  const offer = await active.pc.createOffer();
+  await active.pc.setLocalDescription(offer);
+  emitSignal(active.peerUserId, active.chatId, offer);
 }
 
 export function bindCallSocket(socket: Socket | null): void {
   if (socketRef) {
     socketRef.off("call:ended");
     socketRef.off("call:reject");
+    socketRef.off("call:accept");
   }
   socketRef = socket;
   if (!socket) return;
@@ -74,12 +132,17 @@ export function bindCallSocket(socket: Socket | null): void {
   };
   socket.on("call:ended", onRemoteHangup);
   socket.on("call:reject", onRemoteHangup);
+  socket.on("call:accept", (raw: unknown) => {
+    const p = raw as { fromUserId?: string; chatId?: string };
+    if (!p?.fromUserId || !p?.chatId) return;
+    void handleRemoteCallAccept({ fromUserId: p.fromUserId, chatId: p.chatId });
+  });
 }
 
 async function ensureCallSocketConnected(): Promise<void> {
   if (socketRef?.connected) return;
   const { waitForRealtimeSocket } = await import("./realtimeSocket.js");
-  const ok = await waitForRealtimeSocket(4000);
+  const ok = await waitForRealtimeSocket(5000);
   if (!ok || !socketRef?.connected) {
     throw new Error("CALL_SOCKET_OFFLINE");
   }
@@ -90,14 +153,31 @@ export function emitCallReject(toUserId: string, chatId: string): void {
   socketRef.emit("call:reject", { toUserId, chatId });
 }
 
-export function emitCallRing(toUserId: string, chatId: string, video: boolean): void {
+export function emitCallAccept(toUserId: string, chatId: string): void {
   if (!socketRef?.connected) return;
+  socketRef.emit("call:accept", { toUserId, chatId });
+}
+
+export function emitCallRing(toUserId: string, chatId: string, video: boolean): boolean {
+  if (!socketRef?.connected) return false;
   socketRef.emit("call:ring", { toUserId, chatId, video });
+  return true;
 }
 
 function emitSignal(toUserId: string, chatId: string, signal: unknown): void {
   if (!socketRef?.connected) return;
   socketRef.emit("call:signal", { toUserId, chatId, signal });
+}
+
+export async function handleRemoteCallAccept(payload: {
+  fromUserId: string;
+  chatId: string;
+}): Promise<void> {
+  if (!active || active.chatId !== payload.chatId || active.peerUserId !== payload.fromUserId) {
+    return;
+  }
+  if (active.role !== "caller") return;
+  await sendOutgoingOffer();
 }
 
 export async function handleRemoteCallSignal(payload: CallSignalPayload): Promise<void> {
@@ -132,42 +212,13 @@ export async function prepareCalleeCall(opts: {
   onRemoteStream?: (stream: MediaStream) => void;
   onState?: (state: string) => void;
 }): Promise<void> {
-  await endCall();
+  await endCall({ notifyPeer: false });
   const localStream = await navigator.mediaDevices.getUserMedia({
     audio: true,
     video: opts.video,
   });
-  const pc = new RTCPeerConnection({ iceServers: buildIceServers() });
-  for (const track of localStream.getTracks()) {
-    pc.addTrack(track, localStream);
-  }
-  const remoteStream = new MediaStream();
-  pc.ontrack = ev => {
-    if (ev.streams[0]) {
-      for (const t of ev.streams[0].getTracks()) remoteStream.addTrack(t);
-    } else if (ev.track) {
-      remoteStream.addTrack(ev.track);
-    }
-    opts.onRemoteStream?.(remoteStream);
-  };
-  pc.onicecandidate = ev => {
-    if (ev.candidate) {
-      emitSignal(opts.peerUserId, opts.chatId, ev.candidate);
-    }
-  };
-  pc.onconnectionstatechange = () => {
-    opts.onState?.(pc.connectionState);
-  };
-  active = {
-    chatId: opts.chatId,
-    peerUserId: opts.peerUserId,
-    video: opts.video,
-    pc,
-    localStream,
-    remoteStream,
-    onRemoteStream: opts.onRemoteStream,
-    onState: opts.onState,
-  };
+  active = setupPeerConnection({ ...opts, role: "callee", localStream });
+  emitCallAccept(opts.peerUserId, opts.chatId);
   await flushBufferedSignals(opts.chatId, opts.peerUserId);
 }
 
@@ -178,53 +229,19 @@ export async function startOutgoingCall(opts: {
   onRemoteStream?: (stream: MediaStream) => void;
   onState?: (state: string) => void;
 }): Promise<void> {
-  await endCall();
+  await endCall({ notifyPeer: false });
   await ensureCallSocketConnected();
   const localStream = await navigator.mediaDevices.getUserMedia({
     audio: true,
     video: opts.video,
   });
-  const pc = new RTCPeerConnection({ iceServers: buildIceServers() });
-  for (const track of localStream.getTracks()) {
-    pc.addTrack(track, localStream);
-  }
-  const remoteStream = new MediaStream();
-  pc.ontrack = ev => {
-    if (ev.streams[0]) {
-      for (const t of ev.streams[0].getTracks()) remoteStream.addTrack(t);
-    } else if (ev.track) {
-      remoteStream.addTrack(ev.track);
-    }
-    opts.onRemoteStream?.(remoteStream);
-  };
-  pc.onicecandidate = ev => {
-    if (ev.candidate) {
-      emitSignal(opts.peerUserId, opts.chatId, ev.candidate);
-    }
-  };
-  pc.onconnectionstatechange = () => {
-    opts.onState?.(pc.connectionState);
-  };
+  active = setupPeerConnection({ ...opts, role: "caller", localStream });
 
-  active = {
-    chatId: opts.chatId,
-    peerUserId: opts.peerUserId,
-    video: opts.video,
-    pc,
-    localStream,
-    remoteStream,
-    onRemoteStream: opts.onRemoteStream,
-    onState: opts.onState,
-  };
-
-  emitCallRing(opts.peerUserId, opts.chatId, opts.video);
-  if (!socketRef?.connected) {
+  const rang = emitCallRing(opts.peerUserId, opts.chatId, opts.video);
+  if (!rang) {
     throw new Error("CALL_SOCKET_OFFLINE");
   }
-
-  const offer = await pc.createOffer();
-  await pc.setLocalDescription(offer);
-  emitSignal(opts.peerUserId, opts.chatId, offer);
+  /* WebRTC offer يُرسل بعد call:accept من الطرف الآخر */
 }
 
 export function getActiveLocalStream(): MediaStream | null {

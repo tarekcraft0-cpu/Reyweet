@@ -174,6 +174,26 @@ export function attachRealtimeSocket(httpServer: HttpServer): Server {
       ack?.({ ok: true });
     });
 
+    socket.on("call:accept", (raw, ack) => {
+      const parsed = z
+        .object({
+          toUserId: z.string().min(1),
+          chatId: z.string().min(1),
+        })
+        .safeParse(raw);
+      if (!parsed.success) {
+        ack?.({ ok: false });
+        return;
+      }
+      const { toUserId, chatId } = parsed.data;
+      if (toUserId === userId) {
+        ack?.({ ok: false });
+        return;
+      }
+      emitToUser(toUserId, "call:accept", { fromUserId: userId, chatId });
+      ack?.({ ok: true });
+    });
+
     socket.on("call:reject", raw => {
       const parsed = z
         .object({
