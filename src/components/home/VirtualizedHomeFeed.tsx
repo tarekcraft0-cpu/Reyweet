@@ -8,7 +8,7 @@ import { useProfiledRender } from "@/lib/renderProfiler";
 import type { Post } from "@/lib/types";
 
 const ESTIMATE_PX = 480;
-const OVERSCAN = 3;
+const OVERSCAN = isNativeCapacitorShell() ? 2 : 3;
 
 type FeedActions = {
   onShare: (post: Post) => void;

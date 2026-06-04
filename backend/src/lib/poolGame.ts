@@ -14,6 +14,10 @@ export const TABLE_W = 400;
 export const TABLE_H = 800;
 export const BALL_R = 12;
 export const POCKET_R = 20;
+const WALL_L = 40;
+const WALL_R = TABLE_W - 40;
+const WALL_T = 30;
+const WALL_B = TABLE_H - 30;
 
 export const POCKETS = [
   { x: 28, y: 28 },
@@ -57,6 +61,16 @@ export type GameRoom = {
   breakDone: boolean;
   inviteMessageId: string;
   turnTimerStart: number;
+  /** من يضع الكرة البيضاء بعد الفاول */
+  ballInHandUserId: string | null;
+  cueBallPlaced: boolean;
+  player1Fouls: number;
+  player2Fouls: number;
+  shotCount: number;
+  lastEvent: string;
+  /** آخر ضربة (لتلميح الخصم) */
+  lastShotPower: number;
+  lastShotAngle: number;
 };
 
 // ──────────────────────────────────────────
@@ -154,6 +168,14 @@ export function createGameRoom(
     breakDone: false,
     inviteMessageId,
     turnTimerStart: Date.now(),
+    ballInHandUserId: null,
+    cueBallPlaced: true,
+    player1Fouls: 0,
+    player2Fouls: 0,
+    shotCount: 0,
+    lastEvent: "بدأت اللعبة — اكسر المثلث!",
+    lastShotPower: 0,
+    lastShotAngle: 0,
   };
 
   activeRooms.set(roomId, room);
@@ -177,9 +199,65 @@ export function getRoomByChat(chatId: string): GameRoom | null {
 // ──────────────────────────────────────────
 export type ShotResult = {
   balls: BallState[];
-  pocketedThisShot: number[];  // معرفات الكرات المسقطة
+  pocketedThisShot: number[];
   cuePocketed: boolean;
+  timedOut?: boolean;
+  shotPower?: number;
+  shotAngle?: number;
 };
+
+const TURN_SECONDS = 45;
+const MAX_SHOT_POWER = 28;
+
+function clampCuePosition(x: number, y: number): { x: number; y: number } {
+  const margin = BALL_R + 4;
+  return {
+    x: Math.max(WALL_L + margin, Math.min(WALL_R - margin, x)),
+    y: Math.max(WALL_T + margin, Math.min(WALL_B - margin, y)),
+  };
+}
+
+function validateBalls(balls: BallState[]): boolean {
+  if (!Array.isArray(balls) || balls.length < 2) return false;
+  for (const b of balls) {
+    if (typeof b.id !== "number" || typeof b.x !== "number" || typeof b.y !== "number") return false;
+    if (b.x < -50 || b.x > TABLE_W + 50 || b.y < -50 || b.y > TABLE_H + 50) return false;
+  }
+  return true;
+}
+
+export function placeCueBall(
+  roomId: string,
+  userId: string,
+  x: number,
+  y: number,
+): { ok: true; room: GameRoom } | { ok: false; error: string } {
+  const room = activeRooms.get(roomId);
+  if (!room) return { ok: false, error: "الغرفة غير موجودة" };
+  if (room.status !== "active") return { ok: false, error: "اللعبة انتهت" };
+  if (room.ballInHandUserId !== userId) return { ok: false, error: "ليس لديك كرة حرة" };
+
+  const pos = clampCuePosition(x, y);
+  const cue = room.balls.find(b => b.id === 0);
+  if (!cue) return { ok: false, error: "لا توجد كرة ضرب" };
+
+  for (const b of room.balls) {
+    if (b.pocketed || b.id === 0) continue;
+    if (Math.hypot(b.x - pos.x, b.y - pos.y) < BALL_R * 2.2) {
+      return { ok: false, error: "الموضع قريب جداً من كرة أخرى" };
+    }
+  }
+
+  cue.pocketed = false;
+  cue.x = pos.x;
+  cue.y = pos.y;
+  cue.vx = 0;
+  cue.vy = 0;
+  room.cueBallPlaced = true;
+  room.foulPending = false;
+  room.lastEvent = "وُضعت الكرة البيضاء";
+  return { ok: true, room };
+}
 
 export function applyShot(
   roomId: string,
@@ -190,25 +268,33 @@ export function applyShot(
   if (!room) return { ok: false, error: "الغرفة غير موجودة" };
   if (room.status !== "active") return { ok: false, error: "اللعبة انتهت" };
   if (room.currentTurnUserId !== shooterId) return { ok: false, error: "ليس دورك" };
+  if (room.ballInHandUserId && !room.cueBallPlaced) {
+    return { ok: false, error: "ضع الكرة البيضاء أولاً" };
+  }
+  if (!validateBalls(result.balls)) return { ok: false, error: "بيانات الكرات غير صالحة" };
+  if (typeof result.shotPower === "number" && result.shotPower > MAX_SHOT_POWER + 2) {
+    return { ok: false, error: "قوة الضربة غير صالحة" };
+  }
 
   const isP1 = shooterId === room.player1Id;
   const { pocketedThisShot, cuePocketed, balls } = result;
+  const timedOut = result.timedOut === true;
 
-  // تحديث حالة الكرات
   room.balls = balls;
+  room.shotCount += 1;
+  if (typeof result.shotPower === "number") room.lastShotPower = result.shotPower;
+  if (typeof result.shotAngle === "number") room.lastShotAngle = result.shotAngle;
 
   let nextTurn = isP1 ? room.player2Id : room.player1Id;
-  let foul = false;
+  let foul = timedOut;
 
-  // 1. خطأ: كرة الضرب (cue) سقطت
   if (cuePocketed) {
     foul = true;
-    // أعد الـ cue إلى المنتصف
     const cue = room.balls.find(b => b.id === 0);
     if (cue) {
       cue.pocketed = false;
       cue.x = TABLE_W / 2;
-      cue.y = TABLE_H - 130;
+      cue.y = TABLE_H - 150;
       cue.vx = 0;
       cue.vy = 0;
     }
@@ -284,6 +370,26 @@ export function applyShot(
     room.foulPending = foul;
     room.breakDone = true;
     room.turnTimerStart = Date.now();
+    if (foul) {
+      if (isP1) room.player1Fouls += 1;
+      else room.player2Fouls += 1;
+      room.ballInHandUserId = nextTurn;
+      room.cueBallPlaced = false;
+      room.lastEvent = timedOut ? "انتهى الوقت — كرة حرة للخصم" : "فاول — ضع الكرة البيضاء";
+    } else if (scoredMyBall) {
+      room.ballInHandUserId = null;
+      room.cueBallPlaced = true;
+      room.lastEvent =
+        pocketedThisShot.includes(8)
+          ? "سقطت الكرة السوداء!"
+          : `هدف! (${pocketedThisShot.filter(id => id !== 0 && id !== 8).length} كرة)`;
+    } else {
+      room.ballInHandUserId = null;
+      room.cueBallPlaced = true;
+      room.lastEvent = "دور الخصم";
+    }
+  } else {
+    room.lastEvent = room.winnerId === shooterId ? "فوز!" : "انتهت اللعبة";
   }
 
   return { ok: true, room };
@@ -322,6 +428,15 @@ export function broadcastGameEvent(
   emitToUsers(targets, event, payload);
 }
 
+export function rematchGame(
+  chatId: string,
+  player1Id: string,
+  player2Id: string,
+  inviteMessageId: string,
+): GameRoom {
+  return createGameRoom(chatId, player1Id, player2Id, inviteMessageId);
+}
+
 export function serializeRoom(room: GameRoom) {
   return {
     roomId: room.roomId,
@@ -340,6 +455,15 @@ export function serializeRoom(room: GameRoom) {
     foulPending: room.foulPending,
     breakDone: room.breakDone,
     turnTimerStart: room.turnTimerStart,
+    turnSeconds: TURN_SECONDS,
+    ballInHandUserId: room.ballInHandUserId,
+    cueBallPlaced: room.cueBallPlaced,
+    player1Fouls: room.player1Fouls,
+    player2Fouls: room.player2Fouls,
+    shotCount: room.shotCount,
+    lastEvent: room.lastEvent,
+    lastShotPower: room.lastShotPower,
+    lastShotAngle: room.lastShotAngle,
     startedAt: room.startedAt,
     endedAt: room.endedAt,
   };

@@ -5,9 +5,11 @@ import {
   getRoom,
   getRoomByChat,
   applyShot,
+  placeCueBall,
   forfeitGame,
   broadcastGameEvent,
   serializeRoom,
+  rematchGame,
 } from "../lib/poolGame.js";
 
 type AuthedReq = Request & { userId: string };
@@ -23,6 +25,14 @@ const shotSchema = z.object({
   })),
   pocketedThisShot: z.array(z.number()),
   cuePocketed: z.boolean(),
+  timedOut: z.boolean().optional(),
+  shotPower: z.number().optional(),
+  shotAngle: z.number().optional(),
+});
+
+const placeCueSchema = z.object({
+  x: z.number(),
+  y: z.number(),
 });
 
 export function registerGameRoutes(
@@ -80,6 +90,39 @@ export function registerGameRoutes(
 
     const payload = serializeRoom(result.room);
     broadcastGameEvent(result.room, "pool:state_update", payload);
+    return res.json({ ok: true, room: payload });
+  });
+
+  /** وضع الكرة البيضاء بعد فاول */
+  app.post("/v1/games/pool/:roomId/place-cue", authMiddleware, async (req, res) => {
+    const userId = (req as AuthedReq).userId;
+    const parsed = placeCueSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "إحداثيات غير صالحة" });
+
+    const result = placeCueBall(req.params.roomId!, userId, parsed.data.x, parsed.data.y);
+    if (!result.ok) return res.status(400).json({ error: result.error });
+
+    const payload = serializeRoom(result.room);
+    broadcastGameEvent(result.room, "pool:state_update", payload);
+    return res.json({ ok: true, room: payload });
+  });
+
+  /** إعادة اللعب */
+  app.post("/v1/games/pool/:roomId/rematch", authMiddleware, async (req, res) => {
+    const userId = (req as AuthedReq).userId;
+    const old = getRoom(req.params.roomId!);
+    if (!old) return res.status(404).json({ error: "الغرفة غير موجودة" });
+    if (old.player1Id !== userId && old.player2Id !== userId) {
+      return res.status(403).json({ error: "غير مصرح" });
+    }
+    const room = rematchGame(
+      old.chatId,
+      old.player1Id,
+      old.player2Id,
+      old.inviteMessageId,
+    );
+    const payload = serializeRoom(room);
+    broadcastGameEvent(room, "pool:room_created", payload);
     return res.json({ ok: true, room: payload });
   });
 

@@ -141,7 +141,7 @@
               </a>
               <a
                 id="apk-download"
-                href="/downloads/retweet.apk"
+                href="/downloads/reyweet-android.pkg"
                 download="Retweet.apk"
                 class="inline-flex items-center justify-center gap-3 rounded-2xl border border-emerald-600/90 bg-emerald-600 px-6 py-3.5 text-base font-semibold text-white shadow-lg shadow-emerald-900/15 transition hover:bg-emerald-700 dark:border-emerald-500 dark:bg-emerald-600 dark:hover:bg-emerald-500"
               >
@@ -366,18 +366,33 @@
                 <p class="mt-1 text-slate-600 dark:text-neutral-400">افتح هذه الصفحة من Safari (ليس Chrome).</p>
               </div>
             </li>
-            <li class="flex gap-4 rounded-3xl border border-slate-200 bg-slate-50/80 p-6 dark:border-neutral-800 dark:bg-neutral-950">
-              <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-900 text-sm font-bold text-white dark:bg-white dark:text-black">2</span>
+            <li class="flex gap-4 rounded-3xl border border-emerald-200 bg-emerald-50/90 p-6 dark:border-emerald-900/50 dark:bg-emerald-950/30">
+              <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-sm font-bold text-white">2</span>
               <div class="text-right">
-                <h3 class="font-bold text-slate-900 dark:text-white">اضغط «تثبيت على iPhone»</h3>
+                <h3 class="font-bold text-slate-900 dark:text-white">افتح التطبيق (موصى به الآن)</h3>
                 <p class="mt-1 text-slate-600 dark:text-neutral-400">
-                  <a id="ios-install-inline" href="#" class="font-semibold underline">رابط التثبيت</a> — يحمّل التطبيق من
-                  <code class="rounded bg-slate-200 px-1 text-sm dark:bg-neutral-800">/downloads/retweet.ipa</code>
+                  اضغط
+                  <a id="ios-install-inline" href="/app/" class="font-semibold underline text-emerald-700 dark:text-emerald-300">فتح Reyweet</a>
+                  — نفس التطبيق بدون «تعذر التحميل».
+                </p>
+                <p class="mt-2 text-xs text-slate-500 dark:text-neutral-500">
+                  اختياري: مشاركة → «إضافة إلى الشاشة الرئيسية» لأيقونة على الشاشة الرئيسية.
                 </p>
               </div>
             </li>
             <li class="flex gap-4 rounded-3xl border border-slate-200 bg-slate-50/80 p-6 dark:border-neutral-800 dark:bg-neutral-950">
               <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-900 text-sm font-bold text-white dark:bg-white dark:text-black">3</span>
+              <div class="text-right">
+                <h3 class="font-bold text-slate-900 dark:text-white">تثبيت أصلي (يتطلب IPA موقّعاً)</h3>
+                <p class="mt-1 text-slate-600 dark:text-neutral-400">
+                  التثبيت المباشر من Safari يعمل فقط بعد رفع IPA موقّع بشهادة Apple (Codemagic:
+                  <code class="rounded bg-slate-200 px-1 text-sm dark:bg-neutral-800">retweet-ios-ota-signed</code>).
+                  الملف الحالي غير موقّع فيظهر «تعذر التحميل».
+                </p>
+              </div>
+            </li>
+            <li class="flex gap-4 rounded-3xl border border-slate-200 bg-slate-50/80 p-6 dark:border-neutral-800 dark:bg-neutral-950">
+              <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-900 text-sm font-bold text-white dark:bg-white dark:text-black">4</span>
               <div class="text-right">
                 <h3 class="font-bold text-slate-900 dark:text-white">وثّق المطوّر</h3>
                 <p class="mt-1 text-slate-600 dark:text-neutral-400">
@@ -386,7 +401,7 @@
               </div>
             </li>
             <li class="flex gap-4 rounded-3xl border border-slate-200 bg-slate-50/80 p-6 dark:border-neutral-800 dark:bg-neutral-950">
-              <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-900 text-sm font-bold text-white dark:bg-white dark:text-black">4</span>
+              <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-900 text-sm font-bold text-white dark:bg-white dark:text-black">5</span>
               <div class="text-right">
                 <h3 class="font-bold text-slate-900 dark:text-white">شغّل الخادم</h3>
                 <p class="mt-1 text-slate-600 dark:text-neutral-400">
@@ -520,7 +535,7 @@
               >
               <a
                 id="footer-apk-download"
-                href="/downloads/retweet.apk"
+                href="/downloads/reyweet-android.pkg"
                 download="Retweet.apk"
                 class="rounded-full border border-emerald-700/40 bg-emerald-600/10 px-4 py-2 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-600/20 dark:border-emerald-500/40 dark:bg-emerald-500/10 dark:text-emerald-200 dark:hover:bg-emerald-500/20"
                 >APK — أندرويد</a
@@ -648,13 +663,18 @@
           el.removeAttribute("aria-disabled");
           el.removeAttribute("download");
           var stale = info && info.ipaStale === true;
-          if (!stale && (isAppleMobile() || (info && info.signed === true))) {
+          var canOta = !stale && info && info.signed === true && info.otaAvailable !== false;
+          if (canOta && isAppleMobile()) {
             el.href =
               "itms-services://?action=download-manifest&url=" + encodeURIComponent(manifestUrl);
             return;
           }
+          if (isAppleMobile()) {
+            el.href = (info && info.webAppUrl) || origin + "/app/";
+            return;
+          }
           el.href = info && info.ipaUrl ? info.ipaUrl : ipaDownloadUrl;
-          if (!isAppleMobile()) el.setAttribute("download", "Retweet.ipa");
+          el.setAttribute("download", "Retweet.ipa");
         }
 
         fetch("/downloads/ios-version.json?t=" + Date.now(), { cache: "no-store" })
@@ -688,9 +708,20 @@
               });
               if (iosLabel) iosLabel.textContent = "تثبيت iOS — IPA قيد التحديث";
             } else {
-              if (info.signed !== true && iosNotice) iosNotice.hidden = false;
+              if (info.signed !== true && iosNotice) {
+                iosNotice.hidden = false;
+                iosNotice.innerHTML =
+                  "<strong>لماذا «تعذر التحميل»؟</strong> ملف التطبيق على الموقع <strong>غير موقّع</strong> بشهادة Apple، وiOS يرفض التثبيت المباشر. " +
+                  "<strong>الحل الآن:</strong> اضغط الزر أعلاه «فتح التطبيق» — نفس التجربة من Safari. " +
+                  "للتثبيت كتطبيق أصلي: ارفع IPA موقّعاً من Codemagic (<code class=\"text-xs\">retweet-ios-ota-signed</code>).";
+              }
               if (iosLabel) {
-                iosLabel.textContent = isAppleMobile() ? "تثبيت على iPhone" : "تحميل IPA لـ iPhone";
+                iosLabel.textContent =
+                  info.signed === true && isAppleMobile()
+                    ? "تثبيت على iPhone"
+                    : isAppleMobile()
+                      ? "فتح التطبيق (Safari)"
+                      : "تحميل IPA لـ iPhone";
               }
             }
             if (iosHint) {
@@ -699,10 +730,10 @@
                 ? "الويب محدّث · IPA قديم — لا تثبّت حتى بناء جديد"
                 : "iOS v" +
                   (info.version || "1.0.0") +
-                  (isAppleMobile()
-                    ? " — تثبيت من Safari (OTA)"
-                    : info.signed
-                      ? " — تثبيت مباشر"
+                  (info.signed === true
+                    ? " — تثبيت مباشر من Safari"
+                    : isAppleMobile()
+                      ? " — استخدم المتصفح (بدون تعذر التحميل)"
                       : " — تحميل للكمبيوتر") +
                   size +
                   " · نفس الموقع والخادم.";
@@ -715,19 +746,14 @@
           });
 
         var ipaFileLink = document.getElementById("ios-ipa-file-download");
-        if (ipaFileLink) {
-          ipaFileLink.addEventListener("click", function (e) {
-            if (isAppleMobile()) {
-              e.preventDefault();
-              window.location.href =
-                "itms-services://?action=download-manifest&url=" + encodeURIComponent(manifestUrl);
-            }
-          });
+        if (ipaFileLink && isAppleMobile()) {
+          ipaFileLink.textContent = "لماذا لا يعمل التثبيت المباشر؟";
+          ipaFileLink.href = "#install-ios";
         }
       })();
 
       (function () {
-        var apkUrl = "/downloads/retweet.apk";
+        var apkUrl = "/downloads/reyweet-android.pkg";
         var versionUrl = "/downloads/android-version.json";
         var main = document.getElementById("apk-download");
         var footer = document.getElementById("footer-apk-download");
@@ -742,10 +768,14 @@
             label.textContent = "تحميل APK (أندرويد) — v" + info.version;
           }
           if (info && hint) {
+            var size = info.apkSizeMb ? " · " + info.apkSizeMb + " MB" : "";
+            var code = info.versionCode ? " (build " + info.versionCode + ")" : "";
             hint.textContent =
               "الإصدار " +
-              info.version +
-              " — بعد التثبيت، تحديثات الواجهة تصل تلقائياً عند فتح التطبيق.";
+              (info.version || "1.0.0") +
+              code +
+              size +
+              " — نفس الموقع والخادم · تحديثات الواجهة عند الفتح.";
           }
         }
 

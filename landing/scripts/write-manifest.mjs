@@ -29,7 +29,10 @@ const ipaUrl = base
   ? `${base}/downloads/retweet.ipa`
   : "https://YOUR-DOMAIN.example/downloads/retweet.ipa";
 
-const iconUrl = base ? `${base}/public/apple-touch-icon.png` : "";
+const icon57 = base ? `${base}/downloads/ota-icon-57.png` : "";
+const icon512 = base ? `${base}/downloads/ota-icon-512.png` : "";
+const iconUrl = icon57 || (base ? `${base}/public/apple-touch-icon.png` : "");
+const iconFullUrl = icon512 || iconUrl;
 
 const bundleId = process.env.IOS_BUNDLE_ID?.trim() || "com.reyweet.app";
 const bundleVersion = process.env.IOS_BUNDLE_VERSION?.trim() || "1.0.0";
@@ -48,7 +51,7 @@ const imageAssets =
           <key>kind</key>
           <string>full-size-image</string>
           <key>url</key>
-          <string>${iconUrl}</string>
+          <string>${iconFullUrl}</string>
         </dict>`;
 
 const downloadsDir = path.join(outRoot, "public", "downloads");

@@ -10,6 +10,14 @@
       "destination": "http://109.199.111.29/health"
     },
     {
+      "source": "/auth/rt-ws/",
+      "destination": "http://109.199.111.29/auth/rt-ws/"
+    },
+    {
+      "source": "/auth/rt-ws/:rest*",
+      "destination": "http://109.199.111.29/auth/rt-ws/:rest*"
+    },
+    {
       "source": "/auth/:path*",
       "destination": "http://109.199.111.29/auth/:path*"
     },
@@ -22,12 +30,12 @@
       "destination": "/api/media-stream?path=:path*"
     },
     {
-      "source": "/socket.io",
-      "destination": "http://109.199.111.29/socket.io"
+      "source": "/rtcall",
+      "destination": "http://109.199.111.29/rtcall"
     },
     {
-      "source": "/socket.io/:path*",
-      "destination": "http://109.199.111.29/socket.io/:path*"
+      "source": "/rtcall/:path*",
+      "destination": "http://109.199.111.29/rtcall/:path*"
     },
     {
       "source": "/app",
@@ -158,6 +166,9 @@
   ],
   "functions": {
     "api/media-stream.js": {
+      "maxDuration": 60
+    },
+    "api/realtime-proxy.js": {
       "maxDuration": 60
     }
   }

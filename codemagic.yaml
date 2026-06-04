@@ -345,3 +345,55 @@ workflows:
     artifacts:
       - build/ios/ipa/*.ipa
       - ios-app.config.json
+
+  retweet-android-apk:
+    name: Reyweet Android — Capacitor APK
+    max_build_duration: 90
+    instance_type: linux_x2
+
+    environment:
+      node: v22.11.0
+      java: 17
+      vars:
+        CAPACITOR_WEB_APP_URL: https://reyweet.vercel.app/app
+        CAPACITOR_API_URL: https://reyweet.vercel.app
+        RETWEET_PUBLIC_API_URL: https://reyweet.vercel.app
+        CAPACITOR_REMOTE_WEB: "1"
+        CAPACITOR_NATIVE: "1"
+
+    scripts:
+      - name: Install Node dependencies
+        script: |
+          set -e
+          cd "$CM_BUILD_DIR"
+          npm ci
+
+      - name: Prepare Capacitor Android
+        script: |
+          set -e
+          cd "$CM_BUILD_DIR"
+          echo "$RETWEET_PUBLIC_API_URL" > PUBLIC_API_URL.txt
+          node scripts/prepare-capacitor-android.mjs
+
+      - name: Build release APK
+        script: |
+          set -e
+          cd "$CM_BUILD_DIR/android"
+          chmod +x gradlew
+          ./gradlew assembleRelease
+
+      - name: Copy APK for website
+        script: |
+          set -e
+          cd "$CM_BUILD_DIR"
+          APK=$(find android/app/build/outputs/apk -name "*.apk" | head -1)
+          test -n "$APK"
+          mkdir -p landing/public/downloads build/android/apk
+          cp "$APK" landing/public/downloads/retweet.apk
+          cp "$APK" build/android/apk/retweet.apk
+          ls -la landing/public/downloads/
+
+    artifacts:
+      - build/android/apk/*.apk
+      - landing/public/downloads/retweet.apk
+      - landing/public/downloads/android-version.json

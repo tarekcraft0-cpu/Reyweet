@@ -16,12 +16,15 @@ const apiUrl = readPublicApiUrl();
 console.log("\n══ نشر Vercel ══\n");
 
 function resolveVercelSiteDir() {
+  const def = path.join(root, "_vercel_site");
   const marker = path.join(root, ".vercel-deploy-dir.txt");
   if (fs.existsSync(marker)) {
     const p = fs.readFileSync(marker, "utf8").trim();
-    if (p && fs.existsSync(path.join(p, "vercel.json"))) return p;
+    const marked = p && fs.existsSync(path.join(p, "vercel.json")) ? p : "";
+    if (marked && fs.existsSync(path.join(marked, "public", "downloads", "retweet.apk"))) {
+      return marked;
+    }
   }
-  const def = path.join(root, "_vercel_site");
   if (fs.existsSync(def)) return def;
   const siblings = fs
     .readdirSync(root)
@@ -43,8 +46,17 @@ if (!fs.existsSync(ipaPath)) {
   process.exit(1);
 }
 const ipaMb = (fs.statSync(ipaPath).size / (1024 * 1024)).toFixed(1);
-console.log(`نشر _vercel_site (جاهز) — ${siteDir}`);
-console.log(`  ✓ retweet.ipa (${ipaMb} MB) سيُرفع مع النشر\n`);
+const apkPath = path.join(siteDir, "public", "downloads", "retweet.apk");
+if (!fs.existsSync(apkPath)) {
+  console.warn(
+    "deploy-vercel-stack: retweet.apk مفقود — شغّل: npm run android:apk:build ثم أعد النشر",
+  );
+} else {
+  const apkMb = (fs.statSync(apkPath).size / (1024 * 1024)).toFixed(1);
+  console.log(`  ✓ retweet.apk (${apkMb} MB) سيُرفع مع النشر`);
+}
+console.log(`نشر _vercel_site (prebuilt) — ${siteDir}`);
+console.log(`  ✓ retweet.ipa (${ipaMb} MB)\n`);
 
 const canonicalSite = path.join(root, "_vercel_site");
 if (siteDir !== canonicalSite && fs.existsSync(canonicalSite)) {
@@ -54,17 +66,27 @@ if (siteDir !== canonicalSite && fs.existsSync(canonicalSite)) {
   process.exit(1);
 }
 
-let vercel = spawnSync("npx", ["--yes", "vercel", "deploy", "--prod", "--yes"], {
-  cwd: root,
-  stdio: "inherit",
-  shell: true,
-  env: {
-    ...process.env,
-    RETWEET_PUBLIC_API_URL: apiUrl,
+/** الإنتاج الفعلي للمستخدمين: reyweet.vercel.app (مشروع reyweet) — ليس ...-main */
+const VERCEL_PRODUCTION_PROJECT = process.env.VERCEL_PRODUCTION_PROJECT || "reyweet";
+
+let vercel = spawnSync(
+  "npx",
+  ["--yes", "vercel", "deploy", "--prod", "--yes", "--project", VERCEL_PRODUCTION_PROJECT],
+  {
+    cwd: root,
+    stdio: "inherit",
+    shell: true,
+    env: {
+      ...process.env,
+      RETWEET_PUBLIC_API_URL: apiUrl,
+    },
   },
-});
+);
 
 if (vercel.status === 0) {
+  if (VERCEL_PRODUCTION_PROJECT === "reyweet") {
+    console.log("  ✓ الإنتاج: https://reyweet.vercel.app (مشروع reyweet)");
+  }
   try {
     const check = spawnSync(
       "powershell",
@@ -80,6 +102,21 @@ if (vercel.status === 0) {
       console.log("  ✓ تحقق: /downloads/retweet.ipa متاح على reyweet.vercel.app");
     } else {
       console.warn(`  ⚠ تحقق IPA: HTTP ${code || "فشل"} — قد يحتاج دقيقة لانتشار CDN`);
+    }
+    const apkCheck = spawnSync(
+      "powershell",
+      [
+        "-NoProfile",
+        "-Command",
+        "(Invoke-WebRequest -Uri 'https://reyweet.vercel.app/downloads/reyweet-android.pkg' -Method Head -UseBasicParsing).StatusCode",
+      ],
+      { encoding: "utf8" },
+    );
+    const apkCode = String(apkCheck.stdout || "").trim();
+    if (apkCode === "200") {
+      console.log("  ✓ تحقق: /downloads/retweet.apk متاح على reyweet.vercel.app");
+    } else if (fs.existsSync(apkPath)) {
+      console.warn(`  ⚠ تحقق APK: HTTP ${apkCode || "فشل"}`);
     }
   } catch {
     /* ignore */

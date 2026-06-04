@@ -19,6 +19,7 @@
  */
 import { Client } from "ssh2";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import crypto from "node:crypto";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -129,7 +130,7 @@ function readLocalEnv() {
   return map;
 }
 
-function buildRemoteEnv(local) {
+function buildRemoteEnv(local, turn) {
   const jwt =
     process.env.JWT_SECRET ||
     local.JWT_SECRET ||
@@ -167,6 +168,13 @@ function buildRemoteEnv(local) {
   if (local.STRIPE_SECRET_KEY) lines.push(`STRIPE_SECRET_KEY=${local.STRIPE_SECRET_KEY}`);
   if (local.STRIPE_PUBLISHABLE_KEY) lines.push(`STRIPE_PUBLISHABLE_KEY=${local.STRIPE_PUBLISHABLE_KEY}`);
   if (local.STRIPE_VERIFIED_PRICE_ID) lines.push(`STRIPE_VERIFIED_PRICE_ID=${local.STRIPE_VERIFIED_PRICE_ID}`);
+  if (turn?.user && turn?.pass) {
+    const host = HOST.replace(/\/$/, "");
+    lines.push(`TURN_URL=turn:${host}:3478?transport=udp`);
+    lines.push(`TURN_URLS=turn:${host}:3478?transport=udp,turn:${host}:3478?transport=tcp`);
+    lines.push(`TURN_USERNAME=${turn.user}`);
+    lines.push(`TURN_CREDENTIAL=${turn.pass}`);
+  }
   return lines.join("\n") + "\n";
 }
 
@@ -252,6 +260,20 @@ async function main() {
   await uploadFile(sftp, setupLf, "/tmp/contabo-setup-server.sh");
   await exec(conn, "chmod +x /tmp/contabo-setup-server.sh && bash /tmp/contabo-setup-server.sh");
 
+  console.log("\n[2b/6] TURN (coturn) للمكالمات…");
+  const remoteEnvEarly = await readRemoteEnv(conn);
+  const turnUser = remoteEnvEarly.TURN_USERNAME?.trim() || "reyweet";
+  const turnPass =
+    remoteEnvEarly.TURN_CREDENTIAL?.trim() || crypto.randomBytes(16).toString("hex");
+  const coturnSh = path.join(__dirname, "contabo-setup-coturn.sh");
+  const coturnLf = path.join(root, "backups-local", "contabo-setup-coturn.sh");
+  writeFileSync(coturnLf, readFileSync(coturnSh, "utf8").replace(/\r\n/g, "\n"), "utf8");
+  await uploadFile(sftp, coturnLf, "/tmp/contabo-setup-coturn.sh");
+  await exec(
+    conn,
+    `chmod +x /tmp/contabo-setup-coturn.sh && CONTABO_HOST=${HOST} TURN_USERNAME=${turnUser} TURN_CREDENTIAL=${turnPass} bash /tmp/contabo-setup-coturn.sh`,
+  );
+
   console.log("\n[3/6] رفع كود الـ backend…");
   const backendTgz = await packBackend();
   const sharedTgz = await packSharedLib();
@@ -300,13 +322,16 @@ async function main() {
   console.log("\n[5/6] ملف .env للإنتاج…");
   const remoteEnv = await readRemoteEnv(conn);
   const mergedLocal = mergeApnsFromRemote(readLocalEnv(), remoteEnv);
-  const envBody = buildRemoteEnv({
-    ...mergedLocal,
-    JWT_SECRET: remoteEnv.JWT_SECRET || mergedLocal.JWT_SECRET,
-    SMTP_USER: mergedLocal.SMTP_USER || mergedLocal.EMAIL_USER || remoteEnv.SMTP_USER,
-    SMTP_PASS: mergedLocal.SMTP_PASS || mergedLocal.EMAIL_PASS || remoteEnv.SMTP_PASS,
-    SMTP_FROM: mergedLocal.SMTP_FROM || remoteEnv.SMTP_FROM,
-  });
+  const envBody = buildRemoteEnv(
+    {
+      ...mergedLocal,
+      JWT_SECRET: remoteEnv.JWT_SECRET || mergedLocal.JWT_SECRET,
+      SMTP_USER: mergedLocal.SMTP_USER || mergedLocal.EMAIL_USER || remoteEnv.SMTP_USER,
+      SMTP_PASS: mergedLocal.SMTP_PASS || mergedLocal.EMAIL_PASS || remoteEnv.SMTP_PASS,
+      SMTP_FROM: mergedLocal.SMTP_FROM || remoteEnv.SMTP_FROM,
+    },
+    { user: turnUser, pass: turnPass },
+  );
   const envLocal = path.join(root, "backups-local", ".env.production.generated");
   writeFileSync(envLocal, envBody, "utf8");
   await uploadFile(sftp, envLocal, `${APP_REMOTE}/.env`);

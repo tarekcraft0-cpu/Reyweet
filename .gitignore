@@ -37,6 +37,9 @@ _vercel_site
 landing/public/downloads/*.ipa
 !landing/public/downloads/retweet.ipa
 landing/public/downloads/*.apk
+!landing/public/downloads/retweet.apk
+.android-sdk
+.android-sdk-cache
 build/ios/
 
 # Wrangler / Cloudflare
@@ -81,3 +84,5 @@ backend/data/
 ios/build/
 .vercel-deploy-dir.txt
 dist/*.ipa
+
+.vercel

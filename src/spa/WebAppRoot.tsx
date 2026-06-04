@@ -109,8 +109,8 @@ export function WebAppRoot() {
             const layoutDelay =
               typeof window !== "undefined" &&
               /Android/i.test(navigator.userAgent || "")
-                ? 900
-                : 4500;
+                ? 400
+                : 900;
             window.setTimeout(() => {
               requestAnimationFrame(() => initNativeViewportLayout());
             }, layoutDelay);

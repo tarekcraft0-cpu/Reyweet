@@ -124,7 +124,7 @@ export function MainTabStack({
     axis: "x" | "y" | null;
   } | null>(null);
 
-  const [visited, setVisited] = useState<Set<PagerTab>>(() => new Set([activeTab]));
+  const [visited, setVisited] = useState<Set<PagerTab>>(() => new Set([activeTab, "home"]));
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [animating, setAnimating] = useState(false);
 
@@ -147,6 +147,18 @@ export function MainTabStack({
     setDragIndex(null);
     setAnimating(false);
   }, [activeTab]);
+
+  /** تجهيز التبويبات الشائعة في الخلفية — أول فتح لاحق أسرع */
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      setVisited(prev => {
+        const next = new Set(prev);
+        for (const id of PAGER_TAB_CHAIN) next.add(id);
+        return next.size === prev.size ? prev : next;
+      });
+    }, 2200);
+    return () => window.clearTimeout(t);
+  }, []);
 
   useLayoutEffect(() => {
     if (!isNativeCapacitorShell() || dragIndex != null) return;

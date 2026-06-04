@@ -46,9 +46,9 @@ let quietUntil = 0;
 /** بعد تسجيل الدخول — لا نستمع لـ resize/visualViewport لفترة (يمنع React #185) */
 function nativeQuietPeriodMs(): number {
   if (typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent || "")) {
-    return 1200;
+    return 500;
   }
-  return 4000;
+  return 1200;
 }
 
 export function beginNativePostLoginQuietPeriod(ms?: number): void {

@@ -25,6 +25,8 @@ mobile/dist-ipa/**
 agent-transcripts
 mcps
 _vercel_site-*
+!landing/public/downloads/retweet.apk
+!landing/public/downloads/reyweet-android.pkg
 !_vercel_site
 !_vercel_site/**
 !api

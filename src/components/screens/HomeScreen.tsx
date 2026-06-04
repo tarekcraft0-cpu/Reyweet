@@ -2,7 +2,6 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, mem
 import { isNativeCapacitorShell } from "@/lib/apiUrlPolicy";
 import { isNativeMobileApp, isNativePostLoginQuietPeriod } from "@/lib/nativeStability";
 import { VirtualizedHomeFeed } from "../home/VirtualizedHomeFeed";
-import { SimpleHomeFeed } from "../home/SimpleHomeFeed";
 import { useTabPanelScrollRef } from "@/lib/tabPanelScrollContext";
 import { useIsTabActive } from "@/lib/tabActiveContext";
 import {
@@ -18,6 +17,7 @@ import { useScreenPerf } from "@/lib/useScreenPerf";
 import { useProfiledRender } from "@/lib/renderProfiler";
 import { storyViewerTrayRing } from "@/lib/storyTray";
 import { notifyGuestActionBlocked } from "@/lib/guestBlocked";
+import { NEW_FEED_POST_EVENT } from "@/lib/feedVisibility";
 import { useT } from "@/lib/i18n";
 import { requestOpenStoryGallery } from "@/lib/camera/cameraEvents";
 import { PostDetail } from "../PostDetail";
@@ -60,7 +60,7 @@ export const HomeScreen = memo(function HomeScreen({
   const { homeFeedPosts: feed, feedHasMore } = useHomeFeed();
   const isHomeTabActive = useIsTabActive("home");
   const nativeShell = isNativeMobileApp();
-  const [nativeFeedReady, setNativeFeedReady] = useState(!nativeShell);
+  const [feedRefreshing, setFeedRefreshing] = useState(false);
   useScreenPerf("HomeScreen", { active: isHomeTabActive });
   const t = useT();
   const [shareTarget, setShareTarget] = useState<Post | null>(null);
@@ -159,6 +159,11 @@ export const HomeScreen = memo(function HomeScreen({
     };
   }, []);
 
+  const refreshFeedBg = useCallback(() => {
+    setFeedRefreshing(true);
+    void refreshFeedFromServer().finally(() => setFeedRefreshing(false));
+  }, [refreshFeedFromServer]);
+
   useEffect(() => {
     const scrollTop = () => tabScrollRef?.current?.scrollTop ?? 0;
     const onStart = (e: TouchEvent) => {
@@ -173,7 +178,7 @@ export const HomeScreen = memo(function HomeScreen({
         setFeedTick(t => t + 1);
         setPullHint(true);
         tabScrollRef?.current?.scrollTo({ top: 0, behavior: "smooth" });
-        void refreshFeedFromServer();
+        void refreshFeedBg();
         if (pullHintTimerRef.current != null) window.clearTimeout(pullHintTimerRef.current);
         pullHintTimerRef.current = window.setTimeout(() => {
           pullHintTimerRef.current = null;
@@ -187,7 +192,7 @@ export const HomeScreen = memo(function HomeScreen({
       window.removeEventListener("touchstart", onStart);
       window.removeEventListener("touchend", onEnd);
     };
-  }, [tabScrollRef, refreshFeedFromServer]);
+  }, [tabScrollRef, refreshFeedBg]);
 
   const feedTickRef = useRef(feedTick);
   feedTickRef.current = feedTick;
@@ -233,18 +238,6 @@ export const HomeScreen = memo(function HomeScreen({
     [onOpenProfile, onOpenChat, openPostById, openCommentsById],
   );
 
-  useEffect(() => {
-    if (!nativeShell) {
-      setNativeFeedReady(true);
-      return;
-    }
-    if (!isHomeTabActive || isGuest) return;
-    setNativeFeedReady(false);
-    const delayMs = isNativePostLoginQuietPeriod() ? 3800 : 1400;
-    const t = window.setTimeout(() => setNativeFeedReady(true), delayMs);
-    return () => window.clearTimeout(t);
-  }, [nativeShell, isHomeTabActive, isGuest, currentUser?.id]);
-
   const handleLoadMore = useCallback(() => {
     if (loadMoreBusyRef.current || !feedHasMore) return;
     loadMoreBusyRef.current = true;
@@ -253,12 +246,44 @@ export const HomeScreen = memo(function HomeScreen({
     });
   }, [feedHasMore, loadMoreFeedFromServer]);
 
+  const homeFeedPrimedRef = useRef(false);
   useEffect(() => {
     if (!isHomeTabActive || isGuest) return;
-    const delayMs = nativeShell ? (isNativePostLoginQuietPeriod() ? 2400 : 600) : 0;
-    const t = window.setTimeout(() => void refreshFeedFromServer(), delayMs);
+    if (homeFeedPrimedRef.current && feed.length > 0) return;
+    homeFeedPrimedRef.current = true;
+    const delayMs = nativeShell && isNativePostLoginQuietPeriod() ? 400 : 0;
+    const t = window.setTimeout(() => refreshFeedBg(), delayMs);
     return () => window.clearTimeout(t);
-  }, [isHomeTabActive, isGuest, refreshFeedFromServer, nativeShell]);
+  }, [isHomeTabActive, isGuest, refreshFeedBg, nativeShell, feed.length]);
+
+  useEffect(() => {
+    if (!isHomeTabActive || isGuest) return;
+    const onNewPost = () => {
+      setFeedTick(t => t + 1);
+      tabScrollRef?.current?.scrollTo({ top: 0, behavior: "smooth" });
+    };
+    window.addEventListener(NEW_FEED_POST_EVENT, onNewPost);
+    return () => window.removeEventListener(NEW_FEED_POST_EVENT, onNewPost);
+  }, [isHomeTabActive, isGuest, tabScrollRef]);
+
+  useEffect(() => {
+    if (!isHomeTabActive || isGuest) return;
+    const poll = window.setInterval(() => {
+      if (document.visibilityState === "visible") refreshFeedBg();
+    }, 60_000);
+    let visTimer = 0;
+    const onVis = () => {
+      if (document.visibilityState !== "visible") return;
+      if (visTimer) window.clearTimeout(visTimer);
+      visTimer = window.setTimeout(() => refreshFeedBg(), 800);
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.clearInterval(poll);
+      if (visTimer) window.clearTimeout(visTimer);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [isHomeTabActive, isGuest, refreshFeedBg]);
 
   useEffect(() => {
     if (!nativeShell || !isHomeTabActive || isGuest) return;
@@ -318,22 +343,22 @@ export const HomeScreen = memo(function HomeScreen({
       </div>
 
       <section aria-label="الخلاصة" className="relative z-0 flex flex-col bg-background">
-        {nativeShell && !nativeFeedReady ? (
-          <p className="py-10 text-center text-sm text-muted-foreground">جاري تحميل الخلاصة…</p>
-        ) : nativeShell ? (
-          <SimpleHomeFeed posts={feed} feedActions={feedActions} />
-        ) : (
-          <VirtualizedHomeFeed
-            posts={feed}
-            scrollRef={tabScrollRef}
-            headerOffsetPx={0}
-            feedHasMore={feedHasMore}
-            onLoadMore={handleLoadMore}
-            feedActions={feedActions}
-          />
+        {feedRefreshing && feed.length > 0 && (
+          <p className="mx-3 mb-1 text-center text-[10px] text-muted-foreground/80">تحديث…</p>
         )}
-        {feed.length === 0 && (
+        <VirtualizedHomeFeed
+          posts={feed}
+          scrollRef={tabScrollRef}
+          headerOffsetPx={0}
+          feedHasMore={feedHasMore}
+          onLoadMore={handleLoadMore}
+          feedActions={feedActions}
+        />
+        {feed.length === 0 && !feedRefreshing && (
           <p className="text-center text-muted-foreground py-12">{t("noPosts")}</p>
+        )}
+        {feed.length === 0 && feedRefreshing && (
+          <p className="py-10 text-center text-sm text-muted-foreground">جاري تحميل الخلاصة…</p>
         )}
       </section>
 

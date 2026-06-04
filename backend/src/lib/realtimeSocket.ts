@@ -7,12 +7,16 @@ import { verifyAccessToken } from "./jwt.js";
 import { clearAllTypingForUser, clearUserTyping, setUserTyping } from "./chatPresence.js";
 import { markMessagesDelivered, markMessagesRead } from "./messageStatus.js";
 
+/** تحت /auth/* لأن بروكسي reyweet.vercel.app يمرّر /auth فقط بشكل موثوق */
+export const REALTIME_SOCKET_PATH = "/auth/rt-ws/";
+
 let io: Server | null = null;
 
 export function attachRealtimeSocket(httpServer: HttpServer): Server {
   io = new Server(httpServer, {
+    path: REALTIME_SOCKET_PATH,
     cors: { origin: true, credentials: true },
-    transports: ["websocket"],
+    transports: ["websocket", "polling"],
     pingInterval: 10_000,
     pingTimeout: 25_000,
     perMessageDeflate: false,

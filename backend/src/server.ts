@@ -18,6 +18,7 @@ import {
   PUBLIC_BASE_URL,
 } from "./config.js";
 import { normalizePhone, validateOptionalPhone } from "./lib/phone.js";
+import { buildIceConfigFromEnv } from "./lib/webrtcIceConfig.js";
 import { resolvedProfileNote } from "./lib/profileNote.js";
 import { normalizeUsername, USERNAME_PATTERN, validateUsernameFormat } from "./lib/usernameRules.js";
 import {
@@ -232,6 +233,7 @@ app.get("/health", async (_req, res) => {
     pushConfigured,
     pushIos,
     pushAndroid,
+    turnConfigured: buildIceConfigFromEnv().turnConfigured,
     stripeConfigured: !!process.env.STRIPE_SECRET_KEY?.trim(),
     passwordResetUsesLink: passwordResetUsesLink(),
     chatMessagesUnlimited: true,
@@ -269,6 +271,10 @@ function passwordResetUsesLink(): boolean {
   if (flag === "1" || flag === "true") return isSmtpConfigured();
   return isSmtpConfigured();
 }
+
+app.get("/v1/webrtc/ice-config", (_req, res) => {
+  res.json(buildIceConfigFromEnv());
+});
 
 app.get("/auth/config", (_req, res) => {
   res.json({
@@ -1179,7 +1185,7 @@ app.put("/v1/app-state", authMiddleware, async (req, res) => {
       appTheme: st.theme === "dark" ? "dark" : "light",
       appLanguage: st.language === "en" ? "en" : "ar",
     });
-    broadcastSseExcept(userId, "sync_hint", { kind: "feed", fromUserId: userId });
+    /** لا نبث feed هنا — يُبث بعد POST /v1/posts حتى لا يُسحب فيد فارغ قبل posts.json */
     return res.json({ ok: true });
   } catch (e) {
     // eslint-disable-next-line no-console

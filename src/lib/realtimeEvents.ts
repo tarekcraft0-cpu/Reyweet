@@ -6,7 +6,9 @@ const RECENT_EVENT_TTL_MS = 4_000;
 const recentEvents = new Map<string, number>();
 
 function dedupeEvent(eventName: string, data: unknown): boolean {
-  if (eventName !== "message_new" && eventName !== "post_update" && eventName !== "sync_hint") {
+  /** كل منشور جديد له postId مختلف — لا ندمج أحداث post_update */
+  if (eventName === "post_update") return false;
+  if (eventName !== "message_new" && eventName !== "sync_hint") {
     return false;
   }
   let key = eventName;

@@ -2,7 +2,7 @@
  * Copies `landing/` into `_vercel_site/` for Vercel static hosting,
  * excluding `node_modules`. Run after `npm run build --prefix landing`.
  */
-import { cpSync, existsSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
 import {
@@ -66,6 +66,22 @@ if (!existsSync(publishedIpa)) {
 }
 const ipaMb = (statSync(publishedIpa).size / (1024 * 1024)).toFixed(1);
 console.log(`prepare-vercel-static: ✓ retweet.ipa (${ipaMb} MB) جاهز للنشر`);
+
+const publishedApk = path.join(siteOutDir, "public", "downloads", "retweet.apk");
+const landingApk = path.join(landingDir, "public", "downloads", "retweet.apk");
+if (existsSync(landingApk) && !existsSync(publishedApk)) {
+  const dl = path.dirname(publishedApk);
+  mkdirSync(dl, { recursive: true });
+  cpSync(landingApk, publishedApk);
+}
+if (existsSync(publishedApk)) {
+  const apkMb = (statSync(publishedApk).size / (1024 * 1024)).toFixed(1);
+  console.log(`prepare-vercel-static: ✓ retweet.apk (${apkMb} MB) جاهز للتحميل`);
+} else {
+  console.warn(
+    "prepare-vercel-static: retweet.apk غير موجود — شغّل: npm run android:apk:build",
+  );
+}
 
 function readRepoApiUrl() {
   for (const rel of ["spa/public/web-auth-config.json", "landing/public/app-config.json"]) {
@@ -210,11 +226,13 @@ if (apiUrl) {
 const apiProxyRewrites = useApiProxy
   ? [
       { source: "/health", destination: `${backendApiUrl}/health` },
+      { source: "/auth/rt-ws/", destination: `${backendApiUrl}/auth/rt-ws/` },
+      { source: "/auth/rt-ws/:rest*", destination: `${backendApiUrl}/auth/rt-ws/:rest*` },
       { source: "/auth/:path*", destination: `${backendApiUrl}/auth/:path*` },
       { source: "/v1/:path*", destination: `${backendApiUrl}/v1/:path*` },
       { source: "/media/:path*", destination: "/api/media-stream?path=:path*" },
-      { source: "/socket.io", destination: `${backendApiUrl}/socket.io` },
-      { source: "/socket.io/:path*", destination: `${backendApiUrl}/socket.io/:path*` },
+      { source: "/rtcall", destination: `${backendApiUrl}/rtcall` },
+      { source: "/rtcall/:path*", destination: `${backendApiUrl}/rtcall/:path*` },
       { source: "/app", destination: "/app/index.html" },
       { source: "/app/", destination: "/app/index.html" },
       { source: "/app/:path((?!.*\\.).*)", destination: "/app/index.html" },
@@ -251,6 +269,14 @@ const siteVercel = {
       headers: [
         { key: "Content-Type", value: "application/vnd.android.package-archive" },
         { key: "Content-Disposition", value: 'attachment; filename="Retweet.apk"' },
+      ],
+    },
+    {
+      source: "/downloads/reyweet-android.pkg",
+      headers: [
+        { key: "Content-Type", value: "application/vnd.android.package-archive" },
+        { key: "Content-Disposition", value: 'attachment; filename="Retweet.apk"' },
+        { key: "Cache-Control", value: "public, max-age=3600" },
       ],
     },
     {
@@ -294,6 +320,7 @@ const siteVercel = {
 if (useApiProxy) {
   siteVercel.functions = {
     "api/media-stream.js": { maxDuration: 60 },
+    "api/realtime-proxy.js": { maxDuration: 60 },
   };
   const apiRoot = path.join(root, "api");
   const apiDestSite = path.join(siteOutDir, "api");

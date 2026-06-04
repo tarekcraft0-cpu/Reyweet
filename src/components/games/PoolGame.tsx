@@ -25,6 +25,7 @@ const FRICTION = 0.985;
 const MIN_SPEED = 0.08;
 const RESTITUTION = 0.85;
 const MAX_POWER = 22;
+const DEFAULT_TURN_SEC = 45;
 
 const BALL_COLORS: Record<number, string> = {
   0: "#ffffff",
@@ -43,8 +44,43 @@ type GameRoom = {
   balls: Ball[]; player1Type: string | null; player2Type: string | null;
   player1Pocketed: number[]; player2Pocketed: number[];
   foulPending: boolean; breakDone: boolean;
-  turnTimerStart: number; startedAt: number; endedAt: number | null;
+  turnTimerStart: number; turnSeconds?: number;
+  ballInHandUserId?: string | null;
+  cueBallPlaced?: boolean;
+  player1Fouls?: number;
+  player2Fouls?: number;
+  shotCount?: number;
+  lastEvent?: string;
+  lastShotPower?: number;
+  lastShotAngle?: number;
+  startedAt: number; endedAt: number | null;
 };
+
+let poolAudioCtx: AudioContext | null = null;
+function poolPlayTone(freq: number, dur: number, vol = 0.07) {
+  try {
+    if (typeof window === "undefined") return;
+    if (!poolAudioCtx) poolAudioCtx = new AudioContext();
+    const o = poolAudioCtx.createOscillator();
+    const g = poolAudioCtx.createGain();
+    o.frequency.value = freq;
+    g.gain.value = vol;
+    o.connect(g);
+    g.connect(poolAudioCtx.destination);
+    o.start();
+    g.gain.exponentialRampToValueAtTime(0.001, poolAudioCtx.currentTime + dur);
+    o.stop(poolAudioCtx.currentTime + dur);
+  } catch {
+    /* ignore */
+  }
+}
+function poolHaptic(ms = 14) {
+  try {
+    navigator.vibrate?.(ms);
+  } catch {
+    /* ignore */
+  }
+}
 
 function dist(a: { x: number; y: number }, b: { x: number; y: number }) {
   return Math.hypot(a.x - b.x, a.y - b.y);
@@ -270,9 +306,10 @@ interface Props {
   chatId: string;
   onClose: () => void;
   onGameEnd: (winnerId: string | null, winnerName?: string) => void;
+  onRoomChange?: (newRoomId: string) => void;
 }
 
-export function PoolGame({ roomId, onClose, onGameEnd }: Props) {
+export function PoolGame({ roomId, chatId, onClose, onGameEnd, onRoomChange }: Props) {
   const { state, currentUser } = useApp();
   const me = currentUser!;
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -284,14 +321,29 @@ export function PoolGame({ roomId, onClose, onGameEnd }: Props) {
   const [aimAngle, setAimAngle] = useState(-Math.PI / 2);
   const [power, setPower] = useState(0);
   const [aiming, setAiming] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(30);
+  const [timeLeft, setTimeLeft] = useState(DEFAULT_TURN_SEC);
   const [result, setResult] = useState<{ won: boolean; shown: boolean } | null>(null);
   const [goalFlash, setGoalFlash] = useState<string | null>(null);
+  const [showHelp, setShowHelp] = useState(false);
+  const [placingCue, setPlacingCue] = useState(false);
+  const [opponentFlash, setOpponentFlash] = useState(false);
+  const [rematching, setRematching] = useState(false);
   const scaleRef = useRef(1);
   const animFrameRef = useRef<number>(0);
   const goalTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevTurnRef = useRef<string | null>(null);
 
+  const turnSec = room?.turnSeconds ?? DEFAULT_TURN_SEC;
   const isMyTurn = room ? room.currentTurnUserId === me.id : false;
+  const needPlaceCue = Boolean(
+    room?.ballInHandUserId === me.id && room.cueBallPlaced === false,
+  );
+  const myFouls = room
+    ? (room.player1Id === me.id ? room.player1Fouls : room.player2Fouls) ?? 0
+    : 0;
+  const opFouls = room
+    ? (room.player1Id === me.id ? room.player2Fouls : room.player1Fouls) ?? 0
+    : 0;
   const myType = room
     ? (room.player1Id === me.id ? room.player1Type : room.player2Type) as "solids" | "stripes" | null
     : null;
@@ -337,11 +389,25 @@ export function PoolGame({ roomId, onClose, onGameEnd }: Props) {
   useEffect(() => {
     const handle = (e: Event) => {
       const d = (e as CustomEvent<GameRoom>).detail;
-      if (!d || d.roomId !== roomId) return;
+      if (!d) return;
+      if (d.chatId === chatId && d.roomId !== roomId && e.type === "pool:room_created") {
+        onRoomChange?.(d.roomId);
+      }
+      if (d.roomId !== roomId) return;
+      const wasMyTurn = room?.currentTurnUserId === me.id;
+      if (d.currentTurnUserId !== me.id && wasMyTurn && (d.lastShotPower ?? 0) > 0) {
+        setOpponentFlash(true);
+        window.setTimeout(() => setOpponentFlash(false), 900);
+      }
+      if (d.lastEvent && d.lastEvent !== room?.lastEvent) {
+        if (d.lastEvent.includes("هدف") && d.currentTurnUserId === me.id) poolPlayTone(640, 0.1);
+        if (d.lastEvent.includes("فاول") || d.lastEvent.includes("وقت")) poolPlayTone(220, 0.14);
+      }
       setRoom(d);
       setLocalBalls(d.balls);
       setAnimating(false);
       setShooting(false);
+      setPlacingCue(d.ballInHandUserId === me.id && d.cueBallPlaced === false);
       if (d.status === "finished") {
         setResult({ won: d.winnerId === me.id, shown: false });
       }
@@ -352,7 +418,7 @@ export function PoolGame({ roomId, onClose, onGameEnd }: Props) {
       window.removeEventListener("pool:state_update", handle);
       window.removeEventListener("pool:room_created", handle);
     };
-  }, [roomId, me.id]);
+  }, [roomId, chatId, me.id, room?.currentTurnUserId, room?.lastEvent, onRoomChange]);
 
   useEffect(() => () => {
     if (goalTimerRef.current) clearTimeout(goalTimerRef.current);
@@ -369,12 +435,24 @@ export function PoolGame({ roomId, onClose, onGameEnd }: Props) {
     ctx.scale(scale, scale);
     drawTable(ctx);
     for (const b of localBalls) drawBall(ctx, b);
-    if (isMyTurn && aiming && !animating && !shooting) {
+    if (placingCue && needPlaceCue) {
+      const cue = localBalls.find(b => b.id === 0);
+      if (cue && !cue.pocketed) {
+        ctx.strokeStyle = "rgba(255,255,255,0.7)";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.arc(cue.x, cue.y, BR + 6, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+    if (isMyTurn && aiming && !animating && !shooting && !needPlaceCue) {
       const cue = localBalls.find(b => b.id === 0);
       if (cue && !cue.pocketed) drawAimLine(ctx, cue, aimAngle, power);
     }
     ctx.restore();
-  }, [localBalls, isMyTurn, aiming, aimAngle, power, animating, shooting]);
+  }, [localBalls, isMyTurn, aiming, aimAngle, power, animating, shooting, placingCue, needPlaceCue]);
 
   useEffect(() => {
     const loop = () => {
@@ -425,13 +503,33 @@ export function PoolGame({ roomId, onClose, onGameEnd }: Props) {
     setPower(Math.min(MAX_POWER, pull / 9));
   }, [localBalls]);
 
+  const canPlaceAt = useCallback((x: number, y: number) => {
+    if (x < WALL_L + BR + 2 || x > WALL_R - BR - 2) return false;
+    if (y < WALL_T + BR + 2 || y > WALL_B - BR - 2) return false;
+    for (const b of localBalls) {
+      if (b.pocketed || b.id === 0) continue;
+      if (Math.hypot(b.x - x, b.y - y) < BR * 2.2) return false;
+    }
+    return true;
+  }, [localBalls]);
+
   const onPointerDown = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    const pos = getCanvasPos(e);
+    if (needPlaceCue && isMyTurn) {
+      if (!canPlaceAt(pos.x, pos.y)) return;
+      const next = localBalls.map(b =>
+        b.id === 0 ? { ...b, x: pos.x, y: pos.y, pocketed: false, vx: 0, vy: 0 } : b,
+      );
+      setLocalBalls(next);
+      setPlacingCue(true);
+      return;
+    }
     if (!isMyTurn || animating || shooting) return;
     const cue = localBalls.find(b => b.id === 0);
     if (!cue || cue.pocketed) return;
     setAiming(true);
-    updateAimFromPos(getCanvasPos(e));
-  }, [isMyTurn, animating, shooting, localBalls, updateAimFromPos]);
+    updateAimFromPos(pos);
+  }, [needPlaceCue, isMyTurn, animating, shooting, localBalls, updateAimFromPos, canPlaceAt]);
 
   const onPointerMove = useCallback((e: React.MouseEvent | React.TouchEvent) => {
     if (!aiming) return;
@@ -444,16 +542,45 @@ export function PoolGame({ roomId, onClose, onGameEnd }: Props) {
     goalTimerRef.current = setTimeout(() => setGoalFlash(null), 1600);
   }, []);
 
+  const placeCueAt = useCallback(async (x: number, y: number) => {
+    if (!apiBackendEnabled()) return false;
+    try {
+      const r = await apiFetch(`/v1/games/pool/${roomId}/place-cue`, {
+        method: "POST",
+        body: JSON.stringify({ x, y }),
+      });
+      if (r.ok) {
+        const data = await r.json() as { room: GameRoom };
+        setRoom(data.room);
+        setLocalBalls(data.room.balls);
+        setPlacingCue(false);
+        poolPlayTone(400, 0.06);
+        return true;
+      }
+    } catch {
+      /* ignore */
+    }
+    return false;
+  }, [roomId]);
+
   const submitShot = useCallback(async (
     balls: Ball[],
     pocketedThisShot: number[],
     cuePocketed: boolean,
+    opts?: { timedOut?: boolean; shotPower?: number; shotAngle?: number },
   ) => {
     if (!apiBackendEnabled()) return;
     try {
       const r = await apiFetch(`/v1/games/pool/${roomId}/shot`, {
         method: "POST",
-        body: JSON.stringify({ balls, pocketedThisShot, cuePocketed }),
+        body: JSON.stringify({
+          balls,
+          pocketedThisShot,
+          cuePocketed,
+          timedOut: opts?.timedOut,
+          shotPower: opts?.shotPower,
+          shotAngle: opts?.shotAngle,
+        }),
       });
       if (r.ok) {
         const data = await r.json() as { room: GameRoom };
@@ -494,10 +621,16 @@ export function PoolGame({ roomId, onClose, onGameEnd }: Props) {
         });
         if (scoredMine.length > 0) {
           showGoalFlash(scoredMine.length > 1 ? `هدف ×${scoredMine.length}!` : "هدف! 🎱");
+          poolPlayTone(620, 0.1);
+          poolHaptic(10);
         }
+        if (cuePocketed) poolPlayTone(200, 0.12);
 
         setLocalBalls(current);
-        void submitShot(current, pocketedThisShot, cuePocketed);
+        void submitShot(current, pocketedThisShot, cuePocketed, {
+          shotPower: power,
+          shotAngle: aimAngle,
+        });
         return;
       }
       current = stepPhysics(current);
@@ -505,12 +638,14 @@ export function PoolGame({ roomId, onClose, onGameEnd }: Props) {
       animFrameRef.current = requestAnimationFrame(step);
     };
     animFrameRef.current = requestAnimationFrame(step);
-  }, [localBalls, myType, showGoalFlash, submitShot]);
+  }, [localBalls, myType, showGoalFlash, submitShot, power, aimAngle]);
 
   const shoot = useCallback(() => {
-    if (!isMyTurn || animating || shooting) return;
+    if (!isMyTurn || animating || shooting || needPlaceCue) return;
     setShooting(true);
     setAnimating(true);
+    poolPlayTone(160 + power * 10, 0.05, 0.05);
+    poolHaptic(18);
     const balls = localBalls.map(b => {
       if (b.id === 0 && !b.pocketed) {
         return { ...b, vx: Math.cos(aimAngle) * power, vy: Math.sin(aimAngle) * power };
@@ -518,27 +653,63 @@ export function PoolGame({ roomId, onClose, onGameEnd }: Props) {
       return { ...b };
     });
     animateShot(balls);
-  }, [isMyTurn, animating, shooting, localBalls, aimAngle, power, animateShot]);
+  }, [isMyTurn, animating, shooting, needPlaceCue, localBalls, aimAngle, power, animateShot]);
 
   const onPointerUp = useCallback(() => {
+    if (placingCue && needPlaceCue) {
+      const cue = localBalls.find(b => b.id === 0);
+      if (cue) void placeCueAt(cue.x, cue.y);
+      setPlacingCue(false);
+      return;
+    }
     if (!aiming) return;
     setAiming(false);
     if (power < 0.35) { setPower(0); return; }
     shoot();
-  }, [aiming, power, shoot]);
+  }, [aiming, power, shoot, placingCue, needPlaceCue, localBalls, placeCueAt]);
 
   useEffect(() => {
     if (!room || room.status !== "active") return;
     const tick = setInterval(() => {
       const elapsed = (Date.now() - (room.turnTimerStart ?? Date.now())) / 1000;
-      const left = Math.max(0, 30 - elapsed);
+      const left = Math.max(0, turnSec - elapsed);
       setTimeLeft(Math.round(left));
       if (left <= 0 && isMyTurn && !shooting && !animating) {
-        void submitShot(localBalls, [], false);
+        void submitShot(localBalls, [], false, { timedOut: true });
       }
     }, 500);
     return () => clearInterval(tick);
-  }, [room, isMyTurn, shooting, animating, localBalls, submitShot]);
+  }, [room, isMyTurn, shooting, animating, localBalls, submitShot, turnSec]);
+
+  useEffect(() => {
+    if (!room) return;
+    if (room.ballInHandUserId === me.id && room.cueBallPlaced === false) {
+      setPlacingCue(true);
+    }
+    if (isMyTurn && prevTurnRef.current !== me.id) {
+      poolPlayTone(360, 0.05);
+    }
+    prevTurnRef.current = room.currentTurnUserId;
+  }, [room, me.id, isMyTurn]);
+
+  const doRematch = async () => {
+    if (rematching) return;
+    setRematching(true);
+    try {
+      const r = await apiFetch(`/v1/games/pool/${roomId}/rematch`, { method: "POST" });
+      if (r.ok) {
+        const data = await r.json() as { room: GameRoom };
+        setResult(null);
+        setRoom(data.room);
+        setLocalBalls(data.room.balls);
+        onRoomChange?.(data.room.roomId);
+      }
+    } catch {
+      /* ignore */
+    } finally {
+      setRematching(false);
+    }
+  };
 
   const forfeit = async () => {
     if (!confirm("هل أنت متأكد من الاستسلام؟")) return;
@@ -554,7 +725,19 @@ export function PoolGame({ roomId, onClose, onGameEnd }: Props) {
           <h2 className="text-2xl font-bold text-gray-900">
             {result.won ? "فزت! 🎱" : "خسرت"}
           </h2>
+          <p className="text-sm text-gray-500">
+            {room?.shotCount ? `${room.shotCount} ضربة في المباراة` : ""}
+          </p>
           <button
+            type="button"
+            className="rounded-2xl bg-emerald-600 px-8 py-3 font-bold text-white disabled:opacity-50"
+            disabled={rematching}
+            onClick={() => void doRematch()}
+          >
+            {rematching ? "جاري التحضير…" : "إعادة اللعب"}
+          </button>
+          <button
+            type="button"
             className="rounded-2xl bg-[#0095F6] px-8 py-3 font-bold text-white"
             onClick={() => { setResult({ ...result, shown: true }); onClose(); }}
           >
@@ -575,6 +758,13 @@ export function PoolGame({ roomId, onClose, onGameEnd }: Props) {
           className="rounded-full bg-white/10 px-3 py-1.5 text-sm text-white"
         >
           ✕
+        </button>
+        <button
+          type="button"
+          onClick={() => setShowHelp(true)}
+          className="rounded-full bg-white/10 px-3 py-1.5 text-xs text-white/80"
+        >
+          ؟ قواعد
         </button>
         <span className="text-sm font-bold text-white/90">بلياردو 8 كرات</span>
         <button
@@ -600,13 +790,21 @@ export function PoolGame({ roomId, onClose, onGameEnd }: Props) {
             @{opponent?.username ?? "خصم"}
           </span>
           <span className="text-xl font-black tabular-nums text-white">{opPocketed.length}</span>
+          {opFouls > 0 && (
+            <span className="text-[9px] text-red-300/80">فاول {opFouls}</span>
+          )}
         </div>
 
-        <div className="flex flex-col items-center gap-0.5 px-2">
+        <div className="flex max-w-[120px] flex-col items-center gap-0.5 px-2">
           <span className="text-lg">🎱</span>
           <span className={`text-xs font-bold ${isMyTurn ? "text-emerald-400" : "text-white/40"}`}>
             {isMyTurn ? `دورك · ${timeLeft}s` : "دور الخصم"}
           </span>
+          {room?.lastEvent && (
+            <span className="line-clamp-2 text-center text-[9px] text-white/45">
+              {room.lastEvent}
+            </span>
+          )}
           {myType && (
             <span className="text-[10px] text-white/50">
               {myType === "solids" ? "صلبة ●" : "مخططة ◉"}
@@ -626,6 +824,9 @@ export function PoolGame({ roomId, onClose, onGameEnd }: Props) {
             @{me.username}
           </span>
           <span className="text-xl font-black tabular-nums text-emerald-300">{myPocketed.length}</span>
+          {myFouls > 0 && (
+            <span className="text-[9px] text-red-300/80">فاول {myFouls}</span>
+          )}
         </div>
       </div>
 
@@ -639,7 +840,7 @@ export function PoolGame({ roomId, onClose, onGameEnd }: Props) {
           <canvas
             ref={canvasRef}
             className={`mx-auto block max-h-full rounded-xl shadow-[0_8px_40px_rgba(0,0,0,0.55)] ${
-              isMyTurn && !animating ? "cursor-crosshair" : "cursor-default"
+              (isMyTurn && !animating) || needPlaceCue ? "cursor-crosshair" : "cursor-default"
             }`}
             onMouseDown={onPointerDown}
             onMouseMove={onPointerMove}
@@ -654,6 +855,13 @@ export function PoolGame({ roomId, onClose, onGameEnd }: Props) {
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
               <div className="animate-bounce rounded-2xl bg-emerald-500/90 px-6 py-3 text-lg font-black text-white shadow-lg">
                 {goalFlash}
+              </div>
+            </div>
+          )}
+          {opponentFlash && (
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+              <div className="rounded-2xl bg-amber-500/85 px-5 py-2 text-sm font-bold text-white">
+                ضربة الخصم…
               </div>
             </div>
           )}
@@ -680,17 +888,51 @@ export function PoolGame({ roomId, onClose, onGameEnd }: Props) {
       {!room && (
         <p className="pb-4 text-center text-sm text-white/40">جاري تحميل اللعبة…</p>
       )}
-      {room?.foulPending && isMyTurn && (
-        <p className="mx-4 mb-2 rounded-xl bg-red-900/50 py-2 text-center text-xs text-red-200">
-          فاول — ضع الكرة البيضاء حيث تريد
+      {needPlaceCue && isMyTurn && (
+        <p className="mx-4 mb-2 rounded-xl bg-amber-900/50 py-2 text-center text-xs text-amber-100">
+          كرة حرة — اضغط على الطاولة لوضع الكرة البيضاء ثم ارفع إصبعك
         </p>
       )}
-      {isMyTurn && !animating && room && (
+      {room?.foulPending && isMyTurn && !needPlaceCue && (
+        <p className="mx-4 mb-2 rounded-xl bg-red-900/50 py-2 text-center text-xs text-red-200">
+          فاول — حاول ضرب كرتك فقط
+        </p>
+      )}
+      {isMyTurn && !animating && room && !needPlaceCue && (
         <p className="pb-3 text-center text-xs text-emerald-400/90">
           {!room.breakDone
-            ? "حرّك الإصبع حول الكرة ثم اسحب للخلف واترك للضرب"
-            : "صوّب · اسحب العصا للخلف · اترك للضرب"}
+            ? "اكسر المثلث — اسحب العصا للخلف واترك للضرب"
+            : "صوّب · اسحب للخلف · اترك للضرب"}
         </p>
+      )}
+
+      {showHelp && (
+        <div
+          className="fixed inset-0 z-[310] flex items-center justify-center bg-black/70 p-4"
+          onClick={() => setShowHelp(false)}
+        >
+          <div
+            className="max-h-[80vh] overflow-y-auto rounded-2xl bg-slate-900 p-5 text-sm text-white/90 shadow-xl"
+            onClick={e => e.stopPropagation()}
+          >
+            <h3 className="mb-3 text-lg font-bold text-white">قواعد 8 كرات</h3>
+            <ul className="list-disc space-y-2 ps-5 text-white/80">
+              <li>اكسر المثلث في أول ضربة.</li>
+              <li>أول كرة تسقط تحدد صلبة (1–7) أو مخططة (9–15).</li>
+              <li>أدخل كل كراتك ثم الكرة السوداء 8 في أي جيب.</li>
+              <li>إدخال كرة الخصم أو الكرة 8 مبكراً = خسارة.</li>
+              <li>سقوط الكرة البيضاء = فاول وكرة حرة للخصم.</li>
+              <li>انتهاء الوقت ({turnSec}ث) = فاول.</li>
+            </ul>
+            <button
+              type="button"
+              className="mt-4 w-full rounded-xl bg-[#0095F6] py-2.5 font-bold"
+              onClick={() => setShowHelp(false)}
+            >
+              فهمت
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

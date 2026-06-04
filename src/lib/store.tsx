@@ -2519,16 +2519,12 @@ export function AppProvider({
     };
     const schedule = () => {
       if (debounceTimer) window.clearTimeout(debounceTimer);
-      const delayMs = isNativeCapacitorShell() ? 400 : 0;
+      const delayMs = 0;
       if (delayMs) {
         debounceTimer = window.setTimeout(() => {
           debounceTimer = 0;
           run();
         }, delayMs);
-        return;
-      }
-      if (typeof window !== "undefined" && "requestIdleCallback" in window) {
-        window.requestIdleCallback(run, { timeout: 200 });
         return;
       }
       run();
@@ -3488,7 +3484,7 @@ export function AppProvider({
     if (!nextState) return;
     const created = nextState.posts[0];
     socialSyncBusyRef.current = true;
-    pushSnapshotNow(nextState);
+    queueMicrotask(() => bumpHomeFeedNow());
     const token = getApiToken();
     if (token && apiBackendEnabled() && created?.userId === nextState.currentUserId) {
       void (async () => {
@@ -3507,11 +3503,19 @@ export function AppProvider({
           saved = await apiUpsertPost(token, payload);
         }
         if (saved.ok) {
-          void import("./feedVisibility").then(({ requestAuthFeedRefresh }) => requestAuthFeedRefresh());
+          pushSnapshotNow(stateRef.current);
+          bumpHomeFeedNow();
+          void import("./feedVisibility").then(({ requestAuthFeedRefresh, notifyNewFeedPost }) => {
+            notifyNewFeedPost(created.id);
+            requestAuthFeedRefresh();
+          });
         } else {
           console.warn("[Retweet] apiUpsertPost failed:", saved.error);
+          pushSnapshotNow(nextState);
         }
       })();
+    } else {
+      pushSnapshotNow(nextState);
     }
     window.setTimeout(() => {
       socialSyncBusyRef.current = false;
@@ -5837,12 +5841,24 @@ export function AppProvider({
     [setStateRaw],
   );
 
+  const bumpHomeFeedNow = useCallback(() => {
+    const snap = stateRef.current;
+    const meId = snap.currentUserId;
+    if (!meId || isGuestUserId(meId)) {
+      setHomeFeedPosts([]);
+      return;
+    }
+    const me = snap.users.find(u => u.id === meId);
+    if (!me) return;
+    syncHomeFeedPostsFromState(snap, setHomeFeedPosts);
+  }, []);
+
   const scheduleFeedPull = useCallback(() => {
     if (feedPullDebounceRef.current != null) window.clearTimeout(feedPullDebounceRef.current);
     feedPullDebounceRef.current = window.setTimeout(() => {
       feedPullDebounceRef.current = null;
       void refreshFeedFromServer();
-    }, 200);
+    }, 350);
   }, [refreshFeedFromServer]);
 
   useEffect(() => {
@@ -5850,7 +5866,7 @@ export function AppProvider({
     let authFeedTimer = 0;
     const onAuthFeed = () => {
       if (authFeedTimer) window.clearTimeout(authFeedTimer);
-      const delayMs = isNativeCapacitorShell() ? 1000 : 500;
+      const delayMs = isNativeCapacitorShell() ? 350 : 200;
       authFeedTimer = window.setTimeout(() => {
         authFeedTimer = 0;
         void refreshFeedFromServer();
@@ -6297,13 +6313,13 @@ export function AppProvider({
         const payload = data as { post?: Post };
         const patch = payload?.post;
         if (!patch?.id) return;
-        setState(s => {
+        setStateRaw(s => {
           if (!s.currentUserId || isGuestUserId(s.currentUserId)) return s;
           const i = s.posts.findIndex(p => p.id === patch.id);
           if (i < 0) {
             return { ...s, posts: [patch, ...s.posts].sort((a, b) => b.createdAt - a.createdAt) };
           }
-          const prev = s.posts[i];
+          const prev = s.posts[i]!;
           const comments =
             patch.comments.length > 0
               ? patch.comments
@@ -6323,9 +6339,14 @@ export function AppProvider({
             ),
           };
         });
+        queueMicrotask(() => {
+          bumpHomeFeedNow();
+          void import("./feedVisibility").then(({ notifyNewFeedPost }) => notifyNewFeedPost(patch.id));
+        });
         void (async () => {
           const row = await apiFetchUserById(patch.userId);
           if (row) mergeDiscoveredUsers([userFromSearchResult(row)]);
+          bumpHomeFeedNow();
         })();
         scheduleFeedPull();
         return;
@@ -6371,6 +6392,14 @@ export function AppProvider({
         }));
         return;
       }
+      if (event === "pool:state_update" || event === "pool:room_created") {
+        try {
+          window.dispatchEvent(new CustomEvent(event, { detail: data }));
+        } catch {
+          /* ignore */
+        }
+        return;
+      }
       if (event === "account:moderation") {
         try {
           window.dispatchEvent(new CustomEvent("retweet-account-moderation", { detail: data }));
@@ -6382,6 +6411,7 @@ export function AppProvider({
       if (event === "sync_hint") {
         const kind = (data as { kind?: string })?.kind;
         if (kind === "feed" || kind === "story") {
+          bumpHomeFeedNow();
           scheduleFeedPull();
           return;
         }
@@ -6491,6 +6521,8 @@ export function AppProvider({
     scheduleRemoteSync,
     refreshFromServer,
     scheduleFeedPull,
+    refreshFeedFromServer,
+    bumpHomeFeedNow,
     setState,
   ]);
 
@@ -6499,7 +6531,7 @@ export function AppProvider({
     const id = window.setInterval(() => {
       if (document.visibilityState !== "visible") return;
       scheduleFeedPull();
-    }, 90_000);
+    }, 45_000);
     return () => window.clearInterval(id);
   }, [state.currentUserId, scheduleFeedPull]);
 

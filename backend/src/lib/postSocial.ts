@@ -17,7 +17,7 @@ import { buildMinimalAppState } from "./syncAppState.js";
 import { mergeDbUsersIntoAppState } from "./mergeDbUsers.js";
 import { mergeSocialGraphIntoAppState } from "./mergeSocialGraph.js";
 import { deliverNotification } from "./socialActions.js";
-import { broadcastSseExcept, broadcastSseEvent, broadcastSseToUser } from "./realtimeHub.js";
+import { broadcastSseEvent, broadcastSseToUser } from "./realtimeHub.js";
 import { broadcastSocketEvent } from "./realtimeSocket.js";
 
 type PostCommentRow = { id: string; userId: string; text: string; createdAt: number };
@@ -110,11 +110,11 @@ async function patchOwnerSnapshotPost(ownerId: string, post: Post): Promise<void
 function broadcastPostUpdate(post: Post, actorId: string): void {
   const payload = { post };
   broadcastSocketEvent("post_update", payload);
-  broadcastSseExcept(actorId, "post_update", payload);
+  broadcastSseEvent("post_update", payload);
   if (post.userId !== actorId) {
     broadcastSseToUser(post.userId, "post_update", payload);
   }
-  broadcastSseExcept(actorId, "sync_hint", { kind: "feed", postId: post.id });
+  broadcastSseEvent("sync_hint", { kind: "feed", postId: post.id, fromUserId: actorId });
 }
 
 export async function upsertPostOnServer(ownerId: string, post: Post): Promise<Post> {
@@ -124,7 +124,6 @@ export async function upsertPostOnServer(ownerId: string, post: Post): Promise<P
   const saved = await persistPostRow(row, comments);
   await patchOwnerSnapshotPost(ownerId, saved);
   broadcastPostUpdate(saved, ownerId);
-  broadcastSseEvent("sync_hint", { kind: "feed", postId: saved.id, fromUserId: ownerId });
   return saved;
 }
 

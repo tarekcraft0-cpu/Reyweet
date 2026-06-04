@@ -1,5 +1,5 @@
 import type { Socket } from "socket.io-client";
-import { buildIceServers } from "./iceServers";
+import { resolveIceServers } from "./iceServers";
 
 export type CallSignalPayload = {
   fromUserId: string;
@@ -65,7 +65,7 @@ export function getActiveCallMeta(): {
   };
 }
 
-function setupPeerConnection(opts: {
+async function setupPeerConnection(opts: {
   chatId: string;
   peerUserId: string;
   video: boolean;
@@ -73,8 +73,12 @@ function setupPeerConnection(opts: {
   localStream: MediaStream;
   onRemoteStream?: (stream: MediaStream) => void;
   onState?: (state: string) => void;
-}): ActiveCall {
-  const pc = new RTCPeerConnection({ iceServers: buildIceServers() });
+}): Promise<ActiveCall> {
+  const iceServers = await resolveIceServers();
+  const pc = new RTCPeerConnection({
+    iceServers,
+    iceCandidatePoolSize: 4,
+  });
   for (const track of opts.localStream.getTracks()) {
     pc.addTrack(track, opts.localStream);
   }
@@ -217,7 +221,7 @@ export async function prepareCalleeCall(opts: {
     audio: true,
     video: opts.video,
   });
-  active = setupPeerConnection({ ...opts, role: "callee", localStream });
+  active = await setupPeerConnection({ ...opts, role: "callee", localStream });
   emitCallAccept(opts.peerUserId, opts.chatId);
   await flushBufferedSignals(opts.chatId, opts.peerUserId);
 }
@@ -235,7 +239,7 @@ export async function startOutgoingCall(opts: {
     audio: true,
     video: opts.video,
   });
-  active = setupPeerConnection({ ...opts, role: "caller", localStream });
+  active = await setupPeerConnection({ ...opts, role: "caller", localStream });
 
   const rang = emitCallRing(opts.peerUserId, opts.chatId, opts.video);
   if (!rang) {

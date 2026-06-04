@@ -1,4 +1,5 @@
 import type { IncomingCallRing } from "./webrtcCall";
+import { apiBackendEnabled, getApiToken } from "./apiBackend";
 
 export const INCOMING_CALL_WINDOW_EVENT = "retweet-call-ring";
 export const START_OUTGOING_CALL_EVENT = "retweet-start-outgoing-call";
@@ -45,15 +46,21 @@ export async function dispatchStartOutgoingCallSafe(
   detail: OutgoingCallDetail,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   if (typeof window === "undefined") return { ok: false, error: "غير متاح" };
+  if (!apiBackendEnabled()) {
+    return { ok: false, error: "الخادم غير متصل — تحقق من الإنترنت وأعد فتح التطبيق." };
+  }
+  if (!getApiToken()) {
+    return { ok: false, error: "سجّل دخولك أولاً لإجراء مكالمة." };
+  }
   try {
     const { waitForRealtimeSocket, isRealtimeSocketConnected } = await import("./realtimeSocket.js");
     if (!isRealtimeSocketConnected()) {
-      const ready = await waitForRealtimeSocket(4000);
+      const ready = await waitForRealtimeSocket(12_000);
       if (!ready) {
         return {
           ok: false,
           error:
-            "الاتصال الفوري غير جاهز. افتح التطبيق من جديد وتأكد أن الطرف الآخر داخل التطبيق (وليس ضيفاً)، ثم أعد المحاولة.",
+            "الاتصال الفوري غير جاهز. حدّث الصفحة (Ctrl+Shift+R) وتأكد أنك مسجّل دخول، ثم أعد المحاولة.",
         };
       }
     }

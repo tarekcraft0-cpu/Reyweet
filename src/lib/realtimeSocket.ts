@@ -3,6 +3,8 @@ import type { ID, Message } from "./types";
 import { ensureApiTokenMatchesUser } from "./accountSessions";
 import { apiBackendEnabled, ensureApiRuntimeConfig, getApiBaseUrl, getApiToken } from "./apiBackend";
 import { bindCallSocket } from "./webrtcCall";
+import { resolveIceServers } from "./iceServers";
+import { CLIENT_REALTIME_SOCKET_PATH } from "./realtimeSocketPath";
 import { clearAllTypingPulses } from "./chatRealtimeExtras";
 
 let socket: Socket | null = null;
@@ -38,23 +40,42 @@ export function isRealtimeSocketConnected(): boolean {
   return Boolean(socket?.connected);
 }
 
-/** انتظر اتصال Socket قصيراً قبل الإرسال — يقلّل fallback البطيء إلى REST */
-export function waitForRealtimeSocket(maxMs = 2000): Promise<boolean> {
+/** انتظر اتصال Socket — ينتظر إنشاء الاتصال إن لم يُنشأ بعد (مثلاً قبل اكتمال subscribeRealtimeEvents) */
+export function waitForRealtimeSocket(maxMs = 8000): Promise<boolean> {
   if (typeof window === "undefined") return Promise.resolve(false);
   if (socket?.connected) return Promise.resolve(true);
-  const s = socket;
-  if (!s) return Promise.resolve(false);
+
+  const deadline = Date.now() + maxMs;
+  let connectListener: (() => void) | null = null;
+
+  const cleanup = () => {
+    if (connectListener && socket) socket.off("connect", connectListener);
+    connectListener = null;
+  };
+
   return new Promise(resolve => {
-    const timer = window.setTimeout(() => {
-      s.off("connect", onConnect);
-      resolve(false);
-    }, maxMs);
-    const onConnect = () => {
-      window.clearTimeout(timer);
-      s.off("connect", onConnect);
-      resolve(true);
+    const tick = () => {
+      if (socket?.connected) {
+        cleanup();
+        resolve(true);
+        return;
+      }
+      const s = socket;
+      if (s && !connectListener) {
+        connectListener = () => {
+          cleanup();
+          resolve(true);
+        };
+        s.on("connect", connectListener);
+      }
+      if (Date.now() >= deadline) {
+        cleanup();
+        resolve(false);
+        return;
+      }
+      window.setTimeout(tick, 120);
     };
-    s.on("connect", onConnect);
+    tick();
   });
 }
 
@@ -77,8 +98,9 @@ export async function connectRealtimeSocket(
 
   const tokenAtConnect = token;
   const s = io(url, {
-    path: "/socket.io",
-    transports: ["websocket", "polling"],
+    path: CLIENT_REALTIME_SOCKET_PATH,
+    addTrailingSlash: false,
+    transports: ["polling", "websocket"],
     upgrade: true,
     auth: { token },
     reconnection: true,
@@ -109,10 +131,13 @@ export async function connectRealtimeSocket(
   s.on("call:accept", forward("call:accept"));
   s.on("typing", forward("typing"));
   s.on("message_status", forward("message_status"));
+  s.on("pool:state_update", forward("pool:state_update"));
+  s.on("pool:room_created", forward("pool:room_created"));
 
   s.on("connect", () => {
     if (gen !== connectGen) return;
     bindCallSocket(s);
+    void resolveIceServers().catch(() => {});
     hooks?.onConnect?.();
   });
   s.on("connect_error", () => {

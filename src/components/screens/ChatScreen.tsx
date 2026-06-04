@@ -3974,6 +3974,10 @@ export function ChatScreen({
                       const peer = stackChat.members.find(id => id !== me.id);
                       if (!peer || stackChat.isGroup || stackChat.isChannel) return;
                       void (async () => {
+                        if (isGuest) {
+                          notifyGuestActionBlocked();
+                          return;
+                        }
                         const { dispatchStartOutgoingCallSafe } = await import(
                           "@/lib/activeCallUi"
                         );
@@ -4376,12 +4380,38 @@ function PoolGameInviteBubble({
   onJoin: (roomId: string) => void;
 }) {
   const [status, setStatus] = useState<"pending" | "joining" | "active" | "finished">("pending");
+  const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const mc = messageContent(message);
   // format: __game_invite__:pool:<inviterId>:<msgId>
   const parts = mc.split(":");
   const inviterId = parts[2] ?? "";
   const isInviter = meId === inviterId;
   const canJoin = !isInviter && status === "pending";
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { getApiBaseUrl, getApiToken, apiBackendEnabled } = await import("@/lib/apiBackend");
+        if (!apiBackendEnabled()) return;
+        const base = getApiBaseUrl().replace(/\/$/, "");
+        const token = getApiToken();
+        if (!token) return;
+        const r = await fetch(`${base}/v1/games/pool/by-chat/${encodeURIComponent(chatId)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!r.ok || cancelled) return;
+        const data = await r.json() as { room?: { roomId: string; status: string } };
+        if (data.room?.status === "active") {
+          setActiveRoomId(data.room.roomId);
+          setStatus("active");
+        }
+      } catch {
+        /* ignore */
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [chatId]);
 
   const join = async () => {
     if (!canJoin) return;
@@ -4428,10 +4458,19 @@ function PoolGameInviteBubble({
       {status === "joining" && (
         <span className="text-xs text-green-400 animate-pulse">جاري الانضمام…</span>
       )}
-      {status === "active" && (
+      {status === "active" && activeRoomId && (
+        <button
+          type="button"
+          className="rounded-xl bg-amber-600 px-6 py-2 text-sm font-bold text-white shadow active:scale-95"
+          onClick={() => onJoin(activeRoomId)}
+        >
+          استئناف اللعبة
+        </button>
+      )}
+      {status === "active" && !activeRoomId && (
         <span className="text-xs text-yellow-400">🎮 اللعبة جارية</span>
       )}
-      {isInviter && (
+      {isInviter && status === "pending" && (
         <span className="text-xs text-gray-400">أرسلت الدعوة</span>
       )}
     </div>
@@ -4525,6 +4564,16 @@ function ChatRoom({
   useEffect(() => {
     setWallpaperId(loadChatWallpaperForChat(chat, meId));
   }, [sendChatId, chat.id, meId]);
+
+  useEffect(() => {
+    const onPoolRoom = (e: Event) => {
+      const d = (e as CustomEvent<{ chatId?: string; roomId?: string }>).detail;
+      if (!d?.roomId || d.chatId !== sendChatId) return;
+      setLocalPoolRoomId(prev => prev ?? d.roomId!);
+    };
+    window.addEventListener("pool:room_created", onPoolRoom);
+    return () => window.removeEventListener("pool:room_created", onPoolRoom);
+  }, [sendChatId]);
 
   const openThemePicker = useCallback(() => setShowChatThemePicker(true), []);
   useEffect(() => {
@@ -7403,6 +7452,7 @@ function ChatRoom({
           key={localPoolRoomId}
           roomId={localPoolRoomId}
           chatId={sendChatId}
+          onRoomChange={id => setLocalPoolRoomId(id)}
           onClose={() => setLocalPoolRoomId(null)}
           onGameEnd={(winnerId, winnerName) => {
             setLocalPoolRoomId(null);
