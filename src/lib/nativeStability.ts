@@ -44,9 +44,17 @@ export function isNativeMobileApp(): boolean {
 let quietUntil = 0;
 
 /** بعد تسجيل الدخول — لا نستمع لـ resize/visualViewport لفترة (يمنع React #185) */
-export function beginNativePostLoginQuietPeriod(ms = 4000): void {
+function nativeQuietPeriodMs(): number {
+  if (typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent || "")) {
+    return 1200;
+  }
+  return 4000;
+}
+
+export function beginNativePostLoginQuietPeriod(ms?: number): void {
   if (!isNativeMobileApp() || typeof performance === "undefined") return;
-  quietUntil = Math.max(quietUntil, performance.now() + ms);
+  const gap = ms ?? nativeQuietPeriodMs();
+  quietUntil = Math.max(quietUntil, performance.now() + gap);
 }
 
 export function isNativePostLoginQuietPeriod(): boolean {

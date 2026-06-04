@@ -43,9 +43,20 @@ function iosStatusBarFallback(): number {
   const ua = navigator.userAgent || "";
   if (!/iPhone|iPad|iPod/i.test(ua)) return 0;
   const longSide = Math.max(window.screen.width, window.screen.height);
-  /** iPhone X والأحدث (شاشة ≥812) — نوتش ~47px */
+  /** iPhone X والأحدث (شاشة ≥812) — نوتch ~47px */
   if (longSide >= 812) return 47;
   return 20;
+}
+
+function androidStatusBarFallback(): number {
+  if (typeof window === "undefined") return 0;
+  const ua = navigator.userAgent || "";
+  if (!/Android/i.test(ua)) return 0;
+  const swiftTop = readCssVar("--retweet-safe-top");
+  if (swiftTop >= 20) return swiftTop;
+  /** ~24dp — بدون جسر Kotlin قد يكون env(safe-area) = 0 */
+  const dpr = window.devicePixelRatio || 1;
+  return Math.max(24, Math.round(28 / dpr));
 }
 
 let lastSafeAreaKey = "";
@@ -75,7 +86,7 @@ export function syncSafeAreaCssVars(): void {
     /iPhone|iPad|iPod/i.test(navigator.userAgent || "");
 
   if (nativeOrIos && top < 20) {
-    top = Math.max(top, iosStatusBarFallback());
+    top = Math.max(top, iosStatusBarFallback(), androidStatusBarFallback());
   }
 
   const key = `${top}|${bottom}|${left}|${right}`;

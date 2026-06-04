@@ -5,6 +5,30 @@
   "use strict";
   if (typeof document === "undefined") return;
 
+  /** ترقية APK/IPA — إعادة تحميل عند تغيّر __RETWEET_APP_BUILD__ */
+  (function ensureNativeBuildFresh() {
+    try {
+      var k = "retweet_app_build";
+      var b = window.__RETWEET_APP_BUILD__ || "";
+      if (!b) return;
+      var s = localStorage.getItem(k);
+      if (s && s !== b) {
+        localStorage.setItem(k, b);
+        try {
+          var u = new URL(location.href);
+          u.searchParams.set("_b", String(Date.now()));
+          location.replace(u.toString());
+        } catch (e) {
+          location.reload();
+        }
+        return;
+      }
+      if (b) localStorage.setItem(k, b);
+    } catch (e) {
+      /* ignore */
+    }
+  })();
+
   /** إذا index.html محفوظ في الكاش ويشير لحزمة JS قديمة — جلب HTML حي وإعادة تحميل /app/ */
   (function ensureFreshAppBundle() {
     if (window.__RETWEET_BUNDLE_GUARD__) return;

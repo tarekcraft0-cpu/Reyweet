@@ -1,7 +1,9 @@
 {
-  "version": "1.0.0",
-  "versionCode": 1,
-  "apkUrl": "https://reyweet.vercel.app/downloads/retweet.apk",
-  "releasedAt": "2026-05-17T00:00:00.000Z",
-  "notes": "تطبيق Retweet لأندرويد — المحتوى يتحدّث تلقائياً من الموقع عند كل فتح."
+  "version": "1.0.2",
+  "versionCode": 3,
+  "apkUrl": "https://reyweet.vercel.app/downloads/reyweet-android.pkg",
+  "apkUrlLegacy": "https://reyweet.vercel.app/downloads/retweet.apk",
+  "releasedAt": "2026-06-04T07:52:16.677Z",
+  "notes": "تحديث ملف الإصدار فقط",
+  "apkSizeMb": 29.3
 }

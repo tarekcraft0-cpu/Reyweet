@@ -379,6 +379,7 @@ import { applyDeviceThemeToDom, readDeviceTheme } from "./deviceTheme";
 import { runChatIsolationMigration } from "./chatIsolationMigration";
 import { normalizeChatMessage, normalizeChatRecord } from "./chatNormalize";
 import {
+  buildGroupAddSystemContent,
   buildGroupKickSystemContent,
   buildGroupMuteSystemContent,
   buildGroupUnmuteSystemContent,
@@ -3934,16 +3935,27 @@ export function AppProvider({
         chats: s.chats.map((c) => {
           if (c.id !== chatId || (!c.isGroup && !c.isChannel)) return c;
           const added = memberIds.filter(id => !c.members.includes(id));
-          const joinMsgs: Message[] = added.map(memberId => {
+          const lang = s.language === "en" ? "en" : "ar";
+          const addedNames = added.map(memberId => {
             const nu = s.users.find(u => u.id === memberId);
-            return {
-              id: uid(),
-              senderId: meId,
-              type: "text" as const,
-              content: `${adder?.username ? `@${adder.username}` : "مشرف"} أضاف ${nu?.username ? `@${nu.username}` : "عضو"} إلى المجموعة`,
-              createdAt: Date.now(),
-            };
+            return nu?.username || "";
           });
+          const joinMsgs: Message[] =
+            added.length > 0
+              ? [
+                  {
+                    id: uid(),
+                    senderId: meId,
+                    type: "text" as const,
+                    content: buildGroupAddSystemContent(
+                      adder?.username || (lang === "en" ? "admin" : "مشرف"),
+                      addedNames.length > 0 ? addedNames : added.map(() => ""),
+                      lang,
+                    ),
+                    createdAt: Date.now(),
+                  },
+                ]
+              : [];
           return {
             ...c,
             members: Array.from(new Set([...c.members, ...memberIds])),
@@ -4319,6 +4331,7 @@ export function AppProvider({
           const result = await apiPostMessage(restToken, storageChatId, receiverId, m);
           return result !== null;
         };
+        const nativeShell = isNativeCapacitorShell();
         const delivered = await new Promise<boolean>(resolve => {
           let settled = false;
           const finish = (ok: boolean) => {
@@ -4326,14 +4339,19 @@ export function AppProvider({
             settled = true;
             resolve(true);
           };
-          void attemptSocket().then(finish);
-          void attemptRest().then(finish);
+          if (nativeShell) {
+            void attemptRest().then(finish);
+            void attemptSocket().then(finish);
+          } else {
+            void attemptSocket().then(finish);
+            void attemptRest().then(finish);
+          }
           window.setTimeout(() => {
             if (!settled) {
               settled = true;
               resolve(false);
             }
-          }, 12_000);
+          }, nativeShell ? 20_000 : 12_000);
         });
         if (!delivered && stateRef.current.currentUserId === senderId) {
           // تحديث حالة الرسالة إلى "failed" عند الفشل الكامل
@@ -4896,11 +4914,16 @@ export function AppProvider({
         if (action !== "accept") return { ...c, joinRequests: requests, members };
         const actor = s.users.find(u => u.id === s.currentUserId);
         const target = s.users.find(u => u.id === userId);
+        const lang = s.language === "en" ? "en" : "ar";
         const joinMsg: Message = {
           id: uid(),
           senderId: s.currentUserId || c.ownerId || userId,
           type: "text",
-          content: `${actor?.username ? `@${actor.username}` : "مشرف"} أضاف ${target?.username ? `@${target.username}` : "عضو"} إلى المجموعة`,
+          content: buildGroupAddSystemContent(
+            actor?.username || (lang === "en" ? "admin" : "مشرف"),
+            [target?.username || ""],
+            lang,
+          ),
           createdAt: Date.now(),
         };
         return { ...c, joinRequests: requests, members, messages: [...(c.messages || []), joinMsg] };

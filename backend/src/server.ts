@@ -63,6 +63,7 @@ import {
   syncGroupChatCanonical,
   memberHasGroupChat,
 } from "./lib/groupChatDelivery.js";
+import { buildGroupAddSystemContent } from "./lib/groupSystemMessages.js";
 import {
   generateInviteCode,
   registerGroupInvite,
@@ -1571,16 +1572,25 @@ app.post("/v1/chats/group/:chatId/members", authMiddleware, async (req, res) => 
   const requested = parsed.data.memberIds.filter(id => id !== actorId);
   if (requested.length === 0) return res.json({ chat });
   const actorRow = await getUserById(actorId);
-  const actorLabel = actorRow?.username ? `@${actorRow.username}` : "مشرف";
   const addedIds = requested.filter(id => !chat.members.includes(id));
   const addedRows = await Promise.all(addedIds.map(id => getUserById(id)));
-  const systemMessages = addedIds.map((targetId, idx) => ({
-    id: crypto.randomUUID(),
-    senderId: actorId,
-    type: "text" as const,
-    content: `${actorLabel} أضاف ${addedRows[idx]?.username ? `@${addedRows[idx]!.username}` : "عضو"} إلى المجموعة`,
-    createdAt: Date.now() + idx,
-  }));
+  const addedNames = addedRows.map(r => r?.username || "").filter(Boolean);
+  const systemMessages =
+    addedIds.length > 0
+      ? [
+          {
+            id: crypto.randomUUID(),
+            senderId: actorId,
+            type: "text" as const,
+            content: buildGroupAddSystemContent(
+              actorRow?.username || "مشرف",
+              addedNames.length > 0 ? addedNames : addedIds.map(() => "عضو"),
+              "ar",
+            ),
+            createdAt: Date.now(),
+          },
+        ]
+      : [];
   const updated: Chat = {
     ...chat,
     members: Array.from(new Set([...chat.members, ...requested])),
@@ -1720,13 +1730,15 @@ app.post(
     }
     const actorRow = await getUserById(actorId);
     const targetRow = await getUserById(targetUserId);
-    const actorLabel = actorRow?.username ? `@${actorRow.username}` : "مشرف";
-    const targetLabel = targetRow?.username ? `@${targetRow.username}` : "عضو";
     const systemMessage = {
       id: crypto.randomUUID(),
       senderId: actorId,
       type: "text" as const,
-      content: `${actorLabel} أضاف ${targetLabel} إلى المجموعة`,
+      content: buildGroupAddSystemContent(
+        actorRow?.username || "مشرف",
+        [targetRow?.username || "عضو"],
+        "ar",
+      ),
       createdAt: Date.now(),
     };
     const updated: Chat = {

@@ -1,4 +1,5 @@
 import {
+  Fragment,
   memo,
   useCallback,
   useEffect,
@@ -6840,6 +6841,9 @@ function ChatRoom({
               chromeOnWallpaper || dmPalette ? "text-white/70" : "text-muted-foreground";
             const systemUserBtn =
               "font-semibold text-primary underline-offset-2 hover:underline active:opacity-80";
+            const langEn = state.language === "en";
+            const listConj = langEn ? " and " : " و ";
+            const targets = groupSystemEvent.targets.filter(Boolean);
             return (
               <div key={m.id} className="flex w-full justify-center px-3 py-3">
                 <p
@@ -6856,13 +6860,24 @@ function ChatRoom({
                     @{groupSystemEvent.actor}
                   </button>{" "}
                   <span className={systemMuted}>{groupSystemEvent.action}</span>{" "}
-                  <button
-                    type="button"
-                    className={systemUserBtn}
-                    onClick={() => openMentionProfile(groupSystemEvent.target)}
-                  >
-                    @{groupSystemEvent.target}
-                  </button>
+                  {targets.map((target, i) => (
+                    <Fragment key={`${target}-${i}`}>
+                      {i > 0 ? (
+                        <span className={systemMuted}>
+                          {i === targets.length - 1 ? listConj : ", "}
+                        </span>
+                      ) : (
+                        " "
+                      )}
+                      <button
+                        type="button"
+                        className={systemUserBtn}
+                        onClick={() => openMentionProfile(target)}
+                      >
+                        @{target}
+                      </button>
+                    </Fragment>
+                  ))}
                 </p>
               </div>
             );

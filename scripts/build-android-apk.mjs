@@ -1,132 +1,156 @@
 /**
- * بناء APK لأندرويد ونسخه إلى landing/public/downloads/retweet.apk
+ * بناء APK (Capacitor) ونسخه إلى landing/public/downloads/retweet.apk
  *
- * المسارات:
- *   A) EAS (موصى به على Windows): EXPO_TOKEN + npm run mobile:apk:build
- *   B) محلي: Android SDK + JDK → expo prebuild + gradlew assembleRelease
+ *   npm run android:apk:build
+ *   SKIP_ANDROID_SDK=1  — إذا ANDROID_HOME مُعدّ مسبقاً
  */
-import { spawnSync, execSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
-  mobileDir,
-  root,
+  ensureAndroidSdk,
+  resolveAndroidSdkRoot,
+  writeAndroidLocalProperties,
+} from "./ensure-android-sdk.mjs";
+import {
   copyApkToDownloads,
-  findLocalApkArtifact,
   readAppVersion,
   writeAndroidVersionJson,
+  root,
 } from "./lib/android-release.mjs";
 
-function run(cmd, args, cwd = mobileDir, env = {}) {
+const skipSdk = process.argv.includes("--skip-sdk") || process.env.SKIP_ANDROID_SDK === "1";
+
+function run(cmd, args, cwd = root) {
   const r = spawnSync(cmd, args, {
     cwd,
     stdio: "inherit",
     shell: process.platform === "win32",
-    env: { ...process.env, ...env },
+    env: process.env,
   });
   if (r.status !== 0) process.exit(r.status ?? 1);
 }
 
-function patchEasAndroid() {
-  const easPath = path.join(mobileDir, "eas.json");
-  const eas = JSON.parse(fs.readFileSync(easPath, "utf8"));
-  const apiFile = path.join(root, "PUBLIC_API_URL.txt");
-  let apiUrl = "";
-  if (fs.existsSync(apiFile)) {
-    apiUrl = fs.readFileSync(apiFile, "utf8").trim().split(/\r?\n/)[0]?.trim() || "";
-  }
-  const env = {
-    EXPO_PUBLIC_WEB_APP_URL: "https://reyweet.vercel.app/app",
-    EXPO_PUBLIC_WEB_APP_URL_STRICT: "1",
-    ...(apiUrl ? { EXPO_PUBLIC_API_URL: apiUrl.replace(/\/$/, "") } : {}),
-  };
-  eas.build["android-apk"] = {
-    distribution: "internal",
-    android: { buildType: "apk" },
-    env,
-  };
-  fs.writeFileSync(easPath, JSON.stringify(eas, null, 2) + "\n", "utf8");
-}
-
-function buildWithEas() {
-  console.log("\n→ EAS Build (Android APK)…\n");
-  const outDir = path.join(mobileDir, "dist-apk");
-  fs.mkdirSync(outDir, { recursive: true });
-  const local = process.argv.includes("--local");
-  const args = [
-    "eas-cli",
-    "build",
-    "--platform",
-    "android",
-    "--profile",
-    "android-apk",
-    "--non-interactive",
-    "--output",
-    path.join(outDir, "retweet.apk"),
+function findBuiltApk() {
+  const candidates = [
+    path.join(root, "android", "app", "build", "outputs", "apk", "release", "app-release.apk"),
+    path.join(root, "android", "app", "build", "outputs", "apk", "release", "app-release-unsigned.apk"),
+    path.join(root, "android", "app", "build", "outputs", "apk", "debug", "app-debug.apk"),
+    path.join(root, "android", "build", "outputs", "apk", "release", "app-release.apk"),
   ];
-  if (local) args.push("--local");
-  run("npx", args);
-  return path.join(outDir, "retweet.apk");
+  return candidates.find(p => fs.existsSync(p)) || "";
 }
 
-function buildWithGradle() {
-  console.log("\n→ بناء محلي (prebuild + Gradle)…\n");
-  const androidDir = path.join(mobileDir, "android");
-  if (!fs.existsSync(androidDir)) {
-    run("npx", ["expo", "prebuild", "--platform", "android", "--no-install"]);
+function resolveJdk21() {
+  if (process.env.JAVA_HOME?.trim()) {
+    const v = spawnSync("java", ["-version"], {
+      encoding: "utf8",
+      env: process.env,
+      shell: true,
+    });
+    if (String(v.stderr || v.stdout || "").includes("21.")) return process.env.JAVA_HOME;
   }
-  const gradlew =
-    process.platform === "win32"
-      ? path.join(androidDir, "gradlew.bat")
-      : path.join(androidDir, "gradlew");
-  if (!fs.existsSync(gradlew)) {
-    console.error("gradlew غير موجود — ثبّت Android Studio أو استخدم EAS: npm run mobile:apk:build");
-    process.exit(1);
+  if (process.platform === "win32") {
+    const ms = path.join(process.env["ProgramFiles"] || "C:\\Program Files", "Microsoft");
+    if (fs.existsSync(ms)) {
+      const dir = fs
+        .readdirSync(ms)
+        .filter(n => /^jdk-21/i.test(n))
+        .map(n => path.join(ms, n))
+        .find(p => fs.existsSync(path.join(p, "bin", "java.exe")));
+      if (dir) return dir;
+    }
   }
-  run(gradlew, ["assembleRelease"], androidDir);
-  const apk = findLocalApkArtifact();
-  if (!apk) {
-    console.error("لم يُعثر على APK بعد Gradle — راجع android/app/build/outputs/apk/");
-    process.exit(1);
-  }
-  const outDir = path.join(mobileDir, "dist-apk");
-  fs.mkdirSync(outDir, { recursive: true });
-  const dest = path.join(outDir, "retweet.apk");
-  fs.copyFileSync(apk, dest);
-  return dest;
+  return "";
 }
 
-console.log("\n══ Retweet — بناء APK (Android) ══\n");
+console.log("\n══ Reyweet — بناء APK (Capacitor / Android) ══\n");
 
-execSync("node scripts/sync-mobile-ios.mjs --vercel", { cwd: root, stdio: "inherit" });
-patchEasAndroid();
-
-const useEas = process.argv.includes("--eas") || !!process.env.EXPO_TOKEN?.trim();
-let builtApk = "";
-
-if (useEas) {
-  if (!process.env.EXPO_TOKEN?.trim()) {
-    console.error("❌ لبناء EAS عيّن EXPO_TOKEN من https://expo.dev");
-    process.exit(1);
-  }
-  run("npx", ["eas-cli", "whoami"]);
-  builtApk = buildWithEas();
+const jdk21 = resolveJdk21();
+if (jdk21) {
+  process.env.JAVA_HOME = jdk21;
+  const sep = process.platform === "win32" ? ";" : ":";
+  process.env.PATH = [path.join(jdk21, "bin"), process.env.PATH || ""].join(sep);
 } else {
+  console.warn("  ⚠ يُفضّل JDK 21 — Capacitor 7 يتطلب Java 21 للبناء");
+}
+
+if (!skipSdk) {
   try {
-    builtApk = buildWithGradle();
+    ensureAndroidSdk();
   } catch (e) {
-    console.error(e);
+    console.error("❌ Android SDK:", e?.message || e);
+    console.error("   ثبّت Android Studio أو عيّن ANDROID_HOME ثم أعد المحاولة.");
     process.exit(1);
+  }
+} else {
+  const sdk = resolveAndroidSdkRoot();
+  if (sdk) {
+    process.env.ANDROID_HOME = sdk;
+    process.env.ANDROID_SDK_ROOT = sdk;
+  } else if (!process.env.ANDROID_HOME?.trim()) {
+    console.warn("  ⚠ SKIP_ANDROID_SDK=1 لكن ANDROID_HOME غير معيّن");
   }
 }
 
-const dest = copyApkToDownloads(builtApk);
+const sdkForGradle = resolveAndroidSdkRoot();
+if (sdkForGradle && writeAndroidLocalProperties(sdkForGradle)) {
+  console.log(`  ✓ android/local.properties → ${sdkForGradle}`);
+}
+
+run(process.execPath, [path.join(root, "scripts", "prepare-capacitor-android.mjs")]);
+
+const androidDir = path.join(root, "android");
+const gradlew =
+  process.platform === "win32"
+    ? path.join(androidDir, "gradlew.bat")
+    : path.join(androidDir, "gradlew");
+
+if (!fs.existsSync(gradlew)) {
+  console.error("gradlew غير موجود — تأكد من npx cap add android");
+  process.exit(1);
+}
+
+function gradle(task) {
+  if (process.platform === "win32") {
+    run("cmd", ["/c", gradlew, task], androidDir);
+  } else {
+    run(gradlew, [task], androidDir);
+  }
+}
+
+console.log("\n→ Gradle assembleRelease…\n");
+try {
+  gradle("assembleRelease");
+} catch {
+  /* handled by exit in run */
+}
+
+let apk = findBuiltApk();
+if (!apk) {
+  console.log("\n→ محاولة assembleDebug…\n");
+  gradle("assembleDebug");
+  apk = findBuiltApk();
+}
+
+if (!apk) {
+  console.error("لم يُعثر على APK بعد Gradle");
+  process.exit(1);
+}
+
+const dest = copyApkToDownloads(apk);
+const mb = (fs.statSync(dest).size / (1024 * 1024)).toFixed(1);
 const ver = readAppVersion();
 writeAndroidVersionJson({
   version: ver.version,
   versionCode: ver.versionCode,
-  notes: "بناء APK من المشروع",
+  notes:
+    "Reyweet Android v1.0.2 — إصلاح البيانات القديمة، حفظ الرسائل، safe area والكيبورد. احذف النسخة القديمة ثم ثبّت هذا الملف.",
+  apkSizeMb: Number(mb),
 });
 
-console.log(`\n✓ APK جاهز: ${dest}`);
-console.log(`  بعد النشر: ${process.env.RETWEET_VERCEL_SITE_URL || "https://reyweet.vercel.app"}/downloads/retweet.apk\n`);
+console.log(`\n✓ APK جاهز: ${dest} (${mb} MB)`);
+console.log(
+  `  بعد النشر: ${process.env.RETWEET_VERCEL_SITE_URL || "https://reyweet.vercel.app"}/downloads/retweet.apk\n`,
+);

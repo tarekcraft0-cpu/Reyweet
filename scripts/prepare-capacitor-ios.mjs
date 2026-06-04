@@ -14,7 +14,7 @@ import {
   resolveMobileApiUrl,
   VERCEL_SITE_URL,
 } from "./lib/read-public-api-url.mjs";
-import { fixCapacitorBundledHtml } from "./lib/fix-capacitor-html.mjs";
+import { injectNativeShellIndex } from "./lib/inject-native-shell-index.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const webAppUrl = (
@@ -44,46 +44,6 @@ function removeIosPlatform() {
   }
 }
 
-const NATIVE_VIEWPORT_CRITICAL_STYLE = `<style id="retweet-native-viewport-critical">
-html,body,#root{width:100%!important;max-width:100%!important;margin:0!important;padding-left:0!important;padding-right:0!important;left:0!important;right:0!important;overflow-x:hidden!important;box-sizing:border-box!important;transform:none!important;}
-html[data-native-app="1"] [data-tab-panel],html.retweet-native-shell [data-tab-panel]{width:100%!important;max-width:100%!important;margin-left:0!important;margin-right:0!important;transform:translate3d(0,0,0)!important;left:0!important;right:0!important;}
-</style>`;
-
-function injectNativeShellIndex(indexPath) {
-  if (!fs.existsSync(indexPath)) return;
-  let html = fs.readFileSync(indexPath, "utf8");
-  if (!html.includes("retweet-native-viewport-critical")) {
-    html = html.replace("<head>", `<head>\n${NATIVE_VIEWPORT_CRITICAL_STYLE}`);
-  }
-  html = html.replace(/src="\/app\/native-no-select-bootstrap\.js"/g, 'src="./native-no-select-bootstrap.js"');
-  const bootstrap = `<script src="./native-no-select-bootstrap.js"></script>`;
-  if (!html.includes("native-no-select-bootstrap.js")) {
-    html = html.replace("</head>", `${bootstrap}\n</head>`);
-  }
-  const apiDebug =
-    process.env.CAPACITOR_API_DEBUG === "1" || process.env.NODE_ENV === "development";
-  const debugPart = apiDebug ? "window.__RETWEET_API_DEBUG__=true;" : "";
-  const tag = `<script>window.__RETWEET_NATIVE_SHELL__=true;window.__RETWEET_NO_SELECT_BOOT__=true;${debugPart}window.__RETWEET_API_URL__=${JSON.stringify(apiUrl)};document.documentElement.classList.add("retweet-native-shell");document.documentElement.setAttribute("data-native-app","1");if(document.body)document.body.setAttribute("data-native-app","1");window.dispatchEvent(new Event("retweet-api-config-ready"));</script>`;
-  html = html.replace(/<script>window\.__RETWEET[^<]*<\/script>\s*/gi, "");
-  html = html.replace(/<html([^>]*)>/i, (m, attrs) => {
-    if (/retweet-native-shell/i.test(attrs)) return m;
-    const cls = /class="([^"]*)"/i.exec(attrs);
-    if (cls) return `<html${attrs.replace(cls[0], `class="${cls[1]} retweet-native-shell"`)}>`;
-    return `<html${attrs} class="retweet-native-shell">`;
-  });
-  if (!html.includes("__RETWEET_NATIVE_SHELL__")) {
-    html = html.replace("</head>", `${tag}\n</head>`);
-  } else {
-    html = html.replace(
-      /<script>window\.__RETWEET_NATIVE_SHELL__[^<]*<\/script>/i,
-      tag,
-    );
-  }
-  fs.writeFileSync(indexPath, html, "utf8");
-  fixCapacitorBundledHtml(indexPath);
-  console.log(`  ✓ ${path.relative(root, indexPath)} (native → ${apiUrl})`);
-}
-
 console.log("\n══ Retweet iOS — Capacitor (نسخة الموقع) ══\n");
 const useRemoteWeb = process.env.CAPACITOR_REMOTE_WEB === "1";
 console.log(
@@ -109,7 +69,7 @@ run(
 );
 
 const spaDist = path.join(root, "spa-dist");
-injectNativeShellIndex(path.join(spaDist, "index.html"));
+injectNativeShellIndex(path.join(spaDist, "index.html"), apiUrl, root);
 
 const webAuth = {
   apiUrl,
@@ -144,7 +104,7 @@ if (fs.existsSync(spaDist)) {
     JSON.stringify(webAuth, null, 2) + "\n",
     "utf8",
   );
-  injectNativeShellIndex(path.join(distDir, "index.html"));
+  injectNativeShellIndex(path.join(distDir, "index.html"), apiUrl, root);
   console.log("  ✓ dist/ (from spa-dist + web-auth-config)");
 }
 
@@ -163,7 +123,7 @@ if (forceRegen) {
 }
 
 const iosPublic = path.join(root, "ios", "App", "App", "public");
-injectNativeShellIndex(path.join(iosPublic, "index.html"));
+injectNativeShellIndex(path.join(iosPublic, "index.html"), apiUrl, root);
 fs.writeFileSync(
   path.join(iosPublic, "web-auth-config.json"),
   JSON.stringify(webAuth, null, 2) + "\n",

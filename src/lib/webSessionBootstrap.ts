@@ -11,6 +11,7 @@ import { normalizePersistedAppState, readPersistedAppState } from "./store";
 import type { AppState } from "./types";
 
 import { runChatIsolationMigration } from "./chatIsolationMigration";
+import { consumeForceServerHydrate } from "./nativeAppMigrate";
 
 const STORAGE_KEY = "retweet_state_v2";
 
@@ -55,10 +56,13 @@ async function hydrateFromApiToken(): Promise<boolean> {
     byId.set(u.id, merged);
   }
 
+  const forceServer = consumeForceServerHydrate();
   const postById = new Map<string, import("./types").Post>();
   for (const p of remote.posts || []) postById.set(p.id, p);
-  for (const p of base.posts || []) {
-    if (!postById.has(p.id)) postById.set(p.id, p);
+  if (!forceServer) {
+    for (const p of base.posts || []) {
+      if (!postById.has(p.id)) postById.set(p.id, p);
+    }
   }
   const mergedPosts = [...postById.values()].sort(
     (a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0),
@@ -70,7 +74,11 @@ async function hydrateFromApiToken(): Promise<boolean> {
     currentUserId: activeId,
     users: [...byId.values()],
     posts: mergedPosts,
-    chats: remote.chats?.length ? remote.chats : base.chats ?? [],
+    chats: forceServer
+      ? (remote.chats ?? [])
+      : remote.chats?.length
+        ? remote.chats
+        : (base.chats ?? []),
   });
   const scoped = scopeAppStateToAccount(activeId, merged, {
     accountIds: snapshotAccountIdsForOwner(activeId),

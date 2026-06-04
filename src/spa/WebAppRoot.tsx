@@ -19,8 +19,10 @@ import {
   nativeNoSelectCaptureHandlers,
 } from "@/lib/nativeTextSelectionGuard";
 import { bootstrapPasswordResetFromUrl } from "@/lib/passwordResetUrl";
+import { migrateNativeAppOnLaunch } from "@/lib/nativeAppMigrate";
 
 bootstrapPasswordResetFromUrl();
+migrateNativeAppOnLaunch();
 
 /** غلاف /app — نسخة الويب الكاملة مرتبطة بـ Retweet API وقاعدة البيانات على القرص D */
 export function WebAppRoot() {
@@ -79,9 +81,10 @@ export function WebAppRoot() {
           setApiMissing(true);
           return;
         }
+        const bootTimeoutMs = isNativeCapacitorShell() ? 20_000 : 12_000;
         await Promise.race([
           bootstrapWebAppSession(),
-          new Promise<void>(resolve => window.setTimeout(resolve, 12_000)),
+          new Promise<void>(resolve => window.setTimeout(resolve, bootTimeoutMs)),
         ]);
       })
       .catch(err => {
@@ -103,9 +106,14 @@ export function WebAppRoot() {
           setReady(true);
           if (isNativeMobileApp()) {
             beginNativePostLoginQuietPeriod();
+            const layoutDelay =
+              typeof window !== "undefined" &&
+              /Android/i.test(navigator.userAgent || "")
+                ? 900
+                : 4500;
             window.setTimeout(() => {
               requestAnimationFrame(() => initNativeViewportLayout());
-            }, 4500);
+            }, layoutDelay);
           }
           logAuthRoute("webapp-root-ready", {
             bootUserId: readPersistedAppState().currentUserId,

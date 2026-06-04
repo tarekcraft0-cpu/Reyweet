@@ -93,13 +93,15 @@ export function readChatKeyboardSnapshot(): ChatKeyboardSnapshot {
   /** فقط عندما body تقلص فعلياً — لا نعتمد على class retweet-kb-body-resize (resize:none على IPA) */
   const naturalResize = bodyShrunk;
 
+  /** ارتفاع كيبورد فعلي — لا نفتح حالة الكيبورد من body shrink وحده (يبقى بعد الإغلاق على iOS) */
+  const keyboardVisible = kbHeight > 8;
+
   /** مع resize:body يتقلص body — لا نضاعف inset في المتغيرات */
   let keyboardInset = naturalResize ? 0 : kbHeight;
   if (!naturalResize && keyboardInset < 8 && nativeKeyboardPx > 0) {
     keyboardInset = nativeKeyboardPx;
   }
-  const kbOpenSignal = kbHeight > 8 || bodyShrunk;
-  const open = naturalResize ? kbOpenSignal : keyboardInset > 8;
+  const open = keyboardVisible;
   return {
     keyboardInset,
     vvHeight,
@@ -114,6 +116,20 @@ function dispatchKeyboardSync() {
   } catch {
     /* ignore */
   }
+}
+
+/** بعد إخفاء الكيبورد — body قد يتأخر في التوسع (iOS + resize:none) */
+function flushComposerAfterKeyboardHide(): void {
+  if (typeof window === "undefined") return;
+  const run = () => {
+    applyComposerKeyboardLift();
+    applyChatKeyboardCss();
+    dispatchKeyboardSync();
+  };
+  run();
+  requestAnimationFrame(run);
+  window.setTimeout(run, 80);
+  window.setTimeout(run, 280);
 }
 
 function applyChatKeyboardCss() {
@@ -137,8 +153,11 @@ function applyChatKeyboardCss() {
 }
 
 function onViewportChange() {
+  const wasOpen = document.documentElement.classList.contains("chat-keyboard-open");
   applyChatKeyboardCss();
   dispatchKeyboardSync();
+  const nowOpen = document.documentElement.classList.contains("chat-keyboard-open");
+  if (wasOpen && !nowOpen) flushComposerAfterKeyboardHide();
 }
 
 /** يُستدعى مرة عند فتح التطبيق الأصلي — يفعّل resize:body طوال الجلسة */
@@ -172,9 +191,14 @@ async function ensureNativeKeyboardBridge() {
     };
     const onHide = () => {
       nativeKeyboardPx = 0;
-      applyComposerKeyboardLift();
-      applyChatKeyboardCss();
-      dispatchKeyboardSync();
+      if (typeof document !== "undefined") {
+        const root = document.documentElement;
+        root.style.setProperty("--retweet-keyboard-inset", "0px");
+        root.style.setProperty("--vv-keyboard-inset", "0px");
+        root.style.setProperty("--retweet-composer-kb-lift", "0px");
+        root.style.setProperty("--chat-kb-offset", "0px");
+      }
+      flushComposerAfterKeyboardHide();
     };
 
     const handles = await Promise.all([
