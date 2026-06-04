@@ -3,6 +3,8 @@
   -ms-overflow-style: none;
   scrollbar-width: none;
   scrollbar-gutter: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
 }
 
 .tab-panel-scroll::-webkit-scrollbar {
@@ -495,7 +497,19 @@ html.retweet-camera-open body {
  * iOS/Capacitor — دمج env(safe-area-*) مع قيم UIKit (--retweet-safe-* من Swift).
  * يمنع أزرار/هيدر خارج حدود الشاشة (نوتش / Home indicator).
  */
+@keyframes retweet-ios-pull-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.retweet-ios-pull-spinner {
+  animation: retweet-ios-pull-spin 0.8s linear infinite;
+}
+
 html.retweet-native-shell {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
   --sat: max(env(safe-area-inset-top, 0px), var(--retweet-safe-top, 0px));
   --sab: max(env(safe-area-inset-bottom, 0px), var(--retweet-safe-bottom, 0px));
   --sal: max(env(safe-area-inset-left, 0px), var(--retweet-safe-left, 0px));

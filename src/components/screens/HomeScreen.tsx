@@ -2,6 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, mem
 import { isNativeCapacitorShell } from "@/lib/apiUrlPolicy";
 import { isNativeMobileApp, isNativePostLoginQuietPeriod } from "@/lib/nativeStability";
 import { VirtualizedHomeFeed } from "../home/VirtualizedHomeFeed";
+import { HomePullToRefreshIndicator } from "../home/HomePullToRefreshIndicator";
+import { useHomePullToRefresh } from "@/hooks/useHomePullToRefresh";
 import { useTabPanelScrollRef } from "@/lib/tabPanelScrollContext";
 import { useIsTabActive } from "@/lib/tabActiveContext";
 import {
@@ -60,7 +62,7 @@ export const HomeScreen = memo(function HomeScreen({
   const { homeFeedPosts: feed, feedHasMore } = useHomeFeed();
   const isHomeTabActive = useIsTabActive("home");
   const nativeShell = isNativeMobileApp();
-  const [feedRefreshing, setFeedRefreshing] = useState(false);
+  const [refreshDoneHint, setRefreshDoneHint] = useState(false);
   useScreenPerf("HomeScreen", { active: isHomeTabActive });
   const t = useT();
   const [shareTarget, setShareTarget] = useState<Post | null>(null);
@@ -72,8 +74,6 @@ export const HomeScreen = memo(function HomeScreen({
   const [feedTick, setFeedTick] = useState(0);
   const headerRef = useRef<HTMLDivElement>(null);
   const loadMoreBusyRef = useRef(false);
-  const [pullHint, setPullHint] = useState(false);
-  const touchRef = useRef({ y0: 0, active: false });
   const closeStory = useCallback(() => setStoryOpen(null), []);
   const openProfileFromStory = useCallback((id: string) => {
     try { sessionStorage.setItem("retweet_return_story_user_id", storyOpen?.userId || ""); } catch { /* ignore */ }
@@ -159,40 +159,38 @@ export const HomeScreen = memo(function HomeScreen({
     };
   }, []);
 
-  const refreshFeedBg = useCallback(() => {
-    setFeedRefreshing(true);
-    void refreshFeedFromServer().finally(() => setFeedRefreshing(false));
+  const refreshFeedBg = useCallback(async () => {
+    await refreshFeedFromServer();
+    setFeedTick(t => t + 1);
   }, [refreshFeedFromServer]);
 
+  const { pullPx, refreshing: pullRefreshing, runRefresh } = useHomePullToRefresh(
+    tabScrollRef,
+    refreshFeedBg,
+    isHomeTabActive && !isGuest,
+  );
+
+  const onPullRefreshDone = useCallback(() => {
+    setRefreshDoneHint(true);
+    tabScrollRef?.current?.scrollTo({ top: 0, behavior: "smooth" });
+    if (pullHintTimerRef.current != null) window.clearTimeout(pullHintTimerRef.current);
+    pullHintTimerRef.current = window.setTimeout(() => {
+      pullHintTimerRef.current = null;
+      setRefreshDoneHint(false);
+    }, 1600);
+  }, [tabScrollRef]);
+
+  const pullRefreshingRef = useRef(false);
   useEffect(() => {
-    const scrollTop = () => tabScrollRef?.current?.scrollTop ?? 0;
-    const onStart = (e: TouchEvent) => {
-      touchRef.current = { y0: e.touches[0].clientY, active: scrollTop() <= 2 };
-    };
-    const onEnd = (e: TouchEvent) => {
-      if (!touchRef.current.active) return;
-      touchRef.current.active = false;
-      const y = e.changedTouches[0]?.clientY ?? touchRef.current.y0;
-      const dy = y - touchRef.current.y0;
-      if (scrollTop() <= 2 && dy > 72) {
-        setFeedTick(t => t + 1);
-        setPullHint(true);
-        tabScrollRef?.current?.scrollTo({ top: 0, behavior: "smooth" });
-        void refreshFeedBg();
-        if (pullHintTimerRef.current != null) window.clearTimeout(pullHintTimerRef.current);
-        pullHintTimerRef.current = window.setTimeout(() => {
-          pullHintTimerRef.current = null;
-          setPullHint(false);
-        }, 1400);
-      }
-    };
-    window.addEventListener("touchstart", onStart, { passive: true });
-    window.addEventListener("touchend", onEnd, { passive: true });
-    return () => {
-      window.removeEventListener("touchstart", onStart);
-      window.removeEventListener("touchend", onEnd);
-    };
-  }, [tabScrollRef, refreshFeedBg]);
+    if (pullRefreshing && !pullRefreshingRef.current) {
+      pullRefreshingRef.current = true;
+      return;
+    }
+    if (!pullRefreshing && pullRefreshingRef.current) {
+      pullRefreshingRef.current = false;
+      onPullRefreshDone();
+    }
+  }, [pullRefreshing, onPullRefreshDone]);
 
   const feedTickRef = useRef(feedTick);
   feedTickRef.current = feedTick;
@@ -250,13 +248,13 @@ export const HomeScreen = memo(function HomeScreen({
   useEffect(() => {
     if (!isHomeTabActive || isGuest) return;
     const now = Date.now();
-    const minGap = nativeShell ? 2000 : 1500;
+    const minGap = nativeShell ? 900 : 1200;
     if (now - lastHomeFeedPullRef.current < minGap && feed.length > 0) return;
     lastHomeFeedPullRef.current = now;
-    const delayMs = nativeShell && isNativePostLoginQuietPeriod() ? 400 : 0;
-    const t = window.setTimeout(() => refreshFeedBg(), delayMs);
+    const delayMs = nativeShell && isNativePostLoginQuietPeriod() ? 250 : 0;
+    const t = window.setTimeout(() => void runRefresh(), delayMs);
     return () => window.clearTimeout(t);
-  }, [isHomeTabActive, isGuest, refreshFeedBg, nativeShell]);
+  }, [isHomeTabActive, isGuest, runRefresh, nativeShell]);
 
   useEffect(() => {
     if (!isHomeTabActive || isGuest) return;
@@ -271,13 +269,13 @@ export const HomeScreen = memo(function HomeScreen({
   useEffect(() => {
     if (!isHomeTabActive || isGuest) return;
     const poll = window.setInterval(() => {
-      if (document.visibilityState === "visible") refreshFeedBg();
-    }, 60_000);
+      if (document.visibilityState === "visible") void runRefresh();
+    }, 22_000);
     let visTimer = 0;
     const onVis = () => {
       if (document.visibilityState !== "visible") return;
       if (visTimer) window.clearTimeout(visTimer);
-      visTimer = window.setTimeout(() => refreshFeedBg(), 800);
+      visTimer = window.setTimeout(() => void runRefresh(), 400);
     };
     document.addEventListener("visibilitychange", onVis);
     return () => {
@@ -285,7 +283,7 @@ export const HomeScreen = memo(function HomeScreen({
       if (visTimer) window.clearTimeout(visTimer);
       document.removeEventListener("visibilitychange", onVis);
     };
-  }, [isHomeTabActive, isGuest, refreshFeedBg]);
+  }, [isHomeTabActive, isGuest, runRefresh]);
 
   useEffect(() => {
     if (!nativeShell || !isHomeTabActive || isGuest) return;
@@ -301,7 +299,12 @@ export const HomeScreen = memo(function HomeScreen({
   }, [nativeShell, isHomeTabActive, isGuest, tabScrollRef, feedHasMore, handleLoadMore]);
 
   return (
-    <div className="relative flex min-h-0 flex-1 flex-col bg-background">
+    <div
+      className={
+        "relative flex min-h-0 flex-1 flex-col bg-background " +
+        (nativeShell ? "w-full max-w-none" : "")
+      }
+    >
     <div
       className={
         "flex min-h-full flex-col bg-background pb-2 " +
@@ -310,9 +313,10 @@ export const HomeScreen = memo(function HomeScreen({
       aria-hidden={openPost ? true : undefined}
     >
       <div ref={headerRef} className="shrink-0">
-      {pullHint && (
-        <div className="mx-3 mt-1 shrink-0 rounded-full bg-primary/90 text-primary-foreground text-center text-xs py-2 px-3 shadow-md">
-          تم التحديث — أحدث المنشورات والستوريات
+      <HomePullToRefreshIndicator pullPx={pullPx} refreshing={pullRefreshing} />
+      {refreshDoneHint && !pullRefreshing && (
+        <div className="mx-3 mt-0.5 shrink-0 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 text-center text-xs py-1.5 px-3 font-medium">
+          تم التحديث — أحدث التغريدات
         </div>
       )}
       <StoriesRow
@@ -345,9 +349,6 @@ export const HomeScreen = memo(function HomeScreen({
       </div>
 
       <section aria-label="الخلاصة" className="relative z-0 flex flex-col bg-background">
-        {feedRefreshing && feed.length > 0 && (
-          <p className="mx-3 mb-1 text-center text-[10px] text-muted-foreground/80">تحديث…</p>
-        )}
         <VirtualizedHomeFeed
           posts={feed}
           scrollRef={tabScrollRef}
@@ -356,11 +357,14 @@ export const HomeScreen = memo(function HomeScreen({
           onLoadMore={handleLoadMore}
           feedActions={feedActions}
         />
-        {feed.length === 0 && !feedRefreshing && (
+        {feed.length === 0 && !pullRefreshing && (
           <p className="text-center text-muted-foreground py-12">{t("noPosts")}</p>
         )}
-        {feed.length === 0 && feedRefreshing && (
-          <p className="py-10 text-center text-sm text-muted-foreground">جاري تحميل الخلاصة…</p>
+        {feed.length === 0 && pullRefreshing && (
+          <div className="flex flex-col items-center gap-3 py-14">
+            <div className="retweet-ios-pull-spinner h-8 w-8 rounded-full border-[2.5px] border-muted-foreground/20 border-t-primary" />
+            <p className="text-sm text-muted-foreground">جاري تحميل الخلاصة…</p>
+          </div>
         )}
       </section>
 
@@ -391,7 +395,10 @@ export const HomeScreen = memo(function HomeScreen({
           return (
         <div className="fixed inset-0 z-[60] bg-black/50 flex items-end" onClick={() => setCommentsSheetPostId(null)}>
           <div
-            className="mx-auto flex w-full max-w-md flex-col rounded-t-3xl border-t border-border bg-background text-foreground shadow-2xl"
+            className={
+              "flex w-full flex-col rounded-t-3xl border-t border-border bg-background text-foreground shadow-2xl " +
+              (nativeShell ? "" : "mx-auto max-w-md")
+            }
             style={{ height: "min(72vh, 640px)", maxHeight: "72vh" }}
             onClick={e => e.stopPropagation()}
           >

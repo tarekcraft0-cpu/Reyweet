@@ -94,6 +94,14 @@ function mergePostsServerAuthoritative(localPosts: Post[], remotePosts: Post[]):
 /** آخر فيد من `/v1/feed/posts` — ترتيب الرئيسية يتبع الخادم وليس الكاش المحلي القديم */
 const homeFeedServerSlice: { posts: Post[] } = { posts: [] };
 
+function prependLivePostToHomeFeedSlice(post: Post): void {
+  if (!post?.id) return;
+  const rest = homeFeedServerSlice.posts.filter(p => p.id !== post.id);
+  homeFeedServerSlice.posts = [post, ...rest].sort(
+    (a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0),
+  );
+}
+
 function mergeHomeFeedIntoState(
   state: AppState,
   feed: { posts: Post[]; users: User[] },
@@ -5871,6 +5879,12 @@ export function AppProvider({
     }
     const me = snap.users.find(u => u.id === meId);
     if (!me) return;
+    const newest = (snap.posts ?? []).reduce<Post | null>((best, p) => {
+      if (!p?.id) return best;
+      if (!best || (p.createdAt ?? 0) > (best.createdAt ?? 0)) return p;
+      return best;
+    }, null);
+    if (newest) prependLivePostToHomeFeedSlice(newest);
     syncHomeFeedPostsFromState(snap, setHomeFeedPosts);
   }, []);
 
@@ -6334,6 +6348,7 @@ export function AppProvider({
         const payload = data as { post?: Post };
         const patch = payload?.post;
         if (!patch?.id) return;
+        prependLivePostToHomeFeedSlice(patch);
         setStateRaw(s => {
           if (!s.currentUserId || isGuestUserId(s.currentUserId)) return s;
           const i = s.posts.findIndex(p => p.id === patch.id);
@@ -6361,7 +6376,8 @@ export function AppProvider({
           };
         });
         queueMicrotask(() => {
-          bumpHomeFeedNow();
+          const snap = stateRef.current;
+          syncHomeFeedPostsFromState(snap, setHomeFeedPosts);
           void import("./feedVisibility").then(({ notifyNewFeedPost }) => notifyNewFeedPost(patch.id));
         });
         void (async () => {
@@ -6583,10 +6599,10 @@ export function AppProvider({
     if (!apiBackendEnabled() || !getApiToken() || isGuestUserId(state.currentUserId)) return;
     const id = window.setInterval(() => {
       if (document.visibilityState !== "visible") return;
-      scheduleFeedPull();
-    }, 45_000);
+      void refreshFeedFromServer();
+    }, 18_000);
     return () => window.clearInterval(id);
-  }, [state.currentUserId, scheduleFeedPull]);
+  }, [state.currentUserId, refreshFeedFromServer]);
 
   useEffect(() => {
     return () => {
