@@ -172,6 +172,7 @@ export const HomeScreen = memo(function HomeScreen({
       if (scrollTop() <= 2 && dy > 72) {
         setFeedTick(t => t + 1);
         setPullHint(true);
+        tabScrollRef?.current?.scrollTo({ top: 0, behavior: "smooth" });
         void refreshFeedFromServer();
         if (pullHintTimerRef.current != null) window.clearTimeout(pullHintTimerRef.current);
         pullHintTimerRef.current = window.setTimeout(() => {

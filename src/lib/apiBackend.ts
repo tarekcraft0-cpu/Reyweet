@@ -713,6 +713,11 @@ export type FeedPageResult =
     }
   | { ok: false; error: string };
 
+/** يفرّغ كاش خلاصة الرئيسية — استدعِه قبل سحب فيد جديد */
+export function invalidateHomeFeedCache(): void {
+  apiCacheInvalidate("feed:home");
+}
+
 export async function apiFetchHomeFeed(
   token: string,
   opts?: { limit?: number; before?: number; force?: boolean },
@@ -721,6 +726,7 @@ export async function apiFetchHomeFeed(
   const qs = new URLSearchParams();
   qs.set("limit", String(limit));
   if (opts?.before) qs.set("before", String(opts.before));
+  if (opts?.force) qs.set("_", String(Date.now()));
   const path = `/v1/feed/posts?${qs}`;
   const cacheKey = opts?.before ? "" : `feed:home:${limit}`;
   if (cacheKey && !opts?.force) {
@@ -737,6 +743,9 @@ export async function apiFetchHomeFeed(
   const res = await apiFetch(path, {
     method: "GET",
     token,
+    headers: opts?.force
+      ? { "Cache-Control": "no-cache", Pragma: "no-cache" }
+      : undefined,
   });
   const data = (await res.json().catch(() => ({}))) as {
     posts?: AppState["posts"];

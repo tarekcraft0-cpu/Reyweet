@@ -104,6 +104,21 @@ function mergeHomeFeedIntoState(
   return { ...state, posts, users: [...usersById.values()] };
 }
 
+/** يحدّث قائمة الرئيسية فوراً بعد دمج فيد الخادم (بدون انتظار idle debounce) */
+function syncHomeFeedPostsFromState(
+  next: AppState,
+  setHomeFeedPosts: (posts: Post[]) => void,
+): void {
+  const meId = next.currentUserId;
+  if (!meId || isGuestUserId(meId)) {
+    setHomeFeedPosts([]);
+    return;
+  }
+  const me = next.users.find(u => u.id === meId);
+  if (!me) return;
+  setHomeFeedPosts(computeHomeFeedPostIds(next, meId, me));
+}
+
 /** دمج صفحة إضافية من الفيد (pagination) دون استبدال المنشورات الحالية */
 function mergeHomeFeedAppendIntoState(
   state: AppState,
@@ -234,6 +249,7 @@ import {
   ensureApiRuntimeConfig,
   pullRemoteAppState,
   apiFetchHomeFeed,
+  invalidateHomeFeedCache,
   apiFetchUserPosts,
   pushRemoteAppState,
   apiPatchProfile,
@@ -2433,7 +2449,16 @@ export function AppProvider({
     if (!meId || isGuestUserId(meId)) return "";
     const me = state.users.find(u => u.id === meId);
     if (!me) return "";
-    return `${state.posts?.length ?? 0}:${state.users?.length ?? 0}:${me.id}:${(me.following ?? []).length}:${state.posts?.[0]?.id ?? ""}:${state.posts?.[0]?.createdAt ?? 0}`;
+    let newestId = "";
+    let newestAt = 0;
+    for (const p of state.posts ?? []) {
+      const t = p.createdAt ?? 0;
+      if (t >= newestAt) {
+        newestAt = t;
+        newestId = p.id;
+      }
+    }
+    return `${state.posts?.length ?? 0}:${state.users?.length ?? 0}:${me.id}:${(me.following ?? []).length}:${newestId}:${newestAt}`;
   }, [state.posts, state.users, state.currentUserId]);
 
   /** تفاعلات like/comment — توقيع خفيف بدل مرجع posts الكامل (يمنع حلقة setState على iOS) */
@@ -5668,14 +5693,19 @@ export function AppProvider({
         perfMark("refreshFromServer-merge-end");
         void refreshUserDirectory();
         const skipFeed =
-          Date.now() - lastFeedFetchAtRef.current < 30_000;
+          !urgent && Date.now() - lastFeedFetchAtRef.current < 12_000;
         if (!skipFeed) {
           void (async () => {
-            const feed = await apiFetchHomeFeed(token);
+            invalidateHomeFeedCache();
+            const feed = await apiFetchHomeFeed(token, { limit: 40, force: true });
             if (feed.ok) {
               lastFeedFetchAtRef.current = Date.now();
               startTransition(() => {
-                setStateRaw(s => mergeHomeFeedIntoState(s, feed));
+                setStateRaw(s => {
+                  const next = mergeHomeFeedIntoState(s, feed);
+                  syncHomeFeedPostsFromState(next, setHomeFeedPosts);
+                  return next;
+                });
               });
             }
           })();
@@ -5705,12 +5735,17 @@ export function AppProvider({
   const refreshFeedFromServer = useCallback(async () => {
     if (!apiBackendEnabled() || !getApiToken() || isGuestUserId(stateRef.current.currentUserId)) return;
     const token = getApiToken()!;
-    const feed = await apiFetchHomeFeed(token, { limit: 30 });
+    invalidateHomeFeedCache();
+    const feed = await apiFetchHomeFeed(token, { limit: 40, force: true });
     if (!feed.ok) return;
     lastFeedFetchAtRef.current = Date.now();
     setFeedHasMore(!!feed.hasMore);
     startTransition(() => {
-      setStateRaw(s => mergeHomeFeedIntoState(s, feed));
+      setStateRaw(s => {
+        const next = mergeHomeFeedIntoState(s, feed);
+        syncHomeFeedPostsFromState(next, setHomeFeedPosts);
+        return next;
+      });
     });
   }, [setStateRaw]);
 
@@ -5723,7 +5758,7 @@ export function AppProvider({
     feedLoadMoreBusyRef.current = true;
     try {
       const token = getApiToken()!;
-      const feed = await apiFetchHomeFeed(token, { limit: 30, before: oldest });
+      const feed = await apiFetchHomeFeed(token, { limit: 30, before: oldest, force: true });
       if (!feed.ok) return;
       setFeedHasMore(!!feed.hasMore);
       if (!feed.posts.length) {
@@ -5731,7 +5766,11 @@ export function AppProvider({
         return;
       }
       startTransition(() => {
-        setStateRaw(s => mergeHomeFeedAppendIntoState(s, feed));
+        setStateRaw(s => {
+          const next = mergeHomeFeedAppendIntoState(s, feed);
+          syncHomeFeedPostsFromState(next, setHomeFeedPosts);
+          return next;
+        });
       });
     } finally {
       feedLoadMoreBusyRef.current = false;
