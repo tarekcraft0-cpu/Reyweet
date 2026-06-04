@@ -408,16 +408,22 @@ html.retweet-native-shell select {
   touch-action: auto;
 }
 
-/** مع رفع الشريط بـ transform — مساحة تمرير إضافية لآخر رسالة فوق الشريط */
+/** مع الكيبورد: منطقة الرسائل + الشريط داخل visualViewport (لا تختفي تحت الكيبورد) */
+html.chat-keyboard-open [data-chat-room] .chat-bottom-lift {
+  max-height: calc(
+    var(--vv-height, 100dvh) - var(--chat-header-h, 52px) - var(--vv-offset-top, 0px)
+  );
+}
+
 html.chat-keyboard-open [data-chat-room] .chat-messages-inner {
-  padding-bottom: var(--retweet-composer-kb-lift, 0px);
+  padding-bottom: max(var(--retweet-composer-kb-lift, 0px), var(--chat-kb-offset, 0px));
 }
 
 /**
- * iOS + resize:body — الكيبورد يتحرك قبل أن يتقلص body.
- * رفع فوري يُلغى تلقائياً عندما يلحق body (انظر chatKeyboardInsets.ts).
+ * رفع شريط الكتابة فوق الكيبورد (ويب + تطبيق).
+ * مع resize:body يُلغى التكرار عبر --retweet-composer-kb-lift (انظر chatKeyboardInsets.ts).
  */
-html.retweet-native-shell .chat-composer-dock {
+html.chat-keyboard-open .chat-composer-dock {
   transform: translate3d(0, calc(-1 * var(--retweet-composer-kb-lift, 0px)), 0);
   transition: none !important;
 }

@@ -4949,23 +4949,6 @@ function ChatRoom({
     };
   }, [syncComposerDockHeight, scheduleScrollFromResize]);
 
-  const kbOpenPrevRef = useRef(false);
-  const kbWasOpenForCloseRef = useRef(false);
-  useLayoutEffect(() => {
-    if (!kbSnap.open) return;
-    syncComposerDockHeight();
-    scrollMessagesToBottom({ instant: true });
-  }, [kbSnap.open, kbSnap.keyboardInset, syncComposerDockHeight, scrollMessagesToBottom]);
-
-  useEffect(() => {
-    const wasOpen = kbOpenPrevRef.current;
-    kbOpenPrevRef.current = kbSnap.open;
-    if (!kbSnap.open) return;
-    if (!wasOpen) stickToBottomRef.current = true;
-    scheduleScrollToBottom({ afterMs: 80 });
-    scheduleScrollToBottom({ afterMs: 280 });
-  }, [kbSnap.open, scheduleScrollToBottom]);
-
   const reconcileScrollAfterKeyboard = useCallback(() => {
     syncComposerDockHeight();
     const el = messagesScrollRef.current;
@@ -4985,6 +4968,31 @@ function ChatRoom({
     }
   }, [syncComposerDockHeight]);
 
+  const kbOpenPrevRef = useRef(false);
+  const kbWasOpenForCloseRef = useRef(false);
+  useLayoutEffect(() => {
+    if (!kbSnap.open) return;
+    syncComposerDockHeight();
+    reconcileScrollAfterKeyboard();
+    scrollMessagesToBottom({ instant: true });
+  }, [
+    kbSnap.open,
+    kbSnap.keyboardInset,
+    kbSnap.vvHeight,
+    syncComposerDockHeight,
+    scrollMessagesToBottom,
+    reconcileScrollAfterKeyboard,
+  ]);
+
+  useEffect(() => {
+    const wasOpen = kbOpenPrevRef.current;
+    kbOpenPrevRef.current = kbSnap.open;
+    if (!kbSnap.open) return;
+    if (!wasOpen) stickToBottomRef.current = true;
+    scheduleScrollToBottom({ afterMs: 80 });
+    scheduleScrollToBottom({ afterMs: 280 });
+  }, [kbSnap.open, scheduleScrollToBottom]);
+
   useLayoutEffect(() => {
     const wasOpen = kbWasOpenForCloseRef.current;
     kbWasOpenForCloseRef.current = kbSnap.open;
@@ -5003,12 +5011,13 @@ function ChatRoom({
 
   useEffect(() => {
     const onKbLayout = () => {
-      if (!document.documentElement.classList.contains("chat-keyboard-open")) return;
       stickToBottomRef.current = true;
       syncComposerDockHeight();
+      reconcileScrollAfterKeyboard();
       scheduleScrollToBottom({ instant: true });
       scheduleScrollToBottom({ afterMs: 48 });
       scheduleScrollToBottom({ afterMs: 160 });
+      scheduleScrollToBottom({ afterMs: 320 });
     };
     window.addEventListener("retweet-keyboard-layout-change", onKbLayout, { passive: true });
     window.addEventListener("retweet-chat-keyboard-sync", onKbLayout, { passive: true });
@@ -5016,7 +5025,7 @@ function ChatRoom({
       window.removeEventListener("retweet-keyboard-layout-change", onKbLayout);
       window.removeEventListener("retweet-chat-keyboard-sync", onKbLayout);
     };
-  }, [syncComposerDockHeight, scheduleScrollToBottom]);
+  }, [syncComposerDockHeight, scheduleScrollToBottom, reconcileScrollAfterKeyboard]);
   const scrollAnchorRef = useRef({ chatId: "", msgCount: 0 });
   const cameraCaptureRef = useRef<HTMLInputElement>(null);
   const galleryMediaInputRef = useRef<HTMLInputElement>(null);

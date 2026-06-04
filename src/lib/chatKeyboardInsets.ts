@@ -42,23 +42,36 @@ function readBodyShrinkPx(): number {
  * iOS: يرفع شريط الكتابة فور keyboardWillShow قبل أن يلحق resize:body.
  * extraLift = ارتفاع الكيبورد − ما تقلصه body (→ 0 عند الالتقاء).
  */
+function readKeyboardHeightPx(): number {
+  if (typeof window === "undefined") return 0;
+  const vv = window.visualViewport;
+  const layoutH = window.innerHeight;
+  const vvHeight = vv ? Math.round(vv.height) : layoutH;
+  const vvOffsetTop = vv ? Math.round(vv.offsetTop) : 0;
+  const vvInset = computeVisualViewportKeyboardInset(layoutH, vvHeight, vvOffsetTop);
+  return Math.max(vvInset, nativeKeyboardPx, readNativeKeyboardInsetFromCss());
+}
+
 function applyComposerKeyboardLift(): void {
   if (typeof document === "undefined") return;
   const root = document.documentElement;
-  if (!root.classList.contains("retweet-kb-body-resize")) {
-    root.style.setProperty("--retweet-composer-kb-lift", "0px");
-    return;
-  }
-  const kb = Math.max(nativeKeyboardPx, readNativeKeyboardInsetFromCss());
+  const kb = readKeyboardHeightPx();
   if (kb < 8) {
     root.style.setProperty("--retweet-composer-kb-lift", "0px");
+    root.style.setProperty("--chat-kb-offset", "0px");
     return;
   }
-  const extraLift = Math.max(0, Math.round(kb - readBodyShrinkPx()));
-  root.style.setProperty(
-    "--retweet-composer-kb-lift",
-    extraLift < 3 ? "0px" : `${extraLift}px`,
-  );
+  root.style.setProperty("--chat-kb-offset", `${kb}px`);
+  if (root.classList.contains("retweet-kb-body-resize")) {
+    const extraLift = Math.max(0, Math.round(kb - readBodyShrinkPx()));
+    root.style.setProperty(
+      "--retweet-composer-kb-lift",
+      extraLift < 3 ? "0px" : `${extraLift}px`,
+    );
+    return;
+  }
+  /** ويب / native بدون resize:body — ارفع الشريط بكامل ارتفاع الكيبورد */
+  root.style.setProperty("--retweet-composer-kb-lift", `${kb}px`);
 }
 
 export function readChatKeyboardSnapshot(): ChatKeyboardSnapshot {
@@ -71,6 +84,7 @@ export function readChatKeyboardSnapshot(): ChatKeyboardSnapshot {
   const vvOffsetTop = vv ? Math.round(vv.offsetTop) : 0;
   const vvInset = computeVisualViewportKeyboardInset(layoutH, vvHeight, vvOffsetTop);
   const nativeCssInset = readNativeKeyboardInsetFromCss();
+  const kbHeight = Math.max(vvInset, nativeKeyboardPx, nativeCssInset);
 
   const bodyShrunk =
     typeof document !== "undefined" &&
@@ -80,11 +94,11 @@ export function readChatKeyboardSnapshot(): ChatKeyboardSnapshot {
   const naturalResize = bodyShrunk;
 
   /** مع resize:body يتقلص body — لا نضاعف inset في المتغيرات */
-  let keyboardInset = naturalResize ? 0 : Math.max(vvInset, nativeKeyboardPx, nativeCssInset);
+  let keyboardInset = naturalResize ? 0 : kbHeight;
   if (!naturalResize && keyboardInset < 8 && nativeKeyboardPx > 0) {
     keyboardInset = nativeKeyboardPx;
   }
-  const kbOpenSignal = vvInset > 8 || nativeKeyboardPx > 8 || nativeCssInset > 8 || bodyShrunk;
+  const kbOpenSignal = kbHeight > 8 || bodyShrunk;
   const open = naturalResize ? kbOpenSignal : keyboardInset > 8;
   return {
     keyboardInset,
@@ -105,17 +119,18 @@ function dispatchKeyboardSync() {
 function applyChatKeyboardCss() {
   const snap = readChatKeyboardSnapshot();
   const root = document.documentElement;
-  const kbPx = Math.max(snap.keyboardInset, nativeKeyboardPx, readNativeKeyboardInsetFromCss());
+  const kbPx = Math.max(snap.keyboardInset, readKeyboardHeightPx());
   root.style.setProperty("--vv-height", `${snap.vvHeight}px`);
   root.style.setProperty("--vv-offset-top", `${snap.vvOffsetTop}px`);
   root.style.setProperty("--vv-keyboard-inset", `${kbPx}px`);
+  root.style.setProperty("--retweet-keyboard-inset", `${kbPx}px`);
   root.style.setProperty("--chat-sab-effective", snap.open ? "0px" : "var(--sab)");
   root.classList.toggle("chat-keyboard-open", snap.open);
   applyComposerKeyboardLift();
   root.style.setProperty(
     "--chat-scroll-padding-bottom",
     snap.open
-      ? "max(8px, calc(var(--chat-composer-h, 56px) + var(--retweet-composer-kb-lift, 0px)))"
+      ? "max(12px, calc(var(--chat-composer-h, 56px) + var(--chat-kb-offset, 0px)))"
       : "max(4px, var(--chat-composer-h, 56px))",
   );
   return snap;
@@ -220,6 +235,7 @@ export function mountChatKeyboardEngine(): () => void {
     root.style.removeProperty("--chat-sab-effective");
     root.style.removeProperty("--chat-scroll-padding-bottom");
     root.style.removeProperty("--retweet-composer-kb-lift");
+    root.style.removeProperty("--chat-kb-offset");
     root.classList.remove("chat-keyboard-open");
     applyChatKeyboardCss();
   };
