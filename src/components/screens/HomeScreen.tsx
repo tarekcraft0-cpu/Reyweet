@@ -255,7 +255,7 @@ export const HomeScreen = memo(function HomeScreen({
 
   useEffect(() => {
     if (!isHomeTabActive || isGuest) return;
-    const delayMs = nativeShell ? (isNativePostLoginQuietPeriod() ? 3200 : 1200) : 0;
+    const delayMs = nativeShell ? (isNativePostLoginQuietPeriod() ? 2400 : 600) : 0;
     const t = window.setTimeout(() => void refreshFeedFromServer(), delayMs);
     return () => window.clearTimeout(t);
   }, [isHomeTabActive, isGuest, refreshFeedFromServer, nativeShell]);

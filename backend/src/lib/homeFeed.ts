@@ -2,7 +2,6 @@ import type { AppState, Post, User } from "../../../src/lib/types.js";
 import { getSnapshot } from "../db/engine.js";
 import { buildMinimalAppState } from "./syncAppState.js";
 import { mergeDbUsersIntoAppState } from "./mergeDbUsers.js";
-import { mergeDbPostsIntoAppState } from "./mergeDbPosts.js";
 import { mergeSocialGraphIntoAppState } from "./mergeSocialGraph.js";
 import { coerceAppStateForClient } from "./coerceAppState.js";
 import { normalizeFounderPostUserId } from "./founderLegacy.js";
@@ -43,7 +42,13 @@ function postRowToClient(row: PostRow): Post {
   };
 }
 
-/** خلاصة الرئيسية — pagination على مستوى DB + فلتر خصوصية */
+const BATCH_SIZE = 80;
+const MAX_SCAN_BATCHES = 15;
+
+/**
+ * خلاصة الرئيسية — pagination على مستوى DB + فلتر خصوصية.
+ * يمسح دفعات إضافية حتى يملأ الصفحة بمنشورات مرئية (لا يتوقف عند 60 منشوراً مخفياً).
+ */
 export async function buildHomeFeedForViewer(
   viewerId: string,
   opts?: { limit?: number; before?: number },
@@ -54,11 +59,6 @@ export async function buildHomeFeedForViewer(
   nextCursor?: number;
 }> {
   const pageLimit = Math.min(50, Math.max(1, opts?.limit ?? 30));
-  const fetchLimit = pageLimit * 3;
-  const { rows, hasMore: dbHasMore } = await listPostsPaginated({
-    limit: fetchLimit,
-    before: opts?.before,
-  });
 
   let state = (await getSnapshot(viewerId)) as AppState | null;
   if (!state) state = await buildMinimalAppState(viewerId);
@@ -68,11 +68,36 @@ export async function buildHomeFeedForViewer(
 
   const usersById = new Map((state.users || []).map(u => [u.id, u]));
   const posts: Post[] = [];
-  for (const row of rows) {
-    const p = postRowToClient(row);
-    if (viewerCanSeePost(viewerId, p, usersById)) posts.push(p);
-    if (posts.length >= pageLimit) break;
+  const seen = new Set<string>();
+  let before = opts?.before;
+  let dbHasMore = true;
+  let batches = 0;
+
+  while (posts.length < pageLimit && dbHasMore && batches < MAX_SCAN_BATCHES) {
+    batches += 1;
+    const { rows, hasMore } = await listPostsPaginated({
+      limit: BATCH_SIZE,
+      before,
+    });
+    dbHasMore = hasMore;
+    if (!rows.length) break;
+
+    for (const row of rows) {
+      const p = postRowToClient(row);
+      if (!viewerCanSeePost(viewerId, p, usersById) || seen.has(p.id)) continue;
+      seen.add(p.id);
+      posts.push(p);
+      if (posts.length >= pageLimit) break;
+    }
+
+    if (posts.length >= pageLimit || !hasMore) break;
+    const tail = rows[rows.length - 1]!;
+    const tailAt = Date.parse(tail.createdAt) || 0;
+    if (!tailAt || before === tailAt) break;
+    before = tailAt;
   }
+
+  posts.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
 
   const hasMore = dbHasMore || posts.length >= pageLimit;
   const authorIds = new Set<string>([viewerId]);

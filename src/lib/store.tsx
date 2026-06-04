@@ -2018,6 +2018,10 @@ export function AppProvider({
                 r.mode,
               ),
             );
+            lastFeedFetchAtRef.current = 0;
+            void import("./feedVisibility").then(({ requestAuthFeedRefresh }) =>
+              requestAuthFeedRefresh(),
+            );
           } else {
             console.warn("[Retweet] فشل المتابعة:", r.error);
             await pullSocialState();
@@ -2465,9 +2469,11 @@ export function AppProvider({
   const homeFeedPostsTouchSig = useMemo(() => {
     const posts = state.posts ?? [];
     if (!posts.length) return "0";
-    let sig = String(posts.length);
-    for (let i = 0; i < Math.min(8, posts.length); i++) {
-      const p = posts[i]!;
+    const newest = [...posts]
+      .sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0))
+      .slice(0, 8);
+    let sig = `${posts.length}:${newest[0]?.id ?? ""}:${newest[0]?.createdAt ?? 0}`;
+    for (const p of newest) {
       sig += `|${p.id}:${p.likes?.length ?? 0}:${p.comments?.length ?? 0}:${p.reposts?.length ?? 0}`;
     }
     return sig;
@@ -2491,7 +2497,9 @@ export function AppProvider({
         const sigPrev = homeFeedSignature(prev);
         const sigNext = homeFeedSignature(computed);
         if (sigPrev !== sigNext) return computed;
-        if (!prev.length) return prev;
+        if (prev[0]?.id !== computed[0]?.id) return computed;
+        if ((prev[0]?.createdAt ?? 0) !== (computed[0]?.createdAt ?? 0)) return computed;
+        if (!prev.length) return computed;
         const byId = new Map((snap.posts ?? []).map(p => [p.id, p]));
         let anyChanged = false;
         const next = prev.map((p, i) => {
@@ -2941,7 +2949,13 @@ export function AppProvider({
           new CustomEvent("retweet-account-switch-end", { detail: { userId } }),
         );
         if (switchOk && stateRef.current.currentUserId === userId) {
+          lastFeedFetchAtRef.current = 0;
+          invalidateHomeFeedCache();
+          setHomeFeedPosts([]);
           emitAccountSwitchedEvent(userId);
+          void import("./feedVisibility").then(({ requestAuthFeedRefresh }) =>
+            requestAuthFeedRefresh(),
+          );
         }
       }
     }
@@ -5692,24 +5706,20 @@ export function AppProvider({
         });
         perfMark("refreshFromServer-merge-end");
         void refreshUserDirectory();
-        const skipFeed =
-          !urgent && Date.now() - lastFeedFetchAtRef.current < 12_000;
-        if (!skipFeed) {
-          void (async () => {
-            invalidateHomeFeedCache();
-            const feed = await apiFetchHomeFeed(token, { limit: 40, force: true });
-            if (feed.ok) {
-              lastFeedFetchAtRef.current = Date.now();
-              startTransition(() => {
-                setStateRaw(s => {
-                  const next = mergeHomeFeedIntoState(s, feed);
-                  syncHomeFeedPostsFromState(next, setHomeFeedPosts);
-                  return next;
-                });
+        void (async () => {
+          invalidateHomeFeedCache();
+          const feed = await apiFetchHomeFeed(token, { limit: 50, force: true });
+          if (feed.ok) {
+            lastFeedFetchAtRef.current = Date.now();
+            startTransition(() => {
+              setStateRaw(s => {
+                const next = mergeHomeFeedIntoState(s, feed);
+                syncHomeFeedPostsFromState(next, setHomeFeedPosts);
+                return next;
               });
-            }
-          })();
-        }
+            });
+          }
+        })();
       })();
     };
 
@@ -5736,7 +5746,7 @@ export function AppProvider({
     if (!apiBackendEnabled() || !getApiToken() || isGuestUserId(stateRef.current.currentUserId)) return;
     const token = getApiToken()!;
     invalidateHomeFeedCache();
-    const feed = await apiFetchHomeFeed(token, { limit: 40, force: true });
+    const feed = await apiFetchHomeFeed(token, { limit: 50, force: true });
     if (!feed.ok) return;
     lastFeedFetchAtRef.current = Date.now();
     setFeedHasMore(!!feed.hasMore);
@@ -5803,7 +5813,7 @@ export function AppProvider({
     feedPullDebounceRef.current = window.setTimeout(() => {
       feedPullDebounceRef.current = null;
       void refreshFeedFromServer();
-    }, 350);
+    }, 200);
   }, [refreshFeedFromServer]);
 
   useEffect(() => {
