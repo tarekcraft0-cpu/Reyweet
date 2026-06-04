@@ -1,4 +1,5 @@
 import { memo, type ReactNode } from "react";
+import { AppErrorBoundary } from "./AppErrorBoundary";
 import { TabPanelShell } from "./TabPanelShell";
 import { HomeScreen } from "./screens/HomeScreen";
 import { SearchScreen } from "./screens/SearchScreen";
@@ -20,12 +21,14 @@ export const ReelsTabPanel = memo(function ReelsTabPanel({
 }) {
   return (
     <TabPanelShell lockScroll fullHeight chrome="reels">
-      <ReelsScreen
-        onOpenProfile={onOpenProfile}
-        onOpenChat={onOpenChat}
-        restoreFromProfileContext={restoreFromProfileContext}
-        onConsumedRestoreFromProfile={onConsumedRestoreFromProfile}
-      />
+      <AppErrorBoundary label="reels-screen">
+        <ReelsScreen
+          onOpenProfile={onOpenProfile}
+          onOpenChat={onOpenChat}
+          restoreFromProfileContext={restoreFromProfileContext}
+          onConsumedRestoreFromProfile={onConsumedRestoreFromProfile}
+        />
+      </AppErrorBoundary>
     </TabPanelShell>
   );
 });

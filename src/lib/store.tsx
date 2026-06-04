@@ -6751,7 +6751,7 @@ export function visibleMediaNotes(
   targetId: ID,
   viewerId: ID,
 ) {
-  return state.mediaNotes.filter((n) => {
+  return (state.mediaNotes ?? []).filter((n) => {
     if (n.kind !== kind || n.targetId !== targetId) return false;
     if (n.authorId === viewerId) return true;
     return isMutual(state, viewerId, n.authorId);

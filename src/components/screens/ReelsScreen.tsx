@@ -341,6 +341,8 @@ export const ReelsScreen = memo(function ReelsScreen({
     getCommentCount,
     isLiked: isReelLiked,
     reelApiId,
+    apiAuthors,
+    feedError: reelsFeedError,
   } = useReelsFeed(meId, meBlocked, meFollowing, tab);
   const [savedReelIds, setSavedReelIds] = useState<Set<string>>(() => new Set());
 
@@ -747,7 +749,7 @@ export const ReelsScreen = memo(function ReelsScreen({
             className="flex items-center justify-center text-center text-white/60 px-4 text-sm"
             style={{ minHeight: REEL_SLIDE_HEIGHT_FALLBACK }}
           >
-            {t("noReels")}
+            {reelsFeedError || t("noReels")}
           </p>
         )}
 
@@ -764,7 +766,7 @@ export const ReelsScreen = memo(function ReelsScreen({
               />
             );
           }
-          const u = users.find(x => x.id === r.userId);
+          const u = users.find(x => x.id === r.userId) ?? apiAuthors[r.userId];
           const friendReposterId = (r.reposts || []).find(
             uid => uid !== meId && meFollowing.includes(uid),
           );

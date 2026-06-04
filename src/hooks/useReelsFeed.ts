@@ -26,6 +26,8 @@ export function useReelsFeed(
   const [cursor, setCursor] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [useApi, setUseApi] = useState(apiOn);
+  const [apiAuthors, setApiAuthors] = useState<Record<string, User>>({});
+  const [feedError, setFeedError] = useState<string | null>(null);
   const loadingRef = useRef(false);
   const reelIdByPostIdRef = useRef<Record<string, string>>({});
 
@@ -56,8 +58,31 @@ export function useReelsFeed(
       }
       setApiPosts(prev => (append ? [...prev, ...posts] : posts));
       setReelMeta(prev => (append ? { ...prev, ...meta } : meta));
-      setHasMore(data.hasMore);
+      setHasMore(!!data.hasMore);
       setCursor(data.nextCursor);
+      setApiAuthors(prev => {
+        const authors: Record<string, User> = append ? { ...prev } : {};
+        for (const u of data.users ?? []) {
+          if (!u?.id) continue;
+          authors[u.id] = {
+            id: u.id,
+            username: u.username || "user",
+            email: "",
+            password: "",
+            bio: u.bio ?? "",
+            avatar: u.avatar || "?",
+            isPrivate: u.isPrivate === true,
+            verified: u.verified === true,
+            followers: [],
+            following: [],
+            blocked: [],
+            highlights: [],
+            followRequestIn: [],
+            followRequestOut: [],
+          };
+        }
+        return authors;
+      });
     },
     [meId],
   );
@@ -67,6 +92,7 @@ export function useReelsFeed(
       if (!apiOn || loadingRef.current) return;
       loadingRef.current = true;
       setLoading(true);
+      if (opts?.reset) setFeedError(null);
       try {
         const res = await apiFetchReelsFeed({
           limit: 15,
@@ -75,11 +101,18 @@ export function useReelsFeed(
         });
         if (!res.ok) {
           setUseApi(false);
+          if (opts?.reset) setFeedError(res.error || "تعذر تحميل الريلز");
           return;
         }
         setUseApi(true);
-        applyFeedPage(!opts?.reset, res.data);
+        setFeedError(null);
+        applyFeedPage(opts?.reset !== true, res.data);
         setCursor(res.data.nextCursor);
+      } catch (e) {
+        setUseApi(false);
+        if (opts?.reset) {
+          setFeedError(e instanceof Error ? e.message : "تعذر تحميل الريلز");
+        }
       } finally {
         loadingRef.current = false;
         setLoading(false);
@@ -106,8 +139,10 @@ export function useReelsFeed(
     }
     setApiPosts([]);
     setReelMeta({});
+    setApiAuthors({});
     setHasMore(false);
     setCursor(undefined);
+    setFeedError(null);
     void loadPage({ reset: true });
   }, [apiOn, tab]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -160,5 +195,7 @@ export function useReelsFeed(
     getCommentCount,
     isLiked,
     reelApiId,
+    apiAuthors,
+    feedError,
   };
 }
