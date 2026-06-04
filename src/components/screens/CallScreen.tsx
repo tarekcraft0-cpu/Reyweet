@@ -34,7 +34,7 @@ export function CallScreen({
   const otherId = calleePeerId || chat?.members.find(id => id !== me.id);
   const other = otherId ? userById(state, otherId) : null;
   const [muted, setMuted] = useState(false);
-  const [status, setStatus] = useState("جاري الاتصال...");
+  const [status, setStatus] = useState(calleePeerId ? "جاري الرد…" : "يرن عند الطرف الآخر…");
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
 
@@ -62,7 +62,12 @@ export function CallScreen({
             video,
             onRemoteStream: () => attachStreams(),
             onState: s => {
-              if (!cancelled) setStatus(s === "connected" ? "متصل" : s);
+              if (!cancelled) {
+                if (s === "connected") setStatus("متصل");
+                else if (s === "failed") setStatus("فشل الاتصال — تحقق من الشبكة");
+                else if (s === "disconnected") setStatus("انقطع الاتصال");
+                else setStatus("جاري الربط…");
+              }
             },
           });
         } else {
@@ -72,17 +77,38 @@ export function CallScreen({
             video,
             onRemoteStream: () => attachStreams(),
             onState: s => {
-              if (!cancelled) setStatus(s === "connected" ? "متصل" : s);
+              if (!cancelled) {
+                if (s === "connected") setStatus("متصل");
+                else if (s === "failed") setStatus("فشل الاتصال — قد تحتاج شبكة أقوى أو TURN");
+                else if (s === "disconnected") setStatus("انقطع الاتصال");
+                else setStatus("يرن… بانتظار رد الطرف الآخر");
+              }
             },
           });
         }
         attachStreams();
-      } catch {
-        if (!cancelled) setStatus("تعذّر بدء المكالمة — تحقق من الميكروفون والكاميرا");
+      } catch (e) {
+        if (!cancelled) {
+          const msg = e instanceof Error ? e.message : "";
+          if (msg === "CALL_SOCKET_OFFLINE") {
+            setStatus("لا يوجد اتصال فوري — الطرف الآخر قد لا يسمع الرنين");
+          } else {
+            setStatus("تعذّر بدء المكالمة — تحقق من الميكروفون والكاميرا والإذن");
+          }
+        }
       }
     })();
+    const ringTimeout =
+      !calleePeerId &&
+      window.setTimeout(() => {
+        if (cancelled) return;
+        setStatus(prev =>
+          prev === "متصل" ? prev : "لم يرد أحد — تأكد أن الطرف داخل التطبيق ويقبل المكالمة",
+        );
+      }, 55_000);
     return () => {
       cancelled = true;
+      window.clearTimeout(ringTimeout);
       void endCall({ notifyPeer: true });
     };
   }, [chatId, otherId, video, calleePeerId, chat?.isGroup, chat?.isChannel]);

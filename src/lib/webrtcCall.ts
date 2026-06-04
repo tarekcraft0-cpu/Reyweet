@@ -13,11 +13,6 @@ export type IncomingCallRing = {
   video: boolean;
 };
 
-const ICE_SERVERS: RTCIceServer[] = [
-  { urls: "stun:stun.l.google.com:19302" },
-  { urls: "stun:stun1.l.google.com:19302" },
-];
-
 type ActiveCall = {
   chatId: string;
   peerUserId: string;
@@ -73,13 +68,21 @@ export function bindCallSocket(socket: Socket | null): void {
   }
   socketRef = socket;
   if (!socket) return;
-  socket.on("call:ended", () => {
+  const onRemoteHangup = () => {
     void endCall({ notifyPeer: false });
     import("./activeCallUi.js").then(m => m.dispatchCallUiEnded());
-  });
-  socket.on("call:reject", () => {
-    import("./activeCallUi.js").then(m => m.dispatchCallUiEnded());
-  });
+  };
+  socket.on("call:ended", onRemoteHangup);
+  socket.on("call:reject", onRemoteHangup);
+}
+
+async function ensureCallSocketConnected(): Promise<void> {
+  if (socketRef?.connected) return;
+  const { waitForRealtimeSocket } = await import("./realtimeSocket.js");
+  const ok = await waitForRealtimeSocket(4000);
+  if (!ok || !socketRef?.connected) {
+    throw new Error("CALL_SOCKET_OFFLINE");
+  }
 }
 
 export function emitCallReject(toUserId: string, chatId: string): void {
@@ -99,6 +102,7 @@ function emitSignal(toUserId: string, chatId: string, signal: unknown): void {
 
 export async function handleRemoteCallSignal(payload: CallSignalPayload): Promise<void> {
   if (!active || active.chatId !== payload.chatId || active.peerUserId !== payload.fromUserId) {
+    bufferSignal(payload);
     return;
   }
   const { pc } = active;
@@ -175,6 +179,7 @@ export async function startOutgoingCall(opts: {
   onState?: (state: string) => void;
 }): Promise<void> {
   await endCall();
+  await ensureCallSocketConnected();
   const localStream = await navigator.mediaDevices.getUserMedia({
     audio: true,
     video: opts.video,
@@ -213,6 +218,9 @@ export async function startOutgoingCall(opts: {
   };
 
   emitCallRing(opts.peerUserId, opts.chatId, opts.video);
+  if (!socketRef?.connected) {
+    throw new Error("CALL_SOCKET_OFFLINE");
+  }
 
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);

@@ -5,7 +5,8 @@ import { formatRelativeTime } from "@/lib/formatRelativeTime";
 import { useT } from "@/lib/i18n";
 import { Avatar } from "./Avatar";
 import { ShareSheet } from "./ShareSheet";
-import { Heart, MessageCircle, Repeat2, Send, AtSign, MoreHorizontal, Trash2, ArrowRight } from "lucide-react";
+import { Heart, MessageCircle, Repeat2, Send, AtSign, MoreHorizontal, Trash2, ArrowRight, Languages } from "lucide-react";
+import { TranslateTextSheet } from "./chat/TranslateTextSheet";
 import { SlideDismissBackButton, SlideDismissShell } from "./SlideDismissShell";
 import { PostOptionsMenu } from "./PostOptionsMenu";
 import { VerifiedMarkForUser } from "./VerifiedBadge";
@@ -38,6 +39,7 @@ export function PostDetail({ post: postProp, onBack, onOpenProfile, onOpenChat, 
   const author = userById(state, post.userId);
   const [comment, setComment] = useState("");
   const [shareOpen, setShareOpen] = useState(false);
+  const [translateOpen, setTranslateOpen] = useState(false);
   const me = currentUser!;
   const postLikes = Array.isArray(post.likes) ? post.likes : [];
   const postReposts = Array.isArray(post.reposts) ? post.reposts : [];
@@ -193,9 +195,19 @@ export function PostDetail({ post: postProp, onBack, onOpenProfile, onOpenChat, 
 
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain pb-4">
       {post.text && (
-        <p dir="rtl" className="whitespace-pre-wrap px-4 py-3 text-right text-base leading-relaxed break-words">
-          {renderedPostText}
-        </p>
+        <div className="px-4 py-3">
+          <p dir="rtl" className="whitespace-pre-wrap text-right text-base leading-relaxed break-words">
+            {renderedPostText}
+          </p>
+          <button
+            type="button"
+            className="mt-2 inline-flex items-center gap-1.5 text-sm font-medium text-primary"
+            onClick={() => setTranslateOpen(true)}
+          >
+            <Languages size={16} />
+            {t("msgTranslate")}
+          </button>
+        </div>
       )}
       {post.image && (
         <div className="relative flex items-center justify-center bg-muted">
@@ -374,6 +386,9 @@ export function PostDetail({ post: postProp, onBack, onOpenProfile, onOpenChat, 
       </div>
 
       {shareOpen && <ShareSheet target={{ kind: "post", post }} onClose={() => setShareOpen(false)} />}
+      {translateOpen && post.text ? (
+        <TranslateTextSheet sourceText={post.text} onClose={() => setTranslateOpen(false)} />
+      ) : null}
 
       <NoteReplySheet
         note={noteToReply}

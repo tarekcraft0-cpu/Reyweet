@@ -117,7 +117,8 @@ import { MentionComposerField } from "../MentionComposerField";
 import { ChatQuickRepliesBar } from "../chat/ChatQuickRepliesBar";
 import { VerifiedMarkForUser } from "../VerifiedBadge";
 import { getUserEntitlements } from "@/lib/verificationEntitlements";
-import { Mic, Image as ImageIcon, Sticker, Phone, Video, MicOff, MonitorUp, X, Plus, ArrowRight, Settings as SettingsIcon, Check, Camera, Search, Square, Megaphone, Users, LogOut, AtSign, MoreVertical, ChevronLeft, Reply, Forward, Copy, Trash2, Flag, MoreHorizontal, ChevronRight, Pin, Play, Pause, Star, Bell, BellOff, Mail, Send, PenLine, SquarePen, MessageCirclePlus, Smile, Lock, Palette } from "lucide-react";
+import { Mic, Image as ImageIcon, Sticker, Phone, Video, MicOff, MonitorUp, X, Plus, ArrowRight, Settings as SettingsIcon, Check, Camera, Search, Square, Megaphone, Users, LogOut, AtSign, MoreVertical, ChevronLeft, Reply, Forward, Copy, Trash2, Flag, MoreHorizontal, ChevronRight, Pin, Play, Pause, Star, Bell, BellOff, Mail, Send, PenLine, SquarePen, MessageCirclePlus, Smile, Lock, Palette, Languages } from "lucide-react";
+import { TranslateTextSheet } from "../chat/TranslateTextSheet";
 import { PoolGame } from "../games/PoolGame";
 import {
   buildChatTimelineRows,
@@ -3968,11 +3969,17 @@ export function ChatScreen({
                   ? video => {
                       const peer = stackChat.members.find(id => id !== me.id);
                       if (!peer || stackChat.isGroup || stackChat.isChannel) return;
-                      dispatchStartOutgoingCall({
-                        chatId: stackChat.id,
-                        video,
-                        peerUserId: peer,
-                      });
+                      void (async () => {
+                        const { dispatchStartOutgoingCallSafe } = await import(
+                          "@/lib/activeCallUi"
+                        );
+                        const r = await dispatchStartOutgoingCallSafe({
+                          chatId: stackChat.id,
+                          video,
+                          peerUserId: peer,
+                        });
+                        if (!r.ok) alert(r.error);
+                      })();
                     }
                   : () => {}
               }
@@ -4783,6 +4790,7 @@ function ChatRoom({
   const [messageContext, setMessageContext] = useState<Message | null>(null);
   const [moreReactionEmoji, setMoreReactionEmoji] = useState(false);
   const [forwardingMessage, setForwardingMessage] = useState<Message | null>(null);
+  const [translateTextSource, setTranslateTextSource] = useState<string | null>(null);
   const [cameraCompose, setCameraCompose] = useState<CameraComposeDraft | null>(null);
   const [instagramCameraOpen, setInstagramCameraOpen] = useState(false);
   const [drawComposeOpen, setDrawComposeOpen] = useState(false);
@@ -7223,6 +7231,19 @@ function ChatRoom({
                       <Copy size={20} className="shrink-0 opacity-90" />
                       <span className="flex-1">{t("msgCopy")}</span>
                     </button>
+                    {m.type === "text" && m.content.trim() && (
+                      <button
+                        type="button"
+                        className="flex w-full items-center gap-3 border-t border-white/5 px-4 py-3.5 text-start text-sm hover:bg-white/5"
+                        onClick={() => {
+                          setTranslateTextSource(m.content);
+                          closeCtx();
+                        }}
+                      >
+                        <Languages size={20} className="shrink-0 opacity-90" />
+                        <span className="flex-1">{t("msgTranslate")}</span>
+                      </button>
+                    )}
                     {m.type === "sticker" && (
                       <button
                         type="button"
@@ -8055,6 +8076,9 @@ function ChatRoom({
       {forwardingMessage && (
         <ForwardChatSheet currentChat={chat} message={forwardingMessage} me={me} onClose={() => setForwardingMessage(null)} />
       )}
+      {translateTextSource ? (
+        <TranslateTextSheet sourceText={translateTextSource} onClose={() => setTranslateTextSource(null)} />
+      ) : null}
       {showDmDetails && isDmRoom && other ? (
         <div
           className={
