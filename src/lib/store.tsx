@@ -91,6 +91,9 @@ function mergePostsServerAuthoritative(localPosts: Post[], remotePosts: Post[]):
   return merged.sort((a, b) => b.createdAt - a.createdAt);
 }
 
+/** آخر فيد من `/v1/feed/posts` — ترتيب الرئيسية يتبع الخادم وليس الكاش المحلي القديم */
+const homeFeedServerSlice: { posts: Post[] } = { posts: [] };
+
 function mergeHomeFeedIntoState(
   state: AppState,
   feed: { posts: Post[]; users: User[] },
@@ -108,15 +111,22 @@ function mergeHomeFeedIntoState(
 function syncHomeFeedPostsFromState(
   next: AppState,
   setHomeFeedPosts: (posts: Post[]) => void,
+  serverPosts?: Post[],
 ): void {
   const meId = next.currentUserId;
   if (!meId || isGuestUserId(meId)) {
+    homeFeedServerSlice.posts = [];
     setHomeFeedPosts([]);
     return;
   }
   const me = next.users.find(u => u.id === meId);
   if (!me) return;
-  setHomeFeedPosts(computeHomeFeedPostIds(next, meId, me));
+  if (serverPosts !== undefined) {
+    homeFeedServerSlice.posts = serverPosts;
+  }
+  setHomeFeedPosts(
+    buildHomeFeedDisplayPosts(next, meId, homeFeedServerSlice.posts, me),
+  );
 }
 
 /** دمج صفحة إضافية من الفيد (pagination) دون استبدال المنشورات الحالية */
@@ -278,13 +288,18 @@ import {
   apiAddPostComment,
   apiRecordStoryView,
 } from "./apiBackend";
-import { apiMuteGroupMember, apiUnmuteGroupMember } from "./groupApi";
+import { apiGetGroup, apiMuteGroupMember, apiUnmuteGroupMember } from "./groupApi";
 import { subscribeRealtimeEvents, USER_REGISTERED_WINDOW_EVENT } from "./realtimeEvents";
 import { isNativeCapacitorShell } from "./apiUrlPolicy";
 import { beginNativePostLoginQuietPeriod } from "./nativeStability";
 import { AUTH_FEED_REFRESH_EVENT } from "./feedVisibility";
 import { perfMark } from "./perfMark";
-import { computeHomeFeedPostIds, homeFeedSignature } from "./homeFeedIndex";
+import {
+  buildHomeFeedDisplayPosts,
+  computeHomeFeedPostIds,
+  homeFeedSignature,
+  mergeServerHomeFeedPosts,
+} from "./homeFeedIndex";
 import { HomeFeedCtx } from "./homeFeedContext";
 import {
   disconnectRealtimeSocketHard,
@@ -2497,7 +2512,12 @@ export function AppProvider({
       if (cancelled) return;
       perfMark("homeFeedIndex-start");
       const snap = stateRef.current;
-      const computed = computeHomeFeedPostIds(snap, me.id, me);
+      const computed = buildHomeFeedDisplayPosts(
+        snap,
+        me.id,
+        homeFeedServerSlice.posts,
+        me,
+      );
       perfMark("homeFeedIndex-end");
       setHomeFeedPosts(prev => {
         const sigPrev = homeFeedSignature(prev);
@@ -4205,11 +4225,11 @@ export function AppProvider({
           } else {
             console.warn("[Retweet] createGroup API failed:", created.error);
           }
-          scheduleRemoteSync();
+          pushSnapshotNow(stateRef.current);
         } finally {
           window.setTimeout(() => {
             groupSyncBusyRef.current = false;
-          }, 1800);
+          }, 5000);
         }
       })();
     }
@@ -4883,7 +4903,7 @@ export function AppProvider({
     } finally {
       window.setTimeout(() => {
         groupSyncBusyRef.current = false;
-      }, 1200);
+      }, 5000);
     }
     if (!res.ok) return res;
     if (res.chat) {
@@ -4907,7 +4927,7 @@ export function AppProvider({
         };
       });
     }
-    scheduleRemoteSync();
+    pushSnapshotNow(stateRef.current);
     if (res.pending) {
       return { ok: true, chatId: "", pending: true };
     }
@@ -5747,7 +5767,7 @@ export function AppProvider({
             startTransition(() => {
               setStateRaw(s => {
                 const next = mergeHomeFeedIntoState(s, feed);
-                syncHomeFeedPostsFromState(next, setHomeFeedPosts);
+                syncHomeFeedPostsFromState(next, setHomeFeedPosts, feed.posts);
                 return next;
               });
             });
@@ -5786,7 +5806,7 @@ export function AppProvider({
     startTransition(() => {
       setStateRaw(s => {
         const next = mergeHomeFeedIntoState(s, feed);
-        syncHomeFeedPostsFromState(next, setHomeFeedPosts);
+        syncHomeFeedPostsFromState(next, setHomeFeedPosts, feed.posts);
         return next;
       });
     });
@@ -5808,10 +5828,11 @@ export function AppProvider({
         setFeedHasMore(false);
         return;
       }
+      const mergedServer = mergeServerHomeFeedPosts(homeFeedServerSlice.posts, feed.posts);
       startTransition(() => {
         setStateRaw(s => {
           const next = mergeHomeFeedAppendIntoState(s, feed);
-          syncHomeFeedPostsFromState(next, setHomeFeedPosts);
+          syncHomeFeedPostsFromState(next, setHomeFeedPosts, mergedServer);
           return next;
         });
       });
@@ -5858,7 +5879,7 @@ export function AppProvider({
     feedPullDebounceRef.current = window.setTimeout(() => {
       feedPullDebounceRef.current = null;
       void refreshFeedFromServer();
-    }, 350);
+    }, 120);
   }, [refreshFeedFromServer]);
 
   useEffect(() => {
@@ -6349,33 +6370,65 @@ export function AppProvider({
           bumpHomeFeedNow();
         })();
         scheduleFeedPull();
+        void refreshFeedFromServer();
         return;
       }
       if (event === "group:updated") {
         const payload = data as { chatId?: string; patch?: Partial<Chat> };
         if (!payload?.chatId || !payload.patch) return;
         const patch = payload.patch;
-        setState(s => ({
-          ...s,
-          chats: s.chats.map(c => {
-            if (c.id !== payload.chatId) return c;
-            const merged = mergeChatRecord(
-              c,
-              normalizeChatRecord({
-                ...c,
-                members: patch.members ?? c.members,
-                admins: patch.admins ?? c.admins,
-                mutedUserIds: patch.mutedUserIds ?? c.mutedUserIds,
-                messages: patch.messages ?? c.messages,
-              } as Chat),
-            );
-            return merged;
-          }),
-        }));
+        const chatId = payload.chatId;
+        let hadChat = false;
+        setState(s => {
+          hadChat = s.chats.some(
+            c => c.id === chatId || chatMergeKey(c, s.currentUserId || "") === chatId,
+          );
+          return {
+            ...s,
+            chats: s.chats.map(c => {
+              if (c.id !== chatId && chatMergeKey(c, s.currentUserId || "") !== chatId) return c;
+              const merged = mergeChatRecord(
+                c,
+                normalizeChatRecord({
+                  ...c,
+                  members: patch.members ?? c.members,
+                  admins: patch.admins ?? c.admins,
+                  mutedUserIds: patch.mutedUserIds ?? c.mutedUserIds,
+                  messages: patch.messages ?? c.messages,
+                } as Chat),
+              );
+              return merged;
+            }),
+          };
+        });
+        if (!hadChat) {
+          void (async () => {
+            const r = await apiGetGroup(chatId);
+            if (!r.ok || !r.data.chat?.id) return;
+            const remote = normalizeChatRecord(r.data.chat);
+            setState(s => {
+              if (!s.currentUserId || isGuestUserId(s.currentUserId)) return s;
+              const meId = s.currentUserId;
+              if (!remote.members.includes(meId)) return s;
+              const key = remote.id;
+              const has = s.chats.some(
+                c => c.id === key || chatMergeKey(c, meId) === key,
+              );
+              const merged = has
+                ? s.chats.map(c =>
+                    c.id === key || chatMergeKey(c, meId) === key
+                      ? mergeChatRecord(c, remote)
+                      : c,
+                  )
+                : [...s.chats, remote];
+              return { ...s, chats: merged };
+            });
+          })();
+        }
         try {
           window.dispatchEvent(
             new CustomEvent("retweet-group-chat-patch", {
-              detail: { chatId: payload.chatId },
+              detail: { chatId },
             }),
           );
         } catch {
@@ -6416,7 +6469,7 @@ export function AppProvider({
           return;
         }
         if (kind === "chats" || kind === "profile") {
-          if (!profileSaveBusyRef.current) refreshFromServer({ urgent: false });
+          if (!profileSaveBusyRef.current) refreshFromServer({ urgent: true });
           return;
         }
         if (!socialSyncBusyRef.current) scheduleRemoteSync();

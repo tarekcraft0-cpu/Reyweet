@@ -246,15 +246,17 @@ export const HomeScreen = memo(function HomeScreen({
     });
   }, [feedHasMore, loadMoreFeedFromServer]);
 
-  const homeFeedPrimedRef = useRef(false);
+  const lastHomeFeedPullRef = useRef(0);
   useEffect(() => {
     if (!isHomeTabActive || isGuest) return;
-    if (homeFeedPrimedRef.current && feed.length > 0) return;
-    homeFeedPrimedRef.current = true;
+    const now = Date.now();
+    const minGap = nativeShell ? 2000 : 1500;
+    if (now - lastHomeFeedPullRef.current < minGap && feed.length > 0) return;
+    lastHomeFeedPullRef.current = now;
     const delayMs = nativeShell && isNativePostLoginQuietPeriod() ? 400 : 0;
     const t = window.setTimeout(() => refreshFeedBg(), delayMs);
     return () => window.clearTimeout(t);
-  }, [isHomeTabActive, isGuest, refreshFeedBg, nativeShell, feed.length]);
+  }, [isHomeTabActive, isGuest, refreshFeedBg, nativeShell]);
 
   useEffect(() => {
     if (!isHomeTabActive || isGuest) return;

@@ -25,9 +25,23 @@ function authorVisibleToViewer(
   return false;
 }
 
+function postVisibleInHomeFeed(
+  state: AppState,
+  meId: ID,
+  viewer: User,
+  p: Post,
+  meSets: ReturnType<typeof buildViewerSets>,
+  usersById: Map<ID, User>,
+): boolean {
+  if (!p?.id || isReelFeedPost(p)) return false;
+  const author = usersById.get(p.userId);
+  if (!authorVisibleToViewer(author, meId, meSets)) return false;
+  if (!canViewPostInHomeFeed(state, meId, p, viewer)) return false;
+  return true;
+}
+
 /**
- * حساب IDs خلاصة الرئيسية — O(n log n) sort فقط، بدون allocations زائدة.
- * يُستدعى من store (idle) أو worker.
+ * حساب خلاصة الرئيسية من كل المنشورات المحلية (احتياطي قبل أول سحب من الخادم).
  */
 export function computeHomeFeedPostIds(state: AppState, meId: ID, me?: User | null): Post[] {
   const viewer = me ?? state.users.find(u => u.id === meId);
@@ -38,10 +52,57 @@ export function computeHomeFeedPostIds(state: AppState, meId: ID, me?: User | nu
   const out: Post[] = [];
 
   for (const p of state.posts ?? []) {
-    if (!p?.id || seen.has(p.id) || isReelFeedPost(p)) continue;
-    const author = usersById.get(p.userId);
-    if (!authorVisibleToViewer(author, meId, meSets)) continue;
-    if (!canViewPostInHomeFeed(state, meId, p, viewer)) continue;
+    if (!p?.id || seen.has(p.id)) continue;
+    if (!postVisibleInHomeFeed(state, meId, viewer, p, meSets, usersById)) continue;
+    seen.add(p.id);
+    out.push(p);
+  }
+
+  out.sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+  return out;
+}
+
+/** دمج صفحات فيد الخادم (تحميل المزيد) */
+export function mergeServerHomeFeedPosts(existing: Post[], page: Post[]): Post[] {
+  if (!page.length) return existing;
+  const byId = new Map(existing.map(p => [p.id, p]));
+  for (const p of page) {
+    if (p?.id) byId.set(p.id, p);
+  }
+  return [...byId.values()].sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));
+}
+
+/**
+ * عرض الرئيسية: ترتيب الخادم أولاً (كل المنشورات العامة + الجديدة)،
+ * ثم أي منشور محلي أحدث من رأس الفيد ولم يصل بعد في الاستجابة.
+ */
+export function buildHomeFeedDisplayPosts(
+  state: AppState,
+  meId: ID,
+  serverOrdered: Post[],
+  me?: User | null,
+): Post[] {
+  const viewer = me ?? state.users.find(u => u.id === meId);
+  if (!viewer) return [];
+  if (!serverOrdered.length) return computeHomeFeedPostIds(state, meId, viewer);
+
+  const meSets = buildViewerSets(viewer);
+  const usersById = new Map(state.users.map(u => [u.id, u]));
+  const seen = new Set<string>();
+  const out: Post[] = [];
+
+  for (const p of serverOrdered) {
+    if (!p?.id || seen.has(p.id)) continue;
+    if (!postVisibleInHomeFeed(state, meId, viewer, p, meSets, usersById)) continue;
+    seen.add(p.id);
+    out.push(p);
+  }
+
+  const headAt = out[0]?.createdAt ?? 0;
+  for (const p of state.posts ?? []) {
+    if (!p?.id || seen.has(p.id)) continue;
+    if ((p.createdAt ?? 0) < headAt) continue;
+    if (!postVisibleInHomeFeed(state, meId, viewer, p, meSets, usersById)) continue;
     seen.add(p.id);
     out.push(p);
   }
