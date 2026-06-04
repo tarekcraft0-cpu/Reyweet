@@ -17,6 +17,10 @@ import {
 import { logApi } from "@/lib/apiDebug";
 import { clearStaleApiConfig, probeHealth } from "@/lib/apiConfig";
 import { isNativeCapacitorShell } from "@/lib/apiUrlPolicy";
+import {
+  cleanPasswordResetFromBrowserUrl,
+  parsePasswordResetTokenFromUrl,
+} from "@/lib/passwordResetUrl";
 
 type Mode = "login" | "signup" | "forgot" | "reset";
 type FormState = {
@@ -109,19 +113,14 @@ export function AuthScreen(props?: { onAuthSuccess?: () => void; /** false دا�
   const [apiReady, setApiReady] = useState(true);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    const raw = window.location.hash.replace(/^#/, "");
-    if (!raw.startsWith("auth-reset")) return;
-    const q = raw.includes("?") ? raw.slice(raw.indexOf("?") + 1) : "";
-    const token = new URLSearchParams(q).get("token")?.trim();
+    const token = parsePasswordResetTokenFromUrl();
     if (!token) return;
     passwordResetLinkTokenRef.current = token;
     passwordResetUsesRemoteRef.current = false;
     setMode("reset");
     setForm(f => ({ ...f, code: "", password: "", confirm: "" }));
     setInfo("اختر كلمة مرور جديدة لحسابك.");
-    const base = window.location.pathname + window.location.search;
-    window.history.replaceState(null, "", base);
+    cleanPasswordResetFromBrowserUrl();
   }, []);
 
   useEffect(() => {

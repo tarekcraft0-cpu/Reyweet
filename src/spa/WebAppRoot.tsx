@@ -18,6 +18,9 @@ import {
   isNoSelectShellActive,
   nativeNoSelectCaptureHandlers,
 } from "@/lib/nativeTextSelectionGuard";
+import { bootstrapPasswordResetFromUrl } from "@/lib/passwordResetUrl";
+
+bootstrapPasswordResetFromUrl();
 
 /** غلاف /app — نسخة الويب الكاملة مرتبطة بـ Retweet API وقاعدة البيانات على القرص D */
 export function WebAppRoot() {
