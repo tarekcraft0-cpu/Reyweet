@@ -7,8 +7,18 @@ import { HomeFeedActionsProvider } from "@/lib/homeFeedActionsContext";
 import { useProfiledRender } from "@/lib/renderProfiler";
 import type { Post } from "@/lib/types";
 
-const ESTIMATE_PX = 480;
 const OVERSCAN = isNativeCapacitorShell() ? 2 : 3;
+
+/** تقدير أولي قريب من الارتفاع الحقيقي — يمنع فراغات 480px بين المنشورات القصيرة */
+function estimatePostRowHeight(post: Post): number {
+  if (post.image || post.video) return 520;
+  if (post.audio) return 220;
+  const len = (post.text || "").trim().length;
+  if (len === 0) return 200;
+  if (len < 60) return 260;
+  if (len < 180) return 320;
+  return 400;
+}
 
 type FeedActions = {
   onShare: (post: Post) => void;
@@ -39,16 +49,17 @@ export const VirtualizedHomeFeed = memo(function VirtualizedHomeFeed({
   useProfiledRender("VirtualizedHomeFeed");
 
   const getScrollElement = useCallback(() => scrollRef.current, [scrollRef]);
-  /** على iOS: measureElement + تغيّر عرض WKWebView = React #185 */
-  const nativeFixedRowHeight = isNativeCapacitorShell();
 
   const virtualizer = useVirtualizer({
     count: posts.length,
     getScrollElement,
-    estimateSize: () => ESTIMATE_PX,
+    estimateSize: index => {
+      const p = posts[index];
+      return p ? estimatePostRowHeight(p) : 300;
+    },
     overscan: OVERSCAN,
     getItemKey: index => posts[index]?.id ?? index,
-    ...(nativeFixedRowHeight ? {} : { measureElement: stableVirtualRowMeasure }),
+    measureElement: stableVirtualRowMeasure,
   });
 
   const virtualItems = virtualizer.getVirtualItems();
@@ -78,7 +89,7 @@ export const VirtualizedHomeFeed = memo(function VirtualizedHomeFeed({
             <div
               key={post.id}
               data-index={vi.index}
-              ref={nativeFixedRowHeight ? undefined : virtualizer.measureElement}
+              ref={virtualizer.measureElement}
               className="absolute start-0 w-full"
               style={{
                 top: 0,
