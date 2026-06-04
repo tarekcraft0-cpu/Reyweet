@@ -27,6 +27,7 @@ export function useReelsFeed(
   const [loading, setLoading] = useState(false);
   const [useApi, setUseApi] = useState(apiOn);
   const loadingRef = useRef(false);
+  const reelIdByPostIdRef = useRef<Record<string, string>>({});
 
   const legacyFiltered = useMemo(() => {
     if (tab === "friends") {
@@ -40,10 +41,14 @@ export function useReelsFeed(
   const applyFeedPage = useCallback(
     (append: boolean, data: ReelsFeedResponse) => {
       const rows = Array.isArray(data.reels) ? data.reels : [];
+      const idMap: Record<string, string> = append ? { ...reelIdByPostIdRef.current } : {};
       const posts = rows.map(r => {
         const norm = normalizeReelMediaUrls(r);
-        return reelPublicToPost(norm, meId);
+        const post = reelPublicToPost(norm, meId);
+        idMap[post.id] = norm.id;
+        return post;
       });
+      reelIdByPostIdRef.current = idMap;
       const meta: Record<string, ReelMeta> = {};
       for (const r of rows) {
         const norm = normalizeReelMediaUrls(r);
@@ -137,6 +142,11 @@ export function useReelsFeed(
     [reelMeta, meId],
   );
 
+  const reelApiId = useCallback(
+    (postId: string) => reelIdByPostIdRef.current[postId] ?? postId,
+    [],
+  );
+
   return {
     reels,
     useApi,
@@ -149,5 +159,6 @@ export function useReelsFeed(
     getLikeCount,
     getCommentCount,
     isLiked,
+    reelApiId,
   };
 }

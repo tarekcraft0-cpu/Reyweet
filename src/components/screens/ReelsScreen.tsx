@@ -340,7 +340,35 @@ export const ReelsScreen = memo(function ReelsScreen({
     getLikeCount,
     getCommentCount,
     isLiked: isReelLiked,
+    reelApiId,
   } = useReelsFeed(meId, meBlocked, meFollowing, tab);
+  const [savedReelIds, setSavedReelIds] = useState<Set<string>>(() => new Set());
+
+  useEffect(() => {
+    if (!isTabActive || isGuest || !apiBackendEnabled()) return;
+    void apiListSavedPostIds().then(r => {
+      if (r.ok) setSavedReelIds(new Set(r.savedPostIds));
+    });
+  }, [isTabActive, isGuest]);
+
+  const toggleSaveReel = useCallback(
+    async (postId: string) => {
+      if (guestBlock()) return;
+      if (!apiBackendEnabled()) return;
+      const res = await apiToggleSavedPost(postId);
+      if (!res.ok) {
+        emitUiToast(res.error || "تعذر الحفظ");
+        return;
+      }
+      setSavedReelIds(prev => {
+        const next = new Set(prev);
+        if (res.saved) next.add(postId);
+        else next.delete(postId);
+        return next;
+      });
+    },
+    [isGuest],
+  );
   const reels = useMemo(() => {
     return [...reelsFeed].sort((a, b) => {
       const ua = users.find(u => u.id === a.userId);
@@ -434,7 +462,7 @@ export const ReelsScreen = memo(function ReelsScreen({
   const handleReelLike = useCallback(
     async (postId: string) => {
       if (reelsUseApi && reelsApiEnabled()) {
-        const res = await apiToggleReelLike(postId);
+        const res = await apiToggleReelLike(reelApiId(postId));
         if (res.ok) {
           patchReelMeta(postId, { likedByMe: res.liked, likesCount: res.likesCount });
           return;
@@ -442,7 +470,7 @@ export const ReelsScreen = memo(function ReelsScreen({
       }
       toggleLike(postId);
     },
-    [reelsUseApi, patchReelMeta, toggleLike],
+    [reelsUseApi, patchReelMeta, toggleLike, reelApiId],
   );
 
   const viewedReelsRef = useRef<Set<string>>(new Set());
@@ -500,12 +528,12 @@ export const ReelsScreen = memo(function ReelsScreen({
     if (!isTabActive || !activeReelId || !reelsUseApi) return;
     if (viewedReelsRef.current.has(activeReelId)) return;
     viewedReelsRef.current.add(activeReelId);
-    void apiRecordReelView(activeReelId).then(res => {
+    void apiRecordReelView(reelApiId(activeReelId)).then(res => {
       if (res.ok && res.viewsCount != null) {
         patchReelMeta(activeReelId, { viewsCount: res.viewsCount });
       }
     });
-  }, [activeReelId, isTabActive, reelsUseApi, patchReelMeta]);
+  }, [activeReelId, isTabActive, reelsUseApi, patchReelMeta, reelApiId]);
 
   useEffect(() => {
     if (!reelsUseApi || !reelsHasMore) return;
@@ -828,7 +856,7 @@ export const ReelsScreen = memo(function ReelsScreen({
                   onClick={() => {
                     setCommentsFor(r);
                     if (reelsUseApi && reelsApiEnabled()) {
-                      void apiFetchReelComments(r.id).then(res => {
+                      void apiFetchReelComments(reelApiId(r.id)).then(res => {
                         if (res.ok) {
                           setCommentsFor(prev =>
                             prev && prev.id === r.id ? { ...prev, comments: res.comments } : prev,
@@ -854,7 +882,7 @@ export const ReelsScreen = memo(function ReelsScreen({
                       style={{ filter: "drop-shadow(0 1px 4px rgba(0,0,0,0.6))" }}
                     />
                   }
-                  count={r.reposts.length}
+                  count={(r.reposts ?? []).length}
                   active={reposted}
                   activeColor="text-violet-400"
                 />
@@ -1114,7 +1142,7 @@ export const ReelsScreen = memo(function ReelsScreen({
                   if (!commentDraft.trim() || !commentsFor) return;
                   const draft = commentDraft.trim();
                   if (reelsUseApi && reelsApiEnabled()) {
-                    const res = await apiAddReelComment(commentsFor.id, draft);
+                    const res = await apiAddReelComment(reelApiId(commentsFor.id), draft);
                     if (res.ok) {
                       patchReelMeta(commentsFor.id, { commentsCount: res.commentsCount });
                       addComment(commentsFor.id, draft);
