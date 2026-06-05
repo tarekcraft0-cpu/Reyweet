@@ -3,7 +3,7 @@ import { Client } from "ssh2";
 
 const PASS = process.env.CONTABO_SSH_PASSWORD || "";
 const cmd =
-  "set -a; source /opt/retweet/app/.env; set +a; cd /opt/retweet/app && DATA_ROOT=/var/lib/retweet node backend/scripts/purge-all-banned-content.mjs 2>&1";
+  "set -a; source /opt/retweet/app/.env; set +a; cd /opt/retweet/app && DATA_ROOT=/var/lib/retweet npx tsx scripts/purge-all-banned-content.mjs 2>&1";
 
 const c = new Client();
 c.on("ready", () => {

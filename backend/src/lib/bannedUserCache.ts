@@ -33,7 +33,9 @@ async function refresh(): Promise<void> {
       loadedAt = now;
       return;
     }
-    const db = JSON.parse(raw) as UserStatesDb;
+    const parsed = JSON.parse(raw) as unknown;
+    const { decodeStoredJson } = await import("./encryptedStorage.js");
+    const db = decodeStoredJson<UserStatesDb>(parsed, USER_STATES_FILE);
     for (const st of Object.values(db.users ?? {})) {
       if (st?.userId && isBannedStatus(st.accountStatus)) bannedIds.add(st.userId);
     }
