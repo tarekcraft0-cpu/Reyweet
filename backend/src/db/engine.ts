@@ -583,7 +583,10 @@ export async function getSnapshot(userId: string): Promise<unknown | null> {
   const file = path.join(SNAPSHOTS_DIR, `${userId}.json`);
   try {
     const raw = await fs.readFile(file, "utf8");
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw) as unknown;
+    const { decryptPayload } = await import("../lib/dataEncryption.js");
+    const dec = decryptPayload(parsed);
+    return dec ?? parsed;
   } catch (e: unknown) {
     if ((e as NodeJS.ErrnoException)?.code === "ENOENT") return null;
     throw e;
@@ -593,7 +596,8 @@ export async function getSnapshot(userId: string): Promise<unknown | null> {
 export async function setSnapshot(userId: string, state: unknown): Promise<void> {
   const file = path.join(SNAPSHOTS_DIR, `${userId}.json`);
   await fs.mkdir(SNAPSHOTS_DIR, { recursive: true });
-  await writeJsonAtomic(file, state);
+  const { encryptPayload } = await import("../lib/dataEncryption.js");
+  await writeJsonAtomic(file, encryptPayload(state));
 }
 
 // ——— Chat messages (messages.json) ———

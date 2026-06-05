@@ -192,7 +192,17 @@ export function EditProfileScreen({ onBack }: { onBack: () => void }) {
           note: note.trim(),
           profileLink: profileLink.trim(),
         };
-        if (usernameChanged) profilePatch.username = trimmed;
+        if (usernameChanged) {
+          const currentPassword = window.prompt(
+            "أدخل كلمة المرور الحالية لتأكيد تغيير اسم المستخدم",
+          );
+          if (!currentPassword?.trim()) {
+            alert("مطلوب كلمة المرور لتأكيد تغيير اسم المستخدم");
+            return;
+          }
+          profilePatch.currentPassword = currentPassword.trim();
+          profilePatch.username = trimmed;
+        }
         if (avatarToSave.trim()) profilePatch.avatar = avatarToSave;
         const remote = await apiPatchProfile(token, profilePatch);
         if (!remote.ok) {

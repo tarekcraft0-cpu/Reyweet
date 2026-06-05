@@ -1,6 +1,8 @@
 import type { Request } from "express";
 import type { UserRow } from "../db/engine.js";
 import { updateUser } from "../db/engine.js";
+import { isAuthStrictMode } from "./botGuard.js";
+import { isSmtpConfigured } from "./mail.js";
 
 export type TrustedDevice = {
   fingerprint: string;
@@ -45,13 +47,14 @@ export function isDeviceTrusted(user: UserRow, fingerprint: string): boolean {
   return (user.trustedDevices ?? []).some(d => d.fingerprint === fp);
 }
 
-/** هل نطلب كود بريد بعد كلمة المرور؟ */
+/** هل نطلب كود بريد بعد كلمة المرور؟ — الوضع الصارم: دائماً عند توفر SMTP */
 export function needsLoginEmailOtp(
   user: UserRow,
   fingerprint: string,
   globalLoginOtpRequired: boolean,
 ): { required: boolean; reason?: "two_factor" | "new_device" | "policy" } {
-  if (globalLoginOtpRequired) {
+  if (!isSmtpConfigured()) return { required: false };
+  if (isAuthStrictMode() || globalLoginOtpRequired) {
     return { required: true, reason: "policy" };
   }
   if (user.twoFactorEnabled === true) {

@@ -21,6 +21,7 @@ import {
   cleanPasswordResetFromBrowserUrl,
   parsePasswordResetTokenFromUrl,
 } from "@/lib/passwordResetUrl";
+import { refreshHumanChallenge } from "@/lib/humanAuthClient";
 
 type Mode = "login" | "signup" | "forgot" | "reset";
 type FormState = {
@@ -131,8 +132,13 @@ export function AuthScreen(props?: { onAuthSuccess?: () => void; /** false دا�
       const healthy = await probeHealth();
       logApi("auth-screen-health", { base, healthy, native: isNativeCapacitorShell() });
       setApiReady(healthy);
+      await refreshHumanChallenge();
     })();
   }, []);
+
+  useEffect(() => {
+    void refreshHumanChallenge();
+  }, [mode]);
 
   const clearOtpRefs = () => {
     passwordResetUserIdRef.current = null;
@@ -167,6 +173,7 @@ export function AuthScreen(props?: { onAuthSuccess?: () => void; /** false دا�
   };
 
   const runSubmit = async () => {
+    await refreshHumanChallenge();
     if (mode === "login") {
       if (Date.now() < loginLockUntilRef.current) {
         const s = Math.ceil((loginLockUntilRef.current - Date.now()) / 1000);
@@ -462,6 +469,14 @@ export function AuthScreen(props?: { onAuthSuccess?: () => void; /** false دا�
         </p>
 
         <form onSubmit={submit} className="relative z-10 space-y-3">
+          <input
+            type="text"
+            name="_hp"
+            tabIndex={-1}
+            autoComplete="off"
+            aria-hidden
+            className="pointer-events-none absolute -left-[9999px] h-0 w-0 opacity-0"
+          />
           {mode === "login" && (
             <>
               <Field

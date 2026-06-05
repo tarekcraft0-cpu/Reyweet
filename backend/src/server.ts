@@ -99,7 +99,17 @@ import {
   getDeviceLabelFromRequest,
   needsLoginEmailOtp,
   trustDeviceForUser,
+  revokeAllTrustedDevices,
 } from "./lib/loginSecurity.js";
+import { assertHumanAuthClient } from "./lib/botGuard.js";
+import { assertValidHumanChallenge } from "./lib/humanChallenge.js";
+import { issueHumanChallenge } from "./lib/humanChallenge.js";
+import {
+  turnstileConfigured,
+  turnstileSiteKey,
+  turnstileTokenFromBody,
+  verifyTurnstileToken,
+} from "./lib/turnstileVerify.js";
 import {
   compressAndSaveVideo,
   isDataUrl,
@@ -166,6 +176,7 @@ app.use(
       "Authorization",
       "X-Device-Fingerprint",
       "X-Device-Label",
+      "X-Retweet-Client",
     ],
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   }),
@@ -173,6 +184,41 @@ app.use(
 
 app.use(express.json({ limit: "6mb" }));
 app.use(jsonGzipMiddleware);
+
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  res.setHeader("Permissions-Policy", "camera=(self), microphone=(self), geolocation=()");
+  next();
+});
+
+async function guardAuthRequest(
+  req: Request,
+  res: Response,
+  body?: unknown,
+): Promise<boolean> {
+  const bot = assertHumanAuthClient(req, body);
+  if (!bot.ok) {
+    res.status(bot.status).json({ error: bot.error, code: bot.code });
+    return false;
+  }
+  const challenge = assertValidHumanChallenge(req, body);
+  if (!challenge.ok) {
+    res.status(400).json({ error: challenge.error });
+    return false;
+  }
+  if (turnstileConfigured()) {
+    const ipKey = rateLimitClientKey(req);
+    const ip = ipKey.startsWith("ip:") ? ipKey.slice(3) : undefined;
+    const ts = await verifyTurnstileToken(turnstileTokenFromBody(body), ip);
+    if (!ts.ok) {
+      res.status(403).json({ error: ts.error });
+      return false;
+    }
+  }
+  return true;
+}
 
 app.use("/media", (_req, res, next) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
@@ -276,12 +322,20 @@ app.get("/v1/webrtc/ice-config", (_req, res) => {
   res.json(buildIceConfigFromEnv());
 });
 
+app.get("/auth/human-challenge", (_req, res) => {
+  const row = issueHumanChallenge();
+  res.json(row);
+});
+
 app.get("/auth/config", (_req, res) => {
   res.json({
     signupOtpRequired: isSignupOtpRequired(),
-    loginOtpRequired: isLoginOtpRequired(),
+    loginOtpRequired: isLoginOtpRequired() || isSmtpConfigured(),
     passwordResetUsesLink: passwordResetUsesLink(),
     smtpConfigured: isSmtpConfigured(),
+    authStrict: process.env.AUTH_STRICT_MODE !== "0",
+    turnstileSiteKey: turnstileSiteKey() || undefined,
+    turnstileRequired: turnstileConfigured(),
   });
 });
 
@@ -361,7 +415,9 @@ function isSignupOtpRequired(): boolean {
 }
 
 function isLoginOtpRequired(): boolean {
-  return process.env.LOGIN_OTP_REQUIRED === "1";
+  if (process.env.LOGIN_OTP_REQUIRED === "0") return false;
+  if (process.env.LOGIN_OTP_REQUIRED === "1") return true;
+  return process.env.AUTH_STRICT_MODE !== "0" && isSmtpConfigured();
 }
 
 function loginOtpKey(userId: string): string {
@@ -480,9 +536,10 @@ function sanitizeStateForStorage(state: AppState): AppState {
 }
 
 app.post("/auth/request-signup-verification", async (req, res) => {
+  if (!(await guardAuthRequest(req, res, req.body))) return;
   const parsed = signupVerifyRequestSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "بيانات غير صالحة" });
-  const rl = rateLimitHit(`signup-otp:${rateLimitClientKey(req)}`, 12, 60 * 60 * 1000);
+  const rl = rateLimitHit(`signup-otp:${rateLimitClientKey(req)}`, 8, 60 * 60 * 1000);
   if (!rl.ok) return res.status(429).set("Retry-After", String(rl.retryAfterSec)).json({ error: "طلبات كثيرة — حاول لاحقاً" });
   const emailNorm = parsed.data.email.trim().toLowerCase();
   const username = parsed.data.username;
@@ -518,9 +575,10 @@ app.post("/auth/request-signup-verification", async (req, res) => {
 });
 
 app.post("/auth/register", async (req, res) => {
+  if (!(await guardAuthRequest(req, res, req.body))) return;
   const parsed = registerSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "بيانات غير صالحة" });
-  const rl = rateLimitHit(`register:${rateLimitClientKey(req)}`, 20, 60 * 60 * 1000);
+  const rl = rateLimitHit(`register:${rateLimitClientKey(req)}`, 10, 60 * 60 * 1000);
   if (!rl.ok) return res.status(429).set("Retry-After", String(rl.retryAfterSec)).json({ error: "طلبات كثيرة — حاول لاحقاً" });
   const { email, username, password, code, phone: phoneRaw, displayName: displayNameRaw } = parsed.data;
   const phoneErr = validateOptionalPhone(phoneRaw);
@@ -566,9 +624,10 @@ app.post("/auth/register", async (req, res) => {
 });
 
 app.post("/auth/login", async (req, res) => {
+  if (!(await guardAuthRequest(req, res, req.body))) return;
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "بيانات غير صالحة" });
-  const rl = rateLimitHit(`login:${rateLimitClientKey(req)}`, 30, 15 * 60 * 1000);
+  const rl = rateLimitHit(`login:${rateLimitClientKey(req)}`, 8, 15 * 60 * 1000);
   if (!rl.ok) return res.status(429).set("Retry-After", String(rl.retryAfterSec)).json({ error: "طلبات كثيرة — حاول لاحقاً" });
   const { identifier, password } = parsed.data;
   const user = await findUserByEmailOrUsername(identifier);
@@ -603,9 +662,10 @@ const verifyTotpLoginSchema = z.object({
 });
 
 app.post("/auth/verify-totp-login", async (req, res) => {
+  if (!(await guardAuthRequest(req, res, req.body))) return;
   const parsed = verifyTotpLoginSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "بيانات غير صالحة" });
-  const rl = rateLimitHit(`totp-login:${rateLimitClientKey(req)}`, 30, 15 * 60 * 1000);
+  const rl = rateLimitHit(`totp-login:${rateLimitClientKey(req)}`, 12, 15 * 60 * 1000);
   if (!rl.ok) {
     return res
       .status(429)
@@ -648,9 +708,10 @@ const verifyLoginSchema = z.object({
 });
 
 app.post("/auth/verify-login", async (req, res) => {
+  if (!(await guardAuthRequest(req, res, req.body))) return;
   const parsed = verifyLoginSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "بيانات غير صالحة" });
-  const rl = rateLimitHit(`login-verify:${rateLimitClientKey(req)}`, 20, 15 * 60 * 1000);
+  const rl = rateLimitHit(`login-verify:${rateLimitClientKey(req)}`, 10, 15 * 60 * 1000);
   if (!rl.ok) return res.status(429).set("Retry-After", String(rl.retryAfterSec)).json({ error: "طلبات كثيرة — حاول لاحقاً" });
   const user = await findUserByEmailOrUsername(parsed.data.identifier.trim());
   if (!user) return res.status(401).json({ error: "بيانات خاطئة" });
@@ -702,11 +763,12 @@ const googleAuthSchema = z.object({
 });
 
 app.post("/auth/google", async (req, res) => {
+  if (!(await guardAuthRequest(req, res, req.body))) return;
   const audiences = googleAudiences();
   if (audiences.length === 0) {
     return res.status(503).json({ error: "خادم Google غير مُعدّ (GOOGLE_WEB_CLIENT_ID)" });
   }
-  const rl = rateLimitHit(`google:${rateLimitClientKey(req)}`, 40, 15 * 60 * 1000);
+  const rl = rateLimitHit(`google:${rateLimitClientKey(req)}`, 20, 15 * 60 * 1000);
   if (!rl.ok) return res.status(429).set("Retry-After", String(rl.retryAfterSec)).json({ error: "طلبات كثيرة — حاول لاحقاً" });
   const parsed = googleAuthSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "بيانات غير صالحة" });
@@ -1835,6 +1897,7 @@ const patchProfileSchema = z.object({
   pinnedPostId: z.string().max(128).optional(),
   restrictComments: z.boolean().optional(),
   restrictDmFromNonFollowers: z.boolean().optional(),
+  currentPassword: z.string().min(1).max(128).optional(),
 });
 
 function broadcastProfileUpdated(user: UserRow): void {
@@ -1843,6 +1906,10 @@ function broadcastProfileUpdated(user: UserRow): void {
 
 app.patch("/v1/me/profile", authMiddleware, async (req, res) => {
   const userId = (req as Request & { userId: string }).userId;
+  const rl = rateLimitHit(`profile:${userId}`, 40, 60 * 60 * 1000);
+  if (!rl.ok) {
+    return res.status(429).set("Retry-After", String(rl.retryAfterSec)).json({ error: "طلبات كثيرة — حاول لاحقاً" });
+  }
   const parsed = patchProfileSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "بيانات غير صالحة" });
   const cur = await getUserById(userId);
@@ -1850,6 +1917,25 @@ app.patch("/v1/me/profile", authMiddleware, async (req, res) => {
 
   const patch: Parameters<typeof updateUser>[1] = {};
   const d = parsed.data;
+  const usernameChanging =
+    typeof d.username === "string" &&
+    normalizeUsername(d.username.trim()) !== normalizeUsername(cur.username);
+  const emailChanging =
+    d.email != null &&
+    d.email.trim().toLowerCase() !== cur.email.trim().toLowerCase();
+  if (usernameChanging || emailChanging) {
+    const pwd = d.currentPassword?.trim();
+    if (!pwd) {
+      return res.status(403).json({
+        error: "أدخل كلمة المرور الحالية لتأكيد تغيير اسم المستخدم أو البريد",
+      });
+    }
+    const pwdOk = await bcrypt.compare(pwd, cur.passwordHash);
+    if (!pwdOk) {
+      return res.status(401).json({ error: "كلمة المرور غير صحيحة" });
+    }
+    await revokeAllTrustedDevices(userId);
+  }
   if (typeof d.username === "string") {
     const rawUsername = d.username.trim();
     if (rawUsername.length > 0) {

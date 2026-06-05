@@ -82,7 +82,14 @@ async function main() {
   );
   await exec(
     conn,
-    `pm2 restart retweet-api 2>/dev/null; sleep 3; curl -sf http://127.0.0.1:3000/health | head -c 120 || echo "[backend-only] تأكّد يدوياً: curl http://127.0.0.1:3000/health على السيرفر"`,
+    `ENV_FILE=${APP_REMOTE}/.env
+if [ -f "$ENV_FILE" ]; then
+  grep -q '^AUTH_STRICT_MODE=' "$ENV_FILE" || echo 'AUTH_STRICT_MODE=1' >> "$ENV_FILE"
+  if ! grep -q '^DATA_ENCRYPTION_KEY=' "$ENV_FILE"; then
+    echo "DATA_ENCRYPTION_KEY=$(openssl rand -hex 32)" >> "$ENV_FILE"
+  fi
+fi
+pm2 restart retweet-api 2>/dev/null; sleep 3; curl -sf http://127.0.0.1:3000/health | head -c 120 || echo "[backend-only] تأكّد يدوياً: curl http://127.0.0.1:3000/health على السيرفر"`,
   );
   conn.end();
   console.log(`\n✓ Backend only — بيانات /var/lib/retweet لم تُستبدَل — API ${PUBLIC_API}\n`);

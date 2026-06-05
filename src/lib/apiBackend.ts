@@ -23,6 +23,7 @@ import { scopeAppStateToAccount } from "./scopeAppState";
 import { isReactNativeWebView } from "./nativeShell";
 import { dedupeGroupSystemMessages } from "./groupSystemMessages";
 import { getDeviceLabel, getOrCreateDeviceFingerprint } from "./deviceFingerprint";
+import { buildAuthHumanBody, nativeClientHeader } from "./humanAuthClient";
 import { normalizeRemoteAppState } from "./stateNormalizeBridge";
 import { apiCacheGet, apiCacheGetOrFetch, apiCacheInvalidate, apiCacheSet } from "./apiCache";
 import { perfAsync } from "./perfMark";
@@ -159,6 +160,9 @@ export async function apiFetch(
   }
   const url = buildApiUrl(path, base);
   const headers = new Headers(init.headers);
+  for (const [k, v] of Object.entries(nativeClientHeader())) {
+    if (!headers.has(k)) headers.set(k, v);
+  }
   if (!headers.has("Content-Type") && init.body && typeof init.body === "string") {
     headers.set("Content-Type", "application/json");
   }
@@ -278,14 +282,15 @@ export async function apiLogin(
   });
 
   const deviceFingerprint = await getOrCreateDeviceFingerprint();
+  const body = await buildAuthHumanBody({
+    identifier: identifier.trim(),
+    password,
+    deviceFingerprint,
+    deviceLabel: getDeviceLabel(),
+  });
   const res = await apiFetch("/auth/login", {
     method: "POST",
-    body: JSON.stringify({
-      identifier: identifier.trim(),
-      password,
-      deviceFingerprint,
-      deviceLabel: getDeviceLabel(),
-    }),
+    body: JSON.stringify(body),
     token: null,
   });
   const data = (await res.json().catch(() => ({}))) as {
@@ -356,9 +361,10 @@ export async function apiVerifyTotpLogin(
   | { ok: true; requiresOtp: true; emailHint?: string; otpReason?: string }
   | { ok: false; error: string }
 > {
+  const body = await buildAuthHumanBody({ pendingLoginId, code: code.trim() });
   const res = await apiFetch("/auth/verify-totp-login", {
     method: "POST",
-    body: JSON.stringify({ pendingLoginId, code: code.trim() }),
+    body: JSON.stringify(body),
     token: null,
   });
   const data = (await res.json().catch(() => ({}))) as {
@@ -391,14 +397,15 @@ export async function apiVerifyLogin(
   | { ok: false; error: string }
 > {
   const deviceFingerprint = await getOrCreateDeviceFingerprint();
+  const body = await buildAuthHumanBody({
+    identifier: identifier.trim(),
+    code: code.trim(),
+    deviceFingerprint,
+    deviceLabel: getDeviceLabel(),
+  });
   const res = await apiFetch("/auth/verify-login", {
     method: "POST",
-    body: JSON.stringify({
-      identifier: identifier.trim(),
-      code: code.trim(),
-      deviceFingerprint,
-      deviceLabel: getDeviceLabel(),
-    }),
+    body: JSON.stringify(body),
     token: null,
   });
   const data = (await res.json().catch(() => ({}))) as {
@@ -428,6 +435,8 @@ export async function apiGetAuthConfig(): Promise<{
   loginOtpRequired: boolean;
   passwordResetUsesLink: boolean;
   smtpConfigured: boolean;
+  turnstileSiteKey?: string;
+  turnstileRequired?: boolean;
 }> {
   const res = await apiFetch("/auth/config", { method: "GET", token: null });
   if (!res.ok) {
@@ -443,12 +452,16 @@ export async function apiGetAuthConfig(): Promise<{
     loginOtpRequired?: boolean;
     passwordResetUsesLink?: boolean;
     smtpConfigured?: boolean;
+    turnstileSiteKey?: string;
+    turnstileRequired?: boolean;
   };
   return {
     signupOtpRequired: data.signupOtpRequired !== false,
     loginOtpRequired: !!data.loginOtpRequired,
     passwordResetUsesLink: !!data.passwordResetUsesLink,
     smtpConfigured: !!data.smtpConfigured,
+    turnstileSiteKey: data.turnstileSiteKey,
+    turnstileRequired: !!data.turnstileRequired,
   };
 }
 
@@ -456,12 +469,13 @@ export async function apiRequestSignupVerification(
   email: string,
   username: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  const body = await buildAuthHumanBody({
+    email: email.trim().toLowerCase(),
+    username: username.trim().toLowerCase().replace(/[^a-z0-9_]/g, ""),
+  });
   const res = await apiFetch("/auth/request-signup-verification", {
     method: "POST",
-    body: JSON.stringify({
-      email: email.trim().toLowerCase(),
-      username: username.trim().toLowerCase().replace(/[^a-z0-9_]/g, ""),
-    }),
+    body: JSON.stringify(body),
     token: null,
   });
   const data = (await res.json().catch(() => ({}))) as { error?: string; devCode?: string };
@@ -480,18 +494,19 @@ export async function apiRegister(
   | { ok: false; error: string }
 > {
   const deviceFingerprint = await getOrCreateDeviceFingerprint();
+  const body = await buildAuthHumanBody({
+    email: email.trim().toLowerCase(),
+    username: username.trim().toLowerCase().replace(/[^a-z0-9_]/g, ""),
+    password,
+    code: code?.trim() || undefined,
+    phone: phone?.trim() || undefined,
+    deviceFingerprint,
+    deviceLabel: getDeviceLabel(),
+  });
   const res = await apiFetch("/auth/register", {
     method: "POST",
     timeoutMs: 30_000,
-    body: JSON.stringify({
-      email: email.trim().toLowerCase(),
-      username: username.trim().toLowerCase().replace(/[^a-z0-9_]/g, ""),
-      password,
-      code: code?.trim() || undefined,
-      phone: phone?.trim() || undefined,
-      deviceFingerprint,
-      deviceLabel: getDeviceLabel(),
-    }),
+    body: JSON.stringify(body),
     token: null,
   });
   const data = (await res.json().catch(() => ({}))) as {
@@ -1197,6 +1212,7 @@ export async function apiPatchProfile(
     isPrivate?: boolean;
     email?: string;
     phone?: string;
+    currentPassword?: string;
   },
 ): Promise<{ ok: true; user: ApiSearchUser } | { ok: false; error: string }> {
   await ensureApiRuntimeConfig();
