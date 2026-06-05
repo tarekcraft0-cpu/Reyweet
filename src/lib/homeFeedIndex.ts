@@ -32,8 +32,10 @@ function postVisibleInHomeFeed(
   p: Post,
   meSets: ReturnType<typeof buildViewerSets>,
   usersById: Map<ID, User>,
+  bannedUserIds?: ReadonlySet<ID>,
 ): boolean {
   if (!p?.id || isReelFeedPost(p)) return false;
+  if (bannedUserIds?.size && p.userId && bannedUserIds.has(p.userId)) return false;
   const author = usersById.get(p.userId);
   if (!authorVisibleToViewer(author, meId, meSets)) return false;
   if (!canViewPostInHomeFeed(state, meId, p, viewer)) return false;
@@ -43,7 +45,12 @@ function postVisibleInHomeFeed(
 /**
  * حساب خلاصة الرئيسية من كل المنشورات المحلية (احتياطي قبل أول سحب من الخادم).
  */
-export function computeHomeFeedPostIds(state: AppState, meId: ID, me?: User | null): Post[] {
+export function computeHomeFeedPostIds(
+  state: AppState,
+  meId: ID,
+  me?: User | null,
+  bannedUserIds?: ReadonlySet<ID>,
+): Post[] {
   const viewer = me ?? state.users.find(u => u.id === meId);
   if (!viewer) return [];
   const meSets = buildViewerSets(viewer);
@@ -53,7 +60,7 @@ export function computeHomeFeedPostIds(state: AppState, meId: ID, me?: User | nu
 
   for (const p of state.posts ?? []) {
     if (!p?.id || seen.has(p.id)) continue;
-    if (!postVisibleInHomeFeed(state, meId, viewer, p, meSets, usersById)) continue;
+    if (!postVisibleInHomeFeed(state, meId, viewer, p, meSets, usersById, bannedUserIds)) continue;
     seen.add(p.id);
     out.push(p);
   }
@@ -81,10 +88,11 @@ export function buildHomeFeedDisplayPosts(
   meId: ID,
   serverOrdered: Post[],
   me?: User | null,
+  bannedUserIds?: ReadonlySet<ID>,
 ): Post[] {
   const viewer = me ?? state.users.find(u => u.id === meId);
   if (!viewer) return [];
-  if (!serverOrdered.length) return computeHomeFeedPostIds(state, meId, viewer);
+  if (!serverOrdered.length) return computeHomeFeedPostIds(state, meId, viewer, bannedUserIds);
 
   const meSets = buildViewerSets(viewer);
   const usersById = new Map(state.users.map(u => [u.id, u]));
@@ -93,7 +101,7 @@ export function buildHomeFeedDisplayPosts(
 
   for (const p of serverOrdered) {
     if (!p?.id || seen.has(p.id)) continue;
-    if (!postVisibleInHomeFeed(state, meId, viewer, p, meSets, usersById)) continue;
+    if (!postVisibleInHomeFeed(state, meId, viewer, p, meSets, usersById, bannedUserIds)) continue;
     seen.add(p.id);
     out.push(p);
   }
@@ -101,8 +109,9 @@ export function buildHomeFeedDisplayPosts(
   const headAt = out[0]?.createdAt ?? 0;
   for (const p of state.posts ?? []) {
     if (!p?.id || seen.has(p.id)) continue;
+    if (p.userId !== meId) continue;
     if ((p.createdAt ?? 0) < headAt) continue;
-    if (!postVisibleInHomeFeed(state, meId, viewer, p, meSets, usersById)) continue;
+    if (!postVisibleInHomeFeed(state, meId, viewer, p, meSets, usersById, bannedUserIds)) continue;
     seen.add(p.id);
     out.push(p);
   }

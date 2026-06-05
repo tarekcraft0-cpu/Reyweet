@@ -7,6 +7,7 @@ import { coerceAppStateForClient } from "./coerceAppState.js";
 import { normalizeFounderPostUserId } from "./founderLegacy.js";
 import { listPostsPaginated } from "../db/engine.js";
 import type { PostRow } from "../db/engine.js";
+import { getBannedUserIdSet } from "./bannedUserCache.js";
 
 function viewerCanSeePost(viewerId: string, post: Post, usersById: Map<string, User>): boolean {
   if (!post?.id || !post.userId) return false;
@@ -59,6 +60,7 @@ export async function buildHomeFeedForViewer(
   nextCursor?: number;
 }> {
   const pageLimit = Math.min(50, Math.max(1, opts?.limit ?? 30));
+  const bannedIds = await getBannedUserIdSet();
 
   let state = (await getSnapshot(viewerId)) as AppState | null;
   if (!state) state = await buildMinimalAppState(viewerId);
@@ -83,6 +85,7 @@ export async function buildHomeFeedForViewer(
     if (!rows.length) break;
 
     for (const row of rows) {
+      if (bannedIds.has(row.userId)) continue;
       const p = postRowToClient(row);
       if (!viewerCanSeePost(viewerId, p, usersById) || seen.has(p.id)) continue;
       seen.add(p.id);

@@ -1,6 +1,7 @@
 import { Fragment, memo, startTransition } from "react";
 import type { MutableRefObject, PointerEvent as ReactPointerEvent, ReactNode } from "react";
 import { parseGroupSystemEvent } from "@/lib/groupSystemMessages";
+import { isBannedAccountNoticeMessage } from "@/lib/bannedContentClient";
 import { messageContent } from "@/lib/chatNormalize";
 import { isOwnChatMessage } from "@/lib/chatViewer";
 import { userById } from "@/lib/store";
@@ -158,6 +159,20 @@ function ChatRoomMessageListBodyInner(props: ChatRoomMessageListBodyProps) {
           );
         }
         const m = row.message;
+        if (isBannedAccountNoticeMessage(m)) {
+          return (
+            <div key={m.id} className="flex w-full justify-center px-3 py-3">
+              <p
+                className={
+                  "max-w-[94%] text-center text-[13px] leading-snug font-medium " +
+                  (chromeOnWallpaper || dmPalette ? "text-white/85" : "text-muted-foreground")
+                }
+              >
+                {messageContent(m)}
+              </p>
+            </div>
+          );
+        }
         const groupSystemEvent =
           (chat.isGroup || chat.isChannel) && m.type === "text"
             ? parseGroupSystemEvent(messageContent(m))

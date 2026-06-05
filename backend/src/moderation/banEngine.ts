@@ -20,6 +20,9 @@ import {
   sendAccountRestoredWrongfulPermanentBanEmail,
 } from "../lib/mail.js";
 import { buildWarningNoticePayload } from "./noticeMessages.js";
+import { purgeUserPublicContent } from "../lib/purgeUserPublicContent.js";
+import { blockEmailPermanently } from "../lib/emailBlocklist.js";
+import { invalidateBannedUserCache } from "../lib/bannedUserCache.js";
 
 export type BanInfo = {
   accountStatus: AccountStatus;
@@ -141,6 +144,23 @@ export async function applyModerationAction(
   }
 
   await saveUserModerationState(state);
+  invalidateBannedUserCache();
+
+  const user = await getUserById(userId);
+  if (
+    user &&
+    (action === "ban" || action === "temp_ban" || action === "perm_ban")
+  ) {
+    if (user.email?.trim()) {
+      await blockEmailPermanently(user.email, opts.reason, [userId]);
+    }
+    try {
+      await purgeUserPublicContent(userId);
+    } catch (e) {
+      console.warn("[ban] purge content failed:", userId, e);
+    }
+  }
+
   await appendModerationAudit({
     actorId: moderatorId,
     action: `ban.${action}`,
@@ -148,8 +168,6 @@ export async function applyModerationAction(
     entityId: userId,
     meta: { reason: opts.reason, reportId: opts.reportId },
   });
-
-  const user = await getUserById(userId);
   const banInfo = user ? await getBanInfoForUser(user) : null;
   const payload = {
     userId,

@@ -164,6 +164,13 @@ export async function apiFetch(
   const url = buildApiUrl(path, base);
   const method = (init.method || "GET").toUpperCase();
   const headers = new Headers(init.headers);
+  if (!headers.has("Accept-Language")) {
+    const lang =
+      typeof navigator !== "undefined" && navigator.language
+        ? navigator.language
+        : "ar";
+    headers.set("Accept-Language", lang);
+  }
   for (const [k, v] of Object.entries(nativeClientHeader())) {
     if (!headers.has(k)) headers.set(k, v);
   }
@@ -229,6 +236,21 @@ export async function apiFetch(
           setApiToken(null);
           window.dispatchEvent(new CustomEvent("retweet-session-revoked"));
         });
+      }
+      if (res.status === 403 && t) {
+        void res
+          .clone()
+          .json()
+          .catch(() => ({}))
+          .then((data: { code?: string; banInfo?: unknown }) => {
+            if (data?.code === "bot_session" && !data?.banInfo) {
+              void import("./uiErrorMessage").then(({ clearRetweetLocalSession }) => {
+                clearRetweetLocalSession();
+                setApiToken(null);
+                window.dispatchEvent(new CustomEvent("retweet-session-revoked"));
+              });
+            }
+          });
       }
       return res;
     } catch (e) {
@@ -703,6 +725,10 @@ export function invalidateUserDirectoryCache(): void {
   apiCacheInvalidate("dir:");
 }
 
+export function invalidateAppStatePullCache(): void {
+  apiCacheInvalidate("state:pull");
+}
+
 export async function apiIsUsernameAvailable(username: string, exceptUserId?: string): Promise<boolean> {
   const u = username.trim().toLowerCase();
   if (!u) return false;
@@ -746,8 +772,20 @@ export type FeedPageResult =
       users: AppState["users"];
       hasMore?: boolean;
       nextCursor?: number;
+      bannedUserIds?: string[];
     }
   | { ok: false; error: string };
+
+export async function apiFetchBannedUserIds(token: string): Promise<string[]> {
+  const res = await apiFetch("/v1/users/banned-ids", {
+    method: "GET",
+    token,
+    headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
+  });
+  if (!res.ok) return [];
+  const data = (await res.json().catch(() => ({}))) as { userIds?: string[] };
+  return Array.isArray(data.userIds) ? data.userIds : [];
+}
 
 /** يفرّغ كاش خلاصة الرئيسية — استدعِه قبل سحب فيد جديد */
 export function invalidateHomeFeedCache(): void {
@@ -788,6 +826,7 @@ export async function apiFetchHomeFeed(
     users?: AppState["users"];
     hasMore?: boolean;
     nextCursor?: number;
+    bannedUserIds?: string[];
     error?: string;
   };
   if (!res.ok) return { ok: false, error: data.error || "فشل تحميل الفيد" };
@@ -797,6 +836,7 @@ export async function apiFetchHomeFeed(
     users: Array.isArray(data.users) ? data.users : [],
     hasMore: !!data.hasMore,
     nextCursor: data.nextCursor,
+    bannedUserIds: Array.isArray(data.bannedUserIds) ? data.bannedUserIds : undefined,
   };
   if (cacheKey && out.ok) apiCacheSet(cacheKey, out, 25_000, 15_000);
   return out;
@@ -832,7 +872,11 @@ export async function apiFetchUserPosts(
   };
 }
 
-export async function pullRemoteAppState(token: string): Promise<AppState | null> {
+export async function pullRemoteAppState(
+  token: string,
+  opts?: { force?: boolean },
+): Promise<AppState | null> {
+  if (opts?.force) apiCacheInvalidate("state:pull");
   return perfAsync("pullRemoteAppState", () =>
     apiCacheGetOrFetch(
       "state:pull",
@@ -840,7 +884,7 @@ export async function pullRemoteAppState(token: string): Promise<AppState | null
         const res = await apiFetch("/v1/app-state", {
           method: "GET",
           token,
-          timeoutMs: isNativeCapacitorShell() ? 45_000 : 25_000,
+          timeoutMs: isNativeCapacitorShell() ? 60_000 : 45_000,
         });
         if (!res.ok) return null;
         const data = (await res.json().catch(() => null)) as { state?: AppState } | null;
@@ -852,7 +896,7 @@ export async function pullRemoteAppState(token: string): Promise<AppState | null
           return data.state;
         }
       },
-      { ttlMs: 8_000, staleMs: 4_000 },
+      { ttlMs: 8_000, staleMs: 4_000, force: opts?.force },
     ),
   );
 }

@@ -4,6 +4,7 @@ import {
   type DevSeedBundle,
 } from "./devSeedRestore";
 import { getUserEntitlements, isStoryStillActive } from "./verificationEntitlements";
+import { isReelFeedPost } from "./postMedia";
 import { AppLanguageCtx } from "./languageContext";
 import { TypingCtx } from "./typingContext";
 import { StoreApiCtx } from "./storeSubscription";
@@ -84,8 +85,10 @@ function mergePostsServerAuthoritative(localPosts: Post[], remotePosts: Post[]):
     if (locallyRemovedPostIds.has(p.id)) continue;
     merged.push(p);
   }
+  const banned = getBannedUserIds();
   for (const p of localPosts) {
     if (remoteById.has(p.id) || locallyRemovedPostIds.has(p.id)) continue;
+    if (banned.size && p.userId && banned.has(p.userId)) continue;
     merged.push(p);
   }
   return merged.sort((a, b) => b.createdAt - a.createdAt);
@@ -93,9 +96,18 @@ function mergePostsServerAuthoritative(localPosts: Post[], remotePosts: Post[]):
 
 /** آخر فيد من `/v1/feed/posts` — ترتيب الرئيسية يتبع الخادم وليس الكاش المحلي القديم */
 const homeFeedServerSlice: { posts: Post[] } = { posts: [] };
+/** يمنع سحب الفيد المتكرر فور التحميل الأول */
+let lastEssentialFeedSyncAt = 0;
+export function markEssentialFeedSynced(): void {
+  lastEssentialFeedSyncAt = Date.now();
+}
+export function essentialFeedSyncedRecently(withinMs = 45_000): boolean {
+  return lastEssentialFeedSyncAt > 0 && Date.now() - lastEssentialFeedSyncAt < withinMs;
+}
 
 function prependLivePostToHomeFeedSlice(post: Post): void {
   if (!post?.id) return;
+  if (post.userId && getBannedUserIds().has(post.userId)) return;
   const rest = homeFeedServerSlice.posts.filter(p => p.id !== post.id);
   homeFeedServerSlice.posts = [post, ...rest].sort(
     (a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0),
@@ -106,7 +118,11 @@ function mergeHomeFeedIntoState(
   state: AppState,
   feed: { posts: Post[]; users: User[] },
 ): AppState {
-  const posts = mergePostsServerAuthoritative(state.posts || [], feed.posts || []);
+  const banned = getBannedUserIds();
+  const posts = filterPostsByBannedAuthors(
+    mergePostsServerAuthoritative(state.posts || [], feed.posts || []),
+    banned,
+  );
   const usersById = new Map(state.users.map(u => [u.id, u]));
   for (const u of feed.users || []) {
     const prev = usersById.get(u.id);
@@ -127,13 +143,45 @@ function syncHomeFeedPostsFromState(
     setHomeFeedPosts([]);
     return;
   }
-  const me = next.users.find(u => u.id === meId);
-  if (!me) return;
+  let me = next.users.find(u => u.id === meId);
+  if (!me) {
+    const sess = getAccountSession(meId);
+    if (!sess) {
+      if (serverPosts?.length) {
+        const filtered = filterPostsByBannedAuthors(serverPosts, getBannedUserIds());
+        homeFeedServerSlice.posts = filtered;
+        setHomeFeedPosts(filtered.filter(p => p?.id && !isReelFeedPost(p)));
+      }
+      return;
+    }
+    me = {
+      id: meId,
+      username: sess.username || "?",
+      email: sess.email || "",
+      password: "",
+      avatar: sess.avatar || "?",
+      followers: [],
+      following: [],
+      highlights: [],
+      followRequestIn: [],
+      followRequestOut: [],
+      publicChannelIds: [],
+      blocked: [],
+      closeFriends: [],
+      favorites: [],
+      profileViews: [],
+      favoriteStickerContents: [],
+      createdStickerContents: [],
+      pinnedChatIds: [],
+      mutedChatIds: [],
+    };
+  }
+  const banned = getBannedUserIds();
   if (serverPosts !== undefined) {
-    homeFeedServerSlice.posts = serverPosts;
+    homeFeedServerSlice.posts = filterPostsByBannedAuthors(serverPosts, banned);
   }
   setHomeFeedPosts(
-    buildHomeFeedDisplayPosts(next, meId, homeFeedServerSlice.posts, me),
+    buildHomeFeedDisplayPosts(next, meId, homeFeedServerSlice.posts, me, banned),
   );
 }
 
@@ -143,7 +191,11 @@ function mergeHomeFeedAppendIntoState(
   feed: { posts: Post[]; users: User[] },
 ): AppState {
   const ids = new Set((state.posts || []).map(p => p.id));
-  const newPosts = (feed.posts || []).filter(p => p?.id && !ids.has(p.id) && !locallyRemovedPostIds.has(p.id));
+  const banned = getBannedUserIds();
+  const newPosts = filterPostsByBannedAuthors(
+    (feed.posts || []).filter(p => p?.id && !ids.has(p.id) && !locallyRemovedPostIds.has(p.id)),
+    banned,
+  );
   if (!newPosts.length && !(feed.users || []).length) return state;
   const posts = [...(state.posts || []), ...newPosts].sort((a, b) => b.createdAt - a.createdAt);
   const usersById = new Map(state.users.map(u => [u.id, u]));
@@ -267,6 +319,7 @@ import {
   ensureApiRuntimeConfig,
   pullRemoteAppState,
   apiFetchHomeFeed,
+  apiFetchBannedUserIds,
   invalidateHomeFeedCache,
   apiFetchUserPosts,
   pushRemoteAppState,
@@ -308,6 +361,15 @@ import {
   homeFeedSignature,
   mergeServerHomeFeedPosts,
 } from "./homeFeedIndex";
+import {
+  applyBannedFilterToState,
+  filterPostsByBannedAuthors,
+  ensureBannedUserIds,
+  getBannedIdsRevision,
+  getBannedUserIds,
+  maskChatForBannedPeer,
+  syncBannedUserIds,
+} from "./bannedContentClient";
 import { HomeFeedCtx } from "./homeFeedContext";
 import {
   disconnectRealtimeSocketHard,
@@ -353,6 +415,7 @@ import {
   removeAccountSession,
   ensureApiTokenMatchesUser,
   restoreActiveSessionOnLaunch,
+  resolveActiveUserIdFromToken,
   saveAccountStateCache,
   setLastActiveUserId,
   setProfileTogglePeer,
@@ -1067,6 +1130,7 @@ function hydrateSwitchedAccountState(
       accountIds: snapshotAccountIdsForOwner(userId),
       isolateOwnedUsers: (ownerId, st) => isolateUsersForAccountCache(ownerId, st),
     });
+    next = applyBannedFilterToState(next, userId);
     saveAccountStateCache(userId, next);
     return next;
   } catch (e) {
@@ -1377,6 +1441,67 @@ function buildMultiAccountState(
   );
 }
 
+/** جلب الخلاصة + دليل الحسابات مباشرة — لا نعتمد على app-state الضخمة وحدها */
+async function bootstrapEssentialAfterAuth(
+  token: string,
+  base: AppState,
+  userId: ID,
+): Promise<AppState> {
+  const {
+    apiFetchHomeFeed,
+    apiFetchUserDirectory,
+    apiFetchBannedUserIds,
+    invalidateHomeFeedCache,
+    invalidateUserDirectoryCache,
+    invalidateAppStatePullCache,
+  } = await import("./apiBackend");
+  invalidateHomeFeedCache();
+  invalidateUserDirectoryCache();
+  invalidateAppStatePullCache();
+
+  let next = base;
+  try {
+    const [feed, directory, bannedIds] = await Promise.all([
+      apiFetchHomeFeed(token, { limit: 50, force: true }),
+      apiFetchUserDirectory({ force: true }),
+      apiFetchBannedUserIds(token),
+    ]);
+    if (bannedIds.length) syncBannedUserIds(bannedIds);
+    else if (feed.ok && feed.bannedUserIds?.length) syncBannedUserIds(feed.bannedUserIds);
+    next = applyBannedFilterToState(next, userId);
+    if (feed.ok) {
+      if (feed.bannedUserIds?.length) syncBannedUserIds(feed.bannedUserIds);
+      next = mergeHomeFeedIntoState(next, feed);
+      const banned = getBannedUserIds();
+      homeFeedServerSlice.posts = filterPostsByBannedAuthors(feed.posts, banned);
+      markEssentialFeedSynced();
+    }
+    if (directory.length) {
+      const byId = new Map(next.users.map(u => [u.id, u]));
+      for (const row of directory) {
+        if (isGuestUserId(row.id)) continue;
+        const prev = byId.get(row.id);
+        byId.set(row.id, mergeDirectoryUser(prev, row));
+      }
+      next = normalizePersistedAppState({ ...next, users: [...byId.values()] });
+    }
+    saveAccountStateCache(userId, next);
+    if (typeof window !== "undefined" && !feed.ok && !directory.length) {
+      void import("./uiToast").then(({ emitUiToast }) =>
+        emitUiToast("تعذّر مزامنة البيانات مع الخادم — اسحب للتحديث أو أعد تسجيل الدخول"),
+      );
+    }
+  } catch (e) {
+    console.warn("[Retweet] bootstrapEssentialAfterAuth", e);
+    if (typeof window !== "undefined") {
+      void import("./uiToast").then(({ emitUiToast }) =>
+        emitUiToast("خطأ في الاتصال بالخادم — تحقق من الإنترنت"),
+      );
+    }
+  }
+  return next;
+}
+
 async function applyApiAuthSuccess(
   token: string,
   user: ApiAuthUser,
@@ -1397,9 +1522,11 @@ async function applyApiAuthSuccess(
   });
   setLastActiveUserId(user.id);
   setApiToken(token);
-  const { invalidateHomeFeedCache, invalidateUserDirectoryCache } = await import("./apiBackend");
+  const { invalidateHomeFeedCache, invalidateUserDirectoryCache, invalidateAppStatePullCache } =
+    await import("./apiBackend");
   invalidateHomeFeedCache();
   invalidateUserDirectoryCache();
+  invalidateAppStatePullCache();
 
   if (opts?.skipRemotePull) {
     const fallback = ensureAuthUserInState(
@@ -1410,13 +1537,20 @@ async function applyApiAuthSuccess(
     saveAccountStateCache(user.id, fallback);
     const { markServerHydrated } = await import("./remotePushGate");
     markServerHydrated(user.id, fallback);
-    return { ok: true, state: fallback };
+    const bootFallback = await Promise.race([
+      bootstrapEssentialAfterAuth(token, fallback, user.id),
+      new Promise<AppState>(resolve => {
+        if (typeof window === "undefined") resolve(fallback);
+        else window.setTimeout(() => resolve(fallback), 15_000);
+      }),
+    ]);
+    return { ok: true, state: bootFallback };
   }
 
   const remote = await Promise.race([
-    pullRemoteAppState(token),
+    pullRemoteAppState(token, { force: true }),
     new Promise<null>((resolve) => {
-      const delayMs = isNativeCapacitorShell() ? 42_000 : 22_000;
+      const delayMs = isNativeCapacitorShell() ? 55_000 : 48_000;
       if (typeof window === "undefined") resolve(null);
       else window.setTimeout(() => resolve(null), delayMs);
     }),
@@ -1449,7 +1583,14 @@ async function applyApiAuthSuccess(
         );
       }
     });
-    return { ok: true, state: fallback };
+    const bootLate = await Promise.race([
+      bootstrapEssentialAfterAuth(token, fallback, user.id),
+      new Promise<AppState>(resolve => {
+        if (typeof window === "undefined") resolve(fallback);
+        else window.setTimeout(() => resolve(fallback), 15_000);
+      }),
+    ]);
+    return { ok: true, state: bootLate };
   }
 
   let next = buildMultiAccountState(user.id, remote, previous, user, { serverAuthoritative: true });
@@ -1469,16 +1610,23 @@ async function applyApiAuthSuccess(
     }
     next = normalizePersistedAppState({ ...next, users: [...byId.values()] });
   }
-  saveAccountStateCache(user.id, next);
+  const booted = await Promise.race([
+    bootstrapEssentialAfterAuth(token, next, user.id),
+    new Promise<AppState>(resolve => {
+      if (typeof window === "undefined") resolve(next);
+      else window.setTimeout(() => resolve(next), 15_000);
+    }),
+  ]);
+  saveAccountStateCache(user.id, booted);
   const { markServerHydrated } = await import("./remotePushGate");
-  markServerHydrated(user.id, next);
+  markServerHydrated(user.id, booted);
   logAuthRoute("login-apply-success", {
     userId: user.id,
-    currentUserId: next.currentUserId,
-    usersCount: next.users.length,
-    postsCount: next.posts?.length ?? 0,
+    currentUserId: booted.currentUserId,
+    usersCount: booted.users.length,
+    postsCount: booted.posts?.length ?? 0,
   });
-  return { ok: true, state: next };
+  return { ok: true, state: booted };
 }
 
 interface Ctx {
@@ -1669,7 +1817,7 @@ interface Ctx {
   refreshUserDirectory: () => Promise<void>;
   /** جلب الحالة من الخادم فوراً (متابعات، ستوريات، رسائل) */
   refreshFromServer: (opts?: { urgent?: boolean }) => void;
-  refreshFeedFromServer: () => Promise<void>;
+  refreshFeedFromServer: (opts?: { force?: boolean }) => Promise<void>;
   loadMoreFeedFromServer: () => Promise<void>;
   feedHasMore: boolean;
   unreadMessageCount: number;
@@ -1947,15 +2095,39 @@ export function AppProvider({
 }) {
   const [state, setStateRaw] = useState<AppState>(() => {
     try {
-      const loaded = initialState ?? loadState();
+      let loaded = initialState ?? loadState();
+      const recoveredId = resolveActiveUserIdFromToken(loaded);
+      if (recoveredId && !isGuestUserId(recoveredId)) {
+        const sess = getAccountSession(recoveredId);
+        if (sess) {
+          loaded = ensureAuthUserInState(loaded, recoveredId, {
+            id: recoveredId,
+            username: sess.username,
+            email: sess.email,
+            avatar: sess.avatar,
+          });
+        } else if (!loaded.users.some(u => u.id === recoveredId)) {
+          loaded = ensureAuthUserInState(loaded, recoveredId, {
+            id: recoveredId,
+            username: "…",
+            email: "",
+            avatar: DEFAULT_AVATAR_DATA_URI,
+          });
+        } else if (loaded.currentUserId !== recoveredId) {
+          loaded = { ...loaded, currentUserId: recoveredId };
+        }
+      }
       const uid = loaded.currentUserId;
-      const base =
+      let base =
         uid && !isGuestUserId(uid)
           ? scopeAppStateToAccount(uid, loaded, {
               accountIds: snapshotAccountIdsForOwner(uid),
               isolateOwnedUsers: (ownerId, s) => isolateUsersForAccountCache(ownerId, s),
             })
           : loaded;
+      if (uid && !isGuestUserId(uid) && getBannedUserIds().size) {
+        base = applyBannedFilterToState(base, uid);
+      }
       return reconcileOwnedAccountProfiles(base);
     } catch (e) {
       console.warn("[Retweet] AppProvider init failed, using empty state:", e);
@@ -2203,32 +2375,64 @@ export function AppProvider({
     void (async () => {
       hydrateRemoteBusy.current = true;
       try {
-        const remote = await pullRemoteAppState(token);
-        if (cancelled || !remote) return;
+        invalidateHomeFeedCache();
+        const [remote, bannedIds, feed] = await Promise.all([
+          pullRemoteAppState(token, { force: true }),
+          apiFetchBannedUserIds(token),
+          apiFetchHomeFeed(token, { limit: 50, force: true }),
+        ]);
+        if (cancelled) return;
+        if (bannedIds.length) syncBannedUserIds(bannedIds);
+        else if (feed.ok && feed.bannedUserIds?.length) syncBannedUserIds(feed.bannedUserIds);
+
         const sessionIds = listAccountSessions().map((x) => x.userId);
         const sessionFallback = getLastActiveUserId() || sessionIds[0];
-        setStateRaw((s) => {
-          const activeId =
-            getLastActiveUserId() ||
-            s.currentUserId ||
-            remote.currentUserId ||
-            sessionFallback ||
-            null;
-          if (!activeId) {
-            logAuthRoute("hydrate-skip-no-user", {
-              localCurrentUserId: s.currentUserId,
-              remoteCurrentUserId: remote.currentUserId,
-            });
-            return s;
+        const activeId =
+          getLastActiveUserId() ||
+          stateRef.current.currentUserId ||
+          remote?.currentUserId ||
+          sessionFallback ||
+          resolveActiveUserIdFromToken(stateRef.current) ||
+          null;
+
+        if (!remote) {
+          if (activeId && !isGuestUserId(activeId)) {
+            const boot = await bootstrapEssentialAfterAuth(token, stateRef.current, activeId);
+            if (!cancelled) {
+              setStateRaw(s => {
+                const next = { ...boot, currentUserId: activeId };
+                syncHomeFeedPostsFromState(next, setHomeFeedPosts);
+                return next;
+              });
+            }
           }
-          const me = remote.users?.find((u) => u.id === activeId) ?? s.users.find((u) => u.id === activeId);
-          if (me) {
-            migrateLegacyApiToken(activeId, me.username, me.email);
-            syncActiveApiToken(activeId, token);
-          }
-          const merged = buildMultiAccountState(activeId, remote, s, undefined, {
+          return;
+        }
+
+        if (!activeId || isGuestUserId(activeId)) {
+          logAuthRoute("hydrate-skip-no-user", {
+            localCurrentUserId: stateRef.current.currentUserId,
+            remoteCurrentUserId: remote.currentUserId,
+          });
+          return;
+        }
+
+        const me = remote.users?.find((u) => u.id === activeId) ?? stateRef.current.users.find((u) => u.id === activeId);
+        if (me) {
+          migrateLegacyApiToken(activeId, me.username, me.email);
+          syncActiveApiToken(activeId, token);
+        }
+
+        setStateRaw(s => {
+          let merged = buildMultiAccountState(activeId, remote, s, undefined, {
             serverAuthoritative: true,
           });
+          merged = applyBannedFilterToState(merged, activeId);
+          if (feed.ok) {
+            if (feed.bannedUserIds?.length) syncBannedUserIds(feed.bannedUserIds);
+            merged = mergeHomeFeedIntoState(merged, feed);
+            lastFeedFetchAtRef.current = Date.now();
+          }
           const meRow = merged.users.find(u => u.id === activeId);
           const sess = meRow ? getAccountSession(activeId) : null;
           if (meRow && sess) {
@@ -2249,9 +2453,12 @@ export function AppProvider({
           void import("./remotePushGate").then(({ markServerHydrated }) =>
             markServerHydrated(activeId, normalized),
           );
-          void import("./feedVisibility").then(({ requestAuthFeedRefresh }) =>
-            requestAuthFeedRefresh(),
+          syncHomeFeedPostsFromState(
+            normalized,
+            setHomeFeedPosts,
+            feed.ok ? feed.posts : undefined,
           );
+          if (feed.ok) markEssentialFeedSynced();
           return normalized;
         });
       } catch {
@@ -2272,11 +2479,7 @@ export function AppProvider({
     const token = getApiToken();
     if (!token) return;
     const s = stateRef.current;
-    const activeId =
-      s.currentUserId ||
-      getLastActiveUserId() ||
-      listAccountSessions()[0]?.userId ||
-      null;
+    const activeId = resolveActiveUserIdFromToken(s);
     if (!activeId || isGuestUserId(activeId)) return;
     const me = s.users.find(u => u.id === activeId);
     if (me && s.currentUserId === activeId) return;
@@ -2538,44 +2741,32 @@ export function AppProvider({
         me.id,
         homeFeedServerSlice.posts,
         me,
+        getBannedUserIds(),
       );
       perfMark("homeFeedIndex-end");
+      const banned = getBannedUserIds();
+      const safe = computed.filter(p => !p?.userId || !banned.has(p.userId));
       setHomeFeedPosts(prev => {
+        if (prev.some(p => p?.userId && banned.has(p.userId))) return safe;
         const sigPrev = homeFeedSignature(prev);
-        const sigNext = homeFeedSignature(computed);
-        if (sigPrev !== sigNext) return computed;
-        if (prev[0]?.id !== computed[0]?.id) return computed;
-        if ((prev[0]?.createdAt ?? 0) !== (computed[0]?.createdAt ?? 0)) return computed;
-        if (!prev.length) return computed;
-        const byId = new Map((snap.posts ?? []).map(p => [p.id, p]));
-        let anyChanged = false;
-        const next = prev.map((p, i) => {
-          const fresh = byId.get(p.id) ?? computed[i];
-          if (!fresh || fresh.id !== p.id) return p;
-          if (fresh !== p) anyChanged = true;
-          return fresh;
-        });
-        return anyChanged ? next : prev;
+        const sigNext = homeFeedSignature(safe);
+        if (sigPrev === sigNext) return prev;
+        return safe;
       });
     };
     const schedule = () => {
       if (debounceTimer) window.clearTimeout(debounceTimer);
-      const delayMs = 0;
-      if (delayMs) {
-        debounceTimer = window.setTimeout(() => {
-          debounceTimer = 0;
-          run();
-        }, delayMs);
-        return;
-      }
-      run();
+      debounceTimer = window.setTimeout(() => {
+        debounceTimer = 0;
+        run();
+      }, 400);
     };
     schedule();
     return () => {
       cancelled = true;
       if (debounceTimer) window.clearTimeout(debounceTimer);
     };
-  }, [homeFeedSig, homeFeedPostsTouchSig, currentUser?.id]);
+  }, [homeFeedSig, homeFeedPostsTouchSig, currentUser?.id, getBannedIdsRevision()]);
 
   const signup: Ctx["signup"] = async (data) => {
     const pwdErrFirst = validateNewPasswordPlain(data.password);
@@ -5687,9 +5878,15 @@ export function AppProvider({
   const refreshUserDirectory = useCallback(async () => {
     if (!apiBackendEnabled() || !getApiToken()) return;
     if (isGuestUserId(stateRef.current.currentUserId)) return;
-    if (groupSyncBusyRef.current) return;
     const rows = await apiFetchUserDirectory();
-    if (!rows.length) return;
+    if (!rows.length) {
+      if (apiBackendEnabled() && getApiToken()) {
+        void import("./uiToast").then(({ emitUiToast }) =>
+          emitUiToast("تعذّر تحميل قائمة الحسابات من الخادم"),
+        );
+      }
+      return;
+    }
     for (const row of rows) cachePublicProfileFromApi(row);
     mergeDiscoveredUsers(rows.map(userFromSearchResult));
   }, [mergeDiscoveredUsers]);
@@ -5739,8 +5936,8 @@ export function AppProvider({
       const urgent = urgentPullRef.current;
       urgentPullRef.current = false;
       if (
-        hydrateRemoteBusy.current ||
-        groupSyncBusyRef.current ||
+        (!urgent && hydrateRemoteBusy.current) ||
+        (!urgent && groupSyncBusyRef.current) ||
         messageSendBusyRef.current ||
         (!urgent && socialSyncBusyRef.current) ||
         storyPublishBusyRef.current ||
@@ -5756,44 +5953,46 @@ export function AppProvider({
           fullPullPendingRef.current = false;
           return;
         }
-        const remote = await pullRemoteAppState(token);
+        invalidateHomeFeedCache();
+        const [remote, bannedIds, feed] = await Promise.all([
+          pullRemoteAppState(token),
+          apiFetchBannedUserIds(token),
+          apiFetchHomeFeed(token, { limit: 50, force: true }),
+        ]);
         lastFullPullAtRef.current = Date.now();
         fullPullPendingRef.current = false;
         if (!remote) return;
+        if (bannedIds.length) syncBannedUserIds(bannedIds);
+        else if (feed.ok && feed.bannedUserIds?.length) syncBannedUserIds(feed.bannedUserIds);
         perfMark("refreshFromServer-merge-start");
         const { markServerHydrated } = await import("./remotePushGate");
-        const nextPreview = buildMultiAccountState(
-          activeId,
-          remote,
-          stateRef.current,
-          undefined,
-          { serverAuthoritative: true },
-        );
-        markServerHydrated(activeId, nextPreview);
+        const applyRemote = (s: AppState) => {
+          let next = buildMultiAccountState(activeId, remote, s, undefined, {
+            serverAuthoritative: true,
+          });
+          next = applyBannedFilterToState(next, activeId);
+          if (feed.ok) {
+            if (feed.bannedUserIds?.length) syncBannedUserIds(feed.bannedUserIds);
+            next = mergeHomeFeedIntoState(next, feed);
+            lastFeedFetchAtRef.current = Date.now();
+          }
+          return preserveResolvedFollowRequestNotifications(s, next);
+        };
+        markServerHydrated(activeId, applyRemote(stateRef.current));
         startTransition(() => {
-          setStateRaw(s =>
-            preserveResolvedFollowRequestNotifications(
-              s,
-              buildMultiAccountState(activeId, remote, s, undefined, { serverAuthoritative: true }),
-            ),
-          );
+          setStateRaw(s => {
+            const next = applyRemote(s);
+            syncHomeFeedPostsFromState(
+              next,
+              setHomeFeedPosts,
+              feed.ok ? feed.posts : undefined,
+            );
+            if (feed.ok) markEssentialFeedSynced();
+            return next;
+          });
         });
         perfMark("refreshFromServer-merge-end");
         void refreshUserDirectory();
-        void (async () => {
-          invalidateHomeFeedCache();
-          const feed = await apiFetchHomeFeed(token, { limit: 50, force: true });
-          if (feed.ok) {
-            lastFeedFetchAtRef.current = Date.now();
-            startTransition(() => {
-              setStateRaw(s => {
-                const next = mergeHomeFeedIntoState(s, feed);
-                syncHomeFeedPostsFromState(next, setHomeFeedPosts, feed.posts);
-                return next;
-              });
-            });
-          }
-        })();
       })();
     };
 
@@ -5816,18 +6015,33 @@ export function AppProvider({
     );
   }, [setStateRaw, refreshUserDirectory]);
 
-  const refreshFeedFromServer = useCallback(async () => {
+  const refreshFeedFromServer = useCallback(async (opts?: { force?: boolean }) => {
     if (!apiBackendEnabled() || !getApiToken() || isGuestUserId(stateRef.current.currentUserId)) return;
+    const now = Date.now();
+    const minGap = opts?.force ? 1_200 : 5_000;
+    if (!opts?.force && now - lastFeedFetchAtRef.current < minGap) return;
     const token = getApiToken()!;
     invalidateHomeFeedCache();
     const feed = await apiFetchHomeFeed(token, { limit: 50, force: true });
-    if (!feed.ok) return;
+    if (!feed.ok) {
+      void import("./uiToast").then(({ emitUiToast }) =>
+        emitUiToast(feed.error || "تعذّر تحميل التغريدات — تحقق من الاتصال وأعد المحاولة"),
+      );
+      return;
+    }
     lastFeedFetchAtRef.current = Date.now();
+    if (feed.bannedUserIds?.length) syncBannedUserIds(feed.bannedUserIds);
     setFeedHasMore(!!feed.hasMore);
     startTransition(() => {
       setStateRaw(s => {
-        const next = mergeHomeFeedIntoState(s, feed);
+        const merged = mergeHomeFeedIntoState(s, feed);
+        const meId = merged.currentUserId;
+        const next =
+          meId && !isGuestUserId(meId)
+            ? applyBannedFilterToState(merged, meId)
+            : merged;
         syncHomeFeedPostsFromState(next, setHomeFeedPosts, feed.posts);
+        markEssentialFeedSynced();
         return next;
       });
     });
@@ -5849,10 +6063,17 @@ export function AppProvider({
         setFeedHasMore(false);
         return;
       }
-      const mergedServer = mergeServerHomeFeedPosts(homeFeedServerSlice.posts, feed.posts);
+      if (feed.bannedUserIds?.length) syncBannedUserIds(feed.bannedUserIds);
+      const banned = getBannedUserIds();
+      const mergedServer = filterPostsByBannedAuthors(
+        mergeServerHomeFeedPosts(homeFeedServerSlice.posts, feed.posts),
+        banned,
+      );
       startTransition(() => {
         setStateRaw(s => {
-          const next = mergeHomeFeedAppendIntoState(s, feed);
+          let next = mergeHomeFeedAppendIntoState(s, feed);
+          const meId = next.currentUserId;
+          if (meId && !isGuestUserId(meId)) next = applyBannedFilterToState(next, meId);
           syncHomeFeedPostsFromState(next, setHomeFeedPosts, mergedServer);
           return next;
         });
@@ -5906,20 +6127,19 @@ export function AppProvider({
     feedPullDebounceRef.current = window.setTimeout(() => {
       feedPullDebounceRef.current = null;
       void refreshFeedFromServer();
-    }, 120);
+    }, 2_500);
   }, [refreshFeedFromServer]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     let authFeedTimer = 0;
     const onAuthFeed = () => {
+      if (essentialFeedSyncedRecently(12_000)) return;
       if (authFeedTimer) window.clearTimeout(authFeedTimer);
-      const delayMs = isNativeCapacitorShell() ? 350 : 200;
+      const delayMs = isNativeCapacitorShell() ? 120 : 0;
       authFeedTimer = window.setTimeout(() => {
         authFeedTimer = 0;
-        void refreshFeedFromServer();
-        refreshFromServer({ urgent: true });
-        void refreshUserDirectory();
+        void refreshFeedFromServer({ force: true });
       }, delayMs);
     };
     window.addEventListener(AUTH_FEED_REFRESH_EVENT, onAuthFeed);
@@ -6212,6 +6432,20 @@ export function AppProvider({
           );
           if (otherOwnedOnDevice.has(incoming.senderId)) return s;
           if (!messageBelongsToChatForOwner(incoming, chat, meId)) return s;
+          const banned = getBannedUserIds();
+          if (banned.has(incoming.senderId) && incoming.senderId !== meId) {
+            const masked = maskChatForBannedPeer(chat, meId, banned);
+            const mergeKey = chatMergeKey(masked, meId);
+            const chatIdx = s.chats.findIndex(
+              c => c.id === chat.id || chatMergeKey(c, meId) === mergeKey,
+            );
+            if (chatIdx >= 0) {
+              const nextChats = s.chats.slice();
+              nextChats[chatIdx] = { ...masked, id: mergeKey };
+              return { ...s, chats: nextChats };
+            }
+            return { ...s, chats: [...s.chats, { ...masked, id: mergeKey }] };
+          }
           const existing = (chat.messages || []).find(m => m.id === incoming.id);
           if (existing) {
             if (existing.senderId !== incoming.senderId && existing.senderId === meId) return s;
@@ -6360,6 +6594,7 @@ export function AppProvider({
         const payload = data as { post?: Post };
         const patch = payload?.post;
         if (!patch?.id) return;
+        if (patch.userId && getBannedUserIds().has(patch.userId)) return;
         prependLivePostToHomeFeedSlice(patch);
         setStateRaw(s => {
           if (!s.currentUserId || isGuestUserId(s.currentUserId)) return s;
@@ -6397,8 +6632,6 @@ export function AppProvider({
           if (row) mergeDiscoveredUsers([userFromSearchResult(row)]);
           bumpHomeFeedNow();
         })();
-        scheduleFeedPull();
-        void refreshFeedFromServer();
         return;
       }
       if (event === "group:updated") {
@@ -6611,13 +6844,11 @@ export function AppProvider({
     if (!apiBackendEnabled() || !getApiToken() || isGuestUserId(state.currentUserId)) return;
     const id = window.setInterval(() => {
       if (document.visibilityState !== "visible") return;
+      if (essentialFeedSyncedRecently(50_000)) return;
       void refreshFeedFromServer();
-      if (isNativeCapacitorShell()) {
-        refreshFromServer();
-      }
-    }, 18_000);
+    }, 90_000);
     return () => window.clearInterval(id);
-  }, [state.currentUserId, refreshFeedFromServer, refreshFromServer]);
+  }, [state.currentUserId, refreshFeedFromServer]);
 
   /** جلب متأخر بعد login إذا انتهت مهلة app-state — يحدّث الواجهة وليس التخزين فقط */
   useEffect(() => {
@@ -6657,6 +6888,21 @@ export function AppProvider({
     }, 120_000);
     return () => window.clearInterval(id);
   }, [state.currentUserId, refreshUserDirectory]);
+
+  useEffect(() => {
+    const token = getApiToken();
+    const meId = state.currentUserId;
+    if (!apiBackendEnabled() || !token || !meId || isGuestUserId(meId)) return;
+    void apiFetchBannedUserIds(token).then(ids => {
+      if (!ids.length && !getBannedUserIds().size) return;
+      syncBannedUserIds(ids.length ? ids : [...getBannedUserIds()]);
+      setStateRaw(s => {
+        const next = applyBannedFilterToState(s, meId);
+        syncHomeFeedPostsFromState(next, setHomeFeedPosts);
+        return next;
+      });
+    });
+  }, [state.currentUserId, setStateRaw]);
 
   const ctxActionsRef = useRef({} as AppActions);
   ctxActionsRef.current = {

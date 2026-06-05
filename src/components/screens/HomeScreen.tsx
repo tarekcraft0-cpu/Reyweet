@@ -7,6 +7,7 @@ import { useHomePullToRefresh } from "@/hooks/useHomePullToRefresh";
 import { useTabPanelScrollRef } from "@/lib/tabPanelScrollContext";
 import { useIsTabActive } from "@/lib/tabActiveContext";
 import {
+  essentialFeedSyncedRecently,
   useAppActions,
   useAppSelector,
   useHomeFeed,
@@ -14,6 +15,11 @@ import {
   userById,
   visibleStoryFriendsUserIds,
 } from "@/lib/store";
+import {
+  filterPostsByBannedAuthors,
+  getBannedIdsRevision,
+  getBannedUserIds,
+} from "@/lib/bannedContentClient";
 import { equalIdArrays } from "@/lib/useAppSelector";
 import { useScreenPerf } from "@/lib/useScreenPerf";
 import { useProfiledRender } from "@/lib/renderProfiler";
@@ -60,6 +66,11 @@ export const HomeScreen = memo(function HomeScreen({
   const posts = useAppSelector(s => s.posts);
   const users = useAppSelector(s => s.users);
   const { homeFeedPosts: feed, feedHasMore } = useHomeFeed();
+  const bannedRev = getBannedIdsRevision();
+  const displayFeed = useMemo(
+    () => filterPostsByBannedAuthors(feed, getBannedUserIds()),
+    [feed, bannedRev],
+  );
   const isHomeTabActive = useIsTabActive("home");
   const nativeShell = isNativeMobileApp();
   const [refreshDoneHint, setRefreshDoneHint] = useState(false);
@@ -160,7 +171,7 @@ export const HomeScreen = memo(function HomeScreen({
   }, []);
 
   const refreshFeedBg = useCallback(async () => {
-    await refreshFeedFromServer();
+    await refreshFeedFromServer({ force: true });
     setFeedTick(t => t + 1);
   }, [refreshFeedFromServer]);
 
@@ -247,14 +258,15 @@ export const HomeScreen = memo(function HomeScreen({
   const lastHomeFeedPullRef = useRef(0);
   useEffect(() => {
     if (!isHomeTabActive || isGuest) return;
+    if (essentialFeedSyncedRecently(60_000)) return;
     const now = Date.now();
-    const minGap = nativeShell ? 900 : 1200;
-    if (now - lastHomeFeedPullRef.current < minGap && feed.length > 0) return;
+    const minGap = nativeShell ? 8_000 : 12_000;
+    if (now - lastHomeFeedPullRef.current < minGap && displayFeed.length > 0) return;
     lastHomeFeedPullRef.current = now;
-    const delayMs = nativeShell && isNativePostLoginQuietPeriod() ? 250 : 0;
+    const delayMs = nativeShell && isNativePostLoginQuietPeriod() ? 400 : 0;
     const t = window.setTimeout(() => void runRefresh(), delayMs);
     return () => window.clearTimeout(t);
-  }, [isHomeTabActive, isGuest, runRefresh, nativeShell]);
+  }, [isHomeTabActive, isGuest, runRefresh, nativeShell, displayFeed.length]);
 
   useEffect(() => {
     if (!isHomeTabActive || isGuest) return;
@@ -269,13 +281,16 @@ export const HomeScreen = memo(function HomeScreen({
   useEffect(() => {
     if (!isHomeTabActive || isGuest) return;
     const poll = window.setInterval(() => {
-      if (document.visibilityState === "visible") void runRefresh();
-    }, 22_000);
+      if (document.visibilityState !== "visible") return;
+      if (essentialFeedSyncedRecently(55_000)) return;
+      void runRefresh();
+    }, 75_000);
     let visTimer = 0;
     const onVis = () => {
       if (document.visibilityState !== "visible") return;
+      if (essentialFeedSyncedRecently(30_000)) return;
       if (visTimer) window.clearTimeout(visTimer);
-      visTimer = window.setTimeout(() => void runRefresh(), 400);
+      visTimer = window.setTimeout(() => void runRefresh(), 1200);
     };
     document.addEventListener("visibilitychange", onVis);
     return () => {
@@ -350,17 +365,17 @@ export const HomeScreen = memo(function HomeScreen({
 
       <section aria-label="الخلاصة" className="relative z-0 flex flex-col bg-background">
         <VirtualizedHomeFeed
-          posts={feed}
+          posts={displayFeed}
           scrollRef={tabScrollRef}
           headerOffsetPx={0}
           feedHasMore={feedHasMore}
           onLoadMore={handleLoadMore}
           feedActions={feedActions}
         />
-        {feed.length === 0 && !pullRefreshing && (
+        {displayFeed.length === 0 && !pullRefreshing && (
           <p className="text-center text-muted-foreground py-12">{t("noPosts")}</p>
         )}
-        {feed.length === 0 && pullRefreshing && (
+        {displayFeed.length === 0 && pullRefreshing && (
           <div className="flex flex-col items-center gap-3 py-14">
             <div className="retweet-ios-pull-spinner h-8 w-8 rounded-full border-[2.5px] border-muted-foreground/20 border-t-primary" />
             <p className="text-sm text-muted-foreground">جاري تحميل الخلاصة…</p>

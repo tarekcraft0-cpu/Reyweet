@@ -2,6 +2,8 @@ import type { AppState, Chat, Message } from "../../../src/lib/types.js";
 import type { MessageRow } from "../db/engine.js";
 import { dmBucketKeyForRow, dmChatId } from "./dmChatId.js";
 import { filterMessagesForParticipant } from "./chatAccess.js";
+import { maskChatForBannedPeer } from "./bannedContentFilter.js";
+import { getBannedUserIdSet } from "./bannedUserCache.js";
 import { scopeChatForAccount } from "./scopeAppState.js";
 import { getChatCatalog } from "./chatCatalog.js";
 
@@ -242,6 +244,7 @@ export async function hydrateStateWithMessages(
   if (!ownerId || state.chats.length === 0) return state;
 
   const allRows = prefetchedRows ?? (await listMessagesForUser(ownerId));
+  const bannedIds = await getBannedUserIdSet();
   const rowsByBucket = new Map<string, typeof allRows>();
   for (const row of allRows) {
     const bucket = dmBucketKeyForRow(ownerId, row);
@@ -261,7 +264,8 @@ export async function hydrateStateWithMessages(
       const rows = rowsByBucket.get(bucket) ?? [];
       const visible = filterMessagesForParticipant(ownerId, c, rows);
       const remote = visible.map(messageRowToClient);
-      return { ...c, messages: mergeMessageLists(c.messages, remote) };
+      const merged = { ...c, messages: mergeMessageLists(c.messages, remote) };
+      return maskChatForBannedPeer(merged, ownerId, bannedIds);
     }),
   };
 }

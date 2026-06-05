@@ -120,10 +120,15 @@ import {
 } from "./lib/botGuard.js";
 import { assertApiIngress } from "./lib/apiIngressGuard.js";
 import {
+  clientIpFromRequest,
   handleBotAuthViolation,
   handleBotSessionViolation,
   isIpBotBlocked,
 } from "./lib/botAutoBan.js";
+import { linkDeviceAndIp } from "./db/moderationStore.js";
+import { blockIpPermanently } from "./lib/ipBlocklist.js";
+import { ensureEmailBlocklistLoaded, isEmailPermanentlyBlocked } from "./lib/emailBlocklist.js";
+import { getBannedUserIdSet } from "./lib/bannedUserCache.js";
 import { assertValidHumanChallenge } from "./lib/humanChallenge.js";
 import { issueHumanChallenge } from "./lib/humanChallenge.js";
 import {
@@ -455,10 +460,30 @@ async function publicUserPayloadWithSocial(user: UserRow) {
   };
 }
 
+/** رفض تسجيل ببريد محظور نهائياً — يحظر IP أيضاً */
+async function rejectBlockedEmailSignup(
+  req: Request,
+  res: Response,
+  emailNorm: string,
+): Promise<boolean> {
+  if (!(await isEmailPermanentlyBlocked(emailNorm))) return false;
+  const ip = clientIpFromRequest(req);
+  if (ip && ip !== "unknown") {
+    await blockIpPermanently(ip, "محاولة تسجيل ببريد محظور نهائياً", []);
+  }
+  res.status(403).json({
+    error: "هذا البريد الإلكتروني محظور نهائياً ولا يمكن إنشاء حساب به",
+    code: "email_blocked",
+  });
+  return true;
+}
+
 /** قائمة مستخدمين للبحث/الدليل — بدون مصفوفات followers/following (أخف وأسرع) */
 async function publicUserListPayload(users: UserRow[]) {
-  const counts = await socialCountsBatch(users.map(u => u.id));
-  return users.map(user => {
+  const bannedIds = await getBannedUserIdSet();
+  const visible = users.filter(u => !bannedIds.has(u.id));
+  const counts = await socialCountsBatch(visible.map(u => u.id));
+  return visible.map(user => {
     const c = counts.get(user.id);
     return {
       ...publicUserPayload(user),
@@ -549,6 +574,7 @@ async function finishAuthLogin(
   const { recordLoginEvent } = await import("./routes/userExtrasRoutes.js");
   recordLoginEvent(user.id, req, true, deviceLabel);
   await trustDeviceForUser(user.id, deviceFingerprint, deviceLabel, req);
+  await linkDeviceAndIp(user.id, deviceFingerprint, clientIpFromRequest(req));
   const tv = await getUserTokenVersion(user.id);
   const token = signAccessToken(user.id, tv);
   return res.json({ token, user: authUserPayload(user) });
@@ -607,6 +633,7 @@ app.post("/auth/request-signup-verification", async (req, res) => {
   if (!rl.ok) return res.status(429).set("Retry-After", String(rl.retryAfterSec)).json({ error: "طلبات كثيرة — حاول لاحقاً" });
   const emailNorm = parsed.data.email.trim().toLowerCase();
   const username = parsed.data.username;
+  if (await rejectBlockedEmailSignup(req, res, emailNorm)) return;
   if (await findUserByEmailOrUsername(emailNorm)) {
     return res.status(409).json({ error: "البريد مستخدم مسبقاً" });
   }
@@ -649,6 +676,7 @@ app.post("/auth/register", async (req, res) => {
   if (phoneErr) return res.status(400).json({ error: phoneErr });
   const phoneNorm = normalizePhone(phoneRaw);
   const emailNorm = email.trim().toLowerCase();
+  if (await rejectBlockedEmailSignup(req, res, emailNorm)) return;
   if (await findUserByEmailOrUsername(emailNorm)) {
     return res.status(409).json({ error: "البريد أو اسم المستخدم مستخدم" });
   }
@@ -682,6 +710,7 @@ app.post("/auth/register", async (req, res) => {
   const regFp = getDeviceFingerprintFromRequest(req, req.body as { deviceFingerprint?: string });
   const regLabel = getDeviceLabelFromRequest(req, req.body as { deviceLabel?: string });
   if (regFp) await trustDeviceForUser(user.id, regFp, regLabel, req);
+  await linkDeviceAndIp(user.id, regFp, clientIpFromRequest(req));
   const token = signAccessToken(user.id, 1);
   notifyUserRegistered(user);
   return res.json({ token, user: authUserPayload(user) });
@@ -867,6 +896,8 @@ app.post("/auth/google", async (req, res) => {
     return finishAuthLogin(byGoogle, req, res, deviceFp, deviceLabel);
   }
 
+  if (await rejectBlockedEmailSignup(req, res, emailNorm)) return;
+
   const byEmail = await findUserByEmailOrUsername(emailNorm);
   if (byEmail) {
     if (byEmail.googleId && byEmail.googleId !== sub) {
@@ -899,6 +930,8 @@ app.post("/auth/google", async (req, res) => {
     appTheme: "light",
     appLanguage: "ar",
   });
+  if (deviceFp) await trustDeviceForUser(user.id, deviceFp, deviceLabel, req);
+  await linkDeviceAndIp(user.id, deviceFp, clientIpFromRequest(req));
   const token = signAccessToken(user.id, 1);
   notifyUserRegistered(user);
   return res.json({ token, user: authUserPayload(user) });
@@ -1097,18 +1130,28 @@ async function loginBanResponse(user: UserRow, res: Response): Promise<Response 
 app.get("/v1/app-state", authMiddleware, async (req, res) => {
   setNoStoreApi(res);
   const userId = (req as Request & { userId: string }).userId;
-  const snap = await getSnapshot(userId);
-  let state = (snap as AppState | null) ?? (await buildMinimalAppState(userId));
-  state = await mergeDbUsersIntoAppState(state);
-  state = await mergeDbPostsIntoAppState(state);
-  state = await mergeSocialGraphIntoAppState(state);
-  state = await hydrateAppStateMessages(state, userId);
-  const feedStories = storiesVisibleToViewer(state as AppState, userId);
-  state = scopeAppStateToOwner(userId, state as AppState);
-  state = { ...(state as AppState), stories: feedStories };
-  const { sanitizeCorruptHiddenMessages } = await import("./lib/sanitizeHiddenMessages.js");
-  state = sanitizeCorruptHiddenMessages(state as AppState, userId);
-  return res.json({ state: coerceAppStateForClient(state as AppState) });
+  try {
+    const snap = await getSnapshot(userId);
+    let state = (snap as AppState | null) ?? (await buildMinimalAppState(userId));
+    state = await mergeDbUsersIntoAppState(state);
+    state = await mergeDbPostsIntoAppState(state);
+    state = await mergeSocialGraphIntoAppState(state);
+    state = await hydrateAppStateMessages(state, userId);
+    const feedStories = storiesVisibleToViewer(state as AppState, userId);
+    state = scopeAppStateToOwner(userId, state as AppState);
+    state = { ...(state as AppState), stories: feedStories };
+    const { sanitizeCorruptHiddenMessages } = await import("./lib/sanitizeHiddenMessages.js");
+    state = sanitizeCorruptHiddenMessages(state as AppState, userId);
+    const { trimAppStateForDelivery } = await import("./lib/trimAppStateForDelivery.js");
+    state = trimAppStateForDelivery(state as AppState);
+    const { filterBannedContentFromAppState } = await import("./lib/bannedContentFilter.js");
+    state = await filterBannedContentFromAppState(state as AppState, userId);
+    return res.json({ state: coerceAppStateForClient(state as AppState) });
+  } catch (e) {
+    console.error("[app-state] GET failed for", userId, e);
+    const minimal = await buildMinimalAppState(userId);
+    return res.json({ state: coerceAppStateForClient(minimal) });
+  }
 });
 
 app.get("/v1/feed/posts", authMiddleware, async (req, res) => {
@@ -1122,7 +1165,14 @@ app.get("/v1/feed/posts", authMiddleware, async (req, res) => {
     limit,
     before,
   });
-  return res.json({ posts, users, hasMore, nextCursor, fetchedAt: Date.now() });
+  const bannedUserIds = [...(await getBannedUserIdSet())];
+  return res.json({ posts, users, hasMore, nextCursor, fetchedAt: Date.now(), bannedUserIds });
+});
+
+app.get("/v1/users/banned-ids", authMiddleware, async (_req, res) => {
+  setNoStoreApi(res);
+  const { listBannedUserIds } = await import("./lib/bannedContentFilter.js");
+  return res.json({ userIds: await listBannedUserIds() });
 });
 
 app.get("/v1/users/search", authMiddleware, async (req, res) => {
@@ -1179,6 +1229,10 @@ app.get("/v1/users/by-username/:username", authMiddleware, async (req, res) => {
   const row = await findUserByUsername(String(req.params.username ?? ""));
   if (!row) return res.status(404).json({ error: "not found" });
   setNoStoreApi(res);
+  const status = await resolveEffectiveStatus(row.id);
+  if (status === "BANNED" || status === "TEMP_BANNED" || status === "PERMANENTLY_BANNED") {
+    return res.json({ user: bannedPublicProfilePayload(row.username), banned: true });
+  }
   return res.json({ user: await publicUserPayloadWithSocial(row) });
 });
 
@@ -1670,8 +1724,16 @@ app.get("/v1/chats/:chatId/messages", authMiddleware, async (req, res) => {
     const hasMore = sorted.length > limit;
     const page = sorted.slice(Math.max(0, sorted.length - limit));
     const nextCursor = page.length ? new Date(page[0]!.createdAt).getTime() : undefined;
+    const { maskChatForBannedPeer } = await import("./lib/bannedContentFilter.js");
+    const bannedIds = await getBannedUserIdSet();
+    const clientMessages = page.map(messageRowToClient);
+    const masked = maskChatForBannedPeer(
+      { ...chat, messages: clientMessages },
+      userId,
+      bannedIds,
+    ).messages;
     return res.json({
-      messages: page.map(messageRowToClient),
+      messages: masked,
       hasMore,
       nextCursor,
     });
@@ -2496,6 +2558,15 @@ if (staticSiteDir) {
       : path.resolve(process.cwd(), staticSiteDir);
   mountStaticSite(app, resolved);
 }
+
+void import("./lib/ipBlocklist.js").then(m => m.ensureIpBlocklistLoaded()).catch(() => {});
+void ensureEmailBlocklistLoaded().catch(() => {});
+void import("./lib/bannedUserCache.js").then(m => m.ensureBannedUserCacheLoaded()).catch(() => {});
+setInterval(() => {
+  void import("./lib/ipBlocklist.js")
+    .then(m => m.ensureIpBlocklistLoaded())
+    .catch(() => {});
+}, 30_000);
 
 const httpServer = http.createServer(app);
 attachRealtimeSocket(httpServer);
