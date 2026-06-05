@@ -7,7 +7,6 @@ import { useHomePullToRefresh } from "@/hooks/useHomePullToRefresh";
 import { useTabPanelScrollRef } from "@/lib/tabPanelScrollContext";
 import { useIsTabActive } from "@/lib/tabActiveContext";
 import {
-  essentialFeedSyncedRecently,
   useAppActions,
   useAppSelector,
   useHomeFeed,
@@ -255,19 +254,6 @@ export const HomeScreen = memo(function HomeScreen({
     });
   }, [feedHasMore, loadMoreFeedFromServer]);
 
-  const lastHomeFeedPullRef = useRef(0);
-  useEffect(() => {
-    if (!isHomeTabActive || isGuest) return;
-    if (essentialFeedSyncedRecently(60_000)) return;
-    const now = Date.now();
-    const minGap = nativeShell ? 8_000 : 12_000;
-    if (now - lastHomeFeedPullRef.current < minGap && displayFeed.length > 0) return;
-    lastHomeFeedPullRef.current = now;
-    const delayMs = nativeShell && isNativePostLoginQuietPeriod() ? 400 : 0;
-    const t = window.setTimeout(() => void runRefresh(), delayMs);
-    return () => window.clearTimeout(t);
-  }, [isHomeTabActive, isGuest, runRefresh, nativeShell, displayFeed.length]);
-
   useEffect(() => {
     if (!isHomeTabActive || isGuest) return;
     const onNewPost = () => {
@@ -277,28 +263,6 @@ export const HomeScreen = memo(function HomeScreen({
     window.addEventListener(NEW_FEED_POST_EVENT, onNewPost);
     return () => window.removeEventListener(NEW_FEED_POST_EVENT, onNewPost);
   }, [isHomeTabActive, isGuest, tabScrollRef]);
-
-  useEffect(() => {
-    if (!isHomeTabActive || isGuest) return;
-    const poll = window.setInterval(() => {
-      if (document.visibilityState !== "visible") return;
-      if (essentialFeedSyncedRecently(55_000)) return;
-      void runRefresh();
-    }, 75_000);
-    let visTimer = 0;
-    const onVis = () => {
-      if (document.visibilityState !== "visible") return;
-      if (essentialFeedSyncedRecently(30_000)) return;
-      if (visTimer) window.clearTimeout(visTimer);
-      visTimer = window.setTimeout(() => void runRefresh(), 1200);
-    };
-    document.addEventListener("visibilitychange", onVis);
-    return () => {
-      window.clearInterval(poll);
-      if (visTimer) window.clearTimeout(visTimer);
-      document.removeEventListener("visibilitychange", onVis);
-    };
-  }, [isHomeTabActive, isGuest, runRefresh]);
 
   useEffect(() => {
     if (!nativeShell || !isHomeTabActive || isGuest) return;

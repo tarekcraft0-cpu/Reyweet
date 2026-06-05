@@ -341,6 +341,7 @@ app.get("/health", async (_req, res) => {
     usersCount,
     smtpConfigured: isSmtpConfigured(),
     authStrict: process.env.AUTH_STRICT_MODE !== "0",
+    dataEncryption: (await import("./lib/dataEncryption.js")).dataEncryptionEnabled(),
   });
 });
 
@@ -1094,6 +1095,8 @@ function authMiddleware(req: Request, res: Response, next: NextFunction): void {
         res.status(401).json({ error: "انتهت الجلسة — سجّل الدخول مجدداً", code: "session_revoked" });
         return;
       }
+      const { recordUserIpActivity } = await import("./lib/ipActivity.js");
+      void recordUserIpActivity(sub, req);
       const sessionGuard = assertStrictApiSession(req);
       if (!sessionGuard.ok) {
         await handleBotSessionViolation(req, sub, sessionGuard.code);

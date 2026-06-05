@@ -267,17 +267,37 @@ export async function initDatabase(): Promise<void> {
   const { dataEncryptionEnabled } = await import("../lib/dataEncryption.js");
   if (dataEncryptionEnabled()) {
     const n = await migratePlainJsonFilesToEncrypted();
-    if (n > 0) console.log(`[db] encrypted ${n} plain JSON file(s) at rest`);
+    if (n > 0) {
+      // eslint-disable-next-line no-console
+      console.log(`[db] encrypted ${n} plain JSON file(s) under DATA_ROOT`);
+    }
+  } else if (process.env.NODE_ENV === "production") {
+    console.warn(
+      "[db] WARNING: DATA_ENCRYPTION_KEY غير مضبوط — ملفات JSON على القرص غير مشفّرة",
+    );
   }
 }
 
 // ——— Users ———
 
+function isEncEnvelope(raw: unknown): boolean {
+  return (
+    !!raw &&
+    typeof raw === "object" &&
+    (raw as { _enc?: string })._enc === "retweet-enc-v1"
+  );
+}
+
 function normalizeUserMap(raw: Record<string, UserRow> | UserRow[] | unknown): Record<string, UserRow> {
+  if (isEncEnvelope(raw)) return {};
   if (Array.isArray(raw)) {
     return Object.fromEntries(raw.filter(u => u?.id).map(u => [u.id, u]));
   }
-  if (raw && typeof raw === "object") return raw as Record<string, UserRow>;
+  if (raw && typeof raw === "object") {
+    const obj = raw as Record<string, UserRow>;
+    if ("_enc" in obj || "iv" in obj || "tag" in obj || "data" in obj) return {};
+    return obj;
+  }
   return {};
 }
 
@@ -289,7 +309,11 @@ async function readUsersMap(): Promise<Record<string, UserRow>> {
 }
 
 export async function listUsers(): Promise<UserRow[]> {
-  return readCached("users:list", async () => Object.values(await readUsersMap()));
+  const hit = await readCached("users:list", async () => Object.values(await readUsersMap()));
+  if (Array.isArray(hit)) return hit.filter(u => u?.id && u?.username);
+  invalidateCollectionCache(["users"]);
+  const fresh = Object.values(await readUsersMap());
+  return Array.isArray(fresh) ? fresh.filter(u => u?.id && u?.username) : [];
 }
 
 export async function getUserById(id: string): Promise<UserRow | null> {

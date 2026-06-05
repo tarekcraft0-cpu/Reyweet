@@ -197,6 +197,11 @@ export async function applyModerationAction(
   return state;
 }
 
+function isBotGuardBan(state: UserModerationState): boolean {
+  if (!isBannedStatus(state.accountStatus)) return false;
+  return (state.violations ?? []).some(v => v.moderatorId === "system:bot-guard");
+}
+
 export async function restoreAccount(
   userId: string,
   actorId: string,
@@ -209,6 +214,10 @@ export async function restoreAccount(
   },
 ): Promise<UserModerationState> {
   const state = await getUserModerationState(userId);
+  const botBan = isBotGuardBan(state);
+  if (botBan && !opts?.appealApproved && actorId !== "admin:manual-review") {
+    throw new Error("حظر البوت لا يُرفع إلا بعد قبول طعن");
+  }
   const wasPermanent = state.accountStatus === "PERMANENTLY_BANNED";
   state.accountStatus = "ACTIVE";
   state.banReason = undefined;

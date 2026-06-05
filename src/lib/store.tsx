@@ -6126,8 +6126,9 @@ export function AppProvider({
     if (feedPullDebounceRef.current != null) window.clearTimeout(feedPullDebounceRef.current);
     feedPullDebounceRef.current = window.setTimeout(() => {
       feedPullDebounceRef.current = null;
+      if (essentialFeedSyncedRecently(120_000)) return;
       void refreshFeedFromServer();
-    }, 2_500);
+    }, 8_000);
   }, [refreshFeedFromServer]);
 
   useEffect(() => {
@@ -6839,16 +6840,6 @@ export function AppProvider({
     bumpHomeFeedNow,
     setState,
   ]);
-
-  useEffect(() => {
-    if (!apiBackendEnabled() || !getApiToken() || isGuestUserId(state.currentUserId)) return;
-    const id = window.setInterval(() => {
-      if (document.visibilityState !== "visible") return;
-      if (essentialFeedSyncedRecently(50_000)) return;
-      void refreshFeedFromServer();
-    }, 90_000);
-    return () => window.clearInterval(id);
-  }, [state.currentUserId, refreshFeedFromServer]);
 
   /** جلب متأخر بعد login إذا انتهت مهلة app-state — يحدّث الواجهة وليس التخزين فقط */
   useEffect(() => {
