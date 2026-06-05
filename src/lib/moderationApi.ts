@@ -15,7 +15,7 @@ async function modFetch<T>(
   init?: RequestInit & { token?: string | null },
 ): Promise<{ ok: true; data: T } | { ok: false; error: string; status?: number; banInfo?: BanInfo }> {
   const token = init?.token ?? getApiToken();
-  const res = await apiFetch(path, { ...init, token });
+  const res = await apiFetch(path, { timeoutMs: 45_000, ...init, token });
   const data = (await res.json().catch(() => ({}))) as T & {
     error?: string;
     banInfo?: BanInfo;

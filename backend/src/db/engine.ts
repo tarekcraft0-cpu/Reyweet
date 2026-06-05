@@ -62,6 +62,10 @@ export type UserRow = {
     lastSeenAt: string;
     createdAt: string;
   }>;
+  /** يُرفع عند إبطال الجلسات — توكن JWT أقدم يُرفض */
+  tokenVersion?: number;
+  /** آخر تغيير لاسم المستخدم — فترة انتظار 7 أيام قبل تغيير ثانٍ */
+  lastUsernameChangedAt?: number;
 };
 
 export type PostCommentRow = {
@@ -184,7 +188,9 @@ async function readJson<T>(file: string, fallback: T): Promise<T> {
     let raw = await fs.readFile(file, "utf8");
     raw = raw.replace(/^\uFEFF/, "").trim();
     if (!raw) return fallback;
-    return JSON.parse(raw) as T;
+    const parsed = JSON.parse(raw) as unknown;
+    const { decodeStoredJson } = await import("../lib/encryptedStorage.js");
+    return decodeStoredJson<T>(parsed, file);
   } catch (e: unknown) {
     if ((e as NodeJS.ErrnoException)?.code === "ENOENT") return fallback;
     throw e;
@@ -199,7 +205,8 @@ function invalidateCacheForFile(file: string): void {
 
 async function writeJsonAtomic(file: string, data: unknown): Promise<void> {
   await fs.mkdir(path.dirname(file), { recursive: true });
-  const payload = JSON.stringify(data);
+  const { encodeStoredJson } = await import("../lib/encryptedStorage.js");
+  const payload = JSON.stringify(encodeStoredJson(file, data));
   const tmp = `${file}.${randomUUID()}.tmp`;
   await fs.writeFile(tmp, payload, "utf8");
   for (let attempt = 0; attempt < 6; attempt++) {
@@ -256,19 +263,37 @@ export async function initDatabase(): Promise<void> {
     // eslint-disable-next-line no-console
     console.log(`[verification] migration updated ${mig.updated} user(s)`);
   }
+  const { migratePlainJsonFilesToEncrypted } = await import("../lib/encryptedStorage.js");
+  const { dataEncryptionEnabled } = await import("../lib/dataEncryption.js");
+  if (dataEncryptionEnabled()) {
+    const n = await migratePlainJsonFilesToEncrypted();
+    if (n > 0) console.log(`[db] encrypted ${n} plain JSON file(s) at rest`);
+  }
 }
 
 // ——— Users ———
 
-export async function listUsers(): Promise<UserRow[]> {
-  return readCached("users", async () => {
-    const map = await readJson<Record<string, UserRow>>(filePaths.users, {});
-    return Object.values(map);
+function normalizeUserMap(raw: Record<string, UserRow> | UserRow[] | unknown): Record<string, UserRow> {
+  if (Array.isArray(raw)) {
+    return Object.fromEntries(raw.filter(u => u?.id).map(u => [u.id, u]));
+  }
+  if (raw && typeof raw === "object") return raw as Record<string, UserRow>;
+  return {};
+}
+
+async function readUsersMap(): Promise<Record<string, UserRow>> {
+  return readCached("users:map", async () => {
+    const raw = await readJson<Record<string, UserRow> | UserRow[]>(filePaths.users, {});
+    return normalizeUserMap(raw);
   });
 }
 
+export async function listUsers(): Promise<UserRow[]> {
+  return readCached("users:list", async () => Object.values(await readUsersMap()));
+}
+
 export async function getUserById(id: string): Promise<UserRow | null> {
-  const map = await readJson<Record<string, UserRow>>(filePaths.users, {});
+  const map = await readUsersMap();
   return map[id] ?? null;
 }
 
@@ -300,7 +325,9 @@ export async function createUser(
   data: Omit<UserRow, "id" | "createdAt" | "updatedAt"> & { id?: string },
 ): Promise<UserRow> {
   return withLock("users", async () => {
-    const map = await readJson<Record<string, UserRow>>(filePaths.users, {});
+    const map = normalizeUserMap(
+      await readJson<Record<string, UserRow> | UserRow[]>(filePaths.users, {}),
+    );
     const now = new Date().toISOString();
     const user: UserRow = {
       id: data.id ?? randomUUID(),
@@ -347,7 +374,9 @@ export async function updateUser(
   patch: Partial<Omit<UserRow, "id" | "createdAt">>,
 ): Promise<UserRow | null> {
   return withLock("users", async () => {
-    const map = await readJson<Record<string, UserRow>>(filePaths.users, {});
+    const map = normalizeUserMap(
+      await readJson<Record<string, UserRow> | UserRow[]>(filePaths.users, {}),
+    );
     const cur = map[id];
     if (!cur) return null;
     const next: UserRow = { ...cur, ...patch, updatedAt: new Date().toISOString() };
@@ -430,10 +459,22 @@ export async function listRecentUsers(limit = 30): Promise<UserRow[]> {
 
 // ——— Posts ———
 
+function normalizePostRows(raw: Record<string, PostRow> | PostRow[] | unknown): PostRow[] {
+  if (Array.isArray(raw)) {
+    return raw.filter((p): p is PostRow => !!p && typeof p === "object" && !!p.id);
+  }
+  if (raw && typeof raw === "object") {
+    return Object.values(raw as Record<string, PostRow>).filter(
+      (p): p is PostRow => !!p && typeof p === "object",
+    );
+  }
+  return [];
+}
+
 export async function listPosts(): Promise<PostRow[]> {
-  return readCached("posts", async () => {
-    const map = await readJson<Record<string, PostRow>>(filePaths.posts, {});
-    return Object.values(map).filter((p): p is PostRow => !!p && typeof p === "object");
+  return readCached("posts:list", async () => {
+    const raw = await readJson<Record<string, PostRow> | PostRow[]>(filePaths.posts, {});
+    return normalizePostRows(raw);
   });
 }
 
@@ -443,8 +484,8 @@ export async function listPostsPaginated(opts?: {
   before?: number;
 }): Promise<{ rows: PostRow[]; hasMore: boolean }> {
   const limit = Math.min(60, Math.max(1, opts?.limit ?? 40));
-  const map = await readJson<Record<string, PostRow>>(filePaths.posts, {});
-  let rows = Object.values(map).filter((p): p is PostRow => !!p && typeof p === "object");
+  const raw = await readJson<Record<string, PostRow> | PostRow[]>(filePaths.posts, {});
+  let rows = normalizePostRows(raw);
   rows.sort((a, b) => (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0));
   if (opts?.before && Number.isFinite(opts.before)) {
     rows = rows.filter(r => (Date.parse(r.createdAt) || 0) < opts.before!);
@@ -581,23 +622,12 @@ export async function findLatestOtp(userId: string, purpose: string): Promise<Ot
 
 export async function getSnapshot(userId: string): Promise<unknown | null> {
   const file = path.join(SNAPSHOTS_DIR, `${userId}.json`);
-  try {
-    const raw = await fs.readFile(file, "utf8");
-    const parsed = JSON.parse(raw) as unknown;
-    const { decryptPayload } = await import("../lib/dataEncryption.js");
-    const dec = decryptPayload(parsed);
-    return dec ?? parsed;
-  } catch (e: unknown) {
-    if ((e as NodeJS.ErrnoException)?.code === "ENOENT") return null;
-    throw e;
-  }
+  return readJson<unknown | null>(file, null);
 }
 
 export async function setSnapshot(userId: string, state: unknown): Promise<void> {
   const file = path.join(SNAPSHOTS_DIR, `${userId}.json`);
-  await fs.mkdir(SNAPSHOTS_DIR, { recursive: true });
-  const { encryptPayload } = await import("../lib/dataEncryption.js");
-  await writeJsonAtomic(file, encryptPayload(state));
+  await writeJsonAtomic(file, state);
 }
 
 // ——— Chat messages (messages.json) ———

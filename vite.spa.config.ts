@@ -98,6 +98,12 @@ export default defineConfig(({ mode }) => {
       ).trim();
 
   const capacitorNative = process.env.CAPACITOR_NATIVE === "1";
+  const appSigningSecret = (
+    process.env.VITE_RETWEET_APP_SIGNING_SECRET ||
+    env.VITE_RETWEET_APP_SIGNING_SECRET ||
+    process.env.RETWEET_APP_SIGNING_SECRET ||
+    ""
+  ).trim();
 
   /** iOS/Android — لا نُضمّن localhost من .env أبداً */
   if (capacitorNative) {
@@ -144,6 +150,9 @@ export default defineConfig(({ mode }) => {
       "import.meta.env.VITE_API_URL": JSON.stringify(mode === "development" ? "" : apiUrl),
       "import.meta.env.VITE_API_URL_MOBILE": JSON.stringify(
         mode === "development" ? "" : apiUrl,
+      ),
+      "import.meta.env.VITE_RETWEET_APP_SIGNING_SECRET": JSON.stringify(
+        capacitorNative ? appSigningSecret : "",
       ),
     },
     build: {

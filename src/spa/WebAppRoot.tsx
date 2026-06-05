@@ -8,7 +8,13 @@ import { AppErrorBoundary } from "@/components/AppErrorBoundary";
 import logo from "@/assets/logo.png";
 import { logAuthRoute } from "@/lib/authRouteDebug";
 import { clearStaleApiConfig, probeHealth } from "@/lib/apiConfig";
-import { isNativeCapacitorShell, isPublicAppHost, isVpsProductionHost } from "@/lib/apiUrlPolicy";
+import { clearRetweetLocalSession } from "@/lib/uiErrorMessage";
+import {
+  isCapacitorNativePlatform,
+  isNativeCapacitorShell,
+  isPublicAppHost,
+  isVpsProductionHost,
+} from "@/lib/apiUrlPolicy";
 import { initSafeAreaBootstrap } from "@/lib/safeAreaBootstrap";
 import { initNativeViewportLayout } from "@/lib/nativeViewportLayout";
 import { beginNativePostLoginQuietPeriod, isNativeMobileApp } from "@/lib/nativeStability";
@@ -52,6 +58,7 @@ export function WebAppRoot() {
       hasToken: !!getApiToken(),
     });
     let cancelled = false;
+    let serverOffline = false;
 
     const waitForNativeApiConfig = (): Promise<void> => {
       if (typeof window === "undefined") return Promise.resolve();
@@ -74,10 +81,14 @@ export function WebAppRoot() {
       .then(async () => {
         if (cancelled) return;
         if (!apiBackendEnabled()) {
+          serverOffline = true;
+          clearRetweetLocalSession();
           setApiMissing(true);
           return;
         }
-        if (!isNativeCapacitorShell() && !(await probeHealth())) {
+        if (!(await probeHealth())) {
+          serverOffline = true;
+          clearRetweetLocalSession();
           setApiMissing(true);
           return;
         }
@@ -93,6 +104,10 @@ export function WebAppRoot() {
       })
       .then(() => {
         if (!cancelled) {
+          if (serverOffline) {
+            setBootState(null);
+            return;
+          }
           try {
             setBootState(readPersistedAppState());
           } catch (e) {
@@ -160,9 +175,14 @@ export function WebAppRoot() {
     };
     return (
       <div className="mx-auto flex min-h-dvh max-w-md flex-col items-center justify-center gap-4 bg-background px-6 text-center text-sm">
-        <p className="font-semibold text-foreground">تعذر الاتصال بالخادم</p>
+        <p className="font-semibold text-foreground">الخادم معطّل مؤقتاً</p>
         <p className="text-muted-foreground leading-relaxed">
-          {isVpsProductionHost() ? (
+          {isNativeCapacitorShell() || isCapacitorNativePlatform() ? (
+            <>
+              لا يمكن تسجيل الدخول الآن — الخادم متوقف للصيانة. تم مسح الجلسة المحلية. أعد فتح
+              التطبيق بعد إعادة تشغيل الخادم.
+            </>
+          ) : isVpsProductionHost() ? (
             <>
               تأكد أن خدمة <span className="font-mono text-xs">retweet-api</span> تعمل على السيرفر،
               ثم جرّب فتح{" "}

@@ -64,6 +64,7 @@ run(
       RETWEET_PUBLIC_API_URL: apiUrl,
       VITE_API_URL: apiUrl,
       VITE_API_URL_MOBILE: apiUrl,
+      VITE_RETWEET_APP_SIGNING_SECRET: process.env.RETWEET_APP_SIGNING_SECRET || "",
     },
   },
 );

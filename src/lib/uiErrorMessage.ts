@@ -34,13 +34,22 @@ export function clearRetweetLocalSession(): void {
     const keys = [
       "retweet_state_v2",
       "retweet_api_token",
+      "retweet_account_sessions",
       "retweet_account_sessions_v1",
       "retweet_web_api_config",
+      "retweet_last_active_user_id",
+      "retweet_device_fp_v1",
     ];
     for (const k of keys) localStorage.removeItem(k);
     for (let i = localStorage.length - 1; i >= 0; i--) {
       const k = localStorage.key(i);
-      if (k?.startsWith("retweet_account_state_")) localStorage.removeItem(k);
+      if (
+        k?.startsWith("retweet_account_state_") ||
+        k?.startsWith("retweet_chat_messages_") ||
+        k?.startsWith("retweet_chat_offline_queue_")
+      ) {
+        localStorage.removeItem(k);
+      }
     }
   } catch {
     /* ignore */

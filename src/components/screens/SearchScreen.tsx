@@ -17,7 +17,7 @@ import { isGuestUserId } from "@/lib/guestUser";
 import {
   apiBackendEnabled,
   apiDiscoverSuggestions,
-  apiFetchUserDirectory,
+  apiListRecentUsers,
   apiSearchUsers,
   getApiToken,
   userFromSearchResult,
@@ -94,7 +94,7 @@ export function SearchScreen({
     }
     const token = getApiToken()!;
     const [rows, sug] = await Promise.all([
-      apiFetchUserDirectory(),
+      apiListRecentUsers(40),
       apiDiscoverSuggestions(token, 16),
     ]);
     const users = rows.map(userFromSearchResult);

@@ -10,6 +10,7 @@ import { validateOptionalPhone } from "@/lib/phoneUtils";
 import logo from "@/assets/logo.png";
 import {
   apiBackendEnabled,
+  apiGetAuthConfig,
   apiRequestSignupVerification,
   ensureApiRuntimeConfig,
   getApiBaseUrl,
@@ -21,7 +22,13 @@ import {
   cleanPasswordResetFromBrowserUrl,
   parsePasswordResetTokenFromUrl,
 } from "@/lib/passwordResetUrl";
-import { refreshHumanChallenge } from "@/lib/humanAuthClient";
+import {
+  getAuthTurnstileToken,
+  isMessengerInAppBrowser,
+  refreshHumanChallenge,
+  setAuthTurnstileToken,
+} from "@/lib/humanAuthClient";
+import { TurnstileWidget } from "@/components/auth/TurnstileWidget";
 
 type Mode = "login" | "signup" | "forgot" | "reset";
 type FormState = {
@@ -112,6 +119,9 @@ export function AuthScreen(props?: { onAuthSuccess?: () => void; /** false دا�
   const loginFailCountRef = useRef(0);
   const loginLockUntilRef = useRef(0);
   const [apiReady, setApiReady] = useState(true);
+  const [turnstileSiteKey, setTurnstileSiteKey] = useState<string | null>(null);
+  const [turnstileRequired, setTurnstileRequired] = useState(false);
+  const messengerBlocked = isMessengerInAppBrowser();
 
   useEffect(() => {
     const token = parsePasswordResetTokenFromUrl();
@@ -133,6 +143,13 @@ export function AuthScreen(props?: { onAuthSuccess?: () => void; /** false دا�
       logApi("auth-screen-health", { base, healthy, native: isNativeCapacitorShell() });
       setApiReady(healthy);
       await refreshHumanChallenge();
+      try {
+        const cfg = await apiGetAuthConfig();
+        setTurnstileRequired(!!cfg.turnstileRequired && !isNativeCapacitorShell());
+        setTurnstileSiteKey(cfg.turnstileSiteKey?.trim() || null);
+      } catch {
+        /* ignore */
+      }
     })();
   }, []);
 
@@ -160,6 +177,10 @@ export function AuthScreen(props?: { onAuthSuccess?: () => void; /** false دا�
     setForm(f => ({ ...f, [k]: next }));
   }, [mode]);
 
+  const onTurnstileToken = useCallback((token: string | null) => {
+    setAuthTurnstileToken(token);
+  }, []);
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (busy) return;
@@ -173,6 +194,16 @@ export function AuthScreen(props?: { onAuthSuccess?: () => void; /** false دا�
   };
 
   const runSubmit = async () => {
+    if (messengerBlocked) {
+      setError(
+        "الدخول من تيليجرام أو متصفحات التطبيقات الأخرى ممنوع. حمّل تطبيق Retweet الرسمي أو افتح الموقع من Safari/Chrome.",
+      );
+      return;
+    }
+    if (turnstileRequired && !isNativeCapacitorShell() && !getAuthTurnstileToken()) {
+      setError("أكمل التحقق البشري (CAPTCHA) قبل المتابعة");
+      return;
+    }
     await refreshHumanChallenge();
     if (mode === "login") {
       if (Date.now() < loginLockUntilRef.current) {
@@ -607,6 +638,19 @@ export function AuthScreen(props?: { onAuthSuccess?: () => void; /** false دا�
             </>
           )}
 
+          {messengerBlocked && (
+            <p className="rounded-2xl border border-amber-500/40 bg-amber-500/10 px-3 py-3 text-sm text-center leading-relaxed text-amber-800 dark:text-amber-200">
+              لا يمكن تسجيل الدخول من داخل تيليجرام أو بوتات خارجية. استخدم تطبيق Retweet الرسمي أو
+              المتصفح (Safari / Chrome).
+            </p>
+          )}
+          {turnstileRequired && turnstileSiteKey && !isNativeCapacitorShell() && !messengerBlocked && (
+            <TurnstileWidget
+              siteKey={turnstileSiteKey}
+              onToken={onTurnstileToken}
+              onExpire={() => setAuthTurnstileToken(null)}
+            />
+          )}
           {!apiReady && (
             <p className="text-destructive text-sm text-center leading-relaxed">
               {isNativeCapacitorShell() ? (
@@ -627,7 +671,7 @@ export function AuthScreen(props?: { onAuthSuccess?: () => void; /** false دا�
 
           <button
             type="submit"
-            disabled={busy}
+            disabled={busy || messengerBlocked}
             className="min-h-[48px] w-full touch-manipulation rounded-2xl bg-primary py-3 font-semibold text-primary-foreground disabled:opacity-60"
           >
             {busy

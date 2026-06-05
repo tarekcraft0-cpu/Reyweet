@@ -38,3 +38,18 @@ export async function socialListsForUser(userId: string): Promise<SocialLists> {
 export function invalidateSocialGraphCache(): void {
   cache = null;
 }
+
+/** أعداد المتابعين/المتابَعين دفعة واحدة — أسرع من استدعاء socialListsForUser لكل مستخدم */
+export async function socialCountsBatch(
+  userIds: string[],
+): Promise<Map<string, { followerCount: number; followingCount: number }>> {
+  const { byFollower, byFollowee } = await graphMaps();
+  const out = new Map<string, { followerCount: number; followingCount: number }>();
+  for (const id of userIds) {
+    out.set(id, {
+      followerCount: new Set(byFollowee.get(id) || []).size,
+      followingCount: new Set(byFollower.get(id) || []).size,
+    });
+  }
+  return out;
+}

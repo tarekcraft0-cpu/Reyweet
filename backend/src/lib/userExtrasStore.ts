@@ -68,8 +68,10 @@ async function withLock<T>(fn: () => Promise<T>): Promise<T> {
 async function readStore(): Promise<Store> {
   try {
     const raw = await fs.readFile(FILE, "utf8");
-    const parsed = JSON.parse(raw.replace(/^\uFEFF/, "").trim() || "{}") as Store;
-    return parsed && typeof parsed === "object" ? parsed : {};
+    const parsed = JSON.parse(raw.replace(/^\uFEFF/, "").trim() || "{}") as unknown;
+    const { decodeStoredJson } = await import("./encryptedStorage.js");
+    const store = decodeStoredJson<Store>(parsed, FILE);
+    return store && typeof store === "object" ? store : {};
   } catch (e: unknown) {
     if ((e as NodeJS.ErrnoException)?.code === "ENOENT") return {};
     throw e;
@@ -78,8 +80,9 @@ async function readStore(): Promise<Store> {
 
 async function writeStore(data: Store): Promise<void> {
   await fs.mkdir(path.dirname(FILE), { recursive: true });
+  const { encodeStoredJson } = await import("./encryptedStorage.js");
   const tmp = `${FILE}.${randomUUID()}.tmp`;
-  await fs.writeFile(tmp, JSON.stringify(data), "utf8");
+  await fs.writeFile(tmp, JSON.stringify(encodeStoredJson(FILE, data)), "utf8");
   await fs.rename(tmp, FILE);
 }
 

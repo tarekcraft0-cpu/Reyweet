@@ -3,10 +3,12 @@
  * يزيد versionCode تلقائياً عند كل تشغيل (ما لم يُمرَّر --no-bump).
  */
 import { execSync } from "node:child_process";
+import fs from "node:fs";
 import {
   bumpAppVersion,
   readAppVersion,
   writeAndroidVersionJson,
+  apkDest,
   VERCEL_SITE,
 } from "./lib/android-release.mjs";
 
@@ -20,19 +22,20 @@ const ver = noBump ? readAppVersion() : bumpAppVersion({ bumpCode: true });
 console.log(`  إصدار: ${ver.version} (versionCode ${ver.versionCode})`);
 
 if (!skipBuild) {
-  const buildScript = process.env.EXPO_TOKEN?.trim()
-    ? "node scripts/build-android-apk.mjs --eas"
-    : "node scripts/build-android-apk.mjs";
-  execSync(buildScript, {
+  execSync("node scripts/build-android-apk.mjs", {
     cwd: root,
     stdio: "inherit",
     env: process.env,
   });
 } else {
+  const apkSizeMb = fs.existsSync(apkDest)
+    ? Number((fs.statSync(apkDest).size / (1024 * 1024)).toFixed(1))
+    : undefined;
   writeAndroidVersionJson({
     version: ver.version,
     versionCode: ver.versionCode,
     notes: "تحديث ملف الإصدار فقط",
+    apkSizeMb,
   });
 }
 

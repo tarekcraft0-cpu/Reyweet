@@ -123,6 +123,7 @@ async function main() {
       '[ -z "$MSG" ] && echo "no db/messages" && rm -rf /tmp/retweet-recover-extract && exit 0',
       'ROOT=$(dirname "$(dirname "$MSG")")',
       `echo recover MERGE_SRC=$ROOT`,
+      `[ -f /opt/retweet/app/.env ] && set -a && . /opt/retweet/app/.env && set +a || true`,
       `DATA_ROOT=${DATA_ROOT_REMOTE} MERGE_SRC="$ROOT" node /tmp/merge-db-directory.mjs`,
       "rm -rf /tmp/retweet-recover-extract",
     ].join("\n");
@@ -138,7 +139,7 @@ async function main() {
   console.log("\n[recover] إعادة بناء snapshots…");
   await exec(
     conn,
-    `DATA_ROOT=${DATA_ROOT_REMOTE} node /tmp/restore-full-database.mjs`,
+    `set -a && . /opt/retweet/app/.env && set +a && DATA_ROOT=${DATA_ROOT_REMOTE} node /tmp/restore-full-database.mjs`,
   );
 
   console.log("\n[recover] إعادة تشغيل API…");
@@ -146,9 +147,30 @@ async function main() {
 
   const report = await exec(
     conn,
-    `node -e "const fs=require('fs');const m=JSON.parse(fs.readFileSync('${DATA_ROOT_REMOTE}/db/messages.json','utf8'));console.log('messages keys:',Object.keys(m).length)"`,
+    `set -a && . /opt/retweet/app/.env && set +a && node -e "
+const fs=require('fs'),crypto=require('crypto'),path=require('path');
+const root='${DATA_ROOT_REMOTE}';
+const secret=process.env.DATA_ENCRYPTION_KEY?.trim();
+const key=secret&&secret.length>=16?crypto.scryptSync(secret,'retweet-data-at-rest-v1',32):null;
+function dec(raw){
+  if(!raw||typeof raw!=='object'||raw._enc!=='retweet-enc-v1'||!key)return raw;
+  try{
+    const iv=Buffer.from(raw.iv,'base64'),tag=Buffer.from(raw.tag,'base64'),data=Buffer.from(raw.data,'base64');
+    const d=crypto.createDecipheriv('aes-256-gcm',key,iv);d.setAuthTag(tag);
+    return JSON.parse(Buffer.concat([d.update(data),d.final()]).toString('utf8'));
+  }catch{return raw;}
+}
+function count(file){
+  const p=path.join(root,'db',file);
+  const raw=dec(JSON.parse(fs.readFileSync(p,'utf8')));
+  return Array.isArray(raw)?raw.length:Object.keys(raw).length;
+}
+console.log('users:',count('users.json'));
+console.log('posts:',count('posts.json'));
+console.log('messages:',count('messages.json'));
+"`,
   ).catch(() => "");
-  console.log("\n[recover] تم.", report.trim());
+  console.log("\n[recover] تم.\n" + report.trim());
   console.log(
     "\nافتح التطبيق واضغط Ctrl+Shift+R. إن بقيت محادثة ناقصة، أرسل أسماء المستخدمين لنبحث في snapshots يدوياً.\n",
   );

@@ -9,15 +9,22 @@ const secret = () => {
   return s;
 };
 
-export function signAccessToken(userId: string, expiresIn: SignOptions["expiresIn"] = "7d"): string {
+export function signAccessToken(
+  userId: string,
+  tokenVersion = 1,
+  expiresIn: SignOptions["expiresIn"] = "48h",
+): string {
   const options: SignOptions = { expiresIn, algorithm: "HS256" };
-  return jwt.sign({ sub: userId }, secret(), options);
+  return jwt.sign({ sub: userId, tv: tokenVersion }, secret(), options);
 }
 
-export function verifyAccessToken(token: string): { sub: string } {
+export function verifyAccessToken(token: string): { sub: string; tv?: number } {
   const p = jwt.verify(token, secret(), { algorithms: ["HS256"] });
   if (typeof p === "string" || typeof p !== "object" || !p) throw new Error("invalid token");
-  const sub = (p as jwt.JwtPayload).sub;
+  const payload = p as jwt.JwtPayload;
+  const sub = payload.sub;
   if (!sub || typeof sub !== "string") throw new Error("invalid token");
-  return { sub };
+  const tvRaw = payload.tv;
+  const tv = typeof tvRaw === "number" ? tvRaw : undefined;
+  return { sub, tv };
 }

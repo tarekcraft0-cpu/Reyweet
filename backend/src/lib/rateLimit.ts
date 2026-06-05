@@ -9,6 +9,21 @@ function sweepExpired(): void {
   }
 }
 
+export function rateLimitPeek(
+  key: string,
+  max: number,
+  windowMs: number,
+): { ok: true } | { ok: false; retryAfterSec: number } {
+  sweepExpired();
+  const now = Date.now();
+  const b = buckets.get(key);
+  if (!b || now > b.resetAt) return { ok: true };
+  if (b.count >= max) {
+    return { ok: false, retryAfterSec: Math.max(1, Math.ceil((b.resetAt - now) / 1000)) };
+  }
+  return { ok: true };
+}
+
 export function rateLimitHit(
   key: string,
   max: number,

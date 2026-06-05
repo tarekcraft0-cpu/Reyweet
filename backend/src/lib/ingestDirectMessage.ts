@@ -39,6 +39,31 @@ export type PostMessageInput = z.infer<typeof postMessageSchema>;
 
 /** بث فوري ثم حفظ JSON في الخلفية — لا ينتظر القرص */
 export async function ingestDirectMessage(senderId: string, d: PostMessageInput): Promise<MessageRow> {
+  const { guardUserContent } = await import("../moderation/contentGuard.js");
+  const checks: import("../moderation/contentSafety.js").ContentCheckItem[] = [
+    { kind: "text", value: d.content },
+    { kind: "text", value: d.shareText },
+  ];
+  if (d.type === "text" || d.type === "sticker") {
+    /* text scan only */
+  } else if (d.type === "image" || d.type === "drawing") {
+    checks.push({ kind: "image_ref", ref: d.content });
+  } else if (d.type === "video") {
+    if (d.content.startsWith("data:video")) {
+      try {
+        const b64 = d.content.split(",")[1];
+        if (b64) {
+          checks.push({ kind: "video_buffer", buffer: Buffer.from(b64, "base64") });
+        }
+      } catch {
+        /* ignore */
+      }
+    } else {
+      checks.push({ kind: "image_ref", ref: d.content });
+    }
+  }
+  await guardUserContent(senderId, checks, "chat_message");
+
   const { receiverId: enforcedReceiver } = await assertMessageSendAccess(senderId, d);
   if (d.reactions?.some(r => r.userId && r.userId !== senderId)) {
     throw new ChatAccessError("تفاعل غير مصرح");

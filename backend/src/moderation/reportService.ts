@@ -9,11 +9,10 @@ import type {
 import { REPORT_CATEGORIES } from "../../../src/lib/moderationTypes.js";
 import {
   appendModerationAudit,
-  countRecentReportsByReporter,
-  findDuplicateReport,
   getReport,
   linkDeviceAndIp,
   listReports,
+  loadReportsDb,
   saveReport,
 } from "../db/moderationStore.js";
 import { rateLimitClientKey, rateLimitHit } from "../lib/rateLimit.js";
@@ -65,7 +64,11 @@ export async function submitReport(
   if (!rl.ok) throw new ReportError("طلبات بلاغ كثيرة — حاول لاحقاً", "rate_limit");
 
   const hourAgo = Date.now() - 60 * 60 * 1000;
-  const recent = await countRecentReportsByReporter(reporterId, hourAgo);
+  const sinceDup = Date.now() - 90 * 1000;
+  const reportsDb = await loadReportsDb();
+  const recent = reportsDb.reports.filter(
+    r => r.reporterId === reporterId && r.createdAt >= hourAgo,
+  ).length;
   if (recent >= 10) throw new ReportError("تجاوزت حد البلاغات اليومي", "rate_limit");
 
   if (!REPORT_CATEGORIES.some(c => c.id === input.category)) {
@@ -78,12 +81,15 @@ export async function submitReport(
     throw new ReportError("لا يمكن الإبلاغ عن نفسك", "invalid");
   }
 
-  const dup = await findDuplicateReport(
-    reporterId,
-    input.reportedUserId,
-    input.category,
-    input.targetId,
-  );
+  const dup =
+    reportsDb.reports.find(
+      r =>
+        r.reporterId === reporterId &&
+        r.reportedUserId === input.reportedUserId &&
+        r.category === input.category &&
+        (r.targetId || undefined) === (input.targetId || undefined) &&
+        r.createdAt >= sinceDup,
+    ) ?? null;
   if (dup) {
     throw new ReportError("تم إرسال هذا البلاغ للتو — انتظر لحظة ثم أعد المحاولة", "duplicate");
   }
@@ -123,8 +129,9 @@ export async function submitReport(
     emitToUsers([mid], "moderation:report_new", { reportId: report.id });
   }
 
-  const { notifyReporterReportSubmitted } = await import("./reportNotifications.js");
-  await notifyReporterReportSubmitted(report).catch(() => {});
+  void import("./reportNotifications.js").then(({ notifyReporterReportSubmitted }) =>
+    notifyReporterReportSubmitted(report).catch(() => {}),
+  );
 
   return report;
 }

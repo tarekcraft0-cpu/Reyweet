@@ -19,11 +19,11 @@
     },
     {
       "source": "/auth/:path*",
-      "destination": "http://109.199.111.29/auth/:path*"
+      "destination": "/api/backend-proxy?route=auth&path=:path*"
     },
     {
       "source": "/v1/:path*",
-      "destination": "http://109.199.111.29/v1/:path*"
+      "destination": "/api/backend-proxy?route=v1&path=:path*"
     },
     {
       "source": "/media/:path*",
@@ -36,6 +36,14 @@
     {
       "source": "/rtcall/:path*",
       "destination": "http://109.199.111.29/rtcall/:path*"
+    },
+    {
+      "source": "/socket.io",
+      "destination": "http://109.199.111.29/socket.io"
+    },
+    {
+      "source": "/socket.io/:path*",
+      "destination": "http://109.199.111.29/socket.io/:path*"
     },
     {
       "source": "/app",
@@ -169,6 +177,9 @@
       "maxDuration": 60
     },
     "api/realtime-proxy.js": {
+      "maxDuration": 60
+    },
+    "api/backend-proxy.js": {
       "maxDuration": 60
     }
   }

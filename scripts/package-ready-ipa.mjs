@@ -40,8 +40,13 @@ const iosAppPublic = path.join(root, "ios", "App", "App", "public");
 const iosAppConfigPath = path.join(root, "ios-app.config.json");
 const workDir = path.join(root, ".ipa-package-work");
 
-function run(cmd) {
-  execSync(cmd, { cwd: root, stdio: "inherit", shell: true });
+function run(cmd, opts = {}) {
+  execSync(cmd, {
+    cwd: root,
+    stdio: "inherit",
+    shell: true,
+    env: { ...process.env, ...opts.env },
+  });
 }
 
 async function main() {
@@ -75,6 +80,7 @@ run(
       RETWEET_PUBLIC_API_URL: apiUrl,
       VITE_API_URL: apiUrl,
       VITE_API_URL_MOBILE: apiUrl,
+      VITE_RETWEET_APP_SIGNING_SECRET: process.env.RETWEET_APP_SIGNING_SECRET || "",
     },
   },
 );

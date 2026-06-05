@@ -75,6 +75,7 @@
     "contabo:deploy:with-data": "node scripts/contabo-deploy.mjs --with-data",
     "contabo:deploy:backend": "node scripts/contabo-deploy-backend-only.mjs",
     "contabo:recover": "node scripts/contabo-recover-from-backups.mjs",
+    "contabo:download-backup": "node scripts/contabo-download-backup.mjs",
     "data:merge-all": "node scripts/merge-all-backups.mjs",
     "data:restore-snapshots": "node backend/scripts/restore-messages-from-snapshots.mjs",
     "contabo:upload-spa": "node scripts/contabo-upload-spa.mjs",

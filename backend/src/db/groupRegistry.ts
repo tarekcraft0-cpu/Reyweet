@@ -17,9 +17,13 @@ type AuditFile = { entries: GroupAuditEntry[] };
 
 async function readJson<T>(file: string, fallback: T): Promise<T> {
   try {
-    const raw = await fs.readFile(file, "utf8");
-    return JSON.parse(raw) as T;
-  } catch {
+    const raw = (await fs.readFile(file, "utf8")).replace(/^\uFEFF/, "").trim();
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw) as unknown;
+    const { decodeStoredJson } = await import("../lib/encryptedStorage.js");
+    return decodeStoredJson<T>(parsed, file);
+  } catch (e: unknown) {
+    if ((e as NodeJS.ErrnoException)?.code === "ENOENT") return fallback;
     return fallback;
   }
 }
@@ -27,8 +31,9 @@ async function readJson<T>(file: string, fallback: T): Promise<T> {
 async function writeJsonAtomic(file: string, data: unknown): Promise<void> {
   const dir = path.dirname(file);
   await fs.mkdir(dir, { recursive: true });
+  const { encodeStoredJson } = await import("../lib/encryptedStorage.js");
   const tmp = `${file}.${randomUUID()}.tmp`;
-  await fs.writeFile(tmp, JSON.stringify(data, null, 2), "utf8");
+  await fs.writeFile(tmp, JSON.stringify(encodeStoredJson(file, data)), "utf8");
   await fs.rename(tmp, file);
 }
 

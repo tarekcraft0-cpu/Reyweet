@@ -4,6 +4,9 @@ import { z } from "zod";
 import { clientMessageFromRow, ingestDirectMessage, postMessageSchema } from "./ingestDirectMessage.js";
 import { ChatAccessError } from "./chatAccess.js";
 import { verifyAccessToken } from "./jwt.js";
+import { getUserById } from "../db/engine.js";
+import { isTokenVersionValid } from "./tokenSecurity.js";
+import { createCorsOriginChecker } from "./corsOrigin.js";
 import { clearAllTypingForUser, clearUserTyping, setUserTyping } from "./chatPresence.js";
 import { markMessagesDelivered, markMessagesRead } from "./messageStatus.js";
 
@@ -13,21 +16,29 @@ export const REALTIME_SOCKET_PATH = "/auth/rt-ws/";
 let io: Server | null = null;
 
 export function attachRealtimeSocket(httpServer: HttpServer): Server {
+  const corsCheck = createCorsOriginChecker();
   io = new Server(httpServer, {
     path: REALTIME_SOCKET_PATH,
-    cors: { origin: true, credentials: true },
+    cors: {
+      origin: (origin, cb) => corsCheck(origin, (err, allow) => cb(err, allow)),
+      credentials: true,
+    },
     transports: ["websocket", "polling"],
     pingInterval: 10_000,
     pingTimeout: 25_000,
     perMessageDeflate: false,
   });
 
-  io.use((socket, next) => {
+  io.use(async (socket, next) => {
     try {
       const raw = socket.handshake.auth?.token ?? socket.handshake.query?.token;
       const token = typeof raw === "string" ? raw : Array.isArray(raw) ? raw[0] : "";
       if (!token) return next(new Error("unauthorized"));
-      const { sub } = verifyAccessToken(token);
+      const { sub, tv } = verifyAccessToken(token);
+      const user = await getUserById(sub);
+      if (!user || !isTokenVersionValid(tv, user.tokenVersion)) {
+        return next(new Error("unauthorized"));
+      }
       (socket.data as { userId?: string }).userId = sub;
       next();
     } catch {

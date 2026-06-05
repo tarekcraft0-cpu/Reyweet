@@ -93,6 +93,21 @@ function registerReelsHandlers(
     const tmpIn = path.join(tmpDir, `${randomUUID()}.${ext}`);
 
     try {
+      const { guardUserContent, contentViolationResponse } = await import("../moderation/contentGuard.js");
+      try {
+        await guardUserContent(
+          userId,
+          [
+            { kind: "text", value: caption },
+            { kind: "video_buffer", buffer: file.buffer, mime },
+          ],
+          "reel_upload",
+        );
+      } catch (scanErr) {
+        const cv = contentViolationResponse(scanErr);
+        if (cv) return res.status(cv.status).json(cv.body);
+        throw scanErr;
+      }
       await fs.writeFile(tmpIn, file.buffer);
       const { url, posterUrl } = await compressAndSaveReelVideo(tmpIn, "uploads");
       const reel = await createReel({

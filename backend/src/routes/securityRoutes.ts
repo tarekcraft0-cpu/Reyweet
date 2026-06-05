@@ -6,6 +6,7 @@ import {
   revokeAllTrustedDevices,
   securitySummary,
 } from "../lib/loginSecurity.js";
+import { invalidateAllUserTokens } from "../lib/tokenSecurity.js";
 import {
   generateTotpSecret,
   totpProvisioningUri,
@@ -118,10 +119,11 @@ export function registerSecurityRoutes(
     if (!ok) return res.status(401).json({ error: "كلمة المرور غير صحيحة" });
 
     await revokeAllTrustedDevices(userId);
+    await invalidateAllUserTokens(userId);
     const updated = await getUserById(userId);
     return res.json({
       ok: true,
-      message: "تم إزالة جميع الأجهزة الموثوقة — سيُطلب كود بريد عند الدخول التالي",
+      message: "تم إزالة جميع الأجهزة الموثوقة وإبطال الجلسات — سجّل الدخول مجدداً",
       ...securitySummary(updated!),
     });
   });

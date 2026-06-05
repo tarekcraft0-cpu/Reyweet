@@ -18,6 +18,7 @@ function replyBody(replyTo: NonNullable<Message["replyTo"]>): string {
 export function ChatInlineReplyQuote({
   replyTo,
   messages,
+  lookupMessage,
   meId,
   state,
   mine,
@@ -25,7 +26,9 @@ export function ChatInlineReplyQuote({
   onJumpToOriginal,
 }: {
   replyTo: NonNullable<Message["replyTo"]>;
-  messages: Message[];
+  /** @deprecated prefer lookupMessage — يمرّر كل الرسائل ويعيد O(n) لكل فقاعة */
+  messages?: Message[];
+  lookupMessage?: (messageId: string) => Message | undefined;
   meId: string;
   state: AppState;
   mine: boolean;
@@ -33,7 +36,9 @@ export function ChatInlineReplyQuote({
   onJumpToOriginal?: (messageId: string) => void;
 }) {
   const t = useT();
-  const orig = messages.find(m => m.id === replyTo.id);
+  const orig = lookupMessage
+    ? lookupMessage(replyTo.id)
+    : messages?.find(m => m.id === replyTo.id);
   const origSender = orig ? userById(state, orig.senderId) : null;
   const repliedToMe = orig?.senderId === meId;
 

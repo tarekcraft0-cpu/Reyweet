@@ -7,6 +7,7 @@ import { copyFileSync, existsSync, mkdirSync, statSync, writeFileSync } from "no
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+import { isIpaSigned } from "./lib/detect-ipa-signed.mjs";
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const iosIpa = path.join(root, "ios", "build", "Reyweet-ready.ipa");
@@ -27,12 +28,17 @@ copyFileSync(src, destIpa);
 const mb = (statSync(destIpa).size / (1024 * 1024)).toFixed(1);
 console.log(`  ✓ retweet.ipa (${mb} MB) ← ${src}`);
 
+const signed = isIpaSigned(destIpa);
 const version = {
   version: process.env.IOS_BUNDLE_VERSION?.trim() || "1.0.0",
   bundleId: process.env.IOS_BUNDLE_ID?.trim() || "com.reyweet.app",
   title: process.env.IOS_APP_TITLE?.trim() || "Reyweet",
-  signed: process.env.IOS_IPA_SIGNED === "1",
-  installMethod: process.env.IOS_IPA_SIGNED === "1" ? "ota" : "sideloadly",
+  signed,
+  otaAvailable: signed,
+  installMethod: signed ? "ota" : "pwa",
+  installNoteAr: signed
+    ? "جاهز للتثبيت من Safari"
+    : "الملف غير موقّع — Safari يعرض «تعذر التحميل». افتح التطبيق من المتصفح أو ارفع IPA موقّعاً.",
   ipaUrl: "https://reyweet.vercel.app/downloads/retweet.ipa",
   manifestUrl: "https://reyweet.vercel.app/downloads/manifest.plist",
   webAppUrl: "https://reyweet.vercel.app/app/",

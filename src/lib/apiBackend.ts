@@ -9,11 +9,13 @@ import {
   useViteDevProxy,
 } from "./apiConfig";
 import {
+  isCapacitorNativePlatform,
   isNativeCapacitorShell,
   isPrivateApiUrl,
   isPublicAppHost,
   isStaleMobileApiUrl,
   isVpsProductionHost,
+  nativeMobileApiUrl,
   sanitizeApiBaseUrl,
   VERCEL_SITE_URL,
 } from "./apiUrlPolicy";
@@ -23,6 +25,7 @@ import { scopeAppStateToAccount } from "./scopeAppState";
 import { isReactNativeWebView } from "./nativeShell";
 import { dedupeGroupSystemMessages } from "./groupSystemMessages";
 import { getDeviceLabel, getOrCreateDeviceFingerprint } from "./deviceFingerprint";
+import { appRequestSignHeaders } from "./appRequestSign";
 import { buildAuthHumanBody, nativeClientHeader } from "./humanAuthClient";
 import { normalizeRemoteAppState } from "./stateNormalizeBridge";
 import { apiCacheGet, apiCacheGetOrFetch, apiCacheInvalidate, apiCacheSet } from "./apiCache";
@@ -55,8 +58,8 @@ export function getApiBaseUrl(): string {
     /* ignore */
   }
   const base = sanitizeApiBaseUrl((raw.replace(/\/$/, "") || fromPeek).replace(/\/$/, ""));
-  if (useMobileBase && isNativeCapacitorShell() && !base) {
-    return VERCEL_SITE_URL;
+  if ((useMobileBase || isCapacitorNativePlatform()) && (isNativeCapacitorShell() || isCapacitorNativePlatform()) && !base) {
+    return nativeMobileApiUrl();
   }
   return base;
 }
@@ -69,7 +72,7 @@ export function hasApiBackendConnection(): boolean {
     const injected = (window as Window & { __RETWEET_API_URL__?: string }).__RETWEET_API_URL__;
     if (injected?.startsWith("http")) return true;
     /** iOS/Android — API عبر Vercel HTTPS */
-    if (isNativeCapacitorShell()) {
+    if (isNativeCapacitorShell() || isCapacitorNativePlatform()) {
       return true;
     }
   }
@@ -159,9 +162,18 @@ export async function apiFetch(
     );
   }
   const url = buildApiUrl(path, base);
+  const method = (init.method || "GET").toUpperCase();
   const headers = new Headers(init.headers);
   for (const [k, v] of Object.entries(nativeClientHeader())) {
     if (!headers.has(k)) headers.set(k, v);
+  }
+  try {
+    const signPath = path.startsWith("/") ? path : `/${path}`;
+    for (const [k, v] of Object.entries(await appRequestSignHeaders(method, signPath))) {
+      if (!headers.has(k)) headers.set(k, v);
+    }
+  } catch {
+    /* ignore */
   }
   if (!headers.has("Content-Type") && init.body && typeof init.body === "string") {
     headers.set("Content-Type", "application/json");
@@ -180,7 +192,6 @@ export async function apiFetch(
     /* ignore */
   }
 
-  const method = (init.method || "GET").toUpperCase();
   if (shouldLogApi()) {
     logApi("request", {
       method,
@@ -212,6 +223,13 @@ export async function apiFetch(
       void import("./accountModerationBridge").then(({ notifyAccountBannedFromResponse }) =>
         notifyAccountBannedFromResponse(res),
       );
+      if (res.status === 401 && t) {
+        void import("./uiErrorMessage").then(({ clearRetweetLocalSession }) => {
+          clearRetweetLocalSession();
+          setApiToken(null);
+          window.dispatchEvent(new CustomEvent("retweet-session-revoked"));
+        });
+      }
       return res;
     } catch (e) {
       if (attempt < API_MAX_RETRIES) {
@@ -644,6 +662,7 @@ export async function apiSearchUsers(query: string): Promise<ApiSearchUser[]> {
     {
       method: "GET",
       token,
+      timeoutMs: 45_000,
       headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
     },
   );
@@ -671,6 +690,7 @@ export async function apiFetchUserDirectory(opts?: { force?: boolean }): Promise
   const res = await apiFetch("/v1/users/directory", {
     method: "GET",
     token,
+    timeoutMs: 60_000,
   });
   if (!res.ok) return [];
   const data = (await res.json().catch(() => null)) as { users?: ApiSearchUser[] } | null;
@@ -711,6 +731,7 @@ export async function apiListRecentUsers(limit = 30): Promise<ApiSearchUser[]> {
   const res = await apiFetch(`/v1/users/recent?limit=${limit}&_=${Date.now()}`, {
     method: "GET",
     token,
+    timeoutMs: 45_000,
     headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
   });
   if (!res.ok) return [];
@@ -819,7 +840,7 @@ export async function pullRemoteAppState(token: string): Promise<AppState | null
         const res = await apiFetch("/v1/app-state", {
           method: "GET",
           token,
-          timeoutMs: 20_000,
+          timeoutMs: isNativeCapacitorShell() ? 45_000 : 25_000,
         });
         if (!res.ok) return null;
         const data = (await res.json().catch(() => null)) as { state?: AppState } | null;
@@ -1198,6 +1219,32 @@ export async function apiRecordStoryView(token: string, storyId: string): Promis
   } catch {
     /* non-critical */
   }
+}
+
+export async function apiGetUsernameChangePolicy(
+  token: string,
+): Promise<{
+  canChange: boolean;
+  daysRemaining: number;
+  cooldownDays: number;
+  availableAt: number | null;
+}> {
+  const res = await apiFetch("/v1/me/username-policy", { method: "GET", token });
+  const data = (await res.json().catch(() => ({}))) as {
+    canChange?: boolean;
+    daysRemaining?: number;
+    cooldownDays?: number;
+    availableAt?: number | null;
+  };
+  if (!res.ok) {
+    return { canChange: true, daysRemaining: 0, cooldownDays: 7, availableAt: null };
+  }
+  return {
+    canChange: data.canChange !== false,
+    daysRemaining: data.daysRemaining ?? 0,
+    cooldownDays: data.cooldownDays ?? 7,
+    availableAt: data.availableAt ?? null,
+  };
 }
 
 export async function apiPatchProfile(

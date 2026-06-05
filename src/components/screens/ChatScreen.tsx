@@ -74,6 +74,7 @@ import { SharedPostPreview, SharedStoryChatPreview } from "../SharedPostPreview"
 import { SharedGroupInvitePreview } from "../chat/SharedGroupInvitePreview";
 import { ChatNoteReplyBubble, ChatStoryReplyStack } from "../chat/ChatReplyContext";
 import { ChatSwipeMessageRow } from "../chat/ChatSwipeMessageRow";
+import { ChatRoomMessageListBody } from "../chat/ChatRoomMessageListBody";
 import { ChatMessageStatus, ChatListOutgoingStatusIcon } from "../chat/ChatMessageStatus";
 import { ChatInboxVirtualList } from "../chat/ChatInboxVirtualList";
 import { ChatInboxSkeleton } from "../chat/ChatInboxSkeleton";
@@ -4733,6 +4734,12 @@ function ChatRoom({
   const [dmDetailsRestoreSearch, setDmDetailsRestoreSearch] = useState(false);
   const dmDetailsPopStepRef = useRef<() => boolean>(() => false);
   const displayMessagesForView = displayMessages;
+  const messagesById = useMemo(() => {
+    const map = new Map<string, Message>();
+    for (const msg of displayMessages) map.set(msg.id, msg);
+    return map;
+  }, [displayMessages]);
+  const lookupMessage = useCallback((id: string) => messagesById.get(id), [messagesById]);
 
   const [loadingOlderUi, setLoadingOlderUi] = useState(false);
   const isLoadingOlderRef = useRef(false);
@@ -4812,8 +4819,8 @@ function ChatRoom({
   }, [text, meId, sendChatId]);
 
   /** عرض تدريجي — يقلّل تعليق الواجهة في المحادثات الطويلة */
-  const CHAT_RENDER_INITIAL = 100;
-  const CHAT_RENDER_EXPAND = 80;
+  const CHAT_RENDER_INITIAL = 60;
+  const CHAT_RENDER_EXPAND = 50;
   const [renderMessageCount, setRenderMessageCount] = useState(CHAT_RENDER_INITIAL);
   useEffect(() => {
     setRenderMessageCount(CHAT_RENDER_INITIAL);
@@ -5294,6 +5301,11 @@ function ChatRoom({
   }, []);
 
   const swipeReplyLockRef = useRef(false);
+
+  const onSwipeReplyTo = useCallback((m: Message) => {
+    swipeReplyLockRef.current = true;
+    startTransition(() => setReplyingTo(m));
+  }, []);
 
   const onMsgPointerUp = useCallback(
     (e: React.PointerEvent, m: Message) => {
@@ -5867,24 +5879,42 @@ function ChatRoom({
     [users, onOpenProfile, mergeDiscoveredUsers],
   );
 
-  const renderText = (txt: string, mineBubble: boolean) => {
-    const capped = txt.length > 8000 ? txt.slice(0, 8000) + "…" : txt;
-    const glassLinks = mineBubble && !isQuranChannel;
-    return renderMentionHashtagNodes(capped, {
-      renderMention: createMentionRenderer({
-        variant: glassLinks ? "mine" : "default",
-        users: users,
+  const mentionRendererDefault = useMemo(
+    () =>
+      createMentionRenderer({
+        variant: "default",
+        users,
         onUsernameClick: openMentionProfile,
       }),
-      renderHashtag: (h, key) => (
-        <span key={key} className={glassLinks ? "text-zinc-700 dark:text-zinc-300" : "text-primary"}>
-          {h}
-        </span>
-      ),
-    });
-  };
+    [users, openMentionProfile],
+  );
+  const mentionRendererMine = useMemo(
+    () =>
+      createMentionRenderer({
+        variant: "mine",
+        users,
+        onUsernameClick: openMentionProfile,
+      }),
+    [users, openMentionProfile],
+  );
 
-  const renderBubbleContent = (m: Message, mine: boolean) => {
+  const renderText = useCallback(
+    (txt: string, mineBubble: boolean) => {
+      const capped = txt.length > 8000 ? txt.slice(0, 8000) + "…" : txt;
+      const glassLinks = mineBubble && !isQuranChannel;
+      return renderMentionHashtagNodes(capped, {
+        renderMention: glassLinks ? mentionRendererMine : mentionRendererDefault,
+        renderHashtag: (h, key) => (
+          <span key={key} className={glassLinks ? "text-zinc-700 dark:text-zinc-300" : "text-primary"}>
+            {h}
+          </span>
+        ),
+      });
+    },
+    [isQuranChannel, mentionRendererDefault, mentionRendererMine],
+  );
+
+  const renderBubbleContent = useCallback((m: Message, mine: boolean) => {
     const mc = messageContent(m);
     const sender = userById(state, m.senderId);
     return (
@@ -5903,7 +5933,7 @@ function ChatRoom({
         {m.replyTo && (
           <ChatInlineReplyQuote
             replyTo={m.replyTo}
-            messages={displayMessages}
+            lookupMessage={lookupMessage}
             meId={meId}
             state={state}
             mine={mine}
@@ -6115,7 +6145,21 @@ function ChatRoom({
         )}
       </>
     );
-  };
+  }, [
+    state,
+    isQuranChannel,
+    lookupMessage,
+    meId,
+    otherId,
+    chat.id,
+    scrollToMessageId,
+    renderText,
+    t,
+    openShareFeedFromMessage,
+    setLocalPoolRoomId,
+    setViewOnceOverlay,
+    setInlineMediaViewer,
+  ]);
 
   const pickSticker = useCallback(
     (content: string, meta?: { createdFromImage?: boolean }) => {
@@ -6215,7 +6259,15 @@ function ChatRoom({
     const otherLastOpen = chat.lastOpenAtByUser?.[otherId] ?? 0;
     const lastMine = myOutgoing[myOutgoing.length - 1];
     if (!lastMine || otherLastOpen < lastMine.createdAt) return null;
-    const otherRepliedAfter = visibleMessages.some(m => m.senderId === otherId && m.createdAt >= lastMine.createdAt);
+    let otherRepliedAfter = false;
+    for (let i = displayMessages.length - 1; i >= 0; i--) {
+      const m = displayMessages[i];
+      if (m.createdAt < lastMine.createdAt) break;
+      if (m.senderId === otherId) {
+        otherRepliedAfter = true;
+        break;
+      }
+    }
     if (!otherRepliedAfter) {
       const mins = Math.max(0, Math.floor((Date.now() - otherLastOpen) / 60000));
       return mins === 0
@@ -6223,7 +6275,7 @@ function ChatRoom({
         : (lang === "en" ? `Seen · ${mins}m` : `تمت القراءة · منذ ${mins} د`);
     }
     return lang === "en" ? "Seen" : "تمت القراءة";
-  }, [chat.isGroup, chat.isChannel, otherId, chat.lastOpenAtByUser, myOutgoing, visibleMessages, lang]);
+  }, [chat.isGroup, chat.isChannel, otherId, chat.lastOpenAtByUser, myOutgoing, displayMessages, lang]);
 
   const inlineMediaLightboxUser: User | null =
     inlineMediaViewer &&
@@ -6898,242 +6950,33 @@ function ChatRoom({
             (isQuranChannel ? "bg-zinc-950" : chromeOnWallpaper ? "bg-transparent" : "")
           }
         >
-        {(hasOlderMessages || loadingOlderUi) && (
-          <div className="flex w-full justify-center py-2" aria-busy={loadingOlderUi}>
-            {loadingOlderUi ? (
-              <div className="flex gap-1.5">
-                <span className="h-2 w-2 animate-pulse rounded-full bg-muted-foreground/50" />
-                <span className="h-2 w-2 animate-pulse rounded-full bg-muted-foreground/40 [animation-delay:120ms]" />
-                <span className="h-2 w-2 animate-pulse rounded-full bg-muted-foreground/30 [animation-delay:240ms]" />
-              </div>
-            ) : (
-              <span className="text-[11px] text-muted-foreground opacity-60">
-                {lang === "ar" ? "↑ رسائل أقدم" : "↑ Older messages"}
-              </span>
-            )}
-          </div>
-        )}
-        {rowsToRender.map(row => {
-          if (row.kind === "day") {
-            return (
-              <div key={row.key} data-chat-day={row.key} className="flex w-full justify-center py-2">
-                <span
-                  className="rounded-full px-3 py-1 text-[11px] font-medium"
-                  style={
-                    chromeOnWallpaper
-                      ? { backgroundColor: "rgba(255,255,255,0.14)", color: "rgba(255,255,255,0.85)" }
-                      : dmPalette
-                        ? { backgroundColor: dmPalette.dayPillBg, color: dmPalette.dayPillText }
-                        : undefined
-                  }
-                >
-                  {row.label}
-                </span>
-              </div>
-            );
-          }
-          const m = row.message;
-          const groupSystemEvent =
-            (chat.isGroup || chat.isChannel) && m.type === "text"
-              ? parseGroupSystemEvent(messageContent(m))
-              : null;
-          if (groupSystemEvent) {
-            const systemMuted =
-              chromeOnWallpaper || dmPalette ? "text-white/70" : "text-muted-foreground";
-            const systemUserBtn =
-              "font-semibold text-primary underline-offset-2 hover:underline active:opacity-80";
-            const langEn = state.language === "en";
-            const listConj = langEn ? " and " : " و ";
-            const isAddEvent =
-              groupSystemEvent.action === "أضاف" || groupSystemEvent.action === "added";
-            const senderUser = userById(state, m.senderId);
-            const actorUsername = (
-              isAddEvent && senderUser?.username
-                ? senderUser.username
-                : groupSystemEvent.actor
-            ).replace(/^@/, "");
-            const targets = (
-              isAddEvent
-                ? groupSystemEvent.targets.filter(
-                    t => t && t.toLowerCase() !== actorUsername.toLowerCase(),
-                  )
-                : groupSystemEvent.targets
-            ).filter(Boolean);
-            return (
-              <div key={m.id} className="flex w-full justify-center px-3 py-3">
-                <p
-                  className={
-                    "max-w-[94%] text-center text-[13px] leading-snug font-medium " +
-                    (chromeOnWallpaper || dmPalette ? "text-white/90" : "text-foreground/90")
-                  }
-                >
-                  <button
-                    type="button"
-                    className={systemUserBtn}
-                    onClick={() => openMentionProfile(actorUsername)}
-                  >
-                    @{actorUsername}
-                  </button>{" "}
-                  <span className={systemMuted}>{groupSystemEvent.action}</span>{" "}
-                  {targets.map((target, i) => (
-                    <Fragment key={`${target}-${i}`}>
-                      {i > 0 ? (
-                        <span className={systemMuted}>
-                          {i === targets.length - 1 ? listConj : ", "}
-                        </span>
-                      ) : (
-                        " "
-                      )}
-                      <button
-                        type="button"
-                        className={systemUserBtn}
-                        onClick={() => openMentionProfile(target)}
-                      >
-                        @{target}
-                      </button>
-                    </Fragment>
-                  ))}
-                </p>
-              </div>
-            );
-          }
-          const showPeerAvatar = row.showPeerAvatar;
-          const mine = isOwnChatMessage(m.senderId, state, { directMessagePeerId: otherId });
-          const senderProfile = userById(state, m.senderId);
-          const mc = messageContent(m);
-          const bareSticker = m.type === "sticker" && (isStickerImageContent(mc) || isStickerVideoContent(mc));
-          const bareImage = m.type === "image" && mc.startsWith("data:") && !m.viewOnce;
-          const bareDrawing = m.type === "drawing" && !!parseDrawingPayload(mc) && !m.viewOnce;
-          const bareVideo = m.type === "video" && !m.viewOnce;
-          const bareVoiceBubble = m.type === "voice";
-          const bareViewOnceMedia =
-            ((m.type === "image" || m.type === "video") && !!m.viewOnce && mc.startsWith("data:")) ||
-            (m.type === "drawing" && !!m.viewOnce);
-          const bareMedia =
-            bareSticker || bareImage || bareVideo || bareViewOnceMedia || bareVoiceBubble || bareDrawing;
-          const colClass = bareVideo
-            ? CHAT_INLINE_MEDIA_COL
-            : bareVoiceBubble
-              ? "w-max max-w-[min(92vw,288px)] shrink-0"
-              : bareImage || bareDrawing
-                ? CHAT_INLINE_MEDIA_COL
-                : bareSticker || bareViewOnceMedia
-                  ? "w-fit max-w-[min(90vw,280px)] shrink"
-                  : CHAT_TEXT_BUBBLE_COL;
-          const bubbleBase = bareMedia
-            ? "text-sm p-0 m-0 bg-transparent shadow-none ring-0 border-0 overflow-visible outline-none"
-            : chatBubbleFilledClass(mine, isQuranChannel, theme, useIgDm, dmPalette ?? undefined);
-          const bubbleClass =
-            bubbleBase +
-            (!bareMedia && vanishMode && m.id.startsWith("vx_")
-              ? " ring-2 ring-orange-500/50 border border-orange-400/40"
-              : "");
-          const bubbleInlineStyle =
-            useIgDm && dmPalette && !mine && !bareMedia ? chatDmPeerBubbleStyle(dmPalette) : undefined;
-          const showBubbleTime = useIgDm && !bareMedia;
-          return (
-            <div key={m.id}>
-            <ChatSwipeMessageRow
-              message={m}
-              mine={mine}
-              isQuran={isQuranChannel}
-              avatarName={!mine && showPeerAvatar ? senderProfile?.username || "?" : undefined}
-              avatarSrc={!mine && showPeerAvatar ? senderProfile?.avatar : undefined}
-              reservePeerAvatarSlot={!mine && !showPeerAvatar}
-              onAvatarClick={
-                !mine ? () => startTransition(() => onOpenProfile(m.senderId)) : undefined
-              }
-              onSwipeReply={() => {
-                swipeReplyLockRef.current = true;
-                startTransition(() => setReplyingTo(m));
-              }}
-              onPointerDown={onMsgPointerDown}
-              onPointerMove={onMsgPointerMove}
-              onPointerUp={onMsgPointerUp}
-            >
-              <div
-                ref={el => {
-                  // ref callback لا تُعيد render — يعمل مباشرة على Map بدون state
-                  if (el) messageElRefs.current.set(m.id, el);
-                  else messageElRefs.current.delete(m.id);
-                }}
-                className={
-                  "relative flex w-max flex-col gap-0.5 " +
-                  colClass +
-                  " " +
-                  (useIgDm ? chatBubbleAlignClasses(mine) : mine ? "items-end self-end" : "items-start self-start")
-                }
-              >
-                {(chat.isGroup || chat.isChannel) && !mine && (
-                  <div className="mb-0.5 px-0.5 text-[11px] font-semibold text-muted-foreground">
-                    {chat.groupNicknames?.[m.senderId]?.trim() || senderProfile?.username || "?"}
-                  </div>
-                )}
-                <div className={bubbleClass} style={bubbleInlineStyle}>
-                  {renderBubbleContent(m, mine)}
-                  {showBubbleTime && (
-                    <div
-                      className="mt-0.5 flex items-center justify-end gap-0.5"
-                      style={
-                        useIgDm && dmPalette
-                          ? { color: mine ? dmPalette.mineTime : dmPalette.peerTime }
-                          : undefined
-                      }
-                    >
-                      <span className="text-[11px] tabular-nums leading-none">
-                        {formatChatBubbleTime(m.createdAt, lang)}
-                      </span>
-                      {mine && !vanishMode && (
-                        <ChatMessageStatus status={m.status} mine compact />
-                      )}
-                    </div>
-                  )}
-                  {mine && !vanishMode && !useIgDm && (
-                    <span className="mt-1 flex justify-end">
-                      <ChatMessageStatus status={m.status} mine compact />
-                    </span>
-                  )}
-                </div>
-                {m.reactions && m.reactions.length > 0 && (
-                  <div
-                    className={
-                      "-mt-2 z-[1] flex flex-wrap items-center gap-0.5 " +
-                      (useIgDm
-                        ? chatReactionAlignClasses(mine)
-                        : mine
-                          ? "self-end pe-1"
-                          : "self-start ps-1")
-                    }
-                  >
-                    {aggregateReactions(m.reactions).map(([emoji, count]) => (
-                      <span
-                        key={emoji}
-                        className={
-                          "inline-flex items-center gap-0.5 rounded-full bg-black/5 px-1.5 py-0.5 text-sm dark:bg-white/10 " +
-                          (isQuranChannel
-                            ? "text-zinc-100"
-                            : "text-foreground")
-                        }
-                      >
-                        <span className="leading-none">{emoji}</span>
-                        {count > 1 && <span className="text-[10px] font-semibold opacity-75">{count}</span>}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </ChatSwipeMessageRow>
-            </div>
-          );
-        })}
-        {seenFooter && (
-          <div className={"text-end text-[11px] px-1 pt-1 " + (isQuranChannel ? "text-zinc-500" : "text-muted-foreground")}>{seenFooter}</div>
-        )}
-        {isDmRoom && myOutgoing.length > 0 && !seenFooter && !useIgDm && (
-          <div className="flex justify-end px-1 pt-0.5">
-            <ChatMessageStatus status={myOutgoing[myOutgoing.length - 1]?.status} mine compact />
-          </div>
-        )}
+        <ChatRoomMessageListBody
+          hasOlderMessages={hasOlderMessages}
+          loadingOlderUi={loadingOlderUi}
+          lang={lang}
+          rowsToRender={rowsToRender}
+          chat={chat}
+          state={state}
+          meId={meId}
+          otherId={otherId}
+          isQuranChannel={isQuranChannel}
+          useIgDm={useIgDm}
+          dmPalette={dmPalette}
+          chromeOnWallpaper={chromeOnWallpaper}
+          theme={theme}
+          vanishMode={vanishMode}
+          isDmRoom={isDmRoom}
+          seenFooter={seenFooter}
+          myOutgoing={myOutgoing}
+          openMentionProfile={openMentionProfile}
+          onOpenProfile={onOpenProfile}
+          renderBubbleContent={renderBubbleContent}
+          onMsgPointerDown={onMsgPointerDown}
+          onMsgPointerMove={onMsgPointerMove}
+          onMsgPointerUp={onMsgPointerUp}
+          messageElRefs={messageElRefs}
+          onSwipeReply={onSwipeReplyTo}
+        />
         </div>
         {isDmRoom && canPost && (
           <div

@@ -64,7 +64,9 @@ export function validateEmailFormat(email: string): string | null {
 }
 
 export function validateNewPasswordPlain(plain: string): string | null {
-  if (plain.length < 6) return "كلمة المرور يجب أن تكون 6 أحرف على الأقل";
+  if (plain.length < 8) return "كلمة المرور يجب أن تكون 8 أحرف على الأقل";
   if (plain.length > 128) return "كلمة المرور طويلة جداً";
+  if (!/[a-zA-Z\u0600-\u06FF]/.test(plain)) return "أدخل حروفاً في كلمة المرور";
+  if (!/\d/.test(plain)) return "أدخل أرقاماً في كلمة المرور";
   return null;
 }

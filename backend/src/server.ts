@@ -22,6 +22,11 @@ import { buildIceConfigFromEnv } from "./lib/webrtcIceConfig.js";
 import { resolvedProfileNote } from "./lib/profileNote.js";
 import { normalizeUsername, USERNAME_PATTERN, validateUsernameFormat } from "./lib/usernameRules.js";
 import {
+  canChangeUsernameNow,
+  usernameChangeDaysRemaining,
+  USERNAME_CHANGE_COOLDOWN_MS,
+} from "./lib/usernameChangePolicy.js";
+import {
   createOtp,
   createUser,
   deleteOtpsForUser,
@@ -83,6 +88,12 @@ import { storiesVisibleToViewer } from "./lib/storyVisibility.js";
 import { mergeDbPostsIntoAppState } from "./lib/mergeDbPosts.js";
 import { mergeSocialGraphIntoAppState } from "./lib/mergeSocialGraph.js";
 import { signAccessToken, verifyAccessToken } from "./lib/jwt.js";
+import { passwordSchema } from "./lib/passwordPolicy.js";
+import {
+  getUserTokenVersion,
+  invalidateAllUserTokens,
+  isTokenVersionValid,
+} from "./lib/tokenSecurity.js";
 import { generateOtpDigits } from "./lib/otp.js";
 import {
   isSmtpConfigured,
@@ -101,7 +112,18 @@ import {
   trustDeviceForUser,
   revokeAllTrustedDevices,
 } from "./lib/loginSecurity.js";
-import { assertHumanAuthClient } from "./lib/botGuard.js";
+import {
+  assertHumanAuthClient,
+  assertStrictApiSession,
+  detectBlockedBotUserAgent,
+  isNativeClientRequest,
+} from "./lib/botGuard.js";
+import { assertApiIngress } from "./lib/apiIngressGuard.js";
+import {
+  handleBotAuthViolation,
+  handleBotSessionViolation,
+  isIpBotBlocked,
+} from "./lib/botAutoBan.js";
 import { assertValidHumanChallenge } from "./lib/humanChallenge.js";
 import { issueHumanChallenge } from "./lib/humanChallenge.js";
 import {
@@ -129,7 +151,7 @@ import {
   toggleFollowOnServer,
 } from "./lib/socialActions.js";
 import { getSocialRelation } from "./lib/socialGraph.js";
-import { socialListsForUser } from "./lib/socialCounts.js";
+import { socialCountsBatch, socialListsForUser } from "./lib/socialCounts.js";
 import { createGroupRouter } from "./routes/groupRoutes.js";
 import { createModerationRouter } from "./routes/moderationRoutes.js";
 import {
@@ -150,6 +172,7 @@ const MAX_JSON_BODY_BYTES = 6 * 1024 * 1024;
 
 const app = express();
 app.disable("x-powered-by");
+app.set("trust proxy", 1);
 
 app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
@@ -177,6 +200,10 @@ app.use(
       "X-Device-Fingerprint",
       "X-Device-Label",
       "X-Retweet-Client",
+      "X-Retweet-App-Time",
+      "X-Retweet-App-Sig",
+      "X-Retweet-Ingress-Time",
+      "X-Retweet-Ingress-Sig",
     ],
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   }),
@@ -190,6 +217,32 @@ app.use((_req, res, next) => {
   res.setHeader("X-Frame-Options", "DENY");
   res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
   res.setHeader("Permissions-Policy", "camera=(self), microphone=(self), geolocation=()");
+  res.setHeader("X-DNS-Prefetch-Control", "off");
+  res.setHeader(
+    "Content-Security-Policy",
+    "default-src 'none'; frame-ancestors 'none'; base-uri 'none'",
+  );
+  next();
+});
+
+function apiIngressMiddleware(req: Request, res: Response, next: NextFunction): void {
+  const gate = assertApiIngress(req);
+  if (!gate.ok) {
+    res.status(gate.status).json({ error: gate.error, code: gate.code });
+    return;
+  }
+  next();
+}
+
+app.use("/v1", apiIngressMiddleware);
+app.use("/auth", apiIngressMiddleware);
+
+app.use("/v1", (req, res, next) => {
+  const rl = rateLimitHit(`api-ip:${rateLimitClientKey(req)}`, 200, 60 * 1000);
+  if (!rl.ok) {
+    res.status(429).set("Retry-After", String(rl.retryAfterSec)).json({ error: "طلبات كثيرة" });
+    return;
+  }
   next();
 });
 
@@ -198,8 +251,13 @@ async function guardAuthRequest(
   res: Response,
   body?: unknown,
 ): Promise<boolean> {
+  if (isIpBotBlocked(req)) {
+    res.status(403).json({ error: "تم حظر هذا العنوان — نشاط بوت", code: "ip_blocked" });
+    return false;
+  }
   const bot = assertHumanAuthClient(req, body);
   if (!bot.ok) {
+    void handleBotAuthViolation(req, body, bot.code);
     res.status(bot.status).json({ error: bot.error, code: bot.code });
     return false;
   }
@@ -208,7 +266,7 @@ async function guardAuthRequest(
     res.status(400).json({ error: challenge.error });
     return false;
   }
-  if (turnstileConfigured()) {
+  if (turnstileConfigured() && !isNativeClientRequest(req)) {
     const ipKey = rateLimitClientKey(req);
     const ip = ipKey.startsWith("ip:") ? ipKey.slice(3) : undefined;
     const ts = await verifyTurnstileToken(turnstileTokenFromBody(body), ip);
@@ -267,26 +325,26 @@ app.get("/health", async (_req, res) => {
   } catch {
     messagesDbBytes = undefined;
   }
+  const detail = String(_req.query.detail || "") === "1";
+  if (!detail) {
+    return res.json({ ok: dbOk, service: "retweet-backend" });
+  }
   res.json({
     ok: dbOk,
     service: "retweet-backend",
-    dataRoot: DATA_ROOT,
-    publicUrl: PUBLIC_BASE_URL,
     dbOk,
     usersCount,
-    messagesDbBytes,
     smtpConfigured: isSmtpConfigured(),
-    pushConfigured,
-    pushIos,
-    pushAndroid,
-    turnConfigured: buildIceConfigFromEnv().turnConfigured,
-    stripeConfigured: !!process.env.STRIPE_SECRET_KEY?.trim(),
-    passwordResetUsesLink: passwordResetUsesLink(),
-    chatMessagesUnlimited: true,
+    authStrict: process.env.AUTH_STRICT_MODE !== "0",
   });
 });
 
 app.post("/api/client-telemetry", (req, res) => {
+  const rl = rateLimitHit(`telemetry:${rateLimitClientKey(req)}`, 40, 60 * 1000);
+  if (!rl.ok) {
+    res.status(429).json({ ok: false });
+    return;
+  }
   try {
     const body = req.body as {
       type?: string;
@@ -397,6 +455,20 @@ async function publicUserPayloadWithSocial(user: UserRow) {
   };
 }
 
+/** قائمة مستخدمين للبحث/الدليل — بدون مصفوفات followers/following (أخف وأسرع) */
+async function publicUserListPayload(users: UserRow[]) {
+  const counts = await socialCountsBatch(users.map(u => u.id));
+  return users.map(user => {
+    const c = counts.get(user.id);
+    return {
+      ...publicUserPayload(user),
+      isPrivate: user.isPrivate === true,
+      followerCount: c?.followerCount ?? 0,
+      followingCount: c?.followingCount ?? 0,
+    };
+  });
+}
+
 function notifyUserRegistered(user: UserRow): void {
   broadcastSseEvent("user_registered", { user: publicUserPayload(user) });
 }
@@ -472,21 +544,13 @@ async function finishAuthLogin(
   deviceFingerprint: string,
   deviceLabel: string,
 ): Promise<Response> {
+  const banned = await loginBanResponse(user, res);
+  if (banned) return banned;
   const { recordLoginEvent } = await import("./routes/userExtrasRoutes.js");
   recordLoginEvent(user.id, req, true, deviceLabel);
   await trustDeviceForUser(user.id, deviceFingerprint, deviceLabel, req);
-  const token = signAccessToken(user.id);
-  const status = await resolveEffectiveStatus(user.id);
-  if (isBannedStatus(status)) {
-    const banInfo = await getBanInfoForUser(user);
-    return res.json({
-      token,
-      user: authUserPayload(user),
-      banned: true,
-      banInfo,
-      accountStatus: status,
-    });
-  }
+  const tv = await getUserTokenVersion(user.id);
+  const token = signAccessToken(user.id, tv);
   return res.json({ token, user: authUserPayload(user) });
 }
 
@@ -511,7 +575,7 @@ const registerSchema = z.object({
   email: z.string().email(),
   username: usernameField,
   displayName: z.string().min(1).max(80).optional(),
-  password: z.string().min(6).max(128),
+  password: passwordSchema,
   code: z.string().min(4).max(12).optional(),
   phone: z.string().max(24).optional(),
 });
@@ -618,7 +682,7 @@ app.post("/auth/register", async (req, res) => {
   const regFp = getDeviceFingerprintFromRequest(req, req.body as { deviceFingerprint?: string });
   const regLabel = getDeviceLabelFromRequest(req, req.body as { deviceLabel?: string });
   if (regFp) await trustDeviceForUser(user.id, regFp, regLabel, req);
-  const token = signAccessToken(user.id);
+  const token = signAccessToken(user.id, 1);
   notifyUserRegistered(user);
   return res.json({ token, user: authUserPayload(user) });
 });
@@ -835,7 +899,7 @@ app.post("/auth/google", async (req, res) => {
     appTheme: "light",
     appLanguage: "ar",
   });
-  const token = signAccessToken(user.id);
+  const token = signAccessToken(user.id, 1);
   notifyUserRegistered(user);
   return res.json({ token, user: authUserPayload(user) });
 });
@@ -844,10 +908,11 @@ const resetRequestSchema = z.object({ identifier: z.string().min(1) });
 const resetCompleteSchema = z.object({
   identifier: z.string().min(1),
   code: z.string().min(4).max(12),
-  newPassword: z.string().min(6).max(128),
+  newPassword: passwordSchema,
 });
 
 app.post("/auth/request-password-reset", async (req, res) => {
+  if (!(await guardAuthRequest(req, res, req.body))) return;
   const rl = rateLimitHit(`pwd-req:${rateLimitClientKey(req)}`, 8, 60 * 60 * 1000);
   if (!rl.ok) return res.status(429).set("Retry-After", String(rl.retryAfterSec)).json({ error: "طلبات كثيرة — حاول لاحقاً" });
   const parsed = resetRequestSchema.safeParse(req.body);
@@ -913,10 +978,11 @@ app.post("/auth/request-password-reset", async (req, res) => {
 
 const resetLinkCompleteSchema = z.object({
   token: z.string().min(20),
-  newPassword: z.string().min(6).max(128),
+  newPassword: passwordSchema,
 });
 
 app.post("/auth/complete-password-reset-link", async (req, res) => {
+  if (!(await guardAuthRequest(req, res, req.body))) return;
   const rl = rateLimitHit(`pwd-link:${rateLimitClientKey(req)}`, 15, 15 * 60 * 1000);
   if (!rl.ok) return res.status(429).set("Retry-After", String(rl.retryAfterSec)).json({ error: "طلبات كثيرة — حاول لاحقاً" });
   const parsed = resetLinkCompleteSchema.safeParse(req.body);
@@ -935,11 +1001,14 @@ app.post("/auth/complete-password-reset-link", async (req, res) => {
   const rounds = Math.min(14, Math.max(10, Number(process.env.BCRYPT_ROUNDS || 12)));
   const passwordHash = await bcrypt.hash(parsed.data.newPassword, rounds);
   await updateUser(user.id, { passwordHash });
+  await invalidateAllUserTokens(user.id);
+  await revokeAllTrustedDevices(user.id);
   await deleteOtpsForUser(user.id, "password_reset_link");
   return res.json({ ok: true });
 });
 
 app.post("/auth/complete-password-reset", async (req, res) => {
+  if (!(await guardAuthRequest(req, res, req.body))) return;
   const rl = rateLimitHit(`pwd-done:${rateLimitClientKey(req)}`, 15, 15 * 60 * 1000);
   if (!rl.ok) return res.status(429).set("Retry-After", String(rl.retryAfterSec)).json({ error: "طلبات كثيرة — حاول لاحقاً" });
   const parsed = resetCompleteSchema.safeParse(req.body);
@@ -954,6 +1023,8 @@ app.post("/auth/complete-password-reset", async (req, res) => {
   const rounds = Math.min(14, Math.max(10, Number(process.env.BCRYPT_ROUNDS || 12)));
   const passwordHash = await bcrypt.hash(newPassword, rounds);
   await updateUser(user.id, { passwordHash });
+  await invalidateAllUserTokens(user.id);
+  await revokeAllTrustedDevices(user.id);
   await deleteOtpsForUser(user.id, "password_reset");
   return res.json({ ok: true });
 });
@@ -965,6 +1036,10 @@ const MODERATION_ALLOWED_PREFIXES = [
 ];
 
 function authMiddleware(req: Request, res: Response, next: NextFunction): void {
+  if (isIpBotBlocked(req)) {
+    res.status(403).json({ error: "تم حظر هذا العنوان", code: "ip_blocked" });
+    return;
+  }
   const raw = req.headers.authorization || "";
   const token = raw.replace(/^Bearer\s+/i, "").trim();
   if (!token) {
@@ -972,14 +1047,33 @@ function authMiddleware(req: Request, res: Response, next: NextFunction): void {
     return;
   }
   try {
-    const { sub } = verifyAccessToken(token);
+    const { sub, tv } = verifyAccessToken(token);
     (req as Request & { userId: string }).userId = sub;
     const path = req.path || req.url.split("?")[0] || "";
     const appealOk = MODERATION_ALLOWED_PREFIXES.some(p => path.startsWith(p));
     void (async () => {
+      const user = await getUserById(sub);
+      if (!user) {
+        res.status(401).json({ error: "unauthorized", code: "session_revoked" });
+        return;
+      }
+      if (!isTokenVersionValid(tv, user.tokenVersion)) {
+        res.status(401).json({ error: "انتهت الجلسة — سجّل الدخول مجدداً", code: "session_revoked" });
+        return;
+      }
+      const sessionGuard = assertStrictApiSession(req);
+      if (!sessionGuard.ok) {
+        await handleBotSessionViolation(req, sub, sessionGuard.code);
+        const banInfo = await getBanInfoForUser(user);
+        res.status(sessionGuard.status).json({
+          error: sessionGuard.code === "messenger_webview" ? sessionGuard.error : "account_banned",
+          banInfo: sessionGuard.code !== "messenger_webview" ? banInfo : undefined,
+          code: "bot_session",
+        });
+        return;
+      }
       const status = await resolveEffectiveStatus(sub);
       if (isBannedStatus(status) && !appealOk) {
-        const user = await getUserById(sub);
         const banInfo = user ? await getBanInfoForUser(user) : null;
         res.status(403).json({ error: "account_banned", banInfo });
         return;
@@ -1037,7 +1131,7 @@ app.get("/v1/users/search", authMiddleware, async (req, res) => {
   if (!q) return res.json({ users: [] });
   if (q.length > 64) return res.status(400).json({ error: "استعلام طويل جداً" });
   const rows = await searchUsers(q, 40);
-  const users = await Promise.all(rows.map(row => publicUserPayloadWithSocial(row)));
+  const users = await publicUserListPayload(rows);
   return res.json({ users });
 });
 
@@ -1045,7 +1139,7 @@ app.get("/v1/users/recent", authMiddleware, async (req, res) => {
   setNoStoreApi(res);
   const limit = Math.min(80, Math.max(1, Number(req.query.limit) || 30));
   const rows = await listRecentUsers(limit);
-  const users = await Promise.all(rows.map(row => publicUserPayloadWithSocial(row)));
+  const users = await publicUserListPayload(rows);
   return res.json({ users });
 });
 
@@ -1054,7 +1148,7 @@ app.get("/v1/users/directory", authMiddleware, async (_req, res) => {
   setNoStoreApi(res);
   const rows = await listUsers();
   rows.sort((a, b) => (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0));
-  const users = await Promise.all(rows.map(row => publicUserPayloadWithSocial(row)));
+  const users = await publicUserListPayload(rows);
   return res.json({ users });
 });
 
@@ -1122,6 +1216,25 @@ app.get("/v1/users/:userId", authMiddleware, async (req, res) => {
   return res.json({ user: await publicUserPayloadWithSocial(row) });
 });
 
+app.get("/v1/me/username-policy", authMiddleware, async (req, res) => {
+  const userId = (req as Request & { userId: string }).userId;
+  const row = await getUserById(userId);
+  if (!row) return res.status(404).json({ error: "not found" });
+  const last = row.lastUsernameChangedAt ?? 0;
+  const canChange = canChangeUsernameNow(last);
+  const daysRemaining = usernameChangeDaysRemaining(last);
+  const availableAt =
+    last > 0 ? last + USERNAME_CHANGE_COOLDOWN_MS : null;
+  setNoStoreApi(res);
+  return res.json({
+    canChange,
+    daysRemaining,
+    cooldownDays: USERNAME_CHANGE_COOLDOWN_MS / (24 * 60 * 60 * 1000),
+    availableAt,
+    lastChangedAt: last > 0 ? last : null,
+  });
+});
+
 app.get("/v1/me/username-available/:username", authMiddleware, async (req, res) => {
   const userId = (req as Request & { userId: string }).userId;
   const norm = normalizeUsername(String(req.params.username ?? ""));
@@ -1173,6 +1286,23 @@ app.post("/v1/stories", authMiddleware, async (req, res) => {
     return res.status(500).json({
       error: "تعذر حفظ وسائط الستوري — جرّب صورة JPG أو فيديو MP4 أقصر",
     });
+  }
+
+  try {
+    const { guardUserContent } = await import("./moderation/contentGuard.js");
+    await guardUserContent(
+      userId,
+      [
+        { kind: "image_ref", ref: image },
+        { kind: "image_ref", ref: video },
+      ],
+      "story",
+    );
+  } catch (e) {
+    const { contentViolationResponse } = await import("./moderation/contentGuard.js");
+    const cv = contentViolationResponse(e);
+    if (cv) return res.status(cv.status).json(cv.body);
+    throw e;
   }
 
   const createdAt = parsed.data.createdAt ?? Date.now();
@@ -1362,6 +1492,9 @@ app.post("/v1/posts", authMiddleware, async (req, res) => {
     setNoStoreApi(res);
     return res.json({ ok: true, post });
   } catch (e) {
+    const { contentViolationResponse } = await import("./moderation/contentGuard.js");
+    const cv = contentViolationResponse(e);
+    if (cv) return res.status(cv.status).json(cv.body);
     const msg = e instanceof Error ? e.message : "فشل حفظ المنشور";
     return res.status(400).json({ error: msg });
   }
@@ -1430,7 +1563,7 @@ app.post("/v1/stories/:storyId/view", authMiddleware, async (req, res) => {
 
 const pwdChangeSchema = z.object({
   oldPassword: z.string().min(1),
-  newPassword: z.string().min(6).max(128),
+  newPassword: passwordSchema,
 });
 
 const chatTypingSchema = z.object({
@@ -1467,6 +1600,9 @@ app.post("/v1/messages", authMiddleware, async (req, res) => {
     const row = await ingestDirectMessage(senderId, parsed.data);
     res.status(201).json({ message: messageRowToClient(row) });
   } catch (e) {
+    const { contentViolationResponse } = await import("./moderation/contentGuard.js");
+    const cv = contentViolationResponse(e);
+    if (cv) return res.status(cv.status).json(cv.body);
     if (e instanceof ChatAccessError) return res.status(403).json({ error: e.message });
     const msg = e instanceof Error ? e.message : "فشل إرسال الرسالة";
     return res.status(500).json({ error: msg });
@@ -1924,6 +2060,13 @@ app.patch("/v1/me/profile", authMiddleware, async (req, res) => {
     d.email != null &&
     d.email.trim().toLowerCase() !== cur.email.trim().toLowerCase();
   if (usernameChanging || emailChanging) {
+    const sensitiveGuard = assertStrictApiSession(req);
+    if (!sensitiveGuard.ok) {
+      return res.status(sensitiveGuard.status).json({
+        error: sensitiveGuard.error,
+        code: sensitiveGuard.code,
+      });
+    }
     const pwd = d.currentPassword?.trim();
     if (!pwd) {
       return res.status(403).json({
@@ -1934,7 +2077,17 @@ app.patch("/v1/me/profile", authMiddleware, async (req, res) => {
     if (!pwdOk) {
       return res.status(401).json({ error: "كلمة المرور غير صحيحة" });
     }
+    if (usernameChanging && !canChangeUsernameNow(cur.lastUsernameChangedAt)) {
+      const daysLeft = usernameChangeDaysRemaining(cur.lastUsernameChangedAt);
+      return res.status(429).json({
+        error: `لا يمكن تغيير اسم المستخدم الآن — انتظر ${daysLeft} يوماً (فترة الانتظار 7 أيام)`,
+        code: "username_cooldown",
+        daysRemaining: daysLeft,
+        cooldownDays: USERNAME_CHANGE_COOLDOWN_MS / (24 * 60 * 60 * 1000),
+      });
+    }
     await revokeAllTrustedDevices(userId);
+    await invalidateAllUserTokens(userId);
   }
   if (typeof d.username === "string") {
     const rawUsername = d.username.trim();
@@ -1948,6 +2101,7 @@ app.patch("/v1/me/profile", authMiddleware, async (req, res) => {
           return res.status(409).json({ error: "اسم المستخدم مستخدم" });
         }
         patch.username = norm;
+        patch.lastUsernameChangedAt = Date.now();
       }
     }
   }
@@ -1959,6 +2113,15 @@ app.patch("/v1/me/profile", authMiddleware, async (req, res) => {
       } catch {
         return res.status(400).json({ error: "فشل معالجة الصورة" });
       }
+    }
+    try {
+      const { guardUserContent } = await import("./moderation/contentGuard.js");
+      await guardUserContent(userId, [{ kind: "image_ref", ref: av }], "profile_avatar");
+    } catch (scanErr) {
+      const { contentViolationResponse } = await import("./moderation/contentGuard.js");
+      const cv = contentViolationResponse(scanErr);
+      if (cv) return res.status(cv.status).json(cv.body);
+      throw scanErr;
     }
     const avRef = toClientMediaRef(av) || av;
     const { assertAvatarAllowed } = await import("./routes/verificationRoutes.js");
@@ -2136,6 +2299,8 @@ app.put("/v1/me/password", authMiddleware, async (req, res) => {
   const rounds = Math.min(14, Math.max(10, Number(process.env.BCRYPT_ROUNDS || 12)));
   const passwordHash = await bcrypt.hash(newPassword, rounds);
   await updateUser(userId, { passwordHash });
+  await invalidateAllUserTokens(userId);
+  await revokeAllTrustedDevices(userId);
   return res.json({ ok: true });
 });
 
@@ -2168,11 +2333,34 @@ app.post("/v1/media/upload", authMiddleware, mediaUploadMiddleware, async (req, 
     }
   }
   try {
+    const { guardUserContent, contentViolationResponse } = await import("./moderation/contentGuard.js");
     if (mime.startsWith("image/")) {
+      try {
+        await guardUserContent(
+          userId,
+          [{ kind: "image_buffer", buffer: file.buffer, mime }],
+          forAvatar ? "avatar_upload" : "media_upload_image",
+        );
+      } catch (scanErr) {
+        const cv = contentViolationResponse(scanErr);
+        if (cv) return res.status(cv.status).json(cv.body);
+        throw scanErr;
+      }
       const { url, kind } = await saveUploadedImage(file.buffer, mime);
       return res.json({ url, kind });
     }
     if (mime.startsWith("video/")) {
+      try {
+        await guardUserContent(
+          userId,
+          [{ kind: "video_buffer", buffer: file.buffer, mime }],
+          "media_upload_video",
+        );
+      } catch (scanErr) {
+        const cv = contentViolationResponse(scanErr);
+        if (cv) return res.status(cv.status).json(cv.body);
+        throw scanErr;
+      }
       const tmpDir = path.join(MEDIA_VIDEOS_DIR, "_tmp");
       const fs = await import("node:fs/promises");
       await fs.mkdir(tmpDir, { recursive: true });

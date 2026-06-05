@@ -5,6 +5,7 @@
  *
  * Usage: node backend/scripts/restore-full-database.mjs
  */
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,6 +14,49 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_ROOT = path.resolve(process.env.DATA_ROOT || "D:/RetweetSocial");
 const DB_DIR = path.join(DATA_ROOT, "db");
 const SNAPSHOTS_DIR = path.join(DATA_ROOT, "snapshots");
+const ENC_MAGIC = "retweet-enc-v1";
+
+function deriveKey() {
+  const secret = process.env.DATA_ENCRYPTION_KEY?.trim();
+  if (!secret || secret.length < 16) return null;
+  return crypto.scryptSync(secret, "retweet-data-at-rest-v1", 32);
+}
+
+function isEncEnvelope(raw) {
+  return !!raw && typeof raw === "object" && raw._enc === ENC_MAGIC;
+}
+
+function decryptStored(raw) {
+  if (!isEncEnvelope(raw)) return raw;
+  const key = deriveKey();
+  if (!key) return raw;
+  try {
+    const iv = Buffer.from(raw.iv, "base64");
+    const tag = Buffer.from(raw.tag, "base64");
+    const data = Buffer.from(raw.data, "base64");
+    const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
+    decipher.setAuthTag(tag);
+    const out = Buffer.concat([decipher.update(data), decipher.final()]);
+    return JSON.parse(out.toString("utf8"));
+  } catch {
+    return raw;
+  }
+}
+
+function encryptStored(data) {
+  const key = deriveKey();
+  if (!key) return data;
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+  const plain = Buffer.from(JSON.stringify(data), "utf8");
+  const enc = Buffer.concat([cipher.update(plain), cipher.final()]);
+  return {
+    _enc: ENC_MAGIC,
+    iv: iv.toString("base64"),
+    tag: cipher.getAuthTag().toString("base64"),
+    data: enc.toString("base64"),
+  };
+}
 
 function dmChatId(a, b) {
   const [x, y] = a < b ? [a, b] : [b, a];
@@ -21,7 +65,8 @@ function dmChatId(a, b) {
 
 async function readJson(file, fallback) {
   try {
-    return JSON.parse(await fs.readFile(file, "utf8"));
+    const parsed = JSON.parse((await fs.readFile(file, "utf8")).replace(/^\uFEFF/, "").trim());
+    return decryptStored(parsed);
   } catch {
     return fallback;
   }
@@ -29,7 +74,8 @@ async function readJson(file, fallback) {
 
 async function writeJsonAtomic(file, data) {
   const tmp = `${file}.restore-${Date.now()}.tmp`;
-  await fs.writeFile(tmp, JSON.stringify(data, null, 2), "utf8");
+  const payload = deriveKey() ? encryptStored(data) : data;
+  await fs.writeFile(tmp, JSON.stringify(payload, null, 2), "utf8");
   await fs.rename(tmp, file);
 }
 
@@ -220,6 +266,12 @@ async function main() {
 
   await writeJsonAtomic(chatsCatalogPath, Object.fromEntries(chatCatalog));
   console.log(`[restore] chat catalog: ${chatCatalog.size} محادثة`);
+
+  const mergedUsers = [...usersById.values()].sort(
+    (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime(),
+  );
+  await writeJsonAtomic(usersPath, mergedUsers);
+  console.log(`[restore] users: ${usersList.length} → ${mergedUsers.length}`);
 
   const messagesByUser = new Map();
   for (const row of messageRows) {

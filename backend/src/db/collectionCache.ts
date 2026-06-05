@@ -21,5 +21,14 @@ export function invalidateCollectionCache(keys?: string[]): void {
     cache.clear();
     return;
   }
-  for (const k of keys) cache.delete(k);
+  for (const k of keys) {
+    cache.delete(k);
+    if (k === "users") {
+      cache.delete("users:map");
+      cache.delete("users:list");
+    }
+    if (k === "posts") {
+      cache.delete("posts:list");
+    }
+  }
 }

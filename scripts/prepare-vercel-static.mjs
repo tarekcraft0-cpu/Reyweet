@@ -228,8 +228,8 @@ const apiProxyRewrites = useApiProxy
       { source: "/health", destination: `${backendApiUrl}/health` },
       { source: "/auth/rt-ws/", destination: `${backendApiUrl}/auth/rt-ws/` },
       { source: "/auth/rt-ws/:rest*", destination: `${backendApiUrl}/auth/rt-ws/:rest*` },
-      { source: "/auth/:path*", destination: `${backendApiUrl}/auth/:path*` },
-      { source: "/v1/:path*", destination: `${backendApiUrl}/v1/:path*` },
+      { source: "/auth/:path*", destination: "/api/backend-proxy?route=auth&path=:path*" },
+      { source: "/v1/:path*", destination: "/api/backend-proxy?route=v1&path=:path*" },
       { source: "/media/:path*", destination: "/api/media-stream?path=:path*" },
       { source: "/rtcall", destination: `${backendApiUrl}/rtcall` },
       { source: "/rtcall/:path*", destination: `${backendApiUrl}/rtcall/:path*` },
@@ -321,6 +321,7 @@ if (useApiProxy) {
   siteVercel.functions = {
     "api/media-stream.js": { maxDuration: 60 },
     "api/realtime-proxy.js": { maxDuration: 60 },
+    "api/backend-proxy.js": { maxDuration: 60 },
   };
   const apiRoot = path.join(root, "api");
   const apiDestSite = path.join(siteOutDir, "api");

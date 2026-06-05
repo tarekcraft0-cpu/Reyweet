@@ -1397,6 +1397,9 @@ async function applyApiAuthSuccess(
   });
   setLastActiveUserId(user.id);
   setApiToken(token);
+  const { invalidateHomeFeedCache, invalidateUserDirectoryCache } = await import("./apiBackend");
+  invalidateHomeFeedCache();
+  invalidateUserDirectoryCache();
 
   if (opts?.skipRemotePull) {
     const fallback = ensureAuthUserInState(
@@ -1413,7 +1416,7 @@ async function applyApiAuthSuccess(
   const remote = await Promise.race([
     pullRemoteAppState(token),
     new Promise<null>((resolve) => {
-      const delayMs = 18_000;
+      const delayMs = isNativeCapacitorShell() ? 42_000 : 22_000;
       if (typeof window === "undefined") resolve(null);
       else window.setTimeout(() => resolve(null), delayMs);
     }),
@@ -1432,12 +1435,19 @@ async function applyApiAuthSuccess(
       userId: user.id,
       reason: "remote-state-timeout-or-missing",
     });
-    void pullRemoteAppState(token).then((late) => {
+    void pullRemoteAppState(token).then(async late => {
       if (!late) return;
       const hydrated = buildMultiAccountState(user.id, late, fallback, user, {
         serverAuthoritative: true,
       });
       saveAccountStateCache(user.id, hydrated);
+      const { markServerHydrated } = await import("./remotePushGate");
+      markServerHydrated(user.id, hydrated);
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("retweet-late-hydrate", { detail: { userId: user.id, state: hydrated } }),
+        );
+      }
     });
     return { ok: true, state: fallback };
   }
@@ -2238,6 +2248,9 @@ export function AppProvider({
           });
           void import("./remotePushGate").then(({ markServerHydrated }) =>
             markServerHydrated(activeId, normalized),
+          );
+          void import("./feedVisibility").then(({ requestAuthFeedRefresh }) =>
+            requestAuthFeedRefresh(),
           );
           return normalized;
         });
@@ -5674,7 +5687,7 @@ export function AppProvider({
   const refreshUserDirectory = useCallback(async () => {
     if (!apiBackendEnabled() || !getApiToken()) return;
     if (isGuestUserId(stateRef.current.currentUserId)) return;
-    if (hydrateRemoteBusy.current || groupSyncBusyRef.current) return;
+    if (groupSyncBusyRef.current) return;
     const rows = await apiFetchUserDirectory();
     if (!rows.length) return;
     for (const row of rows) cachePublicProfileFromApi(row);
@@ -5905,9 +5918,8 @@ export function AppProvider({
       authFeedTimer = window.setTimeout(() => {
         authFeedTimer = 0;
         void refreshFeedFromServer();
-        if (!isNativeCapacitorShell()) {
-          refreshFromServer({ urgent: true });
-        }
+        refreshFromServer({ urgent: true });
+        void refreshUserDirectory();
       }, delayMs);
     };
     window.addEventListener(AUTH_FEED_REFRESH_EVENT, onAuthFeed);
@@ -6600,9 +6612,34 @@ export function AppProvider({
     const id = window.setInterval(() => {
       if (document.visibilityState !== "visible") return;
       void refreshFeedFromServer();
+      if (isNativeCapacitorShell()) {
+        refreshFromServer();
+      }
     }, 18_000);
     return () => window.clearInterval(id);
-  }, [state.currentUserId, refreshFeedFromServer]);
+  }, [state.currentUserId, refreshFeedFromServer, refreshFromServer]);
+
+  /** جلب متأخر بعد login إذا انتهت مهلة app-state — يحدّث الواجهة وليس التخزين فقط */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const onLate = (ev: Event) => {
+      const detail = (ev as CustomEvent<{ userId?: string; state?: AppState }>).detail;
+      if (!detail?.state || !detail.userId) return;
+      if (stateRef.current.currentUserId !== detail.userId) return;
+      setStateRaw(s =>
+        preserveResolvedFollowRequestNotifications(
+          s,
+          buildMultiAccountState(detail.userId!, detail.state!, s, undefined, {
+            serverAuthoritative: true,
+          }),
+        ),
+      );
+      void refreshFeedFromServer();
+      void refreshUserDirectory();
+    };
+    window.addEventListener("retweet-late-hydrate", onLate);
+    return () => window.removeEventListener("retweet-late-hydrate", onLate);
+  }, [setStateRaw, refreshFeedFromServer, refreshUserDirectory]);
 
   useEffect(() => {
     return () => {

@@ -6,6 +6,7 @@
  *
  * يبحث تلقائياً عن MERGE_SRC/db أو MERGE_SRC إذا كان يحوي messages.json مباشرة.
  */
+import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,11 +14,63 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const DATA_ROOT = path.resolve(process.env.DATA_ROOT || "D:/RetweetSocial");
+const ENC_MAGIC = "retweet-enc-v1";
 
-async function readJson(file, fallback) {
+function deriveKey() {
+  const secret = process.env.DATA_ENCRYPTION_KEY?.trim();
+  if (!secret || secret.length < 16) return null;
+  return crypto.scryptSync(secret, "retweet-data-at-rest-v1", 32);
+}
+
+function isEncEnvelope(raw) {
+  return !!raw && typeof raw === "object" && raw._enc === ENC_MAGIC;
+}
+
+function decryptStored(raw) {
+  if (!isEncEnvelope(raw)) return raw;
+  const key = deriveKey();
+  if (!key) {
+    console.warn("[merge-db] users/posts مشفّرة — عيّن DATA_ENCRYPTION_KEY لفكها قبل الدمج");
+    return raw;
+  }
+  try {
+    const iv = Buffer.from(raw.iv, "base64");
+    const tag = Buffer.from(raw.tag, "base64");
+    const data = Buffer.from(raw.data, "base64");
+    const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
+    decipher.setAuthTag(tag);
+    const out = Buffer.concat([decipher.update(data), decipher.final()]);
+    return JSON.parse(out.toString("utf8"));
+  } catch {
+    console.warn("[merge-db] فشل فك تشفير ملف — يُستخدم المحتوى كما هو");
+    return raw;
+  }
+}
+
+function encryptStored(data) {
+  const key = deriveKey();
+  if (!key) return data;
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+  const plain = Buffer.from(JSON.stringify(data), "utf8");
+  const enc = Buffer.concat([cipher.update(plain), cipher.final()]);
+  return {
+    _enc: ENC_MAGIC,
+    iv: iv.toString("base64"),
+    tag: cipher.getAuthTag().toString("base64"),
+    data: enc.toString("base64"),
+  };
+}
+
+function shouldEncryptTarget(file) {
+  return !!deriveKey() && path.normalize(file).replace(/\\/g, "/").startsWith(`${DATA_ROOT.replace(/\\/g, "/")}/`);
+}
+
+async function readJson(file, fallback, { decrypt = false } = {}) {
   try {
     const raw = await fs.readFile(file, "utf8");
-    return JSON.parse(raw.replace(/^\uFEFF/, "").trim() || "null") ?? fallback;
+    const parsed = JSON.parse(raw.replace(/^\uFEFF/, "").trim() || "null") ?? fallback;
+    return decrypt ? decryptStored(parsed) : parsed;
   } catch {
     return fallback;
   }
@@ -26,7 +79,8 @@ async function readJson(file, fallback) {
 async function writeAtomic(file, data) {
   const tmp = `${file}.merge-${Date.now()}.tmp`;
   await fs.mkdir(path.dirname(file), { recursive: true });
-  await fs.writeFile(tmp, JSON.stringify(data, null, 2), "utf8");
+  const payload = shouldEncryptTarget(file) ? encryptStored(data) : data;
+  await fs.writeFile(tmp, JSON.stringify(payload, null, 2), "utf8");
   await fs.rename(tmp, file);
 }
 
@@ -147,7 +201,7 @@ async function main() {
   /* messages.json */
   const tp = path.join(targetDb, "messages.json");
   const mp = path.join(dbDir, "messages.json");
-  const [curMsg, incMsg] = await Promise.all([readJson(tp, {}), readJson(mp, {})]);
+  const [curMsg, incMsg] = await Promise.all([readJson(tp, {}, { decrypt: true }), readJson(mp, {})]);
   const { out: nextMsg, added: msgAdded, replacedNewer: msgRepl } = mergeMessageMaps(curMsg, incMsg);
   await writeAtomic(tp, nextMsg);
   console.log(`[merge-db] messages: +${msgAdded} جديد، استبدال أحدث لـ ${msgRepl} ← الإجمالي ${Object.keys(nextMsg).length}`);
@@ -158,7 +212,7 @@ async function main() {
   try {
     await fs.access(postsIncPath);
     const [curPosts, incPosts] = await Promise.all([
-      readJson(postsPath, []),
+      readJson(postsPath, [], { decrypt: true }),
       readJson(postsIncPath, []),
     ]);
     const { merged, added, updated } = mergePosts(curPosts, incPosts);
@@ -173,7 +227,7 @@ async function main() {
     const usersPath = path.join(targetDb, "users.json");
     const usersIncPath = path.join(dbDir, "users.json");
     await fs.access(usersIncPath);
-    let curUsers = await readJson(usersPath, {});
+    let curUsers = await readJson(usersPath, {}, { decrypt: true });
     let incUsers = await readJson(usersIncPath, {});
     if (Array.isArray(curUsers)) {
       curUsers = Object.fromEntries(curUsers.filter(u => u?.id).map(u => [u.id, u]));
@@ -192,7 +246,7 @@ async function main() {
     const followsPath = path.join(targetDb, "follows.json");
     const followsIncPath = path.join(dbDir, "follows.json");
     await fs.access(followsIncPath);
-    const curFollows = await readJson(followsPath, []);
+    const curFollows = await readJson(followsPath, [], { decrypt: true });
     const incFollows = await readJson(followsIncPath, []);
     const curArr = Array.isArray(curFollows) ? curFollows : [];
     const incArr = Array.isArray(incFollows) ? incFollows : [];

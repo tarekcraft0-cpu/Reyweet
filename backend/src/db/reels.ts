@@ -79,7 +79,9 @@ async function readJson<T>(file: string, fallback: T): Promise<T> {
     let raw = await fs.readFile(file, "utf8");
     raw = raw.replace(/^\uFEFF/, "").trim();
     if (!raw) return fallback;
-    return JSON.parse(raw) as T;
+    const parsed = JSON.parse(raw) as unknown;
+    const { decodeStoredJson } = await import("../lib/encryptedStorage.js");
+    return decodeStoredJson<T>(parsed, file);
   } catch (e: unknown) {
     if ((e as NodeJS.ErrnoException)?.code === "ENOENT") return fallback;
     throw e;
@@ -88,7 +90,8 @@ async function readJson<T>(file: string, fallback: T): Promise<T> {
 
 async function writeJsonAtomic(file: string, data: unknown): Promise<void> {
   await fs.mkdir(path.dirname(file), { recursive: true });
-  const payload = JSON.stringify(data);
+  const { encodeStoredJson } = await import("../lib/encryptedStorage.js");
+  const payload = JSON.stringify(encodeStoredJson(file, data));
   const tmp = `${file}.${randomUUID()}.tmp`;
   await fs.writeFile(tmp, payload, "utf8");
   await fs.rename(tmp, file);

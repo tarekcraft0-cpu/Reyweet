@@ -86,7 +86,9 @@ export function renderMentionHashtagNodes(
   const out: ReactNode[] = [];
   let last = 0;
   let k = 0;
+  const MAX_NODES = 240;
   for (const m of text.matchAll(MENTION_OR_HASHTAG)) {
+    if (k >= MAX_NODES) break;
     const idx = m.index ?? 0;
     if (idx > last) out.push(<span key={`t${k++}`}>{text.slice(last, idx)}</span>);
     const piece = m[0];

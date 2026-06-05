@@ -119,6 +119,16 @@ function broadcastPostUpdate(post: Post, actorId: string): void {
 
 export async function upsertPostOnServer(ownerId: string, post: Post): Promise<Post> {
   if (post.userId !== ownerId) throw new Error("غير مسموح");
+  const { guardUserContent } = await import("../moderation/contentGuard.js");
+  await guardUserContent(
+    ownerId,
+    [
+      { kind: "text", value: post.text },
+      { kind: "image_ref", ref: post.image },
+      { kind: "image_ref", ref: post.video },
+    ],
+    "post",
+  );
   const row = clientPostToRow(post);
   const comments = rowComments(row);
   const saved = await persistPostRow(row, comments);

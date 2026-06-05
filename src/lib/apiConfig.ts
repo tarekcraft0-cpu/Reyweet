@@ -2,6 +2,7 @@
  * تحديد عنوان Retweet API — بروكسي Vite / نفس الأصل (نفق) / LAN.
  */
 import {
+  isCapacitorNativePlatform,
   isLanOrLocalHostname,
   isBlockedApiUrl,
   isNativeCapacitorShell,
@@ -11,6 +12,7 @@ import {
   isStaleMobileApiUrl,
   isTunnelPublicHost,
   isVpsProductionHost,
+  nativeMobileApiUrl,
   PRODUCTION_VPS_API,
   sanitizeApiBaseUrl,
   VERCEL_SITE_URL,
@@ -55,7 +57,9 @@ export function resolveApiUrlForWebView(webAppUrl: string, fallbackApiUrl: strin
 /** مسار فحص صحة الخادم — يفضّل /health عبر بروكسي Vite عند التطوير. */
 export function resolveHealthCheckUrl(): string {
   if (typeof window === "undefined") return "/health";
-  if (isNativeCapacitorShell()) return `${VERCEL_SITE_URL}/health`;
+  if (isNativeCapacitorShell() || isCapacitorNativePlatform()) {
+    return `${nativeMobileApiUrl()}/health`;
+  }
   if (isVpsProductionHost() && onAppPath()) return "/health";
   if (isPublicAppHost() && !isVpsProductionHost() && onAppPath()) return "/health";
   const injected = trimUrl(
@@ -147,6 +151,19 @@ function useUnifiedLocalServer(): boolean {
 
 export function clearStaleApiConfig(): void {
   if (typeof window === "undefined") return;
+  if (isNativeCapacitorShell() || isCapacitorNativePlatform()) {
+    try {
+      const raw = localStorage.getItem(API_RUNTIME_KEY);
+      if (raw) {
+        const u = trimUrl((JSON.parse(raw) as { apiUrl?: string }).apiUrl);
+        if (u && u !== nativeMobileApiUrl() && (isStaleMobileApiUrl(u) || isBlockedApiUrl(u))) {
+          localStorage.removeItem(API_RUNTIME_KEY);
+        }
+      }
+    } catch {
+      localStorage.removeItem(API_RUNTIME_KEY);
+    }
+  }
   try {
     const raw = localStorage.getItem(API_RUNTIME_KEY);
     if (!raw) return;
@@ -264,7 +281,6 @@ async function loadConfigFileUrls(): Promise<string[]> {
   for (const file of [
     `${root}web-auth-config.json`,
     `${window.location.origin}/app/web-auth-config.json`,
-    `${PRODUCTION_VPS_API}/app/web-auth-config.json`,
     `${window.location.origin}/public/app-config.json`,
   ]) {
     try {
@@ -310,9 +326,25 @@ async function resolveSameOriginApi(): Promise<string | null> {
   return null;
 }
 
+function applyNativeMobileApiConfig(): string {
+  const target = nativeMobileApiUrl();
+  resolvedMode = "absolute";
+  resolvedAbsoluteUrl = target;
+  persistAbsolute(target);
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent("retweet-api-config-ready"));
+  }
+  return target;
+}
+
 export async function ensureApiRuntimeConfig(): Promise<string> {
   if (resolvedMode === "unset") {
     clearStaleApiConfig();
+  }
+
+  /** iOS/Android — لا نعتمد على /health المحلي (capacitor://) ولا IP HTTP */
+  if (isNativeCapacitorShell() || isCapacitorNativePlatform()) {
+    return applyNativeMobileApiConfig();
   }
 
   if (typeof window !== "undefined") {
@@ -352,24 +384,6 @@ export async function ensureApiRuntimeConfig(): Promise<string> {
   if (resolvedMode !== "unset") {
     const cached = resolvedMode === "relative" ? "" : resolvedAbsoluteUrl;
     return sanitizeApiBaseUrl(cached);
-  }
-
-  /** iOS/Android — HTTPS Vercel (API مطلق — لا يعتمد على server.url) */
-  if (isNativeCapacitorShell()) {
-    const injected = trimUrl(
-      (window as Window & { __RETWEET_API_URL__?: string }).__RETWEET_API_URL__,
-    );
-    const target =
-      injected && !isStaleMobileApiUrl(injected) && !isPrivateApiUrl(injected)
-        ? injected
-        : VERCEL_SITE_URL;
-    resolvedMode = "absolute";
-    resolvedAbsoluteUrl = target;
-    persistAbsolute(target);
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("retweet-api-config-ready"));
-    }
-    return target;
   }
 
   /** VPS — نفس الأصل: API + WebSocket + SSE مباشرة عبر nginx بدون بروكسي */

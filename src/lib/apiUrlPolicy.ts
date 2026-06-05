@@ -1,8 +1,24 @@
+import { Capacitor } from "@capacitor/core";
+
 /** VPS الإنتاج — عنوان API المباشر (nginx :80 → :3000) */
 export const PRODUCTION_VPS_HOST = "109.199.111.29";
 export const PRODUCTION_VPS_API = `http://${PRODUCTION_VPS_HOST}`;
 /** الواجهة العامة — بروكسي API (HTTPS) */
 export const VERCEL_SITE_URL = "https://reyweet.vercel.app";
+
+/** iOS/Android — Capacitor plugin (أدق من window.Capacitor وحده) */
+export function isCapacitorNativePlatform(): boolean {
+  try {
+    return Capacitor.isNativePlatform();
+  } catch {
+    return false;
+  }
+}
+
+/** عنوان API الثابت لتطبيق الجوال — HTTPS عبر Vercel */
+export function nativeMobileApiUrl(): string {
+  return VERCEL_SITE_URL;
+}
 
 /** الواجهة تُخدم من نفس الـ VPS (اتصال API/WebSocket مباشر بدون بروكسي) */
 export function isVpsProductionHost(hostname?: string): boolean {
@@ -68,6 +84,7 @@ export function isLanOrLocalHostname(hostname: string): boolean {
 
 /** تطبيق iOS/Android (Capacitor) */
 export function isNativeCapacitorShell(): boolean {
+  if (isCapacitorNativePlatform()) return true;
   try {
     if (import.meta.env.BASE_URL === "./") return true;
   } catch {

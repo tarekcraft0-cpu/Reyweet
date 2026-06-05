@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getUserEntitlements } from "@/lib/verificationEntitlements";
 import { AvatarChangeModal } from "../verification/AvatarChangeModal";
 import { useApp } from "@/lib/store";
@@ -13,6 +13,7 @@ import {
 } from "@/lib/usernameRules";
 import {
   apiBackendEnabled,
+  apiGetUsernameChangePolicy,
   apiIsUsernameAvailable,
   apiPatchProfile,
   apiUploadMedia,
@@ -52,7 +53,20 @@ export function EditProfileScreen({ onBack }: { onBack: () => void }) {
   const [displayName, setDisplayName] = useState(u?.displayName || "");
   const founder = u ? isFounderAccount(u) : false;
   const shortName = u ? isShortUsernameException(username, u.id) : false;
+  const [usernamePolicy, setUsernamePolicy] = useState<{
+    canChange: boolean;
+    daysRemaining: number;
+  }>({ canChange: true, daysRemaining: 0 });
   const [bio, setBio] = useState(u?.bio ?? "");
+
+  useEffect(() => {
+    if (!u || !apiBackendEnabled()) return;
+    const token = ensureApiTokenMatchesUser(u.id) ?? getApiToken();
+    if (!token) return;
+    void apiGetUsernameChangePolicy(token).then(p =>
+      setUsernamePolicy({ canChange: p.canChange, daysRemaining: p.daysRemaining }),
+    );
+  }, [u?.id]);
   const [avatar, setAvatar] = useState(u?.avatar ?? "");
   const [note, setLocalNote] = useState(u?.note || "");
   const [profileLink, setProfileLink] = useState(u?.profileLink || "");
@@ -148,6 +162,12 @@ export function EditProfileScreen({ onBack }: { onBack: () => void }) {
     const trimmed = normalizeUsername(sanitizeUsernameInput(username));
     const usernameChanged = trimmed !== normalizeUsername(u.username);
     if (usernameChanged) {
+      if (!usernamePolicy.canChange) {
+        alert(
+          `لا يمكن تغيير اسم المستخدم الآن — انتظر ${usernamePolicy.daysRemaining} يوماً (فترة الانتظار 7 أيام بعد كل تغيير)`,
+        );
+        return;
+      }
       const nameErr = validateUsernameFormat(trimmed, u.id);
       if (nameErr) {
         alert(nameErr);
@@ -353,7 +373,11 @@ export function EditProfileScreen({ onBack }: { onBack: () => void }) {
         <input
           value={username}
           onChange={e => setUsername(sanitizeUsernameInput(e.target.value))}
-          className="mt-1 w-full rounded-2xl bg-input px-4 py-3 outline-none"
+          readOnly={!usernamePolicy.canChange}
+          className={
+            "mt-1 w-full rounded-2xl bg-input px-4 py-3 outline-none " +
+            (!usernamePolicy.canChange ? "opacity-70" : "")
+          }
           dir="ltr"
         />
         <p className="mt-1 text-[11px] text-muted-foreground">
@@ -361,6 +385,11 @@ export function EditProfileScreen({ onBack }: { onBack: () => void }) {
             ? "اسم قصير مسموح لهذا الحساب فقط (@t @7 @l @1 @m)"
             : "3–30 حرفاً: a-z صغيرة وأرقام و _ فقط (لا عربي ولا أحرف كبيرة)"}
         </p>
+        {!usernamePolicy.canChange && (
+          <p className="mt-1 text-[11px] font-medium text-amber-600 dark:text-amber-400">
+            تغيير الاسم مقفول — متبقي {usernamePolicy.daysRemaining} يوماً (7 أيام بين كل تغيير)
+          </p>
+        )}
       </div>
       <div>
         <label className="text-sm text-muted-foreground">البايو</label>

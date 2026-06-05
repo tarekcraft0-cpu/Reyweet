@@ -25,8 +25,10 @@ async function withLock<T>(fn: () => Promise<T>): Promise<T> {
 async function readAll(): Promise<PushTokenRecord[]> {
   try {
     const raw = await fs.readFile(FILE, "utf8");
-    const parsed = JSON.parse(raw) as PushTokenRecord[];
-    return Array.isArray(parsed) ? parsed : [];
+    const parsed = JSON.parse(raw.replace(/^\uFEFF/, "").trim()) as unknown;
+    const { decodeStoredJson } = await import("../lib/encryptedStorage.js");
+    const rows = decodeStoredJson<PushTokenRecord[]>(parsed, FILE);
+    return Array.isArray(rows) ? rows : [];
   } catch {
     return [];
   }
@@ -34,8 +36,9 @@ async function readAll(): Promise<PushTokenRecord[]> {
 
 async function writeAll(rows: PushTokenRecord[]): Promise<void> {
   await fs.mkdir(DB_DIR, { recursive: true });
+  const { encodeStoredJson } = await import("../lib/encryptedStorage.js");
   const tmp = `${FILE}.${process.pid}.tmp`;
-  await fs.writeFile(tmp, JSON.stringify(rows, null, 2), "utf8");
+  await fs.writeFile(tmp, JSON.stringify(encodeStoredJson(FILE, rows)), "utf8");
   await fs.rename(tmp, FILE);
 }
 

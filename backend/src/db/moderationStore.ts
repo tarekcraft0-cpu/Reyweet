@@ -34,19 +34,39 @@ async function ensureDir() {
   await fs.mkdir(DIR, { recursive: true });
 }
 
+const jsonCache = new Map<string, { at: number; data: unknown }>();
+const JSON_CACHE_MS = 3_000;
+
 async function readJson<T>(file: string, fallback: T): Promise<T> {
+  const hit = jsonCache.get(file);
+  const now = Date.now();
+  if (hit && now - hit.at < JSON_CACHE_MS) return hit.data as T;
   try {
-    return JSON.parse(await fs.readFile(file, "utf8")) as T;
-  } catch {
+    const raw = (await fs.readFile(file, "utf8")).replace(/^\uFEFF/, "").trim();
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw) as unknown;
+    const { decodeStoredJson } = await import("../lib/encryptedStorage.js");
+    const data = decodeStoredJson<T>(parsed, file);
+    jsonCache.set(file, { at: now, data });
+    return data;
+  } catch (e: unknown) {
+    if ((e as NodeJS.ErrnoException)?.code === "ENOENT") return fallback;
     return fallback;
   }
 }
 
+function invalidateJsonCache(file?: string): void {
+  if (file) jsonCache.delete(file);
+  else jsonCache.clear();
+}
+
 async function writeJsonAtomic(file: string, data: unknown): Promise<void> {
   await ensureDir();
+  const { encodeStoredJson } = await import("../lib/encryptedStorage.js");
   const tmp = `${file}.${randomUUID()}.tmp`;
-  await fs.writeFile(tmp, JSON.stringify(data, null, 2), "utf8");
+  await fs.writeFile(tmp, JSON.stringify(encodeStoredJson(file, data)), "utf8");
   await fs.rename(tmp, file);
+  invalidateJsonCache(file);
 }
 
 function hashEntry(payload: unknown): string {
@@ -71,8 +91,12 @@ export async function listAudit(limit = 100): Promise<AuditEntry[]> {
   return db.entries.slice(0, limit);
 }
 
+export async function loadReportsDb(): Promise<ReportsDb> {
+  return readJson<ReportsDb>(REPORTS_FILE, { reports: [] });
+}
+
 export async function saveReport(report: ModerationReport): Promise<void> {
-  const db = await readJson<ReportsDb>(REPORTS_FILE, { reports: [] });
+  const db = await loadReportsDb();
   const i = db.reports.findIndex(r => r.id === report.id);
   if (i >= 0) db.reports[i] = report;
   else db.reports.unshift(report);

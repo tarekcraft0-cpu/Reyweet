@@ -19,6 +19,7 @@ export async function apiSearchChatMessages(
   const res = await apiFetch(`/v1/chats/search-messages?q=${q}&limit=${limit}`, {
     method: "GET",
     token,
+    timeoutMs: 45_000,
   });
   if (!res.ok) return [];
   const data = (await res.json().catch(() => null)) as { hits?: MessageSearchHit[] } | null;
