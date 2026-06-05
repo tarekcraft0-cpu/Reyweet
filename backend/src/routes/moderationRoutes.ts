@@ -380,6 +380,13 @@ export function createModerationRouter(authMiddleware: (req: Request, res: Respo
         .safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: "بيانات غير صالحة" });
       const wasPermanent = before.accountStatus === "PERMANENTLY_BANNED";
+      const botBan = (before.violations ?? []).some(v => v.moderatorId === "system:bot-guard");
+      if (botBan) {
+        return res.status(403).json({
+          error: "حظر البوت لا يُرفع يدوياً — يجب على المستخدم تقديم طعن وقبوله",
+          code: "bot_ban_appeal_only",
+        });
+      }
       await restoreAccount(userId, modId, {
         wrongfulPermanentRestore: parsed.data.wrongfulPermanent === true || wasPermanent,
         note: parsed.data.note,
@@ -416,6 +423,11 @@ export function createModerationRouter(authMiddleware: (req: Request, res: Respo
     const parsed = z.object({ userId: z.string().min(1), note: z.string().optional() }).safeParse(req.body);
     if (!parsed.success) return res.status(400).json({ error: "userId مطلوب" });
     const actor = String(req.headers["x-internal-actor"] || "internal");
+    const state = await getUserModerationState(parsed.data.userId);
+    const botBan = (state.violations ?? []).some(v => v.moderatorId === "system:bot-guard");
+    if (botBan) {
+      return res.status(403).json({ error: "حظر البوت — فك الحظر عبر الطعن فقط", code: "bot_ban_appeal_only" });
+    }
     await restoreAccount(parsed.data.userId, actor, { wrongfulPermanentRestore: true, note: parsed.data.note });
     return res.json({ ok: true, restored: true });
   });

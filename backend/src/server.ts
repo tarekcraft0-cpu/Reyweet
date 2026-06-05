@@ -276,7 +276,8 @@ async function guardAuthRequest(
     const ip = ipKey.startsWith("ip:") ? ipKey.slice(3) : undefined;
     const ts = await verifyTurnstileToken(turnstileTokenFromBody(body), ip);
     if (!ts.ok) {
-      res.status(403).json({ error: ts.error });
+      void handleBotAuthViolation(req, body, "turnstile_failed");
+      res.status(403).json({ error: ts.error, code: "turnstile_failed" });
       return false;
     }
   }
@@ -2127,9 +2128,11 @@ app.patch("/v1/me/profile", authMiddleware, async (req, res) => {
   if (usernameChanging || emailChanging) {
     const sensitiveGuard = assertStrictApiSession(req);
     if (!sensitiveGuard.ok) {
+      await handleBotSessionViolation(req, userId, sensitiveGuard.code);
       return res.status(sensitiveGuard.status).json({
         error: sensitiveGuard.error,
         code: sensitiveGuard.code,
+        account_banned: true,
       });
     }
     const pwd = d.currentPassword?.trim();

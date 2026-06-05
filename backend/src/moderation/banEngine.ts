@@ -215,7 +215,7 @@ export async function restoreAccount(
 ): Promise<UserModerationState> {
   const state = await getUserModerationState(userId);
   const botBan = isBotGuardBan(state);
-  if (botBan && !opts?.appealApproved && actorId !== "admin:manual-review") {
+  if (botBan && !opts?.appealApproved) {
     throw new Error("حظر البوت لا يُرفع إلا بعد قبول طعن");
   }
   const wasPermanent = state.accountStatus === "PERMANENTLY_BANNED";
