@@ -1,8 +1,35 @@
 import { useCallback } from "react";
+import { getAccountSession } from "./accountSessions";
 import { isGuestUserId } from "./guestUser";
 import { isReelFeedPost } from "./postMedia";
 import { useAppSelector } from "./useAppSelector";
 import type { AppState, Chat, ID, Post, User } from "./types";
+
+function userStubFromSession(userId: ID): User | null {
+  const sess = getAccountSession(userId);
+  if (!sess) return null;
+  return {
+    id: userId,
+    username: sess.username || "?",
+    email: sess.email || "",
+    password: "",
+    avatar: sess.avatar || "?",
+    followers: [],
+    following: [],
+    highlights: [],
+    followRequestIn: [],
+    followRequestOut: [],
+    publicChannelIds: [],
+    blocked: [],
+    closeFriends: [],
+    favorites: [],
+    profileViews: [],
+    favoriteStickerContents: [],
+    createdStickerContents: [],
+    pinnedChatIds: [],
+    mutedChatIds: [],
+  };
+}
 
 function resolveUser(s: AppState, id: ID): User | undefined {
   return s.users.find(u => u.id === id);
@@ -18,7 +45,7 @@ export function useCurrentUser(): User | null {
   return useAppSelector(s => {
     const id = s.currentUserId;
     if (!id || isGuestUserId(id)) return null;
-    return resolveUser(s, id) ?? null;
+    return resolveUser(s, id) ?? userStubFromSession(id);
   });
 }
 

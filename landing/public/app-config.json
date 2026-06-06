@@ -1,8 +1,8 @@
 {
-  "apiUrl": "https://reyweet.vercel.app",
+  "apiUrl": "",
   "appPath": "/app/",
-  "siteUrl": "https://reyweet.vercel.app",
-  "webAppUrl": "https://reyweet.vercel.app/app/",
+  "siteUrl": "http://192.168.100.51:3080",
   "supabaseUrl": "",
-  "supabaseAnonKey": ""
+  "supabaseAnonKey": "",
+  "webAppUrl": "https://reyweet.vercel.app/app/"
 }

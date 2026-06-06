@@ -1000,6 +1000,10 @@ export function normalizePersistedAppState(merged: AppState): AppState {
     supportOfficialVerified: u.supportOfficialVerified === true,
     supportOfficialLabel:
       typeof u.supportOfficialLabel === "string" ? u.supportOfficialLabel : undefined,
+    chatBubbleStyle:
+      typeof u.chatBubbleStyle === "string"
+        ? (u.chatBubbleStyle as import("./verifiedChatBubbleStyles").VerifiedChatBubbleStyleId)
+        : undefined,
     };
   }).map((u: User) =>
     withSupportOfficialProfileFields(withOfficialAppProfileFields(withFounderProfileFields(u))),
@@ -6768,6 +6772,7 @@ export function AppProvider({
                         storyMaxDuration: row.storyMaxDuration,
                         storyExpiryOptions: row.storyExpiryOptions,
                         postCharacterLimit: row.postCharacterLimit,
+                        chatBubbleStyle: row.chatBubbleStyle as import("./verifiedChatBubbleStyles").VerifiedChatBubbleStyleId | undefined,
                       }),
                     )
                   : u,
@@ -6804,6 +6809,7 @@ export function AppProvider({
                         storyMaxDuration: row.storyMaxDuration,
                         storyExpiryOptions: row.storyExpiryOptions,
                         postCharacterLimit: row.postCharacterLimit,
+                        chatBubbleStyle: row.chatBubbleStyle as import("./verifiedChatBubbleStyles").VerifiedChatBubbleStyleId | undefined,
                       }),
                     )
                   : u,

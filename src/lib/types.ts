@@ -45,6 +45,8 @@ export interface User {
   subscriptionExpiresAt?: string;
   verificationStatus?: "none" | "pending" | "approved" | "rejected";
   verificationBadgeColor?: "blue" | "pink";
+  /** فقاعة رسائل مخصصة للموثّقين */
+  chatBubbleStyle?: import("./verifiedChatBubbleStyles").VerifiedChatBubbleStyleId;
   verificationRequestedAt?: string;
   verificationRejectReason?: string;
   canUseAnimatedAvatar?: boolean;

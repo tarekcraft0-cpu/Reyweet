@@ -1,5 +1,7 @@
 import type { AppState, ID, User } from "./types";
 import { getApiToken, setApiToken } from "./apiBackend";
+import { decodeJwtSub } from "./jwtClient";
+import { isGuestUserId } from "./guestUser";
 import { mergeUserFromServer, mergeUserProfilePatch } from "./mergeUserSocial";
 import { scopeAppStateToAccount } from "./scopeAppState";
 
@@ -233,6 +235,29 @@ export function restoreActiveSessionOnLaunch(): ID | null {
     setLastActiveUserId(first.userId);
     return first.userId;
   }
+  const token = getApiToken();
+  const fromJwt = decodeJwtSub(token);
+  if (fromJwt && !isGuestUserId(fromJwt)) {
+    setLastActiveUserId(fromJwt);
+    return fromJwt;
+  }
+  return null;
+}
+
+/** معرّف الحساب النشط من الحالة أو الجلسات أو JWT — قراءة فقط بلا تفعيل جلسة */
+export function resolveActiveUserIdFromToken(state?: Pick<AppState, "currentUserId">): ID | null {
+  const cur = state?.currentUserId;
+  if (cur && !isGuestUserId(cur)) return cur;
+  const last = getLastActiveUserId();
+  if (last && getAccountSession(last)?.token && !isGuestUserId(last)) return last;
+  const first = listAccountSessions()[0];
+  if (first?.token && !isGuestUserId(first.userId)) return first.userId;
+  const token = getApiToken();
+  if (!token) return null;
+  const fromSessions = userIdForApiToken(token);
+  if (fromSessions && !isGuestUserId(fromSessions)) return fromSessions;
+  const fromJwt = decodeJwtSub(token);
+  if (fromJwt && !isGuestUserId(fromJwt)) return fromJwt;
   return null;
 }
 

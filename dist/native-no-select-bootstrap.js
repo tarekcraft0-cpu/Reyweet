@@ -5,11 +5,42 @@
   "use strict";
   if (typeof document === "undefined") return;
 
+  /** ترقية APK/IPA — إعادة تحميل عند تغيّر __RETWEET_APP_BUILD__ */
+  (function ensureNativeBuildFresh() {
+    try {
+      var k = "retweet_app_build";
+      var b = window.__RETWEET_APP_BUILD__ || "";
+      if (!b) return;
+      var s = localStorage.getItem(k);
+      if (s && s !== b) {
+        localStorage.setItem(k, b);
+        try {
+          var u = new URL(location.href);
+          u.searchParams.set("_b", String(Date.now()));
+          location.replace(u.toString());
+        } catch (e) {
+          location.reload();
+        }
+        return;
+      }
+      if (b) localStorage.setItem(k, b);
+    } catch (e) {
+      /* ignore */
+    }
+  })();
+
   /** إذا index.html محفوظ في الكاش ويشير لحزمة JS قديمة — جلب HTML حي وإعادة تحميل /app/ */
   (function ensureFreshAppBundle() {
     if (window.__RETWEET_BUNDLE_GUARD__) return;
     window.__RETWEET_BUNDLE_GUARD__ = 1;
     try {
+      if (
+        window.Capacitor &&
+        typeof window.Capacitor.isNativePlatform === "function" &&
+        window.Capacitor.isNativePlatform()
+      ) {
+        return;
+      }
       var q = location.search || "";
       if (/[?&](force|_b|_)=\d+/.test(q)) return;
       var mod = document.querySelector('script[type="module"][src*="/assets/index-"]');
@@ -39,8 +70,94 @@
     }
   })();
 
+  window.__RETWEET_NATIVE_SHELL__ = true;
   window.__RETWEET_NO_SELECT_BOOT__ = true;
   document.documentElement.classList.add("retweet-native-shell");
+  document.documentElement.setAttribute("data-native-app", "1");
+  if (document.body) document.body.setAttribute("data-native-app", "1");
+
+  var pinRaf = 0;
+  var pinDebounce = 0;
+  var lastPinWidth = 0;
+  var pinScrollDone = false;
+
+  function pinNativeViewportWidth(resetScroll) {
+    try {
+      var w = Math.round(
+        (window.visualViewport && window.visualViewport.width) || window.innerWidth || 0,
+      );
+      if (w > 0 && lastPinWidth > 0 && Math.abs(w - lastPinWidth) < 1 && !resetScroll) return;
+      if (w > 0) lastPinWidth = w;
+
+      var nodes = [document.documentElement, document.body, document.getElementById("root")];
+      for (var i = 0; i < nodes.length; i++) {
+        var el = nodes[i];
+        if (!el) continue;
+        el.style.width = "100%";
+        el.style.maxWidth = "100%";
+        el.style.marginLeft = "0";
+        el.style.marginRight = "0";
+        el.style.left = "0";
+        el.style.right = "0";
+        el.style.transform = "none";
+      }
+      var panels = document.querySelectorAll("[data-tab-panel]");
+      for (var j = 0; j < panels.length; j++) {
+        var p = panels[j];
+        if (p.getAttribute("aria-hidden") === "true") continue;
+        p.style.width = "100%";
+        p.style.maxWidth = "100%";
+        p.style.marginLeft = "0";
+        p.style.marginRight = "0";
+        p.style.left = "0";
+        p.style.right = "0";
+        p.style.transform = "translate3d(0, 0, 0)";
+      }
+      if (resetScroll && !pinScrollDone) {
+        pinScrollDone = true;
+        window.scrollTo(0, 0);
+        document.documentElement.scrollLeft = 0;
+        if (document.body) document.body.scrollLeft = 0;
+      }
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
+  function schedulePinNativeViewport(resetScroll) {
+    if (pinRaf) cancelAnimationFrame(pinRaf);
+    pinRaf = requestAnimationFrame(function () {
+      pinRaf = 0;
+      pinNativeViewportWidth(resetScroll);
+    });
+  }
+
+  function schedulePinFromResize() {
+    if (pinDebounce) clearTimeout(pinDebounce);
+    pinDebounce = setTimeout(function () {
+      pinDebounce = 0;
+      schedulePinNativeViewport(false);
+    }, 64);
+  }
+
+  var capNative = false;
+  try {
+    capNative =
+      window.Capacitor &&
+      typeof window.Capacitor.isNativePlatform === "function" &&
+      window.Capacitor.isNativePlatform();
+  } catch (e) {
+    capNative = false;
+  }
+
+  schedulePinNativeViewport(true);
+  /** على Capacitor: لا نُعيد ضبط العرض عند كل resize — يتعارض مع nativeViewportLayout ويسبب React #185 */
+  if (!capNative) {
+    window.addEventListener("resize", schedulePinFromResize, { passive: true });
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", schedulePinFromResize, { passive: true });
+    }
+  }
 
   var css =
     "html.retweet-native-shell,html.retweet-native-shell *,#root,#root *{-webkit-user-select:none!important;user-select:none!important;-webkit-touch-callout:none!important;-webkit-tap-highlight-color:transparent!important;-webkit-user-modify:read-only!important;}" +
@@ -69,6 +186,30 @@
   function longPressTarget(t) {
     if (!t || !t.closest) return false;
     return !!t.closest("[data-native-long-press]");
+  }
+
+  var scrollableSel =
+    ".tab-panel-scroll,.chat-inbox-scroll,.chat-scroll-pane,.profile-scroll-pane,.settings-screen-root,.app-dismiss-sheet-panel,.notifications-panel-scroll,[data-scroll-pane]";
+
+  function scrollableTarget(t) {
+    if (!t || !t.closest) return false;
+    if (t.closest(scrollableSel)) return true;
+    var el = t;
+    for (var depth = 0; depth < 10 && el; depth++) {
+      try {
+        var oy = getComputedStyle(el).overflowY;
+        if (
+          (oy === "auto" || oy === "scroll" || oy === "overlay") &&
+          el.scrollHeight > el.clientHeight + 4
+        ) {
+          return true;
+        }
+      } catch (err) {
+        /* ignore */
+      }
+      el = el.parentElement;
+    }
+    return false;
   }
 
   function clearSelection() {
@@ -105,72 +246,24 @@
     true,
   );
 
-  var startX = 0;
-  var startY = 0;
-  var touchMoved = false;
-  var rafId = 0;
-  var isAndroid = /Android/i.test(typeof navigator !== "undefined" ? navigator.userAgent : "");
-
-  function stopRaf() {
-    if (rafId) {
-      cancelAnimationFrame(rafId);
-      rafId = 0;
-    }
-  }
-
-  function loopClear() {
-    clearSelection();
-    rafId = requestAnimationFrame(loopClear);
-  }
-
   document.addEventListener(
     "touchstart",
     function (e) {
-      stopRaf();
       if (e.touches.length !== 1) return;
-      if (allowTarget(e.target) || longPressTarget(e.target)) return;
-      startX = e.touches[0].clientX;
-      startY = e.touches[0].clientY;
-      touchMoved = false;
+      if (allowTarget(e.target) || longPressTarget(e.target) || scrollableTarget(e.target)) return;
       clearSelection();
-      rafId = requestAnimationFrame(loopClear);
     },
     { capture: true, passive: true },
   );
 
   document.addEventListener(
-    "touchmove",
-    function (e) {
-      if (!e.touches[0]) return;
-      if (allowTarget(e.target) || longPressTarget(e.target)) return;
-      var dx = Math.abs(e.touches[0].clientX - startX);
-      var dy = Math.abs(e.touches[0].clientY - startY);
-      if (dy > dx && dy > 4) {
-        touchMoved = true;
-        stopRaf();
-        return;
-      }
-      if (dx > 12 || dy > 12) {
-        touchMoved = true;
-        stopRaf();
-        return;
-      }
-      if (!touchMoved && !isAndroid) {
-        e.preventDefault();
-        clearSelection();
-      }
+    "touchend",
+    function () {
+      clearSelection();
     },
-    { capture: true, passive: false },
+    { capture: true, passive: true },
   );
-
-  function endTouch() {
-    stopRaf();
-    touchMoved = false;
-    clearSelection();
-  }
-
-  document.addEventListener("touchend", endTouch, { capture: true, passive: true });
-  document.addEventListener("touchcancel", endTouch, { capture: true, passive: true });
+  document.addEventListener("touchcancel", clearSelection, { capture: true, passive: true });
 
   /** قبل React — ضبط --sat حتى لا يظهر الهيدر تحت النوتش */
   function syncSafeAreaEarly() {

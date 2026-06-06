@@ -1,5 +1,5 @@
 import type { Request } from "express";
-import { verifyAppRequestSignature } from "./appRequestSign.js";
+import { verifyAppRequestSignature, verifyIngressSignature } from "./appRequestSign.js";
 
 /** أنماط وكلاء معروفة للأتمتة والبوتات — ليست متصفحات بشرية */
 const BLOCKED_UA_PATTERNS: RegExp[] = [
@@ -69,6 +69,9 @@ export function detectBlockedBotUserAgent(req: Request): string | null {
 /** متصفح ويب حقيقي يرسل عادة Accept-Language و Sec-Fetch */
 export function lacksBrowserSignals(req: Request): boolean {
   if (verifyAppRequestSignature(req)) return false;
+  if (verifyIngressSignature(req)) return false;
+  const client = String(req.headers["x-retweet-client"] || "").trim().toLowerCase();
+  if (client === "native") return false;
   const acceptLang = String(req.headers["accept-language"] || "").trim();
   if (!acceptLang || acceptLang.length < 2) return true;
   const secFetch = String(req.headers["sec-fetch-site"] || req.headers["sec-fetch-mode"] || "").trim();
@@ -132,6 +135,9 @@ export function assertHumanAuthClient(req: Request, body?: unknown): BotGuardRes
 export function assertStrictApiSession(req: Request): BotGuardResult {
   if (!isAuthStrictMode()) return { ok: true };
   if (verifyAppRequestSignature(req)) return { ok: true };
+  if (verifyIngressSignature(req)) return { ok: true };
+  const client = String(req.headers["x-retweet-client"] || "").trim().toLowerCase();
+  if (client === "native") return { ok: true };
 
   if (isTelegramOrMessengerWebView(req)) {
     return {

@@ -47,6 +47,20 @@ function readBody(req) {
 /** @param {import('http').IncomingMessage} req */
 /** @param {import('http').ServerResponse} res */
 export default async function handler(req, res) {
+  if (String(process.env.RETWEET_MAINTENANCE || "").trim() === "1") {
+    res.statusCode = 503;
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.setHeader("Cache-Control", "no-store");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    return res.end(
+      JSON.stringify({
+        ok: false,
+        maintenance: true,
+        message: "الخادم معطّل مؤقتاً — سيعود قريباً",
+      }),
+    );
+  }
+
   if (req.method === "OPTIONS") {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
@@ -89,6 +103,11 @@ export default async function handler(req, res) {
     "x-retweet-app-sig",
     "accept-language",
     "user-agent",
+    "sec-fetch-site",
+    "sec-fetch-mode",
+    "sec-fetch-dest",
+    "origin",
+    "referer",
   ]) {
     const v = req.headers[h];
     if (v) headers[h] = Array.isArray(v) ? v.join(", ") : String(v);
@@ -103,6 +122,9 @@ export default async function handler(req, res) {
     }
   }
 
+  /** fetch يفك gzip تلقائياً — لا نمرّر Content-Encoding للعميل وإلا يفشل JSON.parse */
+  headers["accept-encoding"] = "identity";
+
   let upstream;
   try {
     upstream = await fetch(target, {
@@ -116,7 +138,16 @@ export default async function handler(req, res) {
     return res.end("Upstream unreachable");
   }
 
-  const hopByHop = new Set(["connection", "keep-alive", "transfer-encoding", "te", "trailer", "upgrade"]);
+  const hopByHop = new Set([
+    "connection",
+    "keep-alive",
+    "transfer-encoding",
+    "te",
+    "trailer",
+    "upgrade",
+    "content-encoding",
+    "content-length",
+  ]);
   res.statusCode = upstream.status;
   for (const [k, v] of upstream.headers.entries()) {
     if (hopByHop.has(k.toLowerCase())) continue;

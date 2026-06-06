@@ -126,6 +126,10 @@ export interface UserModerationState {
   violations: UserViolation[];
   deviceFingerprints: string[];
   ipAddresses: string[];
+  /** حظر ربط — الحساب المصدر الذي عُطّل تلقائياً */
+  linkedBanSourceUserId?: ID;
+  /** نوع الربط الذي أدى للحظر */
+  linkedBanType?: "ip" | "email";
   /** إشعار لم يُعرض بعد — يُمسح بعد تأكيد المستخدم */
   pendingNotice?: ModerationUserNotice;
   updatedAt: number;

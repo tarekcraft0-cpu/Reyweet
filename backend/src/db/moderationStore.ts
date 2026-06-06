@@ -257,3 +257,17 @@ export async function findUsersByIp(ip: string): Promise<string[]> {
     .filter(u => u.ipAddresses.includes(ip))
     .map(u => u.userId);
 }
+
+/** حسابات أخرى تتشارك أي IP مسجّل مع الحساب */
+export async function findUsersSharingIpWith(userId: string): Promise<string[]> {
+  const db = await readJson<UserStatesDb>(USER_STATES_FILE, { users: {} });
+  const seed = db.users[userId];
+  if (!seed?.ipAddresses?.length) return [];
+  const ips = new Set(seed.ipAddresses);
+  const out = new Set<string>();
+  for (const row of Object.values(db.users)) {
+    if (row.userId === userId) continue;
+    if (row.ipAddresses.some(ip => ips.has(ip))) out.add(row.userId);
+  }
+  return [...out];
+}

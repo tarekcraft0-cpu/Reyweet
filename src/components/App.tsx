@@ -37,7 +37,9 @@ import {
   ReelsTabPanel,
   SearchTabPanel,
 } from "./MainTabPanels";
-import { apiBackendEnabled, getApiToken } from "@/lib/apiBackend";
+import { apiBackendEnabled, getApiToken, setApiToken } from "@/lib/apiBackend";
+import { clearRetweetLocalSession } from "@/lib/uiErrorMessage";
+import { resolveActiveUserIdFromToken } from "@/lib/accountSessions";
 import { isNativeCapacitorShell } from "@/lib/apiUrlPolicy";
 import { getUserEntitlements } from "@/lib/verificationEntitlements";
 import { useScheduledPostsPublisher } from "./verification/VerificationPerksSettings";
@@ -218,6 +220,7 @@ export function App() {
   const t = useT();
   const [banInfo, setBanInfo] = useState<BanInfo | null>(null);
   const [banPresentation, setBanPresentation] = useState<"gate" | "overlay" | null>(null);
+  const [sessionGateExpired, setSessionGateExpired] = useState(false);
   const moderationReadyRef = useRef(false);
   const hadActiveAppRef = useRef(false);
   const [appealPending, setAppealPending] = useState(false);
@@ -1234,8 +1237,23 @@ export function App() {
     return () => root.classList.remove("retweet-chat-tab-active");
   }, [tab, nativeShell, currentUser?.id]);
 
+  useEffect(() => {
+    if (currentUser || !getApiToken()) {
+      setSessionGateExpired(false);
+      return;
+    }
+    const t = window.setTimeout(() => setSessionGateExpired(true), 10_000);
+    return () => window.clearTimeout(t);
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (!sessionGateExpired || currentUser || !getApiToken()) return;
+    clearRetweetLocalSession();
+    setApiToken(null);
+  }, [sessionGateExpired, currentUser]);
+
   if (!currentUser) {
-    if (getApiToken() && apiBackendEnabled()) {
+    if (getApiToken() && apiBackendEnabled() && !sessionGateExpired) {
       return (
         <div className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-background px-6 text-center text-sm text-muted-foreground">
           <div
@@ -1244,16 +1262,15 @@ export function App() {
           />
           <p className="font-medium text-foreground">جاري تحميل حسابك…</p>
           <p className="text-xs leading-relaxed">
-            إن بقيت الشاشة بيضاء أكثر من ١٥ ثانية، حدّث الصفحة أو امسح الجلسة.
+            إن بقيت الشاشة بيضاء أكثر من ١٠ ثوانٍ، اضغط الزر أدناه لمسح الجلسة القديمة.
           </p>
           <button
             type="button"
             className="rounded-2xl border border-border bg-card px-5 py-2.5 text-sm font-medium text-foreground"
             onClick={() => {
-              import("@/lib/uiErrorMessage").then(({ clearRetweetLocalSession }) => {
-                clearRetweetLocalSession();
-                window.location.reload();
-              });
+              clearRetweetLocalSession();
+              setApiToken(null);
+              window.location.reload();
             }}
           >
             مسح الجلسة وإعادة المحاولة

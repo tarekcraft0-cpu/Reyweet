@@ -1,0 +1,842 @@
+/* ═══ ترقية المحادثة — فقاعات، خلفيات متحركة، شريط كتابة ═══ */
+
+/* ── عمق الفقاعات ── */
+.chat-message-bubble {
+  border: none !important;
+  outline: none !important;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.chat-bubble-mine-depth {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.08),
+    0 4px 14px rgba(0, 0, 0, 0.12) !important;
+}
+
+.chat-bubble-peer-depth {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.06),
+    0 3px 12px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* ── فقاعات الموثّقين ── */
+.chat-bubble-verified-mine {
+  background: linear-gradient(145deg, #ffffff 0%, #fff9eb 55%, #fef3c7 100%) !important;
+  color: #0f172a !important;
+  box-shadow:
+    0 2px 10px rgba(0, 0, 0, 0.1),
+    0 0 0 1.5px rgba(245, 158, 11, 0.65),
+    0 0 22px rgba(245, 158, 11, 0.2) !important;
+}
+
+.chat-bubble-verified-peer {
+  box-shadow:
+    0 2px 10px rgba(0, 0, 0, 0.14),
+    0 0 0 1.5px rgba(59, 130, 246, 0.55),
+    0 0 18px rgba(59, 130, 246, 0.15) !important;
+}
+
+.chat-bubble-verified-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-inline-end: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  opacity: 0.85;
+  vertical-align: middle;
+}
+
+/* ── شريط الكتابة ── */
+.chat-composer-dock {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.55) 100%);
+}
+
+.chat-composer-field-glass {
+  border: 1px solid rgba(255, 255, 255, 0.14) !important;
+  backdrop-filter: blur(20px) saturate(1.4);
+  -webkit-backdrop-filter: blur(20px) saturate(1.4);
+  box-shadow:
+    0 4px 24px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.chat-composer-send-active {
+  background: linear-gradient(135deg, #0095f6 0%, #1b72e8 100%) !important;
+  box-shadow: 0 2px 14px rgba(0, 149, 246, 0.45);
+}
+
+/* ── يكتب الآن ── */
+.chat-typing-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: chat-typing-bounce 1.2s ease-in-out infinite;
+}
+
+.chat-typing-dot--2 {
+  animation-delay: 0.15s;
+}
+
+.chat-typing-dot--3 {
+  animation-delay: 0.3s;
+}
+
+@keyframes chat-typing-bounce {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.45;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+/* ── قائمة المحادثات ── */
+.chat-inbox-row-shell {
+  transition: background-color 0.15s ease;
+}
+
+.chat-inbox-row-shell:active,
+.chat-inbox-row-shell.is-pressed {
+  background-color: rgba(0, 149, 246, 0.06);
+}
+
+.chat-inbox-row-unread {
+  background: linear-gradient(
+    90deg,
+    rgba(0, 149, 246, 0.07) 0%,
+    transparent 55%
+  );
+}
+
+/* ── فلاتر صندوق الوارد ── */
+.chat-inbox-filter-track {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.chat-inbox-filter-track::-webkit-scrollbar {
+  display: none;
+}
+
+.chat-inbox-filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 2rem;
+  padding: 0.35rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: hsl(var(--secondary) / 0.85);
+  color: hsl(var(--muted-foreground));
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    transform 0.12s ease;
+}
+
+.chat-inbox-filter-pill:active {
+  transform: scale(0.97);
+}
+
+.chat-inbox-filter-pill--active {
+  background: #0095f6;
+  border-color: rgba(0, 149, 246, 0.35);
+  color: #fff;
+  box-shadow: 0 2px 10px rgba(0, 149, 246, 0.28);
+}
+
+.chat-inbox-filter-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.15rem;
+  height: 1.15rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.chat-inbox-filter-pill:not(.chat-inbox-filter-pill--active) .chat-inbox-filter-badge {
+  background: rgba(0, 149, 246, 0.12);
+  color: #0095f6;
+}
+
+/* ── خلفيات متحركة — أساس ── */
+.chat-anim-full {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.chat-anim-preview {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+/* Aurora */
+.chat-anim-aurora {
+  background: linear-gradient(125deg, #0f172a 0%, #312e81 40%, #0c4a6e 100%);
+}
+
+.chat-aurora-band {
+  position: absolute;
+  inset: -20% -10%;
+  border-radius: 40%;
+  filter: blur(28px);
+  opacity: 0.55;
+  animation: chat-aurora-drift 12s ease-in-out infinite alternate;
+}
+
+.chat-aurora-band--1 {
+  background: linear-gradient(90deg, transparent, #06b6d4, #8b5cf6, transparent);
+  animation-duration: 14s;
+}
+
+.chat-aurora-band--2 {
+  top: 30%;
+  background: linear-gradient(90deg, transparent, #22d3ee, #a78bfa, transparent);
+  animation-duration: 18s;
+  animation-delay: -4s;
+}
+
+@keyframes chat-aurora-drift {
+  from {
+    transform: translateX(-8%) skewY(-4deg);
+    opacity: 0.4;
+  }
+  to {
+    transform: translateX(12%) skewY(4deg);
+    opacity: 0.75;
+  }
+}
+
+/* Sakura */
+.chat-anim-sakura {
+  background: linear-gradient(165deg, #fce7f3 0%, #fda4af 45%, #fbcfe8 100%);
+  animation: chat-sakura-glow 10s ease-in-out infinite alternate;
+}
+
+@keyframes chat-sakura-glow {
+  from {
+    filter: brightness(1) saturate(1);
+  }
+  to {
+    filter: brightness(1.08) saturate(1.15);
+  }
+}
+
+.chat-sakura-petal {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50% 0 50% 50%;
+  background: rgba(251, 113, 133, 0.75);
+  animation: chat-petal-fall linear infinite;
+}
+
+.chat-anim-preview .chat-sakura-petal {
+  width: 6px;
+  height: 6px;
+}
+
+.chat-sakura-petal--1 {
+  left: 12%;
+  animation-duration: 9s;
+  animation-delay: 0s;
+}
+.chat-sakura-petal--2 {
+  left: 38%;
+  animation-duration: 11s;
+  animation-delay: -3s;
+}
+.chat-sakura-petal--3 {
+  left: 62%;
+  animation-duration: 8s;
+  animation-delay: -1s;
+}
+.chat-sakura-petal--4 {
+  left: 82%;
+  animation-duration: 12s;
+  animation-delay: -5s;
+}
+
+@keyframes chat-petal-fall {
+  0% {
+    transform: translateY(-10%) rotate(0deg);
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.9;
+  }
+  100% {
+    transform: translateY(110vh) rotate(360deg);
+    opacity: 0.2;
+  }
+}
+
+/* Anime sky */
+.chat-anim-anime-sky {
+  background: linear-gradient(180deg, #7dd3fc 0%, #38bdf8 35%, #2563eb 70%, #1e3a8a 100%);
+  animation: chat-sky-drift 18s ease-in-out infinite alternate;
+}
+
+@keyframes chat-sky-drift {
+  from {
+    filter: hue-rotate(0deg) brightness(1);
+  }
+  to {
+    filter: hue-rotate(8deg) brightness(1.05);
+  }
+}
+
+.chat-anime-cloud {
+  position: absolute;
+  top: 18%;
+  left: -20%;
+  width: 55%;
+  height: 18%;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.55);
+  filter: blur(2px);
+  animation: chat-cloud-pass 22s linear infinite;
+}
+
+.chat-anime-cloud--1::after {
+  content: "";
+  position: absolute;
+  top: -40%;
+  left: 25%;
+  width: 45%;
+  height: 80%;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.45);
+}
+
+.chat-anime-cloud--2 {
+  top: 38%;
+  width: 40%;
+  height: 14%;
+  opacity: 0.45;
+  animation-duration: 28s;
+  animation-delay: -9s;
+}
+
+@keyframes chat-cloud-pass {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(180%);
+  }
+}
+
+/* Ocean */
+.chat-anim-ocean {
+  background: linear-gradient(180deg, #0c4a6e 0%, #0369a1 50%, #0284c7 100%);
+  animation: chat-ocean-shimmer 10s ease-in-out infinite alternate;
+}
+
+@keyframes chat-ocean-shimmer {
+  from {
+    filter: brightness(0.95) hue-rotate(0deg);
+  }
+  to {
+    filter: brightness(1.08) hue-rotate(6deg);
+  }
+}
+
+.chat-ocean-wave {
+  position: absolute;
+  bottom: 0;
+  left: -5%;
+  right: -5%;
+  height: 35%;
+  background: linear-gradient(180deg, transparent, rgba(6, 182, 212, 0.4));
+  animation: chat-wave-sway 5s ease-in-out infinite alternate;
+}
+
+.chat-ocean-wave--2 {
+  height: 28%;
+  opacity: 0.65;
+  animation-duration: 7s;
+  animation-delay: -2s;
+}
+
+.chat-ocean-bubble {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.08);
+  animation: chat-bubble-rise linear infinite;
+}
+
+.chat-ocean-bubble--1 {
+  width: 14px;
+  height: 14px;
+  left: 22%;
+  bottom: 18%;
+  animation-duration: 7s;
+}
+
+.chat-ocean-bubble--2 {
+  width: 9px;
+  height: 9px;
+  left: 68%;
+  bottom: 12%;
+  animation-duration: 9s;
+  animation-delay: -3s;
+}
+
+@keyframes chat-bubble-rise {
+  0% {
+    transform: translateY(0) scale(1);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.8;
+  }
+  100% {
+    transform: translateY(-55vh) scale(1.2);
+    opacity: 0;
+  }
+}
+
+@keyframes chat-wave-sway {
+  from {
+    transform: skewY(-2deg) translateY(0);
+    opacity: 0.7;
+  }
+  to {
+    transform: skewY(2deg) translateY(-8px);
+    opacity: 1;
+  }
+}
+
+/* Sunset */
+.chat-anim-sunset {
+  background: linear-gradient(165deg, #7c2d12 0%, #ea580c 35%, #f472b6 65%, #312e81 100%);
+}
+
+.chat-sunset-sun {
+  position: absolute;
+  top: 14%;
+  left: 50%;
+  width: 28%;
+  aspect-ratio: 1;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, #fde68a 0%, #fb923c 45%, transparent 72%);
+  animation: chat-sunset-glow 8s ease-in-out infinite alternate;
+}
+
+@keyframes chat-sunset-glow {
+  from {
+    transform: translateX(-50%) scale(0.92);
+    opacity: 0.75;
+  }
+  to {
+    transform: translateX(-50%) scale(1.08);
+    opacity: 1;
+  }
+}
+
+/* Forest */
+.chat-anim-forest {
+  background: linear-gradient(180deg, #14532d 0%, #166534 40%, #052e16 100%);
+}
+
+.chat-forest-mist {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 45%;
+  background: linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.12));
+  animation: chat-forest-mist-drift 14s ease-in-out infinite alternate;
+}
+
+@keyframes chat-forest-mist-drift {
+  from {
+    transform: translateY(6px);
+    opacity: 0.35;
+  }
+  to {
+    transform: translateY(-10px);
+    opacity: 0.7;
+  }
+}
+
+/* Neon */
+.chat-anim-neon {
+  background: linear-gradient(135deg, #1e1b4b 0%, #6d28d9 40%, #db2777 100%);
+}
+
+.chat-neon-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(236, 72, 153, 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(139, 92, 246, 0.12) 1px, transparent 1px);
+  background-size: 28px 28px;
+  animation: chat-neon-grid-pulse 6s ease-in-out infinite alternate;
+}
+
+.chat-neon-scan {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, rgba(236, 72, 153, 0.9), transparent);
+  box-shadow: 0 0 18px rgba(236, 72, 153, 0.6);
+  animation: chat-neon-scan 5s linear infinite;
+}
+
+@keyframes chat-neon-grid-pulse {
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 0.85;
+  }
+}
+
+@keyframes chat-neon-scan {
+  from {
+    top: -5%;
+  }
+  to {
+    top: 105%;
+  }
+}
+
+/* Stars */
+.chat-anim-stars {
+  background: radial-gradient(ellipse at 50% 0%, #1e1b4b 0%, #020617 70%);
+}
+
+.chat-star {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: #fff;
+  animation: chat-star-twinkle 2.5s ease-in-out infinite;
+}
+
+.chat-anim-preview .chat-star {
+  width: 2px;
+  height: 2px;
+}
+
+.chat-star--1 {
+  top: 12%;
+  left: 20%;
+}
+.chat-star--2 {
+  top: 28%;
+  left: 55%;
+  animation-delay: 0.4s;
+}
+.chat-star--3 {
+  top: 18%;
+  left: 78%;
+  animation-delay: 0.8s;
+}
+.chat-star--4 {
+  top: 42%;
+  left: 35%;
+  animation-delay: 1.2s;
+}
+.chat-star--5 {
+  top: 55%;
+  left: 68%;
+  animation-delay: 0.6s;
+}
+
+@keyframes chat-star-twinkle {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.4);
+  }
+}
+
+/* Cosmos */
+.chat-anim-cosmos {
+  background: radial-gradient(circle at 30% 25%, #4c1d95 0%, #1e1b4b 35%, #020617 100%);
+  animation: chat-cosmos-spin 20s linear infinite;
+}
+
+.chat-cosmos-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(1px);
+  animation: chat-cosmos-float 14s ease-in-out infinite alternate;
+}
+
+.chat-cosmos-orb--1 {
+  width: 80px;
+  height: 80px;
+  top: 18%;
+  right: 12%;
+  background: radial-gradient(circle, rgba(167, 139, 250, 0.55), transparent 70%);
+}
+
+.chat-cosmos-orb--2 {
+  width: 56px;
+  height: 56px;
+  bottom: 22%;
+  left: 14%;
+  background: radial-gradient(circle, rgba(34, 211, 238, 0.45), transparent 70%);
+  animation-delay: -5s;
+}
+
+@keyframes chat-cosmos-spin {
+  from {
+    filter: hue-rotate(0deg);
+  }
+  to {
+    filter: hue-rotate(30deg);
+  }
+}
+
+@keyframes chat-cosmos-float {
+  from {
+    transform: translate(0, 0) scale(1);
+  }
+  to {
+    transform: translate(12px, -16px) scale(1.12);
+  }
+}
+
+/* Foliage */
+.chat-anim-foliage {
+  background: linear-gradient(180deg, #4d7c0f 0%, #365314 45%, #14532d 100%);
+}
+
+.chat-foliage-leaf {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 0 80% 0 80%;
+  background: rgba(163, 230, 53, 0.85);
+  animation: chat-leaf-fall linear infinite;
+}
+
+.chat-anim-preview .chat-foliage-leaf {
+  width: 8px;
+  height: 8px;
+}
+
+@keyframes chat-leaf-fall {
+  0% {
+    transform: translateY(-12%) rotate(0deg);
+    opacity: 0;
+  }
+  12% {
+    opacity: 0.95;
+  }
+  100% {
+    transform: translateY(110vh) rotate(280deg);
+    opacity: 0.15;
+  }
+}
+
+/* Cherry grove — أنمي */
+.chat-anim-cherry-grove {
+  background: linear-gradient(180deg, #fce7f3 0%, #fbcfe8 40%, #f9a8d4 75%, #be185d 100%);
+}
+
+.chat-cherry-tree {
+  position: absolute;
+  bottom: 0;
+  width: 42%;
+  height: 52%;
+  opacity: 0.55;
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 18%, #fda4af 0%, #fb7185 55%, transparent 72%),
+    radial-gradient(ellipse 55% 40% at 30% 32%, #f472b6 0%, transparent 68%),
+    radial-gradient(ellipse 50% 38% at 72% 28%, #ec4899 0%, transparent 65%),
+    linear-gradient(180deg, transparent 42%, #831843 42%, #831843 100%);
+}
+
+.chat-cherry-tree--left {
+  left: -4%;
+}
+
+.chat-cherry-tree--right {
+  right: -4%;
+  transform: scaleX(-1);
+}
+
+/* Rain */
+.chat-anim-rain {
+  background: linear-gradient(180deg, #475569 0%, #334155 50%, #1e293b 100%);
+}
+
+.chat-rain-streak {
+  position: absolute;
+  top: -12%;
+  width: 1px;
+  height: 18%;
+  background: linear-gradient(180deg, transparent, rgba(191, 219, 254, 0.55), transparent);
+  animation: chat-rain-fall linear infinite;
+}
+
+.chat-anim-preview .chat-rain-streak {
+  height: 28%;
+}
+
+@keyframes chat-rain-fall {
+  from {
+    transform: translateY(-10%);
+  }
+  to {
+    transform: translateY(120vh);
+  }
+}
+
+/* Fireflies */
+.chat-anim-fireflies {
+  background: linear-gradient(180deg, #052e16 0%, #14532d 55%, #022c22 100%);
+}
+
+.chat-firefly {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #fef08a;
+  box-shadow: 0 0 10px 3px rgba(250, 204, 21, 0.65);
+  animation: chat-firefly-drift 6s ease-in-out infinite alternate;
+}
+
+.chat-anim-preview .chat-firefly {
+  width: 4px;
+  height: 4px;
+}
+
+@keyframes chat-firefly-drift {
+  0% {
+    transform: translate(0, 0) scale(0.8);
+    opacity: 0.25;
+  }
+  50% {
+    opacity: 1;
+    transform: translate(8px, -12px) scale(1.2);
+  }
+  100% {
+    transform: translate(-6px, 8px) scale(0.9);
+    opacity: 0.4;
+  }
+}
+
+/* ── قائمة خيارات الرسالة (ضغط مطوّل) ── */
+.chat-msg-context-stage {
+  animation: chat-msg-backdrop-in 0.28s ease-out forwards;
+}
+
+@keyframes chat-msg-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.chat-msg-context-pop {
+  transform-origin: center center;
+  animation: chat-msg-bubble-pop 0.44s cubic-bezier(0.34, 1.45, 0.64, 1) forwards;
+}
+
+@keyframes chat-msg-bubble-pop {
+  0% {
+    transform: scale(0.72);
+    opacity: 0;
+    filter: blur(3px);
+  }
+  62% {
+    transform: scale(1.07);
+    opacity: 1;
+    filter: blur(0);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.chat-msg-context-reactions {
+  animation: chat-msg-panel-rise 0.36s cubic-bezier(0.22, 1.25, 0.36, 1) 0.05s backwards;
+}
+
+.chat-msg-context-actions {
+  animation: chat-msg-panel-rise 0.4s cubic-bezier(0.22, 1.25, 0.36, 1) 0.1s backwards;
+}
+
+@keyframes chat-msg-panel-rise {
+  from {
+    transform: translateY(16px) scale(0.9);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+}
+
+/* تقليل الحركة */
+@media (prefers-reduced-motion: reduce) {
+  .chat-anim-aurora,
+  .chat-anim-sakura,
+  .chat-anim-anime-sky,
+  .chat-anim-ocean,
+  .chat-anim-sunset,
+  .chat-anim-forest,
+  .chat-anim-neon,
+  .chat-anim-stars,
+  .chat-anim-cosmos,
+  .chat-anim-foliage,
+  .chat-anim-cherry-grove,
+  .chat-anim-rain,
+  .chat-anim-fireflies,
+  .chat-sakura-petal,
+  .chat-foliage-leaf,
+  .chat-anime-cloud,
+  .chat-ocean-wave,
+  .chat-ocean-bubble,
+  .chat-star,
+  .chat-aurora-band,
+  .chat-cherry-tree,
+  .chat-rain-streak,
+  .chat-firefly,
+  .chat-neon-scan,
+  .chat-cosmos-orb,
+  .chat-sunset-sun,
+  .chat-forest-mist,
+  .chat-msg-context-pop,
+  .chat-msg-context-reactions,
+  .chat-msg-context-actions {
+    animation: none !important;
+  }
+}

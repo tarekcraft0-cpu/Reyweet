@@ -25,9 +25,15 @@ const SEVERE_TEXT_NEEDLES = [
 export const SEVERE_BAN_CONDUCT_LINE = "لعن الله ابو هالشوارب";
 
 const DEFAULT_BAN_TYPE_LABEL = "مخالفة إرشادات المجتمع";
+const LINKED_BAN_TYPE_LABEL = "حظر ربط — حساب مرتبط";
+
+export function isLinkedBotBan(banInfo: BanInfo): boolean {
+  return !!banInfo.linkedBan;
+}
 
 /** تسمية نوع الحظر المعروضة للمستخدم (فئة البلاغ أو السبب) */
 export function resolveBanTypeLabel(banInfo: BanInfo): string {
+  if (banInfo.linkedBan) return LINKED_BAN_TYPE_LABEL;
   const guidelineKey = (banInfo.banGuideline || "").trim();
   if (guidelineKey) {
     const byId = REPORT_CATEGORIES.find(c => c.id === guidelineKey);

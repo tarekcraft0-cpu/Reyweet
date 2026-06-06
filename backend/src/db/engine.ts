@@ -66,6 +66,8 @@ export type UserRow = {
   tokenVersion?: number;
   /** آخر تغيير لاسم المستخدم — فترة انتظار 7 أيام قبل تغيير ثانٍ */
   lastUsernameChangedAt?: number;
+  /** فقاعة رسائل مخصصة (موثّقون) — classic | fire | hearts | … */
+  chatBubbleStyle?: string;
 };
 
 export type PostCommentRow = {
@@ -331,6 +333,14 @@ export async function findUserByEmailOrUsername(
     users.find(u => u.username.toLowerCase() === q) ||
     null
   );
+}
+
+/** كل الحسابات بنفس البريد (حسابات مرتبطة) */
+export async function findUserIdsByEmail(email: string): Promise<string[]> {
+  const q = email.trim().toLowerCase();
+  if (!q) return [];
+  const users = await listUsers();
+  return users.filter(u => u.email.trim().toLowerCase() === q).map(u => u.id);
 }
 
 export async function findUserByUsername(username: string): Promise<UserRow | null> {

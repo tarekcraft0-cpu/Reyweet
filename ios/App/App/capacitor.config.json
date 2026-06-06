@@ -1,29 +1,6 @@
 {
-  "appId": "com.reyweet.app",
-  "appName": "Reyweet",
-  "webDir": "public",
-  "plugins": {
-    "Keyboard": {
-      "resize": "none"
-    },
-    "PushNotifications": {
-      "presentationOptions": [
-        "badge",
-        "sound",
-        "alert"
-      ]
-    }
-  },
-  "ios": {
-    "contentInset": "never",
-    "scrollEnabled": true,
-    "allowsLinkPreview": false
-  },
-  "android": {
-    "allowMixedContent": false
-  },
-  "packageClassList": [
-    "KeyboardPlugin",
-    "PushNotificationsPlugin"
-  ]
+	"appId": "com.reyweet.app",
+	"appName": "Reyweet",
+	"webDir": "public",
+	"packageClassList": []
 }

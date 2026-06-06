@@ -33,9 +33,9 @@ export type ChatDmPalette = {
 const PALETTES: Record<ChatDmAppTheme, ChatDmPalette> = {
   /** ═══ Glassmorphism / Apple Liquid Glass — Dark (Monochrome) ═══ */
   dark: {
-    surface: "#000000",
-    composerField: "rgba(255,255,255,0.09)",
-    peerBubbleBg: "rgba(255,255,255,0.10)",
+    surface: "#0a0a0f",
+    composerField: "rgba(255,255,255,0.12)",
+    peerBubbleBg: "rgba(255,255,255,0.17)",
     peerBubbleText: "#ffffff",
     mineTime: "rgba(0,0,0,0.55)",
     dayPillBg: "rgba(255,255,255,0.10)",
@@ -55,8 +55,8 @@ const PALETTES: Record<ChatDmAppTheme, ChatDmPalette> = {
   /** ═══ Glassmorphism / Apple Liquid Glass — Light (Monochrome) ═══ */
   light: {
     surface: "#f2f2f7",
-    composerField: "rgba(0,0,0,0.06)",
-    peerBubbleBg: "rgba(0,0,0,0.07)",
+    composerField: "rgba(0,0,0,0.07)",
+    peerBubbleBg: "rgba(0,0,0,0.11)",
     peerBubbleText: "#000000",
     mineTime: "rgba(255,255,255,0.70)",
     dayPillBg: "rgba(0,0,0,0.06)",
@@ -149,9 +149,37 @@ export function chatDayDividerLabel(createdAt: number, lang: string): string {
   }
 }
 
+export type BubbleGroupPosition = "single" | "first" | "middle" | "last";
+
+const CHAT_GROUP_GAP_MS = 2 * 60_000;
+
+function canGroupMessages(a: Message, b: Message): boolean {
+  if (a.senderId !== b.senderId) return false;
+  if (a.type !== "text" || b.type !== "text") return false;
+  return Math.abs(b.createdAt - a.createdAt) < CHAT_GROUP_GAP_MS;
+}
+
+function bubbleGroupPosition(messages: Message[], index: number): BubbleGroupPosition {
+  const m = messages[index];
+  const prev = index > 0 ? messages[index - 1] : null;
+  const next = index < messages.length - 1 ? messages[index + 1] : null;
+  const samePrev = prev ? canGroupMessages(prev, m) : false;
+  const sameNext = next ? canGroupMessages(m, next) : false;
+  if (!samePrev && !sameNext) return "single";
+  if (!samePrev && sameNext) return "first";
+  if (samePrev && sameNext) return "middle";
+  return "last";
+}
+
 export type ChatTimelineRow =
   | { kind: "day"; key: string; label: string }
-  | { kind: "message"; key: string; message: Message; showPeerAvatar: boolean };
+  | {
+      kind: "message";
+      key: string;
+      message: Message;
+      showPeerAvatar: boolean;
+      groupPosition: BubbleGroupPosition;
+    };
 
 export function buildChatTimelineRows(
   messages: Message[],
@@ -162,7 +190,8 @@ export function buildChatTimelineRows(
   let lastDay = "";
   let lastPeerSender = "";
 
-  for (const m of messages) {
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i];
     const dayKey = String(dayStart(m.createdAt));
     if (dayKey !== lastDay) {
       lastDay = dayKey;
@@ -175,13 +204,27 @@ export function buildChatTimelineRows(
     }
 
     const mine = m.senderId === meId;
+    const groupPosition = bubbleGroupPosition(messages, i);
     if (mine) {
       lastPeerSender = "";
-      rows.push({ kind: "message", key: m.id, message: m, showPeerAvatar: false });
+      rows.push({
+        kind: "message",
+        key: m.id,
+        message: m,
+        showPeerAvatar: false,
+        groupPosition,
+      });
     } else {
-      const showPeerAvatar = m.senderId !== lastPeerSender;
+      const showPeerAvatar =
+        m.senderId !== lastPeerSender || groupPosition === "single" || groupPosition === "first";
       lastPeerSender = m.senderId;
-      rows.push({ kind: "message", key: m.id, message: m, showPeerAvatar });
+      rows.push({
+        kind: "message",
+        key: m.id,
+        message: m,
+        showPeerAvatar,
+        groupPosition,
+      });
     }
   }
 

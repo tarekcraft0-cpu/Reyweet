@@ -157,9 +157,13 @@ export async function buildReelsFeedForViewer(
     userIds,
   });
 
-  const likedFlags = await Promise.all(rows.map(r => userLikedReel(r.id, viewerId)));
+  const { getBannedUserIdSet } = await import("./bannedUserCache.js");
+  const bannedIds = await getBannedUserIdSet();
+  const visibleRows = rows.filter(r => !bannedIds.has(r.userId));
 
-  const reels = rows.map((r, i) => reelRowToPublic(r, likedFlags[i] ?? false));
+  const likedFlags = await Promise.all(visibleRows.map(r => userLikedReel(r.id, viewerId)));
+
+  const reels = visibleRows.map((r, i) => reelRowToPublic(r, likedFlags[i] ?? false));
   const authorIds = new Set(reels.map(r => r.userId));
   const allUsers = await listUsers();
   const users = allUsers

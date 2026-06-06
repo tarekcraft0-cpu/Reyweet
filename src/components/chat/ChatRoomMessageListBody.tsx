@@ -14,10 +14,16 @@ import {
   type ChatDmPalette,
   type ChatTimelineRow,
   chatBubbleAlignClasses,
-  chatDmPeerBubbleStyle,
   chatReactionAlignClasses,
   formatChatBubbleTime,
 } from "@/lib/chatDmTheme";
+import {
+  chatBubbleDepthClass,
+  chatBubbleRadiusTw,
+  chatDmPeerBubbleStyleEnhanced,
+} from "@/lib/chatBubbleStyles";
+import { isChatVerifiedUser } from "@/lib/chatUserVerified";
+import { normalizeChatBubbleStyle } from "@/lib/verifiedChatBubbleStyles";
 
 const CHAT_INLINE_MEDIA_COL = "w-full max-w-[min(74vw,274px)] shrink-0";
 const CHAT_BUBBLE_MAX_W = "max-w-[min(75vw,280px)]";
@@ -39,23 +45,35 @@ function chatBubbleFilledClass(
   theme: ChatVisualTheme = "default",
   igDm = false,
   dmPalette?: ChatDmPalette,
+  verified = false,
+  bubbleStyle?: string | null,
+  groupPosition: import("@/lib/chatDmTheme").BubbleGroupPosition = "single",
+  rtl = true,
 ): string {
+  const radius = chatBubbleRadiusTw(mine, groupPosition, rtl);
+  const depth = chatBubbleDepthClass(verified, mine, bubbleStyle);
   const base =
-    "chat-message-bubble inline-block w-max max-w-full rounded-[20px] border-0 outline-none ring-0 text-[15px] leading-[1.4] align-top select-text " +
+    "chat-message-bubble inline-block w-max max-w-full border-0 outline-none ring-0 text-[15px] leading-[1.45] align-top select-text " +
+    radius +
+    " " +
+    depth +
+    " " +
     (igDm ? "px-[15px] py-[10px] " : "px-[14px] py-[10px] ");
   if (isQuran) {
     return (
       base +
       (mine
-        ? "bg-emerald-950/90 text-emerald-50 shadow-none"
-        : "bg-zinc-800 text-zinc-100 shadow-none")
+        ? "bg-emerald-950/90 text-emerald-50"
+        : "bg-zinc-800 text-zinc-100")
     );
   }
+  if (mine && verified && normalizeChatBubbleStyle(bubbleStyle) !== "classic") return base;
+  if (mine && verified) return base;
   if (igDm) {
-    if (mine) return base + "bg-white text-black shadow-none";
-    return base + "shadow-none";
+    if (mine) return base + "bg-white text-black";
+    return base;
   }
-  if (mine) return base + chatMineAccentClass(theme, false) + " shadow-none";
+  if (mine) return base + chatMineAccentClass(theme, false);
   return base + "bg-zinc-200 text-zinc-900 dark:bg-[#262626] dark:text-zinc-100";
 }
 
@@ -236,8 +254,10 @@ function ChatRoomMessageListBodyInner(props: ChatRoomMessageListBodyProps) {
           );
         }
         const showPeerAvatar = row.showPeerAvatar;
+        const groupPosition = row.groupPosition ?? "single";
         const mine = isOwnChatMessage(m.senderId, state, { directMessagePeerId: otherId });
         const senderProfile = userById(state, m.senderId);
+        const senderVerified = isChatVerifiedUser(senderProfile);
         const mc = messageContent(m);
         const bareSticker = m.type === "sticker" && (isStickerImageContent(mc) || isStickerVideoContent(mc));
         const bareImage = m.type === "image" && mc.startsWith("data:") && !m.viewOnce;
@@ -260,14 +280,26 @@ function ChatRoomMessageListBodyInner(props: ChatRoomMessageListBodyProps) {
                 : CHAT_TEXT_BUBBLE_COL;
         const bubbleBase = bareMedia
           ? "text-sm p-0 m-0 bg-transparent shadow-none ring-0 border-0 overflow-visible outline-none"
-          : chatBubbleFilledClass(mine, isQuranChannel, theme, useIgDm, dmPalette ?? undefined);
+          : chatBubbleFilledClass(
+              mine,
+              isQuranChannel,
+              theme,
+              useIgDm,
+              dmPalette ?? undefined,
+              senderVerified,
+              senderVerified ? senderProfile?.chatBubbleStyle : undefined,
+              groupPosition,
+              lang === "ar",
+            );
         const bubbleClass =
           bubbleBase +
           (!bareMedia && vanishMode && m.id.startsWith("vx_")
             ? " ring-2 ring-orange-500/50 border border-orange-400/40"
             : "");
         const bubbleInlineStyle =
-          useIgDm && dmPalette && !mine && !bareMedia ? chatDmPeerBubbleStyle(dmPalette) : undefined;
+          useIgDm && dmPalette && !mine && !bareMedia
+            ? chatDmPeerBubbleStyleEnhanced(dmPalette, senderVerified)
+            : undefined;
         const showBubbleTime = useIgDm && !bareMedia;
         return (
           <div key={m.id}>
@@ -298,9 +330,14 @@ function ChatRoomMessageListBodyInner(props: ChatRoomMessageListBodyProps) {
                   (useIgDm ? chatBubbleAlignClasses(mine) : mine ? "items-end self-end" : "items-start self-start")
                 }
               >
-                {(chat.isGroup || chat.isChannel) && !mine && (
-                  <div className="mb-0.5 px-0.5 text-[11px] font-semibold text-muted-foreground">
-                    {chat.groupNicknames?.[m.senderId]?.trim() || senderProfile?.username || "?"}
+                {(chat.isGroup || chat.isChannel) && !mine && showPeerAvatar && (
+                  <div className="mb-0.5 flex items-center gap-1 px-0.5 text-[11px] font-semibold text-muted-foreground">
+                    <span>{chat.groupNicknames?.[m.senderId]?.trim() || senderProfile?.username || "?"}</span>
+                    {senderVerified ? (
+                      <span className="text-[10px] text-amber-500" title="موثّق">
+                        ✦
+                      </span>
+                    ) : null}
                   </div>
                 )}
                 <div className={bubbleClass} style={bubbleInlineStyle}>

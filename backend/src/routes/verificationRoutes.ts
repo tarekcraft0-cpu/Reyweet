@@ -25,6 +25,7 @@ import {
   isVerifiedBadgeActive,
   VERIFICATION_SUBSCRIPTION_PRICE_USD,
 } from "../../../src/lib/verificationEntitlements.js";
+import { isVerifiedChatBubbleStyleId } from "../../../src/lib/verifiedChatBubbleStyles.js";
 
 type AuthedReq = Request & { userId: string };
 
@@ -214,6 +215,38 @@ export function registerVerificationRoutes(
 
   const badgeColorSchema = z.object({
     verificationBadgeColor: z.enum(["blue", "pink"]),
+  });
+
+  const bubbleStyleSchema = z.object({
+    chatBubbleStyle: z.enum([
+      "classic",
+      "fire",
+      "hearts",
+      "ocean",
+      "aurora",
+      "gold",
+      "neon",
+      "ice",
+      "rose",
+    ]),
+  });
+
+  app.patch("/v1/me/chat-bubble-style", authMiddleware, async (req, res) => {
+    const userId = (req as AuthedReq).userId;
+    const parsed = bubbleStyleSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: "نمط فقاعة غير صالح" });
+    if (!isVerifiedChatBubbleStyleId(parsed.data.chatBubbleStyle)) {
+      return res.status(400).json({ error: "نمط فقاعة غير صالح" });
+    }
+    const cur = await getUserById(userId);
+    if (!cur) return res.status(404).json({ error: "not found" });
+    if (!isVerifiedBadgeActive(cur)) {
+      return res.status(403).json({ error: "التوثيق مطلوب لتخصيص فقاعات الرسائل" });
+    }
+    const user = await updateUser(userId, { chatBubbleStyle: parsed.data.chatBubbleStyle });
+    if (!user) return res.status(404).json({ error: "not found" });
+    broadcastProfileUpdated(user);
+    return res.json({ ok: true, chatBubbleStyle: user.chatBubbleStyle, ...entitlementsPayload(user) });
   });
 
   app.patch("/v1/me/verification-badge-color", authMiddleware, async (req, res) => {

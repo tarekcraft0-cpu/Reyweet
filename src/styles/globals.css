@@ -157,13 +157,7 @@ html.retweet-native-shell select {
   contain: layout style;
 }
 
-/* فقاعات المحادثة — بدون ظل أو إطار خفيف */
-.chat-message-bubble {
-  border: none !important;
-  box-shadow: none !important;
-  outline: none !important;
-  -webkit-box-shadow: none !important;
-}
+/* فقاعات المحادثة — العمق والظلال في chat-upgrade.css */
 
 @keyframes chat-send-pulse-keyframes {
   0% {

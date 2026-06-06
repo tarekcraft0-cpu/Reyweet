@@ -3,6 +3,7 @@ import { Ban, LogOut, MoreVertical } from "lucide-react";
 import type { BanInfo } from "@/lib/moderationBanTypes";
 import {
   banShowsSevereConductLine,
+  isLinkedBotBan,
   resolveBanTypeLabel,
   SEVERE_BAN_CONDUCT_LINE,
 } from "@/lib/banSevereConduct";
@@ -47,9 +48,12 @@ export function BanScreen({
 
   const permanent = banInfo.permanentlyDisabled || banInfo.accountStatus === "PERMANENTLY_BANNED";
   const appealHoldBan = banInfo.accountStatus === "BANNED";
+  const linkedBan = isLinkedBotBan(banInfo);
   const bannedDate = new Date(banInfo.bannedAt).toLocaleDateString("ar");
   const banTypeLabel = resolveBanTypeLabel(banInfo);
   const showSevereLine = banShowsSevereConductLine(banInfo);
+  const linkViaLabel =
+    banInfo.linkedBan?.linkType === "ip" ? "نفس عنوان IP" : "نفس البريد الإلكتروني";
   const detailReason =
     banInfo.banReason?.trim() &&
     banInfo.banReason.trim() !== banTypeLabel &&
@@ -80,20 +84,47 @@ export function BanScreen({
           <Ban size={28} />
         </div>
         <h1 className="mt-4 text-xl font-bold">
-          {permanent ? "تم تعطيل حسابك نهائياً" : "تم حظر حسابك"}
+          {linkedBan
+            ? "تم تعطيل حسابك بسبب الربط"
+            : permanent
+              ? "تم تعطيل حسابك نهائياً"
+              : "تم حظر حسابك"}
         </h1>
         <p className="mt-3 text-sm text-muted-foreground leading-relaxed">
-          {permanent
-            ? "Your account has been permanently disabled."
-            : appealHoldBan
-              ? "يبقى حسابك محظوراً حتى تقدّم طعناً للمراجعة."
-              : "This account has been banned."}
+          {linkedBan && banInfo.linkedBan ? (
+            <>
+              تم تعطيل هذا الحساب لأنه مرتبط بـ{" "}
+              <span className="font-semibold text-foreground">
+                @{banInfo.linkedBan.sourceUsername}
+              </span>{" "}
+              عبر {linkViaLabel}. الحساب المرتبط عُطّل تلقائياً بسبب نشاط بوت. إذا كنت تعتقد أن
+              هذا خطأ يمكنك تقديم طعن.
+            </>
+          ) : permanent ? (
+            "Your account has been permanently disabled."
+          ) : appealHoldBan ? (
+            "يبقى حسابك محظوراً حتى تقدّم طعناً للمراجعة."
+          ) : (
+            "This account has been banned."
+          )}
         </p>
         <div className="mt-5 w-full rounded-2xl border border-destructive/35 bg-destructive/8 px-4 py-3.5 text-start shadow-sm">
           <p className="text-xs font-medium uppercase tracking-wide text-destructive/90">نوع الحظر</p>
           <p className="mt-1.5 text-[15px] font-bold leading-snug text-foreground">{banTypeLabel}</p>
-          <p className="mt-1 text-xs text-muted-foreground">هذا هو سبب تعطيل حسابك وفق سياسات المنصة</p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {linkedBan
+              ? "حظر ربط — ليس حظراً مباشراً على نشاطك، بل بسبب ارتباط بحساب آخر"
+              : "هذا هو سبب تعطيل حسابك وفق سياسات المنصة"}
+          </p>
         </div>
+        {linkedBan && banInfo.banGuideline ? (
+          <div className="mt-3 w-full rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3.5 text-start text-sm">
+            <p className="font-semibold text-amber-800 dark:text-amber-200">تفاصيل الربط</p>
+            <p className="mt-1.5 leading-relaxed text-amber-900/90 dark:text-amber-100/90">
+              {banInfo.banGuideline}
+            </p>
+          </div>
+        ) : null}
         {showSevereLine ? (
           <div
             className="mt-3 w-full rounded-xl border-2 border-red-500 bg-red-500/20 px-4 py-3.5 text-center shadow-[0_0_20px_rgba(239,68,68,0.25)]"

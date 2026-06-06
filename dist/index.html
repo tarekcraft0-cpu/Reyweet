@@ -1,6 +1,33 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl" class="h-full retweet-native-shell">
   <head>
+<script id="retweet-native-crash-fallback">(function(){var U="https://reyweet.vercel.app/app/";function go(){if(window.__RETWEET_REMOTE_FALLBACK__)return;window.__RETWEET_REMOTE_FALLBACK__=1;try{location.replace(U+"?native=1&force="+Date.now());}catch(e){location.href=U;}}function bad(m){m=String(m||"");return/showOnboarding|Can't find variable/i.test(m);}window.addEventListener("error",function(e){if(bad(e&&e.message))go();},true);window.addEventListener("unhandledrejection",function(e){var r=e&&e.reason;if(bad(r&&r.message||r))go();},true);})();</script>
+    <style id="retweet-native-viewport-critical">
+      html,
+      body,
+      #root {
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+        left: 0 !important;
+        right: 0 !important;
+        overflow-x: hidden !important;
+        box-sizing: border-box !important;
+        transform: none !important;
+      }
+      html[data-native-app="1"] [data-tab-panel],
+      html.retweet-native-shell [data-tab-panel] {
+        width: 100% !important;
+        max-width: none !important;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+        transform: translate3d(0, 0, 0) !important;
+        left: 0 !important;
+        right: 0 !important;
+      }
+    </style>
     <style id="retweet-no-select-critical">
       html.retweet-native-shell,
       html.retweet-native-shell *,
@@ -27,13 +54,13 @@
     <meta charset="UTF-8" />
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1, user-scalable=no, interactive-widget=overlays-content"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1, viewport-fit=cover, interactive-widget=overlays-content"
     />
     <meta name="description" content="Retweet — شارك لحظتك" />
     <meta name="theme-color" content="#0095f6" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Retweet" />
     <title>Retweet</title>
     <link rel="icon" type="image/png" sizes="48x48" href="./favicon.png" />
@@ -43,10 +70,12 @@
     <link rel="apple-touch-icon" sizes="167x167" href="./icons/apple-touch-icon.png" />
     <link rel="apple-touch-icon" sizes="152x152" href="./icons/apple-touch-icon.png" />
     <!-- قبل React: منع التحديد الأزرق وقائمة iOS على كل الشاشات -->
-    <script src="/app/native-no-select-bootstrap.js"></script>
-    <script type="module" crossorigin src="./assets/index-ii8P5H4z.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-CLWU6MXb.css">
-  <script>window.__RETWEET_NATIVE_SHELL__=true;window.__RETWEET_NO_SELECT_BOOT__=true;window.__RETWEET_API_URL__="https://reyweet.vercel.app";document.documentElement.classList.add("retweet-native-shell");window.dispatchEvent(new Event("retweet-api-config-ready"));</script>
+    <script src="./native-no-select-bootstrap.js"></script>
+    <script type="module" crossorigin src="./assets/index-CwYqJVxv.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-DLeG81mH.css">
+  <script>window.__RETWEET_NATIVE_SHELL__=true;window.__RETWEET_NO_SELECT_BOOT__=true;window.__RETWEET_API_URL__="https://reyweet.vercel.app";document.documentElement.classList.add("retweet-native-shell");document.documentElement.setAttribute("data-native-app","1");if(document.body)document.body.setAttribute("data-native-app","1");window.dispatchEvent(new Event("retweet-api-config-ready"));</script>
+<script>window.__RETWEET_APP_BUILD__="1780672907044";</script>
+<script>(function(){try{var k="retweet_app_build",b=window.__RETWEET_APP_BUILD__||"";var s=localStorage.getItem(k);if(s&&b&&s!==b){localStorage.setItem(k,b);try{var u=new URL(location.href);u.searchParams.set("_b",String(Date.now()));location.replace(u.toString());return}catch(e){location.reload()}}if(b)localStorage.setItem(k,b)}catch(e){}})();</script>
 </head>
   <body class="h-full overflow-hidden overflow-x-hidden bg-background antialiased">
     <div id="root" class="retweet-no-select-pane h-full min-h-0"></div>

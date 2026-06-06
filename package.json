@@ -80,7 +80,10 @@
     "data:restore-snapshots": "node backend/scripts/restore-messages-from-snapshots.mjs",
     "contabo:upload-spa": "node scripts/contabo-upload-spa.mjs",
     "vps:deploy": "node scripts/deploy-vps-stack.mjs",
-    "contabo:repair-media": "node scripts/contabo-repair-media.mjs"
+    "contabo:repair-media": "node scripts/contabo-repair-media.mjs",
+    "stack:pause": "node scripts/stack-pause.mjs",
+    "stack:resume": "node scripts/stack-resume.mjs",
+    "contabo:pm2": "node scripts/contabo-pm2-control.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^7.4.3",

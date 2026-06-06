@@ -2,6 +2,8 @@
 @source "../src";
 @import "tw-animate-css";
 @import "./styles/globals.css";
+@import "./styles/chat-upgrade.css";
+@import "./styles/verified-chat-bubbles.css";
 
 @custom-variant dark (&:is(.dark *));
 

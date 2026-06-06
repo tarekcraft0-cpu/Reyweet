@@ -255,6 +255,8 @@ export function mergeUserProfilePatch(prev: User, patch: Partial<User> & { id: I
       patch.storyExpiryOptions !== undefined ? patch.storyExpiryOptions : prev.storyExpiryOptions,
     postCharacterLimit:
       patch.postCharacterLimit !== undefined ? patch.postCharacterLimit : prev.postCharacterLimit,
+    chatBubbleStyle:
+      patch.chatBubbleStyle !== undefined ? patch.chatBubbleStyle : prev.chatBubbleStyle,
     password: "",
   };
 }

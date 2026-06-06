@@ -23,6 +23,12 @@ import { buildWarningNoticePayload } from "./noticeMessages.js";
 import { purgeUserPublicContent } from "../lib/purgeUserPublicContent.js";
 import { blockEmailPermanently } from "../lib/emailBlocklist.js";
 import { invalidateBannedUserCache } from "../lib/bannedUserCache.js";
+import { BOT_MODERATION_ACTORS, SYSTEM_BOT_LINK_ACTOR } from "../lib/botModerationActors.js";
+
+export type LinkedBanInfo = {
+  sourceUsername: string;
+  linkType: "ip" | "email";
+};
 
 export type BanInfo = {
   accountStatus: AccountStatus;
@@ -34,6 +40,7 @@ export type BanInfo = {
   banExpiresAt?: number | null;
   canAppeal: boolean;
   permanentlyDisabled: boolean;
+  linkedBan?: LinkedBanInfo;
 };
 
 export function isBannedStatus(status: AccountStatus): boolean {
@@ -54,6 +61,18 @@ export async function getBanInfoForUser(user: UserRow): Promise<BanInfo | null> 
   if (!isBannedStatus(state.accountStatus)) return null;
 
   const av = user.avatar?.trim() || DEFAULT_AVATAR_DATA_URI;
+  let linkedBan: LinkedBanInfo | undefined;
+  if (
+    state.linkedBanSourceUserId &&
+    state.linkedBanType &&
+    (state.violations ?? []).some(v => v.moderatorId === SYSTEM_BOT_LINK_ACTOR)
+  ) {
+    const src = await getUserById(state.linkedBanSourceUserId);
+    linkedBan = {
+      sourceUsername: src?.username || "حساب آخر",
+      linkType: state.linkedBanType,
+    };
+  }
   return {
     accountStatus: state.accountStatus,
     username: user.username,
@@ -64,6 +83,7 @@ export async function getBanInfoForUser(user: UserRow): Promise<BanInfo | null> 
     banExpiresAt: state.banExpiresAt,
     canAppeal: canAppealStatus(state),
     permanentlyDisabled: state.accountStatus === "PERMANENTLY_BANNED",
+    linkedBan,
   };
 }
 
@@ -199,7 +219,7 @@ export async function applyModerationAction(
 
 function isBotGuardBan(state: UserModerationState): boolean {
   if (!isBannedStatus(state.accountStatus)) return false;
-  return (state.violations ?? []).some(v => v.moderatorId === "system:bot-guard");
+  return (state.violations ?? []).some(v => BOT_MODERATION_ACTORS.has(v.moderatorId));
 }
 
 export async function restoreAccount(
@@ -226,6 +246,8 @@ export async function restoreAccount(
   state.banExpiresAt = undefined;
   state.restrictedUntil = undefined;
   state.shadowBanned = false;
+  state.linkedBanSourceUserId = undefined;
+  state.linkedBanType = undefined;
   const wrongfulRestore = opts?.wrongfulPermanentRestore === true || (wasPermanent && !opts?.appealApproved);
   const messageAr = opts?.appealApproved
     ? "تم قبول طعنك واستعادة حسابك."

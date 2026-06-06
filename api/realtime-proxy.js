@@ -57,6 +57,8 @@ export default async function handler(req, res) {
     }
   }
 
+  headers["accept-encoding"] = "identity";
+
   let upstream;
   try {
     upstream = await fetch(target, { method: req.method || "GET", headers, body });
@@ -65,7 +67,16 @@ export default async function handler(req, res) {
     return res.end("Upstream unreachable");
   }
 
-  const hopByHop = new Set(["connection", "keep-alive", "transfer-encoding", "te", "trailer", "upgrade"]);
+  const hopByHop = new Set([
+    "connection",
+    "keep-alive",
+    "transfer-encoding",
+    "te",
+    "trailer",
+    "upgrade",
+    "content-encoding",
+    "content-length",
+  ]);
   res.statusCode = upstream.status;
   for (const [k, v] of upstream.headers.entries()) {
     if (hopByHop.has(k.toLowerCase())) continue;

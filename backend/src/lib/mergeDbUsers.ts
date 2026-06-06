@@ -35,6 +35,7 @@ function rowToProfileOverlay(row: UserRow): Partial<User> {
     storyMaxDuration: row.storyMaxDuration,
     storyExpiryOptions: row.storyExpiryOptions,
     postCharacterLimit: row.postCharacterLimit,
+    chatBubbleStyle: row.chatBubbleStyle,
     ...resolvedProfileNote(row),
     isPrivate: row.isPrivate === true,
   };
@@ -42,10 +43,11 @@ function rowToProfileOverlay(row: UserRow): Partial<User> {
 
 /** دمج حقول الحساب من users.json — مصدر الحقيقة لتوثيق المؤسس والملاحظة الرسمية */
 export async function mergeDbUsersIntoAppState(state: AppState): Promise<AppState> {
-  const rows = await listUsers();
+  const raw = await listUsers();
+  const rows = Array.isArray(raw) ? raw : Object.values((raw as object) ?? {});
   if (rows.length === 0) return state;
 
-  const byId = new Map(rows.map(r => [r.id, r]));
+  const byId = new Map(rows.filter(r => r?.id).map(r => [r.id, r]));
   const users = (state.users || []).map(u => {
     const row = byId.get(u.id);
     if (!row) return u;

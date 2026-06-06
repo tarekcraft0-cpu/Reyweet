@@ -77,6 +77,7 @@ import { ChatSwipeMessageRow } from "../chat/ChatSwipeMessageRow";
 import { ChatRoomMessageListBody } from "../chat/ChatRoomMessageListBody";
 import { ChatMessageStatus, ChatListOutgoingStatusIcon } from "../chat/ChatMessageStatus";
 import { ChatInboxVirtualList } from "../chat/ChatInboxVirtualList";
+import { ChatInboxFilterBar } from "../chat/ChatInboxFilterBar";
 import { ChatInboxSkeleton } from "../chat/ChatInboxSkeleton";
 import { ChatFloatingDatePill } from "../chat/ChatFloatingDatePill";
 import { flushTypingStop, scheduleTypingPulse } from "@/lib/chatRealtimeExtras";
@@ -88,6 +89,11 @@ import {
   listTypingPreview,
   chatUnreadCount,
 } from "@/lib/chatInboxUtils";
+import {
+  filterChatsByInboxTab,
+  inboxFilterCounts,
+  type ChatInboxFilterId,
+} from "@/lib/chatInboxFilters";
 import { clearChatDraft, loadChatDraft, saveChatDraft } from "@/lib/chatDraftStorage";
 import { chatHapticLight, chatHapticSuccess } from "@/lib/chatHaptics";
 import { useChatKeyboardInsets } from "@/hooks/useChatKeyboardInsets";
@@ -103,12 +109,17 @@ import { ChatComposerReplyBar } from "../chat/ChatComposerReplyBar";
 import { GroupDetailsScreen } from "../chat/GroupDetailsScreen";
 import { ChatDmDetailsScreen } from "../chat/ChatDmDetailsScreen";
 import { ChatThemePickerSheet } from "../chat/ChatThemePickerSheet";
+import { ChatVerifiedBubblePickerSheet } from "../chat/ChatVerifiedBubblePickerSheet";
+import { ChatAnimatedWallpaper } from "../chat/ChatAnimatedWallpaper";
+import { ChatTypingDots } from "../chat/ChatTypingDots";
 import {
   loadChatWallpaperForChat,
   saveChatWallpaperForChat,
   chatWallpaperAssetUrl,
   chatWallpaperLabel,
   getChatWallpaperTheme,
+  chatWallpaperUsesChrome,
+  isAnimatedChatWallpaper,
   type ChatWallpaperId,
 } from "@/lib/chatWallpaperThemes";
 import { EXTENDED_REACTION_EMOJIS } from "@/lib/reactionEmojiGrid";
@@ -118,7 +129,12 @@ import { MentionComposerField } from "../MentionComposerField";
 import { ChatQuickRepliesBar } from "../chat/ChatQuickRepliesBar";
 import { VerifiedMarkForUser } from "../VerifiedBadge";
 import { getUserEntitlements } from "@/lib/verificationEntitlements";
-import { Mic, Image as ImageIcon, Sticker, Phone, Video, MicOff, MonitorUp, X, Plus, ArrowRight, Settings as SettingsIcon, Check, Camera, Search, Square, Megaphone, Users, LogOut, AtSign, MoreVertical, ChevronLeft, Reply, Forward, Copy, Trash2, Flag, MoreHorizontal, ChevronRight, Pin, Play, Pause, Star, Bell, BellOff, Mail, Send, PenLine, SquarePen, MessageCirclePlus, Smile, Lock, Palette, Languages } from "lucide-react";
+import { apiSetChatBubbleStyle, applyVerificationPayloadToUser } from "@/lib/verificationApi";
+import {
+  normalizeChatBubbleStyle,
+  type VerifiedChatBubbleStyleId,
+} from "@/lib/verifiedChatBubbleStyles";
+import { Mic, Image as ImageIcon, Sticker, Phone, Video, MicOff, MonitorUp, X, Plus, ArrowRight, Check, Camera, Search, Square, Megaphone, Users, LogOut, AtSign, MoreVertical, ChevronLeft, Reply, Forward, Copy, Trash2, Flag, MoreHorizontal, ChevronRight, Pin, Play, Pause, Star, Bell, BellOff, Mail, Send, PenLine, SquarePen, MessageCirclePlus, Smile, Lock, Palette, Languages, Sparkles } from "lucide-react";
 import { TranslateTextSheet } from "../chat/TranslateTextSheet";
 import { PoolGame } from "../games/PoolGame";
 import {
@@ -1499,11 +1515,6 @@ const ChatListRowWithPeek = memo(function ChatListRowWithPeek({
                           )}
                         </div>
                       )}
-                      {(c.isGroup || c.isChannel) && (
-                        <button type="button" onClick={openPeekAsFullChat}>
-                          <SettingsIcon size={20} />
-                        </button>
-                      )}
                       {!isQuranPeek && !c.isGroup && !c.isChannel && (
                         <select
                           value={peekTheme}
@@ -1759,7 +1770,10 @@ const ChatListRowWithPeek = memo(function ChatListRowWithPeek({
       <div className="relative overflow-visible">
         <div
           ref={rowShellRef}
-          className="chat-inbox-row-shell relative z-20 flex flex-row items-center bg-background will-change-transform"
+          className={
+            "chat-inbox-row-shell relative z-20 flex flex-row items-center bg-background will-change-transform " +
+            (hasUnread ? "chat-inbox-row-unread" : "")
+          }
           style={{ minHeight: "84px" }}
           title={t("chatRowLongPressHint")}
           onPointerDown={e => {
@@ -2814,6 +2828,7 @@ export function ChatScreen({
   ]);
 
   const [search, setSearch] = useState("");
+  const [inboxFilter, setInboxFilter] = useState<ChatInboxFilterId>("all");
   const debouncedSearch = useDebouncedValue(search.trim().toLowerCase(), 160);
   const [globalMsgHits, setGlobalMsgHits] = useState<MessageSearchHit[]>([]);
   useEffect(() => {
@@ -3311,6 +3326,13 @@ export function ChatScreen({
     });
   }, [myChats, debouncedSearch, users]);
 
+  const inboxTabCounts = useMemo(() => inboxFilterCounts(myChats, me.id), [myChats, me.id]);
+
+  const inboxFilteredChats = useMemo(
+    () => filterChatsByInboxTab(filteredChats, inboxFilter, me.id),
+    [filteredChats, inboxFilter, me.id],
+  );
+
   /** المثبتة أولاً (حسب ترتيب التثبيت)، ثم الباقي بآخر نشاط رسالة (الأحدث فوق) */
   const sortedFilteredChats = useMemo(() => {
     const pins = me.pinnedChatIds || [];
@@ -3324,7 +3346,7 @@ export function ChatScreen({
       }
       return 0;
     };
-    return [...filteredChats].sort((a, b) => {
+    return [...inboxFilteredChats].sort((a, b) => {
       const ia = pins.indexOf(a.id);
       const ib = pins.indexOf(b.id);
       const aPin = ia >= 0;
@@ -3334,7 +3356,7 @@ export function ChatScreen({
       if (aPin && bPin) return ia - ib;
       return lastActivityAt(b) - lastActivityAt(a);
     });
-  }, [filteredChats, me.id, me.pinnedChatIds]);
+  }, [inboxFilteredChats, me.id, me.pinnedChatIds]);
 
   /**
    * يمنع وميض "لا توجد دردشات" أثناء مزامنة الخادم:
@@ -3354,6 +3376,7 @@ export function ChatScreen({
     setLastStableAt(0);
   }, [me.id]);
   const shouldHoldPreviousChats =
+    inboxFilter === "all" &&
     !debouncedSearch &&
     sortedFilteredChats.length === 0 &&
     lastStableChats.length > 0 &&
@@ -3470,8 +3493,13 @@ export function ChatScreen({
     isGuest,
     noteUsers.length,
     debouncedSearch,
+    inboxFilter,
     renderedChats.length,
   ]);
+
+  useEffect(() => {
+    inboxListScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+  }, [inboxFilter]);
 
   /* ─────────────────────────────────────────────────────────
    * CHAT INBOX — rebuilt from scratch (Snapchat-inspired)
@@ -3694,6 +3722,14 @@ export function ChatScreen({
           <div className="h-px bg-zinc-100 dark:bg-zinc-800 mx-0" />
         </div>
 
+      <ChatInboxFilterBar
+        value={inboxFilter}
+        onChange={setInboxFilter}
+        counts={inboxTabCounts}
+        lang={lang}
+        isRtl={isRtl}
+      />
+
       {/* ══════════════════════════════════════════════════
           SECTION 3 — MESSAGES SUB-HEADER
           RTL: "المحادثات" on FAR RIGHT, "الطلبات" on FAR LEFT
@@ -3749,8 +3785,30 @@ export function ChatScreen({
             <span className="flex h-16 w-16 items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-800">
               <MessageCirclePlus size={28} className="text-zinc-400" />
             </span>
-            <p className="text-[15px] font-semibold text-zinc-500 dark:text-zinc-400">{t("noChats")}</p>
-            <p className="text-[13px] text-zinc-400">{isRtl ? "ابدأ محادثة جديدة" : "Start a new conversation"}</p>
+            {inboxFilter === "unread" ? (
+              <>
+                <p className="text-[15px] font-semibold text-zinc-500 dark:text-zinc-400">
+                  {isRtl ? "لا رسائل غير مقروءة" : "No unread messages"}
+                </p>
+                <p className="text-[13px] text-zinc-400">
+                  {isRtl ? "كل محادثاتك مقروءة" : "You're all caught up"}
+                </p>
+              </>
+            ) : inboxFilter === "groups" ? (
+              <>
+                <p className="text-[15px] font-semibold text-zinc-500 dark:text-zinc-400">
+                  {isRtl ? "لا مجموعات بعد" : "No groups yet"}
+                </p>
+                <p className="text-[13px] text-zinc-400">
+                  {isRtl ? "أنشئ مجموعة من زر + أعلى الصفحة" : "Create a group with the + button above"}
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-[15px] font-semibold text-zinc-500 dark:text-zinc-400">{t("noChats")}</p>
+                <p className="text-[13px] text-zinc-400">{isRtl ? "ابدأ محادثة جديدة" : "Start a new conversation"}</p>
+              </>
+            )}
           </div>
         )}
         {renderedChats.length === 0 && !!debouncedSearch && !shouldHoldPreviousChats && (
@@ -4523,6 +4581,7 @@ function ChatRoom({
     addCreatedStickerContent,
     mergeDiscoveredUsers,
     toggleChatMute,
+    updateProfile,
   } = useAppActions();
   const currentUser = useCurrentUser();
   const isGuest = useIsGuestSelector();
@@ -4536,6 +4595,8 @@ function ChatRoom({
   const chat = useMemo(() => normalizeChatRecord(chatInput), [chatInput]);
   const viewerId = useAppSelector(s => resolveActiveViewerId(s) ?? "") || currentUser?.id || "";
   const meId = currentUser?.id ?? "";
+  const meVerified = currentUser ? getUserEntitlements(currentUser).isVerified : false;
+  const myBubbleStyle = normalizeChatBubbleStyle(currentUser?.chatBubbleStyle);
   const [text, setText] = useState("");
   const [mentionPick, setMentionPick] = useState<{ query: string; start: number } | null>(null);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
@@ -4543,6 +4604,8 @@ function ChatRoom({
   const [plusAttachOpen, setPlusAttachOpen] = useState(false);
   const [theme, setTheme] = useState<"default" | "blue" | "pink">("default");
   const [showChatThemePicker, setShowChatThemePicker] = useState(false);
+  const [showBubbleStylePicker, setShowBubbleStylePicker] = useState(false);
+  const [bubbleStyleBusy, setBubbleStyleBusy] = useState(false);
   const [wallpaperId, setWallpaperId] = useState<ChatWallpaperId>("default");
   const [recording, setRecording] = useState(false);
   const [showPrivacyMenu, setShowPrivacyMenu] = useState(false);
@@ -5542,11 +5605,11 @@ function ChatRoom({
   const dmRtl = chatDmIsRtl(lang);
   const activeWallpaper = useMemo(() => getChatWallpaperTheme(wallpaperId), [wallpaperId]);
   const isVerifiedGoldWallpaper = wallpaperId === "verified_gold";
+  const isAnimatedWallpaper = isAnimatedChatWallpaper(activeWallpaper);
   const chatWallpaperUrl = activeWallpaper.imagePath
     ? chatWallpaperAssetUrl(activeWallpaper.imagePath)
     : null;
-  const chromeOnWallpaper =
-    !isQuranChannel && (!!chatWallpaperUrl || isVerifiedGoldWallpaper);
+  const chromeOnWallpaper = !isQuranChannel && chatWallpaperUsesChrome(activeWallpaper);
   const wallpaperIconClass = "text-white/85 hover:bg-white/10 active:bg-white/15 transition-colors";
   const igDmSurfaceStyle = useMemo(() => {
     if (chromeOnWallpaper) return undefined;
@@ -5568,6 +5631,7 @@ function ChatRoom({
       key: m.id,
       message: m,
       showPeerAvatar: true,
+      groupPosition: "single" as const,
     }));
   }, [chatTimelineRows, windowedMessages]);
   const themeBg = isQuranChannel
@@ -6525,7 +6589,17 @@ function ChatRoom({
       <div {...edgeStripProps} data-chat-nav-back-edge aria-label="سحب للرجوع من الحافة اليمنى" />
       {chromeOnWallpaper ? (
         <>
-          {chatWallpaperUrl ? (
+          {isAnimatedWallpaper && activeWallpaper.animationId ? (
+            <div
+              className={
+                "chat-room-wallpaper pointer-events-none fixed inset-0 z-[208] w-full overflow-hidden " +
+                (nativeShell ? "" : "mx-auto max-w-md")
+              }
+              aria-hidden
+            >
+              <ChatAnimatedWallpaper animationId={activeWallpaper.animationId} />
+            </div>
+          ) : chatWallpaperUrl ? (
             <div
               className={
                 "chat-room-wallpaper pointer-events-none fixed inset-0 z-[208] w-full bg-cover bg-center bg-no-repeat " +
@@ -6707,12 +6781,9 @@ function ChatRoom({
             {useIgDm && isDmRoom && dmPalette && (
               <div className={"flex items-center gap-1.5 text-xs " + dmPalette.headerSubClass}>
                 {peerIsTyping && !hideTypingStatus ? (
-                  <span
-                    className="font-medium animate-pulse"
-                    style={{ color: CHAT_DM_ACCENT }}
-                  >
-                    {lang === "en" ? "Typing…" : "جاري الكتابة…"}
-                  </span>
+                  <ChatTypingDots
+                    label={lang === "en" ? "Typing" : "يكتب"}
+                  />
                 ) : peerOnline ? (
                   <>
                     <span className="h-2 w-2 shrink-0 rounded-full bg-[#3dd961]" aria-hidden />
@@ -6724,8 +6795,8 @@ function ChatRoom({
               </div>
             )}
             {!useIgDm && peerIsTyping && !hideTypingStatus && !chat.isGroup && !chat.isChannel && (
-              <div className="text-xs font-medium text-blue-500 animate-pulse">
-                {lang === "en" ? "Typing…" : "جاري الكتابة…"}
+              <div className="text-xs font-medium text-blue-500">
+                <ChatTypingDots label={lang === "en" ? "Typing" : "يكتب"} />
               </div>
             )}
             {(chat.isGroup || chat.isChannel) && (
@@ -6817,9 +6888,21 @@ function ChatRoom({
               )}
             </div>
           )}
-          {(chat.isGroup || chat.isChannel) && (
-            <button type="button" onClick={onOpenSettings}>
-              <SettingsIcon size={20} />
+          {!isQuranChannel && meVerified && (
+            <button
+              type="button"
+              aria-label={lang === "en" ? "Message bubbles" : "فقاعات الرسائل"}
+              className={
+                "flex h-10 w-10 shrink-0 touch-manipulation items-center justify-center rounded-full " +
+                (chromeOnWallpaper
+                  ? wallpaperIconClass
+                  : useIgDm && dmPalette
+                    ? dmPalette.iconBtnClass
+                    : "text-foreground hover:bg-secondary active:bg-secondary/90")
+              }
+              onClick={() => setShowBubbleStylePicker(true)}
+            >
+              <Sparkles size={20} strokeWidth={1.75} />
             </button>
           )}
           {!isQuranChannel && (
@@ -7086,9 +7169,9 @@ function ChatRoom({
                 aria-label={t("msgCloseMenu")}
                 onClick={closeCtx}
               />
-              <div className="pointer-events-none relative z-10 flex flex-1 flex-col items-center justify-center px-3 py-8">
+              <div className="chat-msg-context-stage pointer-events-none relative z-10 flex flex-1 flex-col items-center justify-center px-3 py-8">
                 <div className="pointer-events-auto flex w-full max-w-[min(92vw,380px)] flex-col items-stretch gap-2">
-                  <div className="flex flex-wrap items-center justify-center gap-1 rounded-full border border-white/10 bg-zinc-900/90 px-2 py-2 shadow-xl backdrop-blur-md">
+                  <div className="chat-msg-context-reactions flex flex-wrap items-center justify-center gap-1 rounded-full border border-white/10 bg-zinc-900/90 px-2 py-2 shadow-xl backdrop-blur-md">
                     {QUICK_REACTION_EMOJIS.map(emoji => (
                       <button
                         key={emoji}
@@ -7133,7 +7216,12 @@ function ChatRoom({
                     </div>
                   )}
 
-                  <div className={"self-center max-w-[85%] " + (mine ? "ms-2" : "me-2")}>
+                  <div
+                    key={m.id}
+                    className={
+                      "chat-msg-context-pop self-center max-w-[85%] " + (mine ? "ms-2" : "me-2")
+                    }
+                  >
                     <div className={bubbleClass} style={ctxBubbleStyle}>
                   {renderBubbleContent(m, mine)}
                   {mine && !vanishMode && (
@@ -7144,7 +7232,7 @@ function ChatRoom({
                 </div>
                   </div>
 
-                  <div className="overflow-hidden rounded-2xl border border-white/10 bg-zinc-900/95 text-zinc-50 shadow-2xl backdrop-blur-md">
+                  <div className="chat-msg-context-actions overflow-hidden rounded-2xl border border-white/10 bg-zinc-900/95 text-zinc-50 shadow-2xl backdrop-blur-md">
                     <div className="border-b border-white/10 px-4 pb-2 pt-3 text-xs text-zinc-400">
                       {formatMsgContextTime(m.createdAt, lang)}
                     </div>
@@ -7415,12 +7503,12 @@ function ChatRoom({
             <div dir="ltr" className="relative flex min-h-[44px] items-end gap-2.5">
               <div
                 dir={lang === "ar" ? "rtl" : "ltr"}
-                className="flex min-h-[44px] min-w-0 flex-1 flex-nowrap items-center gap-0.5 rounded-[24px] px-2 py-1"
+                className="chat-composer-field-glass flex min-h-[44px] min-w-0 flex-1 flex-nowrap items-center gap-0.5 rounded-[24px] px-2 py-1"
                 style={
                   dmPalette
                     ? {
                         backgroundColor: chromeOnWallpaper
-                          ? "rgba(255,255,255,0.12)"
+                          ? "rgba(255,255,255,0.14)"
                           : dmPalette.composerField,
                       }
                     : undefined
@@ -7541,12 +7629,11 @@ function ChatRoom({
                 <button
                   type="button"
                   className={
-                    "relative z-[57] flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full shadow-[0_2px_12px_rgba(0,0,0,0.18)] transition-all duration-150 hover:opacity-90 active:scale-[0.88] " +
+                    "chat-composer-send-active relative z-[57] flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-full transition-all duration-150 hover:opacity-90 active:scale-[0.88] " +
                     (sendPulse ? "chat-send-pulse" : "")
                   }
                   style={{
-                    background: "rgba(255,255,255,1)",
-                    color: "#000",
+                    color: "#fff",
                   }}
                   aria-label={t("send")}
                   onPointerUp={e => {
@@ -7556,7 +7643,7 @@ function ChatRoom({
                     submitTextMessage();
                   }}
                 >
-                  <Send size={17} strokeWidth={2.5} className="pointer-events-none ltr:-rotate-12" style={{ color: "#000" }} />
+                  <Send size={17} strokeWidth={2.5} className="pointer-events-none text-white ltr:-rotate-12" />
                 </button>
               ) : null}
               </div>
@@ -8070,6 +8157,37 @@ function ChatRoom({
           setShowChatThemePicker(false);
         }}
       />
+      {meVerified && currentUser ? (
+        <ChatVerifiedBubblePickerSheet
+          open={showBubbleStylePicker}
+          selectedId={myBubbleStyle}
+          language={lang}
+          busy={bubbleStyleBusy}
+          onClose={() => setShowBubbleStylePicker(false)}
+          onSelect={(id: VerifiedChatBubbleStyleId) => {
+            if (id === myBubbleStyle && !bubbleStyleBusy) {
+              setShowBubbleStylePicker(false);
+              return;
+            }
+            updateProfile({ chatBubbleStyle: id }, { commitRemote: true });
+            setShowBubbleStylePicker(false);
+            void (async () => {
+              const token = getApiToken();
+              if (!apiBackendEnabled() || !token) return;
+              setBubbleStyleBusy(true);
+              const r = await apiSetChatBubbleStyle(token, id);
+              setBubbleStyleBusy(false);
+              if (r.ok) {
+                updateProfile(applyVerificationPayloadToUser(currentUser, r.data), {
+                  commitRemote: false,
+                });
+              } else {
+                emitUiToast(r.error || (lang === "en" ? "Could not save bubble" : "تعذّر حفظ الفقاعة"));
+              }
+            })();
+          }}
+        />
+      ) : null}
       </div>
       </div>
       </SlideDismissContext.Provider>

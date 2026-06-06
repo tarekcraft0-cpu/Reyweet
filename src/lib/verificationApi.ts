@@ -1,4 +1,5 @@
 import { apiFetch } from "./apiBackend";
+import { normalizeChatBubbleStyle } from "./verifiedChatBubbleStyles";
 import {
   getUserEntitlements,
   type UserEntitlements,
@@ -126,6 +127,23 @@ export async function apiRequestVerification(
   return { ok: true, data };
 }
 
+export async function apiSetChatBubbleStyle(
+  token: string,
+  chatBubbleStyle: import("./verifiedChatBubbleStyles").VerifiedChatBubbleStyleId,
+): Promise<{ ok: true; data: VerificationStatusResponse & { chatBubbleStyle?: string } } | { ok: false; error: string }> {
+  const res = await apiFetch("/v1/me/chat-bubble-style", {
+    method: "PATCH",
+    token,
+    body: JSON.stringify({ chatBubbleStyle }),
+  });
+  const data = (await res.json().catch(() => ({}))) as VerificationStatusResponse & {
+    error?: string;
+    chatBubbleStyle?: string;
+  };
+  if (!res.ok) return { ok: false, error: data.error || "تعذر حفظ الفقاعة" };
+  return { ok: true, data };
+}
+
 export async function apiSetBadgeColor(
   token: string,
   verificationBadgeColor: VerificationBadgeColor,
@@ -211,5 +229,11 @@ export function applyVerificationPayloadToUser(
     storyMaxDuration: ent.storyMaxDurationSec,
     storyExpiryOptions: ent.storyExpiryHoursOptions,
     postCharacterLimit: ent.postCharacterLimit,
+    chatBubbleStyle:
+      (data as { chatBubbleStyle?: string }).chatBubbleStyle !== undefined
+        ? (normalizeChatBubbleStyle(
+            (data as { chatBubbleStyle?: string }).chatBubbleStyle,
+          ) as import("./types").User["chatBubbleStyle"])
+        : prev.chatBubbleStyle,
   };
 }

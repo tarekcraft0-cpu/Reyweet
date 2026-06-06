@@ -14,6 +14,7 @@ import {
   authorIdsForFounderProfile,
   normalizeFounderPostUserId,
 } from "./founderLegacy.js";
+import { isUserIdBanned } from "./bannedUserCache.js";
 
 function viewerCanSeePost(viewerId: string, post: Post, usersById: Map<string, User>): boolean {
   if (!post?.id || !post.userId) return false;
@@ -70,6 +71,9 @@ export async function buildUserPostsForViewer(
   viewerId: string,
   opts?: { limit?: number; before?: number },
 ): Promise<{ posts: Post[]; users: User[]; hasMore: boolean; nextCursor?: number }> {
+  if (await isUserIdBanned(profileUserId)) {
+    return { posts: [], users: [], hasMore: false };
+  }
   const authorIds = authorIdsForFounderProfile(profileUserId) ?? [profileUserId];
   const authorSet = new Set(authorIds);
 

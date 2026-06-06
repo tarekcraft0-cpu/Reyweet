@@ -590,6 +590,7 @@ export type ApiSearchUser = {
   appOfficialLabel?: string;
   supportOfficialVerified?: boolean;
   supportOfficialLabel?: string;
+  chatBubbleStyle?: string;
 };
 
 /** حساب minimal للعرض بعد البحث — يُدمَج في الحالة عبر mergeDiscoveredUsers */
@@ -636,6 +637,7 @@ export function userFromSearchResult(row: ApiSearchUser): User {
     appOfficialLabel: row.appOfficialLabel,
     supportOfficialVerified: row.supportOfficialVerified === true,
     supportOfficialLabel: row.supportOfficialLabel,
+    chatBubbleStyle: row.chatBubbleStyle as import("./verifiedChatBubbleStyles").VerifiedChatBubbleStyleId | undefined,
   };
 }
 

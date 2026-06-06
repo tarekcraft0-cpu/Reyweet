@@ -380,7 +380,9 @@ export function createModerationRouter(authMiddleware: (req: Request, res: Respo
         .safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: "بيانات غير صالحة" });
       const wasPermanent = before.accountStatus === "PERMANENTLY_BANNED";
-      const botBan = (before.violations ?? []).some(v => v.moderatorId === "system:bot-guard");
+      const botBan = (before.violations ?? []).some(
+        v => v.moderatorId === "system:bot-guard" || v.moderatorId === "system:bot-link",
+      );
       if (botBan) {
         return res.status(403).json({
           error: "حظر البوت لا يُرفع يدوياً — يجب على المستخدم تقديم طعن وقبوله",
@@ -424,7 +426,9 @@ export function createModerationRouter(authMiddleware: (req: Request, res: Respo
     if (!parsed.success) return res.status(400).json({ error: "userId مطلوب" });
     const actor = String(req.headers["x-internal-actor"] || "internal");
     const state = await getUserModerationState(parsed.data.userId);
-    const botBan = (state.violations ?? []).some(v => v.moderatorId === "system:bot-guard");
+    const botBan = (state.violations ?? []).some(
+      v => v.moderatorId === "system:bot-guard" || v.moderatorId === "system:bot-link",
+    );
     if (botBan) {
       return res.status(403).json({ error: "حظر البوت — فك الحظر عبر الطعن فقط", code: "bot_ban_appeal_only" });
     }

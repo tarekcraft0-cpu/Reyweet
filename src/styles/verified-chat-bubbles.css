@@ -1,0 +1,146 @@
+/**
+ * فقاعات الموثّقين — أنيميشن خفيف (transform/opacity/background-position فقط).
+ * فئة واحدة لكل فقاعة، بدون عناصر DOM إضافية → أداء جيد حتى مع مئات الرسائل.
+ */
+.v-bubble-classic {
+  background: linear-gradient(145deg, #ffffff 0%, #fff9eb 55%, #fef3c7 100%) !important;
+  color: #0f172a !important;
+  box-shadow:
+    0 2px 10px rgba(0, 0, 0, 0.1),
+    0 0 0 1.5px rgba(245, 158, 11, 0.55) !important;
+}
+
+.v-bubble-fire {
+  background: linear-gradient(135deg, #ff6b35 0%, #f7931e 40%, #dc2626 100%) !important;
+  background-size: 200% 200% !important;
+  color: #fff !important;
+  animation: v-bubble-fire-shift 3.5s ease-in-out infinite;
+  box-shadow: 0 2px 14px rgba(220, 38, 38, 0.35) !important;
+}
+
+@keyframes v-bubble-fire-shift {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+.v-bubble-hearts {
+  background: linear-gradient(145deg, #fce7f3 0%, #f472b6 45%, #ec4899 100%) !important;
+  color: #831843 !important;
+  animation: v-bubble-hearts-glow 2.8s ease-in-out infinite;
+  box-shadow: 0 2px 12px rgba(236, 72, 153, 0.35) !important;
+}
+
+@keyframes v-bubble-hearts-glow {
+  0%,
+  100% {
+    box-shadow: 0 2px 12px rgba(236, 72, 153, 0.3);
+  }
+  50% {
+    box-shadow: 0 2px 18px rgba(236, 72, 153, 0.55);
+  }
+}
+
+.v-bubble-rose {
+  background: linear-gradient(160deg, #fff1f2 0%, #fda4af 50%, #fb7185 100%) !important;
+  color: #9f1239 !important;
+  box-shadow: 0 2px 12px rgba(251, 113, 133, 0.3) !important;
+}
+
+.v-bubble-ocean {
+  background: linear-gradient(160deg, #0ea5e9 0%, #0284c7 50%, #0369a1 100%) !important;
+  background-size: 180% 180% !important;
+  color: #f0f9ff !important;
+  animation: v-bubble-ocean-drift 5s ease-in-out infinite;
+  box-shadow: 0 2px 12px rgba(2, 132, 199, 0.35) !important;
+}
+
+@keyframes v-bubble-ocean-drift {
+  0%,
+  100% {
+    background-position: 0% 40%;
+  }
+  50% {
+    background-position: 100% 60%;
+  }
+}
+
+.v-bubble-aurora {
+  background: linear-gradient(125deg, #6366f1 0%, #06b6d4 40%, #8b5cf6 100%) !important;
+  background-size: 220% 220% !important;
+  color: #f8fafc !important;
+  animation: v-bubble-aurora-shift 6s ease-in-out infinite;
+  box-shadow: 0 2px 14px rgba(99, 102, 241, 0.35) !important;
+}
+
+@keyframes v-bubble-aurora-shift {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+.v-bubble-gold {
+  background: linear-gradient(135deg, #fef3c7 0%, #fbbf24 40%, #f59e0b 100%) !important;
+  background-size: 200% 100% !important;
+  color: #78350f !important;
+  animation: v-bubble-gold-shimmer 4s linear infinite;
+  box-shadow: 0 2px 14px rgba(245, 158, 11, 0.4) !important;
+}
+
+@keyframes v-bubble-gold-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.v-bubble-neon {
+  background: linear-gradient(135deg, #7c3aed 0%, #c026d3 50%, #ec4899 100%) !important;
+  color: #faf5ff !important;
+  animation: v-bubble-neon-pulse 2.5s ease-in-out infinite;
+  box-shadow: 0 0 16px rgba(192, 38, 211, 0.45) !important;
+}
+
+@keyframes v-bubble-neon-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.92;
+  }
+}
+
+.v-bubble-ice {
+  background: linear-gradient(155deg, #f0f9ff 0%, #bae6fd 45%, #7dd3fc 100%) !important;
+  color: #0c4a6e !important;
+  box-shadow:
+    0 2px 12px rgba(125, 211, 252, 0.4),
+    0 0 0 1px rgba(255, 255, 255, 0.6) inset !important;
+}
+
+/* أداء: عزل الرسم + لا will-change دائم */
+.chat-message-bubble[class*="v-bubble-"] {
+  contain: layout style paint;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .v-bubble-fire,
+  .v-bubble-hearts,
+  .v-bubble-ocean,
+  .v-bubble-aurora,
+  .v-bubble-gold,
+  .v-bubble-neon {
+    animation: none !important;
+  }
+}

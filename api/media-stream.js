@@ -54,7 +54,7 @@ export default async function handler(req, res) {
   const url = `${backendBase()}/media/${pathEncoded}`;
 
   /** @type {Record<string, string>} */
-  const headers = {};
+  const headers = { "accept-encoding": "identity" };
   if (req.headers.range) headers.Range = req.headers.range;
   const ifRange = req.headers["if-range"];
   if (ifRange) headers["If-Range"] = ifRange;
@@ -67,7 +67,16 @@ export default async function handler(req, res) {
     return res.end("Upstream unreachable");
   }
 
-  const hopByHop = new Set(["connection", "keep-alive", "transfer-encoding", "te", "trailer", "upgrade"]);
+  const hopByHop = new Set([
+    "connection",
+    "keep-alive",
+    "transfer-encoding",
+    "te",
+    "trailer",
+    "upgrade",
+    "content-encoding",
+    "content-length",
+  ]);
   res.statusCode = upstream.status;
   for (const [k, v] of upstream.headers.entries()) {
     if (hopByHop.has(k.toLowerCase())) continue;

@@ -3,6 +3,6 @@
   "apiUrl": "https://reyweet.vercel.app",
   "siteUrl": "https://reyweet.vercel.app",
   "bundleId": "com.reyweet.app",
-  "bundled": true,
-  "builtAt": "2026-06-04T08:01:28.108Z"
+  "sourceIpa": "Reyweet-ready.ipa",
+  "builtAt": "2026-06-05T15:37:07.887Z"
 }

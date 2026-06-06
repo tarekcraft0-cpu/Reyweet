@@ -446,6 +446,7 @@ function publicUserPayload(user: UserRow) {
     storyMaxDuration: user.storyMaxDuration,
     storyExpiryOptions: user.storyExpiryOptions,
     postCharacterLimit: user.postCharacterLimit,
+    chatBubbleStyle: user.chatBubbleStyle,
   };
 }
 
