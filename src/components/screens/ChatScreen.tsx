@@ -3383,8 +3383,9 @@ export function ChatScreen({
     sortedFilteredChats.length === 0 &&
     lastStableChats.length > 0 &&
     Date.now() - lastStableAt < 8000;
-  const inboxAwaitingRemote =
-    remoteHydrating && inboxFilter === "all" && !debouncedSearch && sortedFilteredChats.length === 0;
+  const inboxSyncing =
+    remoteHydrating && inboxFilter === "all" && !debouncedSearch;
+  const inboxAwaitingRemote = inboxSyncing && sortedFilteredChats.length === 0;
   const renderedChats = shouldHoldPreviousChats ? lastStableChats : sortedFilteredChats;
 
   const stackChatOpenKey = stackChat ? openChatIdFor(stackChat, me.id) : null;
@@ -3764,25 +3765,28 @@ export function ChatScreen({
           ══════════════════════════════════════════════════ */}
       <div ref={inboxVirtualListAnchorRef}>
         {(inboxAwaitingRemote || (shouldHoldPreviousChats && renderedChats.length === 0)) && (
-          <ChatInboxSkeleton rows={6} />
+          <ChatInboxSkeleton rows={8} />
         )}
 
         {renderedChats.length > 0 && (
-          <ChatInboxVirtualList
-            chats={renderedChats}
-            scrollParentRef={inboxListScrollRef}
-            scrollMargin={inboxVirtualScrollMargin}
-            renderRow={c => (
-              <ChatListRowWithPeek
-                chat={c}
-                me={me}
-                onOpenChat={openChatDirect}
-                onOpenProfile={onOpenProfile}
-                onRowOpenCommit={handleRowOpenCommit}
-                onPrefetchChat={prefetchChatMessages}
-              />
-            )}
-          />
+          <div className={inboxSyncing ? "chat-inbox-syncing relative" : "relative"}>
+            {inboxSyncing && <div className="chat-inbox-syncing-veil" aria-hidden />}
+            <ChatInboxVirtualList
+              chats={renderedChats}
+              scrollParentRef={inboxListScrollRef}
+              scrollMargin={inboxVirtualScrollMargin}
+              renderRow={c => (
+                <ChatListRowWithPeek
+                  chat={c}
+                  me={me}
+                  onOpenChat={openChatDirect}
+                  onOpenProfile={onOpenProfile}
+                  onRowOpenCommit={handleRowOpenCommit}
+                  onPrefetchChat={prefetchChatMessages}
+                />
+              )}
+            />
+          </div>
         )}
 
         {/* Empty state */}

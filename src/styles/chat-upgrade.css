@@ -99,6 +99,75 @@
 }
 
 /* ── قائمة المحادثات ── */
+@keyframes chat-inbox-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.chat-inbox-skeleton {
+  opacity: 0.78;
+}
+
+.chat-inbox-skeleton-row {
+  position: relative;
+  overflow: hidden;
+}
+
+.chat-inbox-skeleton-row::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.14) 45%,
+    transparent 90%
+  );
+  background-size: 200% 100%;
+  animation: chat-inbox-shimmer 1.4s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.dark .chat-inbox-skeleton-row::after {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.07) 45%,
+    transparent 90%
+  );
+  background-size: 200% 100%;
+}
+
+.chat-inbox-syncing {
+  pointer-events: none;
+  user-select: none;
+}
+
+.chat-inbox-syncing .chat-inbox-row-shell {
+  opacity: 0.38;
+  filter: saturate(0.55);
+  transition: opacity 0.25s ease, filter 0.25s ease;
+}
+
+.chat-inbox-syncing-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(0, 149, 246, 0.06) 42%,
+    transparent 84%
+  );
+  background-size: 200% 100%;
+  animation: chat-inbox-shimmer 1.25s ease-in-out infinite;
+  pointer-events: none;
+}
+
 .chat-inbox-row-shell {
   transition: background-color 0.15s ease;
 }

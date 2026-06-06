@@ -15,6 +15,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -2166,11 +2167,7 @@ function bootAppState(initialState?: AppState): {
       }
     }
     const remoteHydrating =
-      apiBackendEnabled() &&
-      !!getApiToken() &&
-      !isGuestUserId(uid || "") &&
-      (state.chats?.length ?? 0) === 0 &&
-      (state.posts?.length ?? 0) === 0;
+      apiBackendEnabled() && !!getApiToken() && !!uid && !isGuestUserId(uid);
     return { state, homeFeed, remoteHydrating };
   } catch (e) {
     console.warn("[Retweet] bootAppState failed, using initial:", e);
@@ -2272,7 +2269,7 @@ export function AppProvider({
   const fullPullPendingRef = useRef(false);
   const fullPullTimerRef = useRef<number | null>(null);
   const remoteSyncTimerRef = useRef<number | null>(null);
-  const MIN_FULL_PULL_MS = 8_000;
+  const MIN_FULL_PULL_MS = 3_500;
   const MIN_URGENT_PULL_MS = 600;
   const feedPullDebounceRef = useRef<number | null>(null);
   const lastFeedFetchAtRef = useRef(0);
@@ -2435,7 +2432,7 @@ export function AppProvider({
       } else {
         write();
       }
-    }, 1200);
+    }, 700);
   }, [state.chats, state.posts?.length, state.users?.length, state.currentUserId]);
 
   useEffect(() => {
@@ -2445,7 +2442,7 @@ export function AppProvider({
   }, []);
 
   /** عند وجود توكن خادم: جرّب جلب الحالة المحفوظة على الخادم بعد التحميل المحلي */
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!apiBackendEnabled()) return;
     const restored = restoreActiveSessionOnLaunch();
     if (restored) {
@@ -2469,10 +2466,7 @@ export function AppProvider({
       if (activeIdEarly && !isGuestUserId(activeIdEarly)) {
         seedPullCacheFromAccountState(activeIdEarly);
       }
-      const hasLocalData =
-        (stateRef.current.chats?.length ?? 0) > 0 ||
-        (stateRef.current.posts?.length ?? 0) > 0;
-      if (!hasLocalData) setRemoteHydrating(true);
+      setRemoteHydrating(true);
 
       const applyRemote = (
         remote: AppState,
@@ -2499,15 +2493,16 @@ export function AppProvider({
             lastFeedFetchAtRef.current = Date.now();
             markEssentialFeedSynced();
           }
-          if ((normalized.chats?.length ?? 0) > 0 || (normalized.posts?.length ?? 0) > 0) {
-            setRemoteHydrating(false);
-          }
           return normalized;
         });
       };
 
       try {
         invalidateHomeFeedCache();
+
+        const remoteP = pullRemoteAppState(token, { force: true });
+        const bannedP = apiFetchBannedUserIds(token);
+        const feedP = apiFetchHomeFeed(token, { limit: 50, force: true });
 
         const cachedRemote = await pullRemoteAppState(token);
         if (cancelled) return;
@@ -2520,10 +2515,6 @@ export function AppProvider({
         if (cachedRemote && activeId && !isGuestUserId(activeId)) {
           applyRemote(cachedRemote, activeId);
         }
-
-        const remoteP = pullRemoteAppState(token, { force: true });
-        const bannedP = apiFetchBannedUserIds(token);
-        const feedP = apiFetchHomeFeed(token, { limit: 50, force: true });
 
         const remote = await remoteP;
         if (cancelled) return;
@@ -6065,24 +6056,24 @@ export function AppProvider({
           return;
         }
         invalidateHomeFeedCache();
-        const [remote, bannedIds, feed] = await Promise.all([
-          pullRemoteAppState(token),
-          apiFetchBannedUserIds(token),
-          apiFetchHomeFeed(token, { limit: 50, force: true }),
-        ]);
+        const remoteP = pullRemoteAppState(token);
+        const feedP = apiFetchHomeFeed(token, { limit: 50, force: true });
+        const bannedP = apiFetchBannedUserIds(token);
+        const remote = await remoteP;
         lastFullPullAtRef.current = Date.now();
         fullPullPendingRef.current = false;
         if (!remote) return;
-        if (bannedIds.length) syncBannedUserIds(bannedIds);
-        else if (feed.ok && feed.bannedUserIds?.length) syncBannedUserIds(feed.bannedUserIds);
         perfMark("refreshFromServer-merge-start");
         const { markServerHydrated } = await import("./remotePushGate");
-        const applyRemote = (s: AppState) => {
+        const applyRemote = (
+          s: AppState,
+          feed?: { ok: boolean; posts: Post[]; users: User[]; bannedUserIds?: ID[] },
+        ) => {
           let next = buildMultiAccountState(activeId, remote, s, undefined, {
             serverAuthoritative: true,
           });
           next = applyBannedFilterToState(next, activeId);
-          if (feed.ok) {
+          if (feed?.ok) {
             if (feed.bannedUserIds?.length) syncBannedUserIds(feed.bannedUserIds);
             next = mergeHomeFeedIntoState(next, feed);
             lastFeedFetchAtRef.current = Date.now();
@@ -6092,14 +6083,21 @@ export function AppProvider({
         markServerHydrated(activeId, applyRemote(stateRef.current));
         setStateRaw(s => {
           const next = applyRemote(s);
-          syncHomeFeedPostsFromState(
-            next,
-            setHomeFeedPosts,
-            feed.ok ? feed.posts : undefined,
-          );
-          if (feed.ok) markEssentialFeedSynced();
+          persistStateSnapshotNow(next);
+          syncHomeFeedPostsFromState(next, setHomeFeedPosts);
           return next;
         });
+        const [bannedIds, feed] = await Promise.all([bannedP, feedP]);
+        if (bannedIds.length) syncBannedUserIds(bannedIds);
+        else if (feed.ok && feed.bannedUserIds?.length) syncBannedUserIds(feed.bannedUserIds);
+        if (feed.ok) {
+          setStateRaw(s => {
+            const next = applyRemote(s, feed);
+            syncHomeFeedPostsFromState(next, setHomeFeedPosts, feed.posts);
+            markEssentialFeedSynced();
+            return next;
+          });
+        }
         perfMark("refreshFromServer-merge-end");
         void refreshUserDirectory();
       })();

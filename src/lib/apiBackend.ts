@@ -883,9 +883,25 @@ export async function apiFetchUserPosts(
 /** يملأ كاش الجلب من اللقطة المحلية — عرض فوري قبل شبكة الخادم */
 export function seedPullCacheFromAccountState(userId: ID): boolean {
   const cache = loadAccountStateCache(userId);
-  if (!cache?.currentUserId) return false;
-  apiCacheSet("state:pull", cache, 86_400_000, 43_200_000);
-  return true;
+  if (cache?.currentUserId) {
+    apiCacheSet("state:pull", cache, 86_400_000, 43_200_000);
+    return true;
+  }
+  if (typeof window === "undefined") return false;
+  try {
+    const raw = localStorage.getItem("retweet_state_v2");
+    if (!raw) return false;
+    const parsed = JSON.parse(raw) as AppState;
+    const scoped = scopeAppStateToAccount(userId, parsed, {
+      accountIds: snapshotAccountIdsForOwner(userId),
+      isolateOwnedUsers: (ownerId, s) => isolateUsersForAccountCache(ownerId, s),
+    });
+    if (!(scoped.chats?.length || scoped.posts?.length || scoped.users?.length)) return false;
+    apiCacheSet("state:pull", scoped, 86_400_000, 43_200_000);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export async function pullRemoteAppState(
@@ -900,7 +916,7 @@ export async function pullRemoteAppState(
         const res = await apiFetch("/v1/app-state", {
           method: "GET",
           token,
-          timeoutMs: isNativeCapacitorShell() ? 60_000 : 45_000,
+          timeoutMs: isNativeCapacitorShell() ? 45_000 : 28_000,
         });
         if (!res.ok) return null;
         const data = (await res.json().catch(() => null)) as { state?: AppState } | null;
