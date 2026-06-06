@@ -1,4 +1,5 @@
 import type { AppState, Post, User } from "../../../src/lib/types.js";
+import { coerceTimestamp } from "../../../src/lib/coerceTimestamp.js";
 import {
   createUser,
   getUserById,
@@ -65,7 +66,10 @@ export async function syncNormalizedFromAppState(state: AppState, ownerUserId?: 
       likes: [],
       reposts: [],
       comments: [],
-      createdAt: new Date(p.createdAt || Date.now()).toISOString(),
+      createdAt: (() => {
+        const ms = coerceTimestamp(p.createdAt, 0);
+        return ms > 0 ? new Date(ms).toISOString() : now;
+      })(),
       updatedAt: now,
     };
     await upsertPostPreservingSocial(row);
@@ -157,7 +161,7 @@ export async function buildMinimalAppState(currentUserId: string): Promise<AppSt
     likes: p.likes,
     reposts: p.reposts,
     comments: [],
-    createdAt: new Date(p.createdAt).getTime(),
+    createdAt: coerceTimestamp(p.createdAt, 0),
   }));
 
   const me = dbUsers.find(u => u.id === currentUserId);

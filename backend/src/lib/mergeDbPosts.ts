@@ -20,9 +20,17 @@ function rowToPost(row: PostRow, prev?: Post): Post {
       [],
     createdAt: (() => {
       const parsed = new Date(row.createdAt).getTime();
-      if (Number.isFinite(parsed) && parsed > 0) return parsed;
-      if (prev?.createdAt && prev.createdAt > 0) return prev.createdAt;
-      return 0;
+      const updated = new Date(row.updatedAt).getTime();
+      let at =
+        Number.isFinite(parsed) && parsed > 0
+          ? parsed
+          : prev?.createdAt && prev.createdAt > 0
+            ? prev.createdAt
+            : 0;
+      if (Number.isFinite(updated) && updated > 0 && at > updated + 60_000) {
+        at = updated;
+      }
+      return at;
     })(),
   };
 }

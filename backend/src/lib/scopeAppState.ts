@@ -1,5 +1,5 @@
 import type { AppState, Chat, ID, Message } from "../../../src/lib/types.js";
-import { canonicalizeDmChatId } from "./dmChatId.js";
+import { scopeChatForInbox } from "../../../src/lib/scopeAppState.js";
 import { storiesOwnedByUser } from "./storyVisibility.js";
 
 function dmPeerIds(chat: Chat, ownerId: ID): string[] {
@@ -102,7 +102,7 @@ export function scopeChatForAccount(chat: Chat, ownerId: string): Chat | null {
 /** عزل لقطة الحساب على الخادم قبل الحفظ — لا تُخزَّن محادثات حساب آخر في snapshot */
 export function scopeAppStateToOwner(ownerId: string, state: AppState): AppState {
   const chats = (state.chats || [])
-    .map(c => scopeChatForAccount(c, ownerId))
+    .map(c => scopeChatForInbox(c, ownerId))
     .filter((c): c is Chat => c != null);
 
   const notifications = (state.notifications || []).filter(n => n.userId === ownerId);

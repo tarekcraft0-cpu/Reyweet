@@ -1,19 +1,49 @@
 /**
  * تهيئة جلسة الويب بعد تسجيل الدخول — /app مرتبط بقاعدة البيانات عبر Retweet API.
  */
-import { apiBackendEnabled, ensureApiRuntimeConfig, getApiToken, pullRemoteAppState } from "./apiBackend";
+import {
+  apiBackendEnabled,
+  ensureApiRuntimeConfig,
+  getApiToken,
+  invalidateAppStatePullCache,
+  invalidateHomeFeedCache,
+  pullRemoteAppState,
+} from "./apiBackend";
+import { normalizePostsTimestamps } from "./coerceTimestamp";
 import { restoreActiveSessionOnLaunch } from "./accountSessions";
 import { logAuthRoute } from "./authRouteDebug";
 import { applyAuthoritativeProfile, mergeUserFromServer } from "./mergeUserSocial";
 import { scopeAppStateToAccount } from "./scopeAppState";
 import { isolateUsersForAccountCache, snapshotAccountIdsForOwner } from "./accountSessions";
-import { mergeChatsPreservingLocal, normalizePersistedAppState, readPersistedAppState } from "./store";
+import {
+  mergeChatsPreservingLocal,
+  normalizePersistedAppState,
+  readPersistedAppState,
+  resetHomeFeedServerSlice,
+} from "./store";
 import type { AppState } from "./types";
 
 import { runChatIsolationMigration } from "./chatIsolationMigration";
 import { consumeForceServerHydrate } from "./nativeAppMigrate";
 
 const STORAGE_KEY = "retweet_state_v2";
+/** يُفرّغ كاش الفيد/الحالة بعد إصلاحات التواريخ والمحادثات */
+const WEB_REPAIR_KEY = "retweet_web_repair_v";
+const WEB_REPAIR_VERSION = "5";
+
+function runWebClientRepairOnce(): void {
+  if (typeof window === "undefined") return;
+  try {
+    const prev = localStorage.getItem(WEB_REPAIR_KEY);
+    if (prev === WEB_REPAIR_VERSION) return;
+    localStorage.setItem(WEB_REPAIR_KEY, WEB_REPAIR_VERSION);
+    invalidateHomeFeedCache();
+    invalidateAppStatePullCache();
+    resetHomeFeedServerSlice();
+  } catch {
+    /* ignore */
+  }
+}
 
 function loadPersisted(): AppState | null {
   if (typeof window === "undefined") return null;
@@ -57,8 +87,8 @@ async function hydrateFromApiToken(): Promise<boolean> {
   }
 
   const postById = new Map<string, import("./types").Post>();
-  for (const p of base.posts || []) postById.set(p.id, p);
-  for (const p of remote.posts || []) postById.set(p.id, p);
+  for (const p of normalizePostsTimestamps(base.posts || [])) postById.set(p.id, p);
+  for (const p of normalizePostsTimestamps(remote.posts || [])) postById.set(p.id, p);
   const mergedPosts = [...postById.values()].sort(
     (a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0),
   );
@@ -89,6 +119,7 @@ async function hydrateFromApiToken(): Promise<boolean> {
 /** يُستدعى عند فتح /app — يحمّل الحالة من قاعدة البيانات على الخادم */
 export async function bootstrapWebAppSession(): Promise<void> {
   if (typeof window === "undefined") return;
+  runWebClientRepairOnce();
   runChatIsolationMigration();
   await ensureApiRuntimeConfig();
   if (!apiBackendEnabled()) return;

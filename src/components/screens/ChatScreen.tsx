@@ -149,9 +149,6 @@ import {
 } from "@/lib/verifiedChatBubbleStyles";
 import { Mic, Image as ImageIcon, Sticker, Phone, Video, MicOff, MonitorUp, X, Plus, ArrowRight, Check, Camera, Search, Square, Megaphone, Users, LogOut, AtSign, MoreVertical, ChevronLeft, Reply, Forward, Copy, Trash2, Flag, MoreHorizontal, ChevronRight, Pin, Play, Pause, Star, Bell, BellOff, Mail, Send, PenLine, SquarePen, MessageCirclePlus, Smile, Lock, Languages, Sparkles } from "lucide-react";
 import { TranslateTextSheet } from "../chat/TranslateTextSheet";
-import { PoolGameInviteBubble } from "../chat/PoolGameInviteBubble";
-
-const PoolGame = lazy(() => import("../games/PoolGame").then(m => ({ default: m.PoolGame })));
 import {
   buildChatTimelineRows,
   chatBubbleAlignClasses,
@@ -184,6 +181,11 @@ import {
 import { getActiveCallMeta, type IncomingCallRing } from "@/lib/webrtcCall";
 import { apiSearchChatMessages, type MessageSearchHit } from "@/lib/chatSearchApi";
 import { emitUiToast } from "@/lib/uiToast";
+
+const PoolGame = lazy(() => import("../games/PoolGame").then(m => ({ default: m.PoolGame })));
+const PoolGameInviteBubble = lazy(() =>
+  import("../chat/PoolGameInviteBubble").then(m => ({ default: m.PoolGameInviteBubble })),
+);
 
 const PREVIEW_MAX = 96;
 /** عرض عمود التطبيق — من useSlideDismissBack */
@@ -4721,6 +4723,7 @@ function ChatRoom({
     : "";
   const isGroupChat = chat.isGroup && !chat.isChannel;
   const isDmRoom = !chat.isGroup && !chat.isChannel;
+  const isQuranChannel = chat.id === QURAN_CHANNEL_ID;
   const peerIsTyping = useMemo(() => {
     if (!otherId || !isDmRoom) return false;
     const storageId = dmChatId(meId, otherId);
@@ -5653,7 +5656,6 @@ function ChatRoom({
 
   const VANISH_PULL_NEED = 120;
 
-  const isQuranChannel = chat.id === QURAN_CHANNEL_ID;
   const useIgDm = isIgDmChat(isDmRoom, isQuranChannel);
   const dmPalette = useMemo(
     () => (useIgDm ? getChatDmPalette(appTheme) : null),
@@ -6064,12 +6066,14 @@ function ChatRoom({
           />
         )}
         {m.type === "text" && messageContent(m).startsWith("__game_invite__:pool:") ? (
-          <PoolGameInviteBubble
-            message={m}
-            meId={meId}
-            chatId={chat.id}
-            onJoin={roomId => setLocalPoolRoomId(roomId)}
-          />
+          <Suspense fallback={null}>
+            <PoolGameInviteBubble
+              message={m}
+              meId={meId}
+              chatId={chat.id}
+              onJoin={roomId => setLocalPoolRoomId(roomId)}
+            />
+          </Suspense>
         ) : m.type === "text" &&
           ((m.replyContext?.kind === "note" || /^↩️ رد على نوتك:/.test(messageContent(m))) ? (
             <ChatNoteReplyBubble message={m} mine={mine} />

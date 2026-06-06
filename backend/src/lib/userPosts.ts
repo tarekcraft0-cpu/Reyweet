@@ -1,4 +1,5 @@
 import type { AppState, Post, User } from "../../../src/lib/types.js";
+import { coerceTimestamp } from "../../../src/lib/coerceTimestamp.js";
 import {
   getSnapshot,
   getUserById,
@@ -100,7 +101,7 @@ export async function buildUserPostsForViewer(
       likes: row.likes ?? [],
       reposts: row.reposts ?? [],
       comments: (row as { comments?: Post["comments"] }).comments ?? [],
-      createdAt: new Date(row.createdAt).getTime() || Date.now(),
+      createdAt: coerceTimestamp(row.createdAt, 0),
     };
     if (!viewerCanSeePost(viewerId, post, usersById)) continue;
     byId.set(post.id, post);
@@ -118,7 +119,7 @@ export async function buildUserPostsForViewer(
         likes: p.likes ?? [],
         reposts: p.reposts ?? [],
         comments: p.comments ?? [],
-        createdAt: p.createdAt || Date.now(),
+        createdAt: coerceTimestamp(p.createdAt, typeof p.createdAt === "number" ? p.createdAt : 0),
       };
       if (!viewerCanSeePost(viewerId, post, usersById)) continue;
       byId.set(post.id, byId.get(post.id) ? { ...byId.get(post.id)!, ...post } : post);

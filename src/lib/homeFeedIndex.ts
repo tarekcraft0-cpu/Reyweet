@@ -1,4 +1,5 @@
 import type { AppState, ID, Post, User } from "./types";
+import { normalizePostsTimestamps } from "./coerceTimestamp";
 import { canViewPostInHomeFeed } from "./feedVisibility";
 import { isReelFeedPost } from "./postMedia";
 
@@ -72,8 +73,9 @@ export function computeHomeFeedPostIds(
 /** دمج صفحات فيد الخادم (تحميل المزيد) */
 export function mergeServerHomeFeedPosts(existing: Post[], page: Post[]): Post[] {
   if (!page.length) return existing;
+  const pageNorm = normalizePostsTimestamps(page);
   const byId = new Map(existing.map(p => [p.id, p]));
-  for (const p of page) {
+  for (const p of pageNorm) {
     if (p?.id) byId.set(p.id, p);
   }
   return [...byId.values()].sort((a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0));

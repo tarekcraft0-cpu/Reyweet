@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import type { AppState, Comment, Notification, Post, StoryItem } from "../../../src/lib/types.js";
+import { coerceTimestamp } from "../../../src/lib/coerceTimestamp.js";
 import { SNAPSHOTS_DIR } from "../config.js";
 import {
   getSnapshot,
@@ -159,7 +160,7 @@ function rowToClientPost(row: PostRow, comments: PostCommentRow[]): Post {
       text: c.text,
       createdAt: c.createdAt,
     })),
-    createdAt: new Date(row.createdAt).getTime() || Date.now(),
+    createdAt: coerceTimestamp(row.createdAt, 0),
   };
 }
 

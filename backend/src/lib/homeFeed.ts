@@ -1,4 +1,5 @@
 import type { AppState, Post, User } from "../../../src/lib/types.js";
+import { coerceTimestamp } from "../../../src/lib/coerceTimestamp.js";
 import { getSnapshot } from "../db/engine.js";
 import { buildMinimalAppState } from "./syncAppState.js";
 import { mergeDbUsersIntoAppState } from "./mergeDbUsers.js";
@@ -39,7 +40,12 @@ function postRowToClient(row: PostRow): Post {
       text: c.text,
       createdAt: c.createdAt,
     })),
-    createdAt: Date.parse(row.createdAt) || 0,
+    createdAt: (() => {
+      const at = coerceTimestamp(row.createdAt, 0);
+      const upd = coerceTimestamp(row.updatedAt, 0);
+      if (upd > 0 && at > upd + 60_000) return upd;
+      return at;
+    })(),
   };
 }
 

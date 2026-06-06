@@ -241,7 +241,7 @@ export function scopeAppStateToAccount(
   if (!ownerId || isGuestUserId(ownerId)) return state;
 
   const chats = (state.chats || [])
-    .map(c => scopeChatForAccount(c, ownerId))
+    .map(c => scopeChatForInbox(c, ownerId))
     .filter((c): c is Chat => c != null);
 
   const notifications = (state.notifications || []).filter(n => n.userId === ownerId);

@@ -106,6 +106,11 @@ export function markEssentialFeedSynced(): void {
 export function essentialFeedSyncedRecently(withinMs = 45_000): boolean {
   return lastEssentialFeedSyncAt > 0 && Date.now() - lastEssentialFeedSyncAt < withinMs;
 }
+/** يُفرّغ فيد الخادم بعد إصلاح التواريخ — يمنع عرض كاش محلي بتواريخ خاطئة */
+export function resetHomeFeedServerSlice(): void {
+  homeFeedServerSlice.posts = [];
+  lastEssentialFeedSyncAt = 0;
+}
 
 function prependLivePostToHomeFeedSlice(post: Post): void {
   if (!post?.id) return;
@@ -183,13 +188,6 @@ function syncHomeFeedPostsFromState(
     homeFeedServerSlice.posts = filterPostsByBannedAuthors(serverPosts, banned);
   }
   let display = buildHomeFeedDisplayPosts(next, meId, homeFeedServerSlice.posts, me, banned);
-  if (display.length === 0 && (next.posts?.length ?? 0) > 0) {
-    display = filterPostsByBannedAuthors(
-      (next.posts || []).filter(p => p?.id && !isReelFeedPost(p)),
-      banned,
-    );
-    if (display.length > 0) homeFeedServerSlice.posts = display;
-  }
   setHomeFeedPosts(display);
 }
 
@@ -2240,7 +2238,7 @@ async function syncChatsInboxFromServer(
   const remote = await pullRemoteAppState(token, { force: true });
   if (!remote) return base;
   const chats = mergeChatsPreservingLocal(base, remote, ownerId);
-  if (!chats.length) return base;
+  if (!chats.length && !(remote.chats?.length)) return base;
   return applyBannedFilterToState({ ...base, chats }, ownerId);
 }
 
