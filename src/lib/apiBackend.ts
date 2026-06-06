@@ -26,6 +26,7 @@ import {
 import { formatFetchError, logApi, redactBody, shouldLogApi } from "./apiDebug";
 import { isGuestUserId } from "./guestUser";
 import { scopeAppStateToAccount } from "./scopeAppState";
+import { normalizePostsTimestamps } from "./coerceTimestamp";
 import { isReactNativeWebView } from "./nativeShell";
 import { dedupeGroupSystemMessages } from "./groupSystemMessages";
 import { getDeviceLabel, getOrCreateDeviceFingerprint } from "./deviceFingerprint";
@@ -271,7 +272,6 @@ export async function apiFetch(
   try {
     return await doFetch(0);
   } catch (e) {
-    void import("./serverReachability").then(m => m.markServerOffline());
     const aborted = e instanceof Error && e.name === "AbortError";
     const networkMsg = formatFetchError(e, url);
     logApi("error", { method, url, aborted, error: e });
@@ -857,7 +857,7 @@ export async function apiFetchHomeFeed(
   if (!res.ok) return { ok: false, error: data.error || "فشل تحميل الفيد" };
   const out: FeedPageResult = {
     ok: true,
-    posts: Array.isArray(data.posts) ? data.posts : [],
+    posts: normalizePostsTimestamps(Array.isArray(data.posts) ? data.posts : []),
     users: Array.isArray(data.users) ? data.users : [],
     hasMore: !!data.hasMore,
     nextCursor: data.nextCursor,
@@ -890,7 +890,7 @@ export async function apiFetchUserPosts(
   if (!res.ok) return { ok: false, error: data.error || "فشل تحميل المنشورات" };
   return {
     ok: true,
-    posts: Array.isArray(data.posts) ? data.posts : [],
+    posts: normalizePostsTimestamps(Array.isArray(data.posts) ? data.posts : []),
     users: Array.isArray(data.users) ? data.users : [],
     hasMore: !!data.hasMore,
     nextCursor: data.nextCursor,

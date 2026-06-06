@@ -80,9 +80,10 @@ function mergeHiddenMessageIdsByUser(
 /** سحب الفيد من الخادم مباشرة — يتجاوز لقطة localStorage القديمة */
 function mergePostsServerAuthoritative(localPosts: Post[], remotePosts: Post[]): Post[] {
   pruneLocalRemoveMaps();
-  const remoteById = new Map(remotePosts.map(p => [p.id, p]));
+  const remoteNorm = remotePosts.map(normalizePostTimestamps);
+  const remoteById = new Map(remoteNorm.map(p => [p.id, p]));
   const merged: Post[] = [];
-  for (const p of remotePosts) {
+  for (const p of remoteNorm) {
     if (locallyRemovedPostIds.has(p.id)) continue;
     merged.push(p);
   }
@@ -274,8 +275,9 @@ function mergeSocialIdLists(
 function mergePostsPreservingLocalDeletes(localPosts: Post[], remotePosts: Post[]): Post[] {
   const now = Date.now();
   pruneLocalRemoveMaps(now);
+  const remoteNorm = remotePosts.map(normalizePostTimestamps);
   const localIds = new Set(localPosts.map(p => p.id));
-  const remoteById = new Map(remotePosts.map(p => [p.id, p]));
+  const remoteById = new Map(remoteNorm.map(p => [p.id, p]));
   const merged: Post[] = [];
   for (const p of localPosts) {
     if (locallyRemovedPostIds.has(p.id)) continue;
@@ -298,7 +300,7 @@ function mergePostsPreservingLocalDeletes(localPosts: Post[], remotePosts: Post[
       comments,
     });
   }
-  for (const p of remotePosts) {
+  for (const p of remoteNorm) {
     if (localIds.has(p.id)) continue;
     if (locallyRemovedPostIds.has(p.id)) continue;
     merged.push({
@@ -492,7 +494,7 @@ import {
   scopeChatForAccount,
   scopeChatForInbox,
 } from "./scopeAppState";
-import { coerceTimestamp } from "./coerceTimestamp";
+import { coerceTimestamp, normalizePostTimestamps } from "./coerceTimestamp";
 import {
   purgeStateForAccountSwitch,
   refreshOwnedUsersInState,

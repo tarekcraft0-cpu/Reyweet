@@ -1,4 +1,5 @@
 import type { AppState } from "../../../src/lib/types.js";
+import { coerceTimestamp } from "../../../src/lib/coerceTimestamp.js";
 import { rewriteAppStateMediaRefs, toClientMediaRef } from "./normalizeMediaRef.js";
 import { DEFAULT_AVATAR_DATA_URI } from "./defaultAvatar.js";
 
@@ -32,14 +33,20 @@ export function coerceAppStateForClient(state: AppState): AppState {
       followRequestOut: u.followRequestOut ?? [],
       isPrivate: u.isPrivate === true,
     })),
-    posts: (state.posts ?? []).map(p => ({
-      ...p,
-      text: p.text ?? "",
-      likes: p.likes ?? [],
-      reposts: p.reposts ?? [],
-      comments: p.comments ?? [],
-      createdAt: typeof p.createdAt === "number" ? p.createdAt : Date.now(),
-    })),
+    posts: (state.posts ?? []).map(p => {
+      const prevAt = typeof p.createdAt === "number" ? p.createdAt : 0;
+      return {
+        ...p,
+        text: p.text ?? "",
+        likes: p.likes ?? [],
+        reposts: p.reposts ?? [],
+        comments: (p.comments ?? []).map(c => ({
+          ...c,
+          createdAt: coerceTimestamp(c.createdAt, typeof c.createdAt === "number" ? c.createdAt : 0),
+        })),
+        createdAt: coerceTimestamp(p.createdAt, prevAt),
+      };
+    }),
     stories: state.stories ?? [],
     storyArchive: state.storyArchive ?? [],
     chats: (state.chats ?? []).map(c => ({
