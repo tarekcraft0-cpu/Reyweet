@@ -230,12 +230,14 @@ export async function restoreAccount(
     appealApproved?: boolean;
     /** فك حظر نهائي بعد دعم — إيميل اعتذار مخصص */
     wrongfulPermanentRestore?: boolean;
+    /** فك حظر يدوي من لوحة الإشراف — يتجاوز قيد حظر البوت */
+    adminForceUnban?: boolean;
     note?: string;
   },
 ): Promise<UserModerationState> {
   const state = await getUserModerationState(userId);
   const botBan = isBotGuardBan(state);
-  if (botBan && !opts?.appealApproved) {
+  if (botBan && !opts?.appealApproved && !opts?.adminForceUnban) {
     throw new Error("حظر البوت لا يُرفع إلا بعد قبول طعن");
   }
   const wasPermanent = state.accountStatus === "PERMANENTLY_BANNED";
@@ -266,9 +268,14 @@ export async function restoreAccount(
     createdAt: Date.now(),
   };
   await saveUserModerationState(state);
+  invalidateBannedUserCache();
   await appendModerationAudit({
     actorId,
-    action: wrongfulRestore ? "account.restored_wrongful_permanent" : "account.restored",
+    action: opts?.adminForceUnban
+      ? "account.admin_unban"
+      : wrongfulRestore
+        ? "account.restored_wrongful_permanent"
+        : "account.restored",
     entityType: "user",
     entityId: userId,
     meta: opts?.note ? { note: opts.note, wasPermanent } : { wasPermanent },

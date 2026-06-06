@@ -376,6 +376,8 @@ export function createModerationRouter(authMiddleware: (req: Request, res: Respo
         .object({
           note: z.string().max(1000).optional(),
           wrongfulPermanent: z.boolean().optional(),
+          /** فك حظر مباشر من لوحة الإشراف — يتجاوز قيد حظر البوت */
+          force: z.boolean().optional(),
         })
         .safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: "بيانات غير صالحة" });
@@ -383,14 +385,15 @@ export function createModerationRouter(authMiddleware: (req: Request, res: Respo
       const botBan = (before.violations ?? []).some(
         v => v.moderatorId === "system:bot-guard" || v.moderatorId === "system:bot-link",
       );
-      if (botBan) {
+      if (botBan && !parsed.data.force) {
         return res.status(403).json({
-          error: "حظر البوت لا يُرفع يدوياً — يجب على المستخدم تقديم طعن وقبوله",
+          error: "حظر البوت لا يُرفع يدوياً — يجب على المستخدم تقديم طعن وقبوله، أو استخدم فك الحظر المباشر",
           code: "bot_ban_appeal_only",
         });
       }
       await restoreAccount(userId, modId, {
         wrongfulPermanentRestore: parsed.data.wrongfulPermanent === true || wasPermanent,
+        adminForceUnban: parsed.data.force === true,
         note: parsed.data.note,
       });
       return res.json({

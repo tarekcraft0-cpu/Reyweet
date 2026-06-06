@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   apiAdminDecideAppeal,
+  apiAdminGetModerationUser,
   apiAdminListAppeals,
   apiAdminLookupUserByUsername,
   apiAdminListReports,
@@ -13,6 +14,7 @@ import {
   type ModerationAppeal,
   type ModerationReport,
 } from "@/lib/moderationTypes";
+import { isBannedAccountStatus } from "@/lib/accountModerationBridge";
 
 const CATEGORY_LABEL: Record<string, string> = Object.fromEntries(
   REPORT_CATEGORIES.map(c => [c.id, c.labelAr]),
@@ -86,6 +88,12 @@ export function ModerationDashboard() {
   const [restoreNote, setRestoreNote] = useState("");
   const [restoreBusy, setRestoreBusy] = useState(false);
   const [restoreMsg, setRestoreMsg] = useState("");
+  const [reportedUserState, setReportedUserState] = useState<{
+    accountStatus: string;
+    banReason?: string;
+    banned: boolean;
+  } | null>(null);
+  const [unbanBusy, setUnbanBusy] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -113,6 +121,57 @@ export function ModerationDashboard() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!selected) {
+      setReportedUserState(null);
+      return;
+    }
+    let cancelled = false;
+    void apiAdminGetModerationUser(selected.reportedUserId).then(r => {
+      if (cancelled) return;
+      if (!r.ok) {
+        setReportedUserState(null);
+        return;
+      }
+      const status = r.data.state.accountStatus;
+      setReportedUserState({
+        accountStatus: status,
+        banReason: r.data.state.banReason,
+        banned: isBannedAccountStatus(status),
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selected?.id, selected?.reportedUserId]);
+
+  const unbanReportedUser = async () => {
+    if (!selected || !reportedUserState?.banned) return;
+    const name = selected.reportedUsername?.trim() || selected.reportedUserId;
+    if (
+      !confirm(
+        `فك حظر @${name} مباشرة؟\n\nسيتم استعادة الحساب فوراً دون انتظار طعن.`,
+      )
+    ) {
+      return;
+    }
+    setUnbanBusy(true);
+    const r = await apiAdminRestoreUser(selected.reportedUserId, {
+      note: `فك حظر من بلاغ ${selected.id}`,
+      force: true,
+      wrongfulPermanent: reportedUserState.accountStatus === "PERMANENTLY_BANNED",
+    });
+    setUnbanBusy(false);
+    if (!r.ok) {
+      alert(r.error);
+      return;
+    }
+    alert(r.data.messageAr);
+    setReportedUserState(null);
+    setSelected(null);
+    void load();
+  };
 
   const review = async (action: string) => {
     if (!selected || !isOpenReport(selected.status)) return;
@@ -279,6 +338,7 @@ export function ModerationDashboard() {
                   void apiAdminRestoreUser(restoreLookup.user.id, {
                     note: restoreNote.trim() || "مراجعة دعم — استعادة بعد ظلم",
                     wrongfulPermanent: restoreLookup.permanentlyDisabled,
+                    force: true,
                   }).then(r => {
                     setRestoreBusy(false);
                     if (!r.ok) {
@@ -446,6 +506,28 @@ export function ModerationDashboard() {
             {selected.evidence?.text && (
               <p className="mt-2 text-xs text-muted-foreground">{selected.evidence.text}</p>
             )}
+            {reportedUserState?.banned ? (
+              <div className="mt-3 rounded-lg bg-destructive/10 px-3 py-2 text-sm">
+                <p className="font-semibold text-destructive">
+                  الحساب محظور — {STATUS_LABEL[reportedUserState.accountStatus] ?? reportedUserState.accountStatus}
+                </p>
+                {reportedUserState.banReason ? (
+                  <p className="mt-1 text-xs text-muted-foreground">{reportedUserState.banReason}</p>
+                ) : null}
+                <button
+                  type="button"
+                  disabled={unbanBusy}
+                  onClick={() => void unbanReportedUser()}
+                  className="mt-2 w-full rounded-lg bg-emerald-600 py-2 text-xs font-bold text-white disabled:opacity-50"
+                >
+                  {unbanBusy ? "جاري فك الحظر…" : "فك الحظر مباشرة (بدون طعن)"}
+                </button>
+              </div>
+            ) : reportedUserState ? (
+              <p className="mt-2 text-xs text-muted-foreground">
+                حالة الحساب: {STATUS_LABEL[reportedUserState.accountStatus] ?? reportedUserState.accountStatus}
+              </p>
+            ) : null}
             {selectedOpen ? (
               <div className="mt-4 grid grid-cols-2 gap-2">
                 <button

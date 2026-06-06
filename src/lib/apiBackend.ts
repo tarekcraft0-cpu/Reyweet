@@ -402,6 +402,7 @@ export async function apiVerifyTotpLogin(
   code: string,
 ): Promise<
   | { ok: true; token: string; userId: string; user: ApiAuthUser }
+  | { ok: true; token: string; userId: string; user: ApiAuthUser; banned: true; banInfo: import("./moderationBanTypes").BanInfo }
   | { ok: true; requiresOtp: true; emailHint?: string; otpReason?: string }
   | { ok: false; error: string }
 > {
@@ -418,6 +419,8 @@ export async function apiVerifyTotpLogin(
     requiresOtp?: boolean;
     emailHint?: string;
     otpReason?: string;
+    banned?: boolean;
+    banInfo?: import("./moderationBanTypes").BanInfo;
   };
   if (!res.ok) return { ok: false, error: data.error || "رمز غير صحيح" };
   if (data.requiresOtp) {
@@ -429,6 +432,16 @@ export async function apiVerifyTotpLogin(
     };
   }
   if (!data.token || !data.user?.id) return { ok: false, error: "استجابة غير صالحة" };
+  if (data.banned && data.banInfo) {
+    return {
+      ok: true,
+      token: data.token,
+      userId: data.user.id,
+      user: data.user,
+      banned: true,
+      banInfo: data.banInfo,
+    };
+  }
   return { ok: true, token: data.token, userId: data.user.id, user: data.user };
 }
 

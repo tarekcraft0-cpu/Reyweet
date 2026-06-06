@@ -187,9 +187,18 @@ export async function apiAdminLookupUserByUsername(username: string) {
   }>(`/v1/admin/moderation/users/by-username/${encodeURIComponent(username)}`, { method: "GET" });
 }
 
+export async function apiAdminGetModerationUser(userId: string) {
+  return modFetch<{
+    user: { id: string; username: string; email: string };
+    state: AdminModerationUserState & { accountStatus: string; banReason?: string };
+    banned: boolean;
+    permanentlyDisabled: boolean;
+  }>(`/v1/admin/moderation/users/${encodeURIComponent(userId)}`, { method: "GET" });
+}
+
 export async function apiAdminRestoreUser(
   userId: string,
-  body: { note?: string; wrongfulPermanent?: boolean },
+  body: { note?: string; wrongfulPermanent?: boolean; force?: boolean },
 ) {
   return modFetch<{
     ok: true;

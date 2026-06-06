@@ -2941,9 +2941,6 @@ export function AppProvider({
     if (apiBackendEnabled()) {
       const r = await apiLogin(q, password);
       if (!r.ok) {
-        if (r.banned && r.banInfo) {
-          return { ok: false, error: "حسابك موقوف — سجّل الدخول مجدداً بعد تحديث التطبيق" };
-        }
         return { ok: false, error: r.error };
       }
       if ("requiresTotp" in r && r.requiresTotp) {
@@ -3023,10 +3020,24 @@ export function AppProvider({
     }
     const adding =
       !!(stateRef.current.currentUserId && !isGuestUserId(stateRef.current.currentUserId));
-    const applied = await applyApiAuthSuccess(r.token, r.user, stateRef.current, adding);
+    const isBannedLogin = "banned" in r && r.banned && r.banInfo;
+    const applied = await applyApiAuthSuccess(
+      r.token,
+      r.user,
+      stateRef.current,
+      adding,
+      isBannedLogin ? { skipRemotePull: true } : undefined,
+    );
     if (!applied.ok) return { ok: false, error: applied.error };
     setStateRaw(applied.state);
     beginNativePostLoginQuietPeriod();
+    if (isBannedLogin && r.banInfo) {
+      dispatchAccountModeration({
+        banInfo: r.banInfo,
+        accountStatus: r.banInfo.accountStatus,
+      });
+      return { ok: true };
+    }
     void import("./feedVisibility").then(({ requestAuthFeedRefresh }) => requestAuthFeedRefresh());
     return { ok: true };
   };

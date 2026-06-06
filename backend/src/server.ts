@@ -572,14 +572,24 @@ async function finishAuthLogin(
   deviceFingerprint: string,
   deviceLabel: string,
 ): Promise<Response> {
-  const banned = await loginBanResponse(user, res);
-  if (banned) return banned;
+  const status = await resolveEffectiveStatus(user.id);
+  const banned = isBannedStatus(status);
+  const banInfo = banned ? await getBanInfoForUser(user) : null;
   const { recordLoginEvent } = await import("./routes/userExtrasRoutes.js");
   recordLoginEvent(user.id, req, true, deviceLabel);
   await trustDeviceForUser(user.id, deviceFingerprint, deviceLabel, req);
   await linkDeviceAndIp(user.id, deviceFingerprint, clientIpFromRequest(req));
   const tv = await getUserTokenVersion(user.id);
   const token = signAccessToken(user.id, tv);
+  if (banned && banInfo) {
+    return res.json({
+      token,
+      user: authUserPayload(user),
+      banned: true,
+      banInfo,
+      accountStatus: status,
+    });
+  }
   return res.json({ token, user: authUserPayload(user) });
 }
 
@@ -1123,13 +1133,6 @@ function authMiddleware(req: Request, res: Response, next: NextFunction): void {
   } catch {
     res.status(401).json({ error: "unauthorized" });
   }
-}
-
-async function loginBanResponse(user: UserRow, res: Response): Promise<Response | null> {
-  const status = await resolveEffectiveStatus(user.id);
-  if (!isBannedStatus(status)) return null;
-  const banInfo = await getBanInfoForUser(user);
-  return res.status(403).json({ error: "account_banned", banInfo, banned: true });
 }
 
 app.get("/v1/app-state", authMiddleware, async (req, res) => {
