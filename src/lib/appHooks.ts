@@ -49,6 +49,11 @@ export function useCurrentUser(): User | null {
   });
 }
 
+/** نفس useCurrentUser — يمنع تعطل الواجهة عند فتح المحادثة قبل اكتمال users[] */
+export function useCurrentUserOrStub(): User | null {
+  return useCurrentUser();
+}
+
 export function useCurrentUserId(): ID | null {
   return useAppSelector(s => s.currentUserId || null);
 }

@@ -47,7 +47,8 @@ import {
 import { ChatStackRoomGestureShell } from "../chat/ChatStackRoomGestureShell";
 import { GroupSplitAvatar } from "../chat/GroupSplitAvatar";
 import { SlideDismissBackButton, SlideDismissContext, SlideDismissShell } from "../SlideDismissShell";
-import { QURAN_CHANNEL_ID, isProfileNoteActive, useAppActions, useAppLanguage, useAppTheme, useAppSelector, useAppState, useChats, useCurrentUser, useIsGuestSelector, useAccountSessionKey, userById, visibleChatMessages } from "@/lib/store";
+import { QURAN_CHANNEL_ID, isProfileNoteActive, useAppActions, useAppLanguage, useAppTheme, useAppSelector, useAppState, useChats, useIsGuestSelector, useAccountSessionKey, userById, visibleChatMessages } from "@/lib/store";
+import { useCurrentUserOrStub } from "@/lib/appHooks";
 import {
   isGroupMembershipSystemContent,
   parseGroupSystemEvent,
@@ -59,6 +60,8 @@ import { notifyGuestActionBlocked } from "@/lib/guestBlocked";
 import { chatNoSelectCaptureHandlers } from "@/lib/chatNoTextSelection";
 import { NATIVE_LONG_PRESS_ATTR } from "@/lib/nativeTextSelectionGuard";
 import { useRemoteHydrating } from "@/lib/appUiContext";
+import { useHomePullToRefresh } from "@/hooks/useHomePullToRefresh";
+import { HomePullToRefreshIndicator } from "../home/HomePullToRefreshIndicator";
 import { useT } from "@/lib/i18n";
 import { Avatar } from "../Avatar";
 import { ChatDmIntroCard } from "../chat/ChatDmIntroCard";
@@ -104,6 +107,7 @@ import { resetNativeChatInboxLayout } from "@/lib/nativeChatInboxLayout";
 import { compressChatMediaFile } from "@/lib/chatMediaCompress";
 import { isOwnChatMessage, resolveActiveViewerId } from "@/lib/chatViewer";
 import { messageContent, normalizeChatRecord } from "@/lib/chatNormalize";
+import { repairChatMembersForOwner, scopeChatForInbox } from "@/lib/scopeAppState";
 import {
   chatMergeKey,
   dmChatId,
@@ -2089,10 +2093,18 @@ export function ChatScreen({
   useProfiledRender("ChatScreen");
   const chats = useChats();
   const state = useAppState();
-  const currentUser = useCurrentUser();
+  const currentUser = useCurrentUserOrStub();
   const isGuest = useIsGuestSelector();
   const accountSessionKey = useAccountSessionKey();
-  const { openOrCreateChat, setNote, sendMessage, replyToProfileNoteAsDm, loadChatMessages } = useAppActions();
+  const {
+    openOrCreateChat,
+    setNote,
+    sendMessage,
+    replyToProfileNoteAsDm,
+    loadChatMessages,
+    refreshFromServer,
+    syncChatsInboxFromServer,
+  } = useAppActions();
   const lang = useAppLanguage();
   const theme = useAppTheme();
   const users = useAppSelector(s => s.users);
@@ -2101,7 +2113,8 @@ export function ChatScreen({
   const [profileNoteReply, setProfileNoteReply] = useState<{ userId: string; note: string } | null>(null);
   const [profileNoteReplyDraft, setProfileNoteReplyDraft] = useState("");
   const t = useT();
-  const me = currentUser!;
+  const me = currentUser;
+  const meIdSafe = me?.id ?? currentUserId ?? "";
   const chatTabActive = useIsTabActive("chat");
   const [openChat, setOpenChat] = useState<string | null>(() => initialChatId ?? null);
   const [showRequests, setShowRequests] = useState(false);
@@ -2340,10 +2353,10 @@ export function ChatScreen({
 
   const resolveOpenChatId = useCallback(
     (id: string) => {
-      const found = findChatByOpenId(chats, id, me.id);
-      return found ? openChatIdFor(found, me.id) : id;
+      const found = findChatByOpenId(chats, id, meIdSafe);
+      return found ? openChatIdFor(found, meIdSafe) : id;
     },
-    [chats, me.id],
+    [chats, meIdSafe],
   );
 
   const isChatThreadFullyOpen = useCallback(
@@ -2854,15 +2867,15 @@ export function ChatScreen({
   const inboxListScrollRef = useRef<HTMLDivElement>(null);
   const inboxVirtualListAnchorRef = useRef<HTMLDivElement>(null);
   const [inboxVirtualScrollMargin, setInboxVirtualScrollMargin] = useState(0);
-  const [noteInput, setNoteInput] = useState(me.note || "");
+  const [noteInput, setNoteInput] = useState(me?.note || "");
   const [editingNote, setEditingNote] = useState(false);
   const [showGames, setShowGames] = useState(false);
   const [gameType, setGameType] = useState<"billiards" | "football">("billiards");
   useEffect(() => {
     if (!initialChatId) return;
     if (stackClosingId || stackRoomDismissDragging) return;
-    const found = findChatByOpenId(chats, initialChatId, me.id);
-    const id = found ? openChatIdFor(found, me.id) : initialChatId;
+    const found = findChatByOpenId(chats, initialChatId, meIdSafe);
+    const id = found ? openChatIdFor(found, meIdSafe) : initialChatId;
     if (openChat === id) {
       if (!stackTapTransitionRef.current) syncStackProgress(1);
       onConsumedInitialChat?.();
@@ -2873,7 +2886,7 @@ export function ChatScreen({
     initialChatId,
     onConsumedInitialChat,
     chats,
-    me.id,
+    meIdSafe,
     openChatDirect,
     openChat,
     syncStackProgress,
@@ -2886,17 +2899,17 @@ export function ChatScreen({
     if (!openChat || stackTapTransitionRef.current || stackGestureLocked || stackTransitionLockRef.current) {
       return;
     }
-    const found = findChatByOpenId(chats, openChat, me.id);
+    const found = findChatByOpenId(chats, openChat, meIdSafe);
     if (!found) return;
-    const canonical = openChatIdFor(found, me.id);
+    const canonical = openChatIdFor(found, meIdSafe);
     if (canonical !== openChat) setOpenChat(canonical);
-  }, [chats, openChat, me.id, stackGestureLocked]);
+  }, [chats, openChat, meIdSafe, stackGestureLocked]);
 
-  const prevAccountIdRef = useRef(me.id);
+  const prevAccountIdRef = useRef(meIdSafe);
   /** عند تبديل الحساب: إغلاق الغرفة ومسح حالة المكدس (لا يُنفَّذ عند أول mount) */
   useEffect(() => {
-    if (prevAccountIdRef.current === me.id) return;
-    prevAccountIdRef.current = me.id;
+    if (prevAccountIdRef.current === meIdSafe) return;
+    prevAccountIdRef.current = meIdSafe;
     ++stackNavGenerationRef.current;
     stackListGestureCommitRef.current = false;
     setOpenChat(null);
@@ -2910,19 +2923,19 @@ export function ChatScreen({
     setStackChromeHidden(false);
     syncStackProgress(0);
     onActiveChatChange?.(null);
-  }, [me.id, syncStackProgress, onActiveChatChange]);
+  }, [meIdSafe, syncStackProgress, onActiveChatChange]);
 
   useEffect(() => {
     const onOpen = (e: Event) => {
       const id = (e as CustomEvent<{ chatId?: string }>).detail?.chatId;
       if (id) {
-        const found = findChatByOpenId(chats, id, me.id);
-        openChatDirect(found ? openChatIdFor(found, me.id) : id);
+        const found = findChatByOpenId(chats, id, meIdSafe);
+        openChatDirect(found ? openChatIdFor(found, meIdSafe) : id);
       }
     };
     window.addEventListener("retweet-open-chat", onOpen);
     return () => window.removeEventListener("retweet-open-chat", onOpen);
-  }, [chats, me.id, openChatDirect]);
+  }, [chats, meIdSafe, openChatDirect]);
 
   useEffect(() => {
     const exitingChatBySwipe =
@@ -3131,24 +3144,32 @@ export function ChatScreen({
   }, [openChat, resetStackToInboxRest, releaseStackTransitionLock]);
 
   const activeStackChatId = openChat ?? stackClosingId ?? null;
-  const stackChatRaw = activeStackChatId ? findChatByOpenId(chats, activeStackChatId, me.id) : null;
+  const stackChatRaw = activeStackChatId ? findChatByOpenId(chats, activeStackChatId, meIdSafe) : null;
   const stackChat = useMemo(() => {
-    if (stackChatRaw) return normalizeChatRecord(stackChatRaw);
+    if (!meIdSafe) return null;
+    if (stackChatRaw) {
+      return normalizeChatRecord(repairChatMembersForOwner(stackChatRaw, meIdSafe));
+    }
     if (!activeStackChatId) return null;
     const parsed = parseDmChatId(activeStackChatId);
     if (!parsed) return null;
-    const peer = parsed[0] === me.id ? parsed[1] : parsed[1] === me.id ? parsed[0] : null;
+    const peer = parsed[0] === meIdSafe ? parsed[1] : parsed[1] === meIdSafe ? parsed[0] : null;
     if (!peer) return null;
-    return normalizeChatRecord({
-      id: activeStackChatId,
-      isGroup: false,
-      members: [me.id, peer],
-      admins: [],
-      messages: [],
-      lastOpenAtByUser: {},
-      lastReadMessageIdByUser: {},
-    });
-  }, [stackChatRaw, activeStackChatId, me.id]);
+    return normalizeChatRecord(
+      repairChatMembersForOwner(
+        {
+          id: activeStackChatId,
+          isGroup: false,
+          members: [meIdSafe, peer],
+          admins: [],
+          messages: [],
+          lastOpenAtByUser: {},
+          lastReadMessageIdByUser: {},
+        },
+        meIdSafe,
+      ),
+    );
+  }, [stackChatRaw, activeStackChatId, meIdSafe]);
   const restoreChatStackAfterGroupSettings = useCallback(() => {
     if (!openChat) return;
     const p = Math.max(
@@ -3230,7 +3251,7 @@ export function ChatScreen({
     const delayMs = stackTapTransitionRef.current ? CHAT_NAV_OPEN_MS + 120 : 0;
     const t = window.setTimeout(() => {
       if (stackTapTransitionRef.current) return;
-      const found = findChatByOpenId(chats, orphanId, me.id);
+      const found = findChatByOpenId(chats, orphanId, meIdSafe);
       if (found) return;
       setOpenChat(prev => (prev === orphanId ? null : prev));
       setStackDragChatId(null);
@@ -3238,7 +3259,7 @@ export function ChatScreen({
       syncStackProgress(0);
     }, delayMs);
     return () => window.clearTimeout(t);
-  }, [activeStackChatId, stackChat, chats, me.id, syncStackProgress]);
+  }, [activeStackChatId, stackChat, chats, meIdSafe, syncStackProgress]);
   useEffect(() => {
     onActiveChatChange?.(openChat);
   }, [openChat, onActiveChatChange]);
@@ -3303,41 +3324,80 @@ export function ChatScreen({
     setProfileNoteReplyDraft("");
   }, [profileNoteReply?.userId, profileNoteReply?.note]);
 
-  const myChats = useMemo(
-    () => chats.filter(c => c.members.includes(me.id) && !c.request),
-    [chats, me.id],
-  );
-  const requests = useMemo(
-    () => chats.filter(c => c.members.includes(me.id) && c.request),
-    [chats, me.id],
-  );
+  const myChats = useMemo(() => {
+    if (!meIdSafe) return [];
+    const out: Chat[] = [];
+    const seen = new Set<string>();
+    for (const raw of chats) {
+      if (raw.request) continue;
+      const scoped = scopeChatForInbox(raw, meIdSafe);
+      if (!scoped) continue;
+      const key = openChatIdFor(scoped, meIdSafe);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(scoped);
+    }
+    return out;
+  }, [chats, meIdSafe]);
+
+  const inboxSyncBusyRef = useRef(false);
+  useEffect(() => {
+    if (!chatTabActive || isGuest || myChats.length > 0 || inboxSyncBusyRef.current) return;
+    inboxSyncBusyRef.current = true;
+    void syncChatsInboxFromServer()
+      .catch(() => refreshFromServer({ urgent: true }))
+      .finally(() => {
+        inboxSyncBusyRef.current = false;
+      });
+  }, [chatTabActive, isGuest, myChats.length, syncChatsInboxFromServer, refreshFromServer]);
+  const requests = useMemo(() => {
+    if (!meIdSafe) return [];
+    const out: Chat[] = [];
+    const seen = new Set<string>();
+    for (const raw of chats) {
+      if (!raw.request) continue;
+      const scoped = scopeChatForInbox(raw, meIdSafe);
+      if (!scoped) continue;
+      const key = openChatIdFor(scoped, meIdSafe);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(scoped);
+    }
+    return out;
+  }, [chats, meIdSafe]);
   const messageRequests = useMemo(
     () =>
       requests.filter(
-        c => !c.isGroup && !c.isChannel && !(c.messages || []).some(m => m.senderId === me.id),
+        c =>
+          !c.isGroup &&
+          !c.isChannel &&
+          !(c.messages || []).some(m => m.senderId === meIdSafe),
       ),
-    [requests, me.id],
+    [requests, meIdSafe],
   );
 
   // نوتك + نوتات من تتابعهم (وليس شرط تبادل متابعة)
-  const noteUsers = [
-    me,
-    ...users.filter(
-      u =>
-        u.id !== me.id &&
-        isProfileNoteActive(u) &&
-        me.following.includes(u.id) &&
-        !me.blocked.includes(u.id) &&
-        !u.blocked.includes(me.id),
-    ),
-  ];
+  const noteUsers = useMemo(() => {
+    if (!me) return [];
+    return [
+      me,
+      ...users.filter(
+        u =>
+          u.id !== me.id &&
+          isProfileNoteActive(u) &&
+          me.following.includes(u.id) &&
+          !me.blocked.includes(u.id) &&
+          !u.blocked.includes(me.id),
+      ),
+    ];
+  }, [me, users]);
 
   const filteredChats = useMemo(() => {
     if (!debouncedSearch) return myChats;
     const q = debouncedSearch;
     return myChats.filter(c => {
       if (c.isGroup || c.isChannel) return (c.name || "").toLowerCase().includes(q);
-      const otherId = c.members.find(id => id !== me.id);
+      const otherId = c.members.find(id => id !== meIdSafe);
       const other = otherId ? userById(state, otherId) : null;
       const uname = (other?.username ?? "").toLowerCase();
       const dname = (other?.displayName ?? "").toLowerCase();
@@ -3346,18 +3406,18 @@ export function ChatScreen({
     });
   }, [myChats, debouncedSearch, users]);
 
-  const inboxTabCounts = useMemo(() => inboxFilterCounts(myChats, me.id), [myChats, me.id]);
+  const inboxTabCounts = useMemo(() => inboxFilterCounts(myChats, meIdSafe), [myChats, meIdSafe]);
 
   const inboxFilteredChats = useMemo(
-    () => filterChatsByInboxTab(filteredChats, inboxFilter, me.id),
-    [filteredChats, inboxFilter, me.id],
+    () => filterChatsByInboxTab(filteredChats, inboxFilter, meIdSafe),
+    [filteredChats, inboxFilter, meIdSafe],
   );
 
   /** المثبتة أولاً (حسب ترتيب التثبيت)، ثم الباقي بآخر نشاط رسالة (الأحدث فوق) */
   const sortedFilteredChats = useMemo(() => {
-    const pins = me.pinnedChatIds || [];
+    const pins = me?.pinnedChatIds || [];
     const lastActivityAt = (c: Chat) => {
-      const hidden = c.hiddenMessageIdsByUser?.[me.id];
+      const hidden = c.hiddenMessageIdsByUser?.[meIdSafe];
       const msgs = c.messages;
       for (let i = msgs.length - 1; i >= 0; i--) {
         const m = msgs[i];
@@ -3376,7 +3436,7 @@ export function ChatScreen({
       if (aPin && bPin) return ia - ib;
       return lastActivityAt(b) - lastActivityAt(a);
     });
-  }, [inboxFilteredChats, me.id, me.pinnedChatIds]);
+  }, [inboxFilteredChats, meIdSafe, me?.pinnedChatIds]);
 
   /**
    * يمنع وميض "لا توجد دردشات" أثناء مزامنة الخادم:
@@ -3395,19 +3455,18 @@ export function ChatScreen({
   useEffect(() => {
     setLastStableChats([]);
     setLastStableAt(0);
-  }, [me.id]);
+  }, [meIdSafe]);
   const shouldHoldPreviousChats =
     inboxFilter === "all" &&
     !debouncedSearch &&
     sortedFilteredChats.length === 0 &&
-    lastStableChats.length > 0 &&
-    Date.now() - lastStableAt < 8000;
+    lastStableChats.length > 0;
   const inboxSyncing =
     remoteHydrating && inboxFilter === "all" && !debouncedSearch;
   const inboxAwaitingRemote = inboxSyncing && sortedFilteredChats.length === 0;
   const renderedChats = shouldHoldPreviousChats ? lastStableChats : sortedFilteredChats;
 
-  const stackChatOpenKey = stackChat ? openChatIdFor(stackChat, me.id) : null;
+  const stackChatOpenKey = stackChat ? openChatIdFor(stackChat, meIdSafe) : null;
 
   const stackRoomDismissEnabled = useCallback(
     () =>
@@ -3525,6 +3584,20 @@ export function ChatScreen({
     inboxListScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
   }, [inboxFilter]);
 
+  const refreshInbox = useCallback(async () => {
+    await syncChatsInboxFromServer();
+    refreshFromServer({ urgent: true });
+  }, [syncChatsInboxFromServer, refreshFromServer]);
+
+  const inboxPullEnabled = chatTabActive && !isGuest && !openChat && !stackClosingId;
+  const { pullPx: inboxPullPx, refreshing: inboxPullRefreshing } = useHomePullToRefresh(
+    inboxListScrollRef,
+    refreshInbox,
+    inboxPullEnabled,
+  );
+
+  const accountLoading = !me && !!currentUserId;
+
   /* ─────────────────────────────────────────────────────────
    * CHAT INBOX — rebuilt from scratch (Snapchat-inspired)
    * All flex rows use dir-aware ordering:
@@ -3546,6 +3619,12 @@ export function ChatScreen({
         className="chat-inbox-scroll no-scrollbar min-h-0 w-full min-w-0 flex-1 overflow-y-auto overscroll-contain"
         data-no-tab-swipe
       >
+      <HomePullToRefreshIndicator pullPx={inboxPullPx} refreshing={inboxPullRefreshing} />
+      {accountLoading ? (
+        <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
+          <p className="text-sm text-muted-foreground">جارٍ تحميل الحساب…</p>
+        </div>
+      ) : null}
       {/* Top area: Instagram Direct structure. No profile avatar here. */}
       <div className="shrink-0 px-4 pb-2 pt-[max(0.75rem,max(0.75rem, var(--sat)))]">
           <div className="mb-3 flex items-center justify-end">
@@ -4044,7 +4123,7 @@ export function ChatScreen({
           widthCapRef={stackCapRef}
           interactive={!!openChat}
         >
-          {(openChat || stackClosingId) && stackChat ? (
+          {(openChat || stackClosingId) && stackChat && meIdSafe && me ? (
             <ChatRoom
               key={`${accountSessionKey}-${stackChat.id}`}
               chat={stackChat}
@@ -4059,7 +4138,7 @@ export function ChatScreen({
               onCall={
                 openChat
                   ? video => {
-                      const peer = stackChat.members.find(id => id !== me.id);
+                      const peer = stackChat.members.find(id => id !== meIdSafe);
                       if (!peer || stackChat.isGroup || stackChat.isChannel) return;
                       void (async () => {
                         if (isGuest) {
@@ -4070,7 +4149,7 @@ export function ChatScreen({
                           "@/lib/activeCallUi"
                         );
                         const r = await dispatchStartOutgoingCallSafe({
-                          chatId: openChatIdFor(stackChat, me.id),
+                          chatId: openChatIdFor(stackChat, meIdSafe),
                           video,
                           peerUserId: peer,
                         });
@@ -4612,7 +4691,7 @@ function ChatRoom({
     toggleChatMute,
     updateProfile,
   } = useAppActions();
-  const currentUser = useCurrentUser();
+  const currentUser = useCurrentUserOrStub();
   const isGuest = useIsGuestSelector();
   const lang = useAppLanguage();
   const appTheme = useAppTheme();
@@ -4624,6 +4703,7 @@ function ChatRoom({
   const chat = useMemo(() => normalizeChatRecord(chatInput), [chatInput]);
   const viewerId = useAppSelector(s => resolveActiveViewerId(s) ?? "") || currentUser?.id || "";
   const meId = currentUser?.id ?? "";
+  const me = currentUser;
   const meVerified = currentUser ? getUserEntitlements(currentUser).isVerified : false;
   const myBubbleStyle = normalizeChatBubbleStyle(currentUser?.chatBubbleStyle);
   const [text, setText] = useState("");
@@ -6620,7 +6700,7 @@ function ChatRoom({
         boxShadow: chatPanelStyle.boxShadow,
       };
 
-  if (!currentUser || !meId) {
+  if (!me || !meId) {
     return (
       <div className="flex min-h-dvh flex-col items-center justify-center gap-4 bg-background px-6 text-center">
         <p className="text-sm text-muted-foreground">تعذّر فتح المحادثة — الجلسة غير متاحة.</p>
@@ -6634,7 +6714,6 @@ function ChatRoom({
       </div>
     );
   }
-  const me = currentUser;
   const nativeShell = isNativeCapacitorShell();
 
   return (

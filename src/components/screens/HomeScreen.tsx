@@ -6,6 +6,7 @@ import { HomePullToRefreshIndicator } from "../home/HomePullToRefreshIndicator";
 import { useHomePullToRefresh } from "@/hooks/useHomePullToRefresh";
 import { useTabPanelScrollRef } from "@/lib/tabPanelScrollContext";
 import { useIsTabActive } from "@/lib/tabActiveContext";
+import { useRemoteHydrating } from "@/lib/appUiContext";
 import {
   useAppActions,
   useAppSelector,
@@ -20,6 +21,7 @@ import {
   getBannedUserIds,
 } from "@/lib/bannedContentClient";
 import { equalIdArrays } from "@/lib/useAppSelector";
+import { coerceTimestamp } from "@/lib/coerceTimestamp";
 import { useScreenPerf } from "@/lib/useScreenPerf";
 import { useProfiledRender } from "@/lib/renderProfiler";
 import { storyViewerTrayRing } from "@/lib/storyTray";
@@ -70,6 +72,11 @@ export const HomeScreen = memo(function HomeScreen({
     () => filterPostsByBannedAuthors(feed, getBannedUserIds()),
     [feed, bannedRev],
   );
+  const remoteHydrating = useRemoteHydrating();
+  const [lastStableFeed, setLastStableFeed] = useState<Post[]>([]);
+  useEffect(() => {
+    if (displayFeed.length > 0) setLastStableFeed(displayFeed);
+  }, [displayFeed]);
   const isHomeTabActive = useIsTabActive("home");
   const nativeShell = isNativeMobileApp();
   const [refreshDoneHint, setRefreshDoneHint] = useState(false);
@@ -179,6 +186,12 @@ export const HomeScreen = memo(function HomeScreen({
     refreshFeedBg,
     isHomeTabActive && !isGuest,
   );
+
+  const shownFeed =
+    displayFeed.length === 0 && lastStableFeed.length > 0
+      ? lastStableFeed
+      : displayFeed;
+  const feedLooksEmpty = shownFeed.length === 0;
 
   const onPullRefreshDone = useCallback(() => {
     setRefreshDoneHint(true);
@@ -329,17 +342,17 @@ export const HomeScreen = memo(function HomeScreen({
 
       <section aria-label="الخلاصة" className="relative z-0 flex flex-col bg-background">
         <VirtualizedHomeFeed
-          posts={displayFeed}
+          posts={shownFeed}
           scrollRef={tabScrollRef}
           headerOffsetPx={0}
           feedHasMore={feedHasMore}
           onLoadMore={handleLoadMore}
           feedActions={feedActions}
         />
-        {displayFeed.length === 0 && !pullRefreshing && (
+        {feedLooksEmpty && !pullRefreshing && !remoteHydrating && (
           <p className="text-center text-muted-foreground py-12">{t("noPosts")}</p>
         )}
-        {displayFeed.length === 0 && pullRefreshing && (
+        {feedLooksEmpty && (pullRefreshing || remoteHydrating) && (
           <div className="flex flex-col items-center gap-3 py-14">
             <div className="retweet-ios-pull-spinner h-8 w-8 rounded-full border-[2.5px] border-muted-foreground/20 border-t-primary" />
             <p className="text-sm text-muted-foreground">جاري تحميل الخلاصة…</p>
@@ -369,7 +382,7 @@ export const HomeScreen = memo(function HomeScreen({
               id: c.id,
               userId: c.userId,
               text: c.text,
-              createdAt: typeof c.createdAt === "number" ? c.createdAt : Date.now(),
+              createdAt: coerceTimestamp(c.createdAt, typeof c.createdAt === "number" ? c.createdAt : 0),
             }));
           return (
         <div className="fixed inset-0 z-[60] bg-black/50 flex items-end" onClick={() => setCommentsSheetPostId(null)}>

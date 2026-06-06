@@ -1,5 +1,5 @@
 import type { AppState, Chat, ID, Message, User } from "./types";
-import { canonicalizeDmChatId } from "./dmChatId";
+import { canonicalizeDmChatId, parseDmChatId } from "./dmChatId";
 import { isGuestUserId } from "./guestUser";
 import { storiesVisibleToViewer } from "./storyVisibility";
 
@@ -20,11 +20,42 @@ export function messageBelongsToChatForOwner(m: Message, chat: Chat, ownerId: ID
   return peers.includes(m.senderId) || m.senderId === ownerId;
 }
 
+/** استعادة members من dm: أو من الرسائل — يمنع اختفاء المحادثات بعد مزامنة الخادم */
+export function repairChatMembersForOwner(chat: Chat, ownerId: ID): Chat {
+  if (chat.isGroup || chat.isChannel) {
+    const members = [...(chat.members || [])];
+    if (!members.includes(ownerId)) members.push(ownerId);
+    return { ...chat, members: [...new Set(members)] };
+  }
+  const parsed = parseDmChatId(chat.id);
+  if (parsed?.includes(ownerId)) {
+    const peer = parsed[0] === ownerId ? parsed[1]! : parsed[0]!;
+    return { ...chat, members: [ownerId, peer], isGroup: false, isChannel: false };
+  }
+  let members = [...(chat.members || [])];
+  if (!members.includes(ownerId)) members.push(ownerId);
+  let peers = members.filter(id => id !== ownerId);
+  if (!peers.length) {
+    for (const m of chat.messages || []) {
+      if (m.senderId && m.senderId !== ownerId) {
+        peers = [m.senderId];
+        break;
+      }
+    }
+  }
+  if (peers.length >= 1) {
+    return { ...chat, members: [ownerId, peers[0]!], isGroup: false, isChannel: false };
+  }
+  return { ...chat, members };
+}
+
 /** إصلاح DM ملوّثة بأكثر من طرف (تسرّب بين حسابات الجهاز) */
 function repairDmChatForOwner(chat: Chat, ownerId: ID): Chat | null {
   if (chat.isGroup || chat.isChannel) return chat;
-  const peers = dmPeerIds(chat, ownerId);
+  const repaired = repairChatMembersForOwner(chat, ownerId);
+  const peers = dmPeerIds(repaired, ownerId);
   if (peers.length === 0) return null;
+  chat = repaired;
   if (peers.length === 1) {
     return {
       ...chat,
@@ -54,13 +85,16 @@ function repairDmChatForOwner(chat: Chat, ownerId: ID): Chat | null {
 
 /** محادثة تخص الحساب النشط — DM = عضوين فقط */
 export function chatBelongsToAccount(chat: Chat, ownerId: ID): boolean {
-  const members = Array.isArray(chat.members) ? chat.members : [];
+  const scoped = repairChatMembersForOwner(chat, ownerId);
+  const members = Array.isArray(scoped.members) ? scoped.members : [];
   if (!members.includes(ownerId)) return false;
-  if (chat.isGroup || chat.isChannel) return true;
-  const peers = dmPeerIds(chat, ownerId);
+  if (scoped.isGroup || scoped.isChannel) return true;
+  const peers = dmPeerIds(scoped, ownerId);
   if (peers.length === 1) return true;
-  if (peers.length === 0) return false;
-  return repairDmChatForOwner(chat, ownerId) != null;
+  if (peers.length === 0) {
+    return (scoped.messages || []).some(m => m.senderId === ownerId);
+  }
+  return repairDmChatForOwner(scoped, ownerId) != null;
 }
 
 /** DM بين الحساب النشط وطرف محدد (يتجاهل غرف ملوّثة بأكثر من طرف) */
@@ -75,11 +109,56 @@ export function findDmChatForPeer(chats: Chat[], ownerId: ID, peerId: ID): Chat 
   return null;
 }
 
+/** محادثة للعرض في القائمة — أوسع من scopeChatForAccount عند فشل الاستعادة العادية */
+export function scopeChatForInbox(chat: Chat, ownerId: ID): Chat | null {
+  const scoped = scopeChatForAccount(chat, ownerId);
+  if (scoped) return scoped;
+
+  const repaired = repairChatMembersForOwner(chat, ownerId);
+  if (repaired.isGroup || repaired.isChannel) {
+    const members = [...(repaired.members || [])];
+    if (!members.includes(ownerId)) members.push(ownerId);
+    if (!members.length) return null;
+    return { ...repaired, members: [...new Set(members)] };
+  }
+
+  const parsed = parseDmChatId(repaired.id);
+  if (parsed?.includes(ownerId)) {
+    const peer = parsed[0] === ownerId ? parsed[1]! : parsed[0]!;
+    return canonicalizeDmChatId(
+      {
+        ...repaired,
+        isGroup: false,
+        isChannel: false,
+        members: [ownerId, peer],
+        messages: repaired.messages || [],
+      },
+      ownerId,
+    );
+  }
+
+  const peers = dmPeerIds(repaired, ownerId);
+  if (peers.length === 1) {
+    return canonicalizeDmChatId(
+      {
+        ...repaired,
+        isGroup: false,
+        isChannel: false,
+        members: [ownerId, peers[0]!],
+        messages: repaired.messages || [],
+      },
+      ownerId,
+    );
+  }
+
+  return null;
+}
+
 export function scopeChatForAccount(chat: Chat, ownerId: ID): Chat | null {
-  let scoped = chat;
-  if (!chatBelongsToAccount(chat, ownerId)) return null;
-  if (!chat.isGroup && !chat.isChannel && dmPeerIds(chat, ownerId).length !== 1) {
-    const repaired = repairDmChatForOwner(chat, ownerId);
+  let scoped = repairChatMembersForOwner(chat, ownerId);
+  if (!chatBelongsToAccount(scoped, ownerId)) return null;
+  if (!scoped.isGroup && !scoped.isChannel && dmPeerIds(scoped, ownerId).length !== 1) {
+    const repaired = repairDmChatForOwner(scoped, ownerId);
     if (!repaired) return null;
     scoped = repaired;
   }
@@ -101,12 +180,23 @@ export function scopeChatForAccount(chat: Chat, ownerId: ID): Chat | null {
       ? { [ownerId]: [...scoped.hiddenMessageIdsByUser[ownerId]!] }
       : undefined;
 
+  if (!scoped.isGroup && !scoped.isChannel) {
+    const peer = dmPeerIds(scoped, ownerId)[0];
+    if (!peer) return null;
+    const normalized = {
+      ...scoped,
+      members: [ownerId, peer],
+      lastOpenAtByUser,
+      lastReadMessageIdByUser,
+      hiddenMessageIdsByUser,
+      messages,
+    };
+    return canonicalizeDmChatId(normalized, ownerId);
+  }
+
   const normalized = {
     ...scoped,
-    members:
-      !scoped.isGroup && !scoped.isChannel
-        ? [ownerId, dmPeerIds(scoped, ownerId)[0]!]
-        : scoped.members,
+    members: scoped.members.filter((id): id is ID => typeof id === "string" && !!id),
     lastOpenAtByUser,
     lastReadMessageIdByUser,
     hiddenMessageIdsByUser,

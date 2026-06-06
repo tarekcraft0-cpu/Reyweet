@@ -181,9 +181,15 @@ function syncHomeFeedPostsFromState(
   if (serverPosts !== undefined) {
     homeFeedServerSlice.posts = filterPostsByBannedAuthors(serverPosts, banned);
   }
-  setHomeFeedPosts(
-    buildHomeFeedDisplayPosts(next, meId, homeFeedServerSlice.posts, me, banned),
-  );
+  let display = buildHomeFeedDisplayPosts(next, meId, homeFeedServerSlice.posts, me, banned);
+  if (display.length === 0 && (next.posts?.length ?? 0) > 0) {
+    display = filterPostsByBannedAuthors(
+      (next.posts || []).filter(p => p?.id && !isReelFeedPost(p)),
+      banned,
+    );
+    if (display.length > 0) homeFeedServerSlice.posts = display;
+  }
+  setHomeFeedPosts(display);
 }
 
 /** دمج صفحة إضافية من الفيد (pagination) دون استبدال المنشورات الحالية */
@@ -483,7 +489,10 @@ import {
   findDmChatForPeer,
   messageBelongsToChatForOwner,
   scopeAppStateToAccount,
+  scopeChatForAccount,
+  scopeChatForInbox,
 } from "./scopeAppState";
+import { coerceTimestamp } from "./coerceTimestamp";
 import {
   purgeStateForAccountSwitch,
   refreshOwnedUsersInState,
@@ -858,7 +867,10 @@ export function normalizePersistedAppState(merged: AppState): AppState {
   }
 
   m.chats = m.chats.map((c) => {
-    let cc = normalizeChatRecord(c);
+    const ownerId = m.currentUserId;
+    const scoped =
+      ownerId && !isGuestUserId(ownerId) ? scopeChatForInbox(c, ownerId) : null;
+    let cc = normalizeChatRecord(scoped ?? c);
     if (cc.id === QURAN_CHANNEL_ID) {
       const seenBotText = new Set<string>();
       cc = {
@@ -892,14 +904,21 @@ export function normalizePersistedAppState(merged: AppState): AppState {
       channelIdsByCreator.set(c.createdByUserId, list);
     }
   }
-  m.posts = (Array.isArray(m.posts) ? m.posts : []).map((p) => ({
-    ...p,
-    likes: Array.isArray(p.likes) ? p.likes : [],
-    reposts: Array.isArray(p.reposts) ? p.reposts : [],
-    comments: Array.isArray(p.comments) ? p.comments : [],
-    text: typeof p.text === "string" ? p.text : "",
-    createdAt: typeof p.createdAt === "number" ? p.createdAt : Date.now(),
-  }));
+  m.posts = (Array.isArray(m.posts) ? m.posts : []).map((p) => {
+    const prevAt = typeof p.createdAt === "number" ? p.createdAt : 0;
+    const createdAt = coerceTimestamp(p.createdAt, prevAt);
+    return {
+      ...p,
+      likes: Array.isArray(p.likes) ? p.likes : [],
+      reposts: Array.isArray(p.reposts) ? p.reposts : [],
+      comments: (Array.isArray(p.comments) ? p.comments : []).map((c) => ({
+        ...c,
+        createdAt: coerceTimestamp(c.createdAt, typeof c.createdAt === "number" ? c.createdAt : 0),
+      })),
+      text: typeof p.text === "string" ? p.text : "",
+      createdAt,
+    };
+  });
   m.notifications = (Array.isArray(m.notifications) ? m.notifications : []).filter(n => n.type !== "message");
   m.chats = Array.isArray(m.chats) ? m.chats : [];
   m.stories = Array.isArray(m.stories) ? m.stories : [];
@@ -1404,7 +1423,7 @@ function buildMultiAccountState(
     }
   }
   for (const c of primaryNorm.chats || []) {
-    if (c.members.includes(resolvedId)) absorbChat(c, { serverAuthoritative: true });
+    absorbChat(c, { serverAuthoritative: true });
   }
 
   const scopedNotifications = (primaryNorm.notifications || []).filter(
@@ -1491,6 +1510,7 @@ async function bootstrapEssentialAfterAuth(
       }
       next = normalizePersistedAppState({ ...next, users: [...byId.values()] });
     }
+    next = await syncChatsInboxFromServer(token, userId, next);
     saveAccountStateCache(userId, next);
     if (typeof window !== "undefined" && !feed.ok && !directory.length) {
       void import("./uiToast").then(({ emitUiToast }) =>
@@ -1823,6 +1843,8 @@ interface Ctx {
   refreshUserDirectory: () => Promise<void>;
   /** جلب الحالة من الخادم فوراً (متابعات، ستوريات، رسائل) */
   refreshFromServer: (opts?: { urgent?: boolean }) => void;
+  /** مزامنة قائمة المحادثات من الخادم دون مسح المحلي */
+  syncChatsInboxFromServer: () => Promise<void>;
   refreshFeedFromServer: (opts?: { force?: boolean }) => Promise<void>;
   loadMoreFeedFromServer: () => Promise<void>;
   feedHasMore: boolean;
@@ -2164,16 +2186,60 @@ function bootAppState(initialState?: AppState): {
       const me = state.users.find(u => u.id === uid);
       if (me) {
         homeFeed = buildHomeFeedDisplayPosts(state, uid, state.posts || [], me, getBannedUserIds());
+        homeFeedServerSlice.posts = homeFeed.filter(p => p?.id && !isReelFeedPost(p));
       }
     }
     const remoteHydrating =
-      apiBackendEnabled() && !!getApiToken() && !!uid && !isGuestUserId(uid);
+      apiBackendEnabled() &&
+      !!getApiToken() &&
+      !!uid &&
+      !isGuestUserId(uid) &&
+      !hasMeaningfulLocalContent(state, uid);
     return { state, homeFeed, remoteHydrating };
   } catch (e) {
     console.warn("[Retweet] bootAppState failed, using initial:", e);
     const state = safeNormalizeState(initial);
     return { state, homeFeed: [], remoteHydrating: false };
   }
+}
+
+/** دمج محادثات دون فقدان القائمة المحلية */
+export function mergeChatsPreservingLocal(
+  base: AppState,
+  incoming: AppState,
+  ownerId: ID,
+): Chat[] {
+  const byKey = new Map<string, Chat>();
+  const add = (raw: Chat) => {
+    const scoped = scopeChatForInbox(raw, ownerId);
+    if (!scoped) return;
+    const key = chatMergeKey(scoped, ownerId);
+    const prev = byKey.get(key);
+    byKey.set(key, prev ? mergeChatRecord(prev, scoped) : scoped);
+  };
+  for (const c of base.chats || []) add(c);
+  for (const c of incoming.chats || []) add(c);
+  return [...byKey.values()];
+}
+
+function hasMeaningfulLocalContent(state: AppState, ownerId: ID): boolean {
+  const chats = (state.chats || []).filter(c => (c.members || []).includes(ownerId));
+  return chats.length > 0 || (state.posts?.length ?? 0) > 0;
+}
+
+/** دمج قائمة المحادثات من الخادم دون فقدان المحادثات المحلية */
+async function syncChatsInboxFromServer(
+  token: string,
+  ownerId: ID,
+  base: AppState,
+): Promise<AppState> {
+  const { pullRemoteAppState, invalidateAppStatePullCache } = await import("./apiBackend.js");
+  invalidateAppStatePullCache();
+  const remote = await pullRemoteAppState(token, { force: true });
+  if (!remote) return base;
+  const chats = mergeChatsPreservingLocal(base, remote, ownerId);
+  if (!chats.length) return base;
+  return applyBannedFilterToState({ ...base, chats }, ownerId);
 }
 
 function mergeRemoteHydrationIntoState(
@@ -2185,6 +2251,10 @@ function mergeRemoteHydrationIntoState(
   let merged = buildMultiAccountState(activeId, remote, prev, undefined, {
     serverAuthoritative: true,
   });
+  merged = {
+    ...merged,
+    chats: mergeChatsPreservingLocal(prev, merged, activeId),
+  };
   merged = applyBannedFilterToState(merged, activeId);
   if (feed?.ok) {
     if (feed.bannedUserIds?.length) syncBannedUserIds(feed.bannedUserIds);
@@ -2269,8 +2339,8 @@ export function AppProvider({
   const fullPullPendingRef = useRef(false);
   const fullPullTimerRef = useRef<number | null>(null);
   const remoteSyncTimerRef = useRef<number | null>(null);
-  const MIN_FULL_PULL_MS = 3_500;
-  const MIN_URGENT_PULL_MS = 600;
+  const MIN_FULL_PULL_MS = 1_500;
+  const MIN_URGENT_PULL_MS = 400;
   const feedPullDebounceRef = useRef<number | null>(null);
   const lastFeedFetchAtRef = useRef(0);
   const urgentPullRef = useRef(false);
@@ -2454,11 +2524,6 @@ export function AppProvider({
     if (!token) return;
     let cancelled = false;
     void (async () => {
-      const reach = await import("./serverReachability.js");
-      if (!reach.isServerReachable()) {
-        setRemoteHydrating(false);
-        return;
-      }
       hydrateRemoteBusy.current = true;
       const sessionIds = listAccountSessions().map(x => x.userId);
       const sessionFallback = getLastActiveUserId() || sessionIds[0];
@@ -2471,7 +2536,11 @@ export function AppProvider({
       if (activeIdEarly && !isGuestUserId(activeIdEarly)) {
         seedPullCacheFromAccountState(activeIdEarly);
       }
-      setRemoteHydrating(true);
+      const showHydrateSpinner =
+        activeIdEarly &&
+        !isGuestUserId(activeIdEarly) &&
+        !hasMeaningfulLocalContent(stateRef.current, activeIdEarly);
+      if (showHydrateSpinner) setRemoteHydrating(true);
 
       const applyRemote = (
         remote: AppState,
@@ -2503,37 +2572,39 @@ export function AppProvider({
       };
 
       try {
-        invalidateHomeFeedCache();
-
         const remoteP = pullRemoteAppState(token, { force: true });
         const bannedP = apiFetchBannedUserIds(token);
         const feedP = apiFetchHomeFeed(token, { limit: 50, force: true });
+        const chatsP =
+          activeIdEarly && !isGuestUserId(activeIdEarly)
+            ? syncChatsInboxFromServer(token, activeIdEarly, stateRef.current)
+            : Promise.resolve(stateRef.current);
 
-        const cachedRemote = await pullRemoteAppState(token);
-        if (cancelled) return;
-
-        let activeId =
-          activeIdEarly ||
-          cachedRemote?.currentUserId ||
-          null;
-
-        if (cachedRemote && activeId && !isGuestUserId(activeId)) {
-          applyRemote(cachedRemote, activeId);
-        }
+        void feedP.then(feed => {
+          if (cancelled || !feed.ok) return;
+          const aid = activeIdEarly || stateRef.current.currentUserId;
+          if (!aid || isGuestUserId(aid)) return;
+          if (feed.bannedUserIds?.length) syncBannedUserIds(feed.bannedUserIds);
+          setStateRaw(s => {
+            let next = mergeHomeFeedIntoState(s, feed);
+            next = applyBannedFilterToState(next, aid);
+            syncHomeFeedPostsFromState(next, setHomeFeedPosts, feed.posts);
+            lastFeedFetchAtRef.current = Date.now();
+            markEssentialFeedSynced();
+            return next;
+          });
+        });
 
         const remote = await remoteP;
         if (cancelled) return;
 
-        const [bannedIds, feed] = await Promise.all([bannedP, feedP]);
+        let activeId = activeIdEarly || remote?.currentUserId || null;
+
+        const [bannedIds, feed, inboxSynced] = await Promise.all([bannedP, feedP, chatsP]);
         if (cancelled) return;
 
         if (bannedIds.length) syncBannedUserIds(bannedIds);
         else if (feed.ok && feed.bannedUserIds?.length) syncBannedUserIds(feed.bannedUserIds);
-
-        activeId =
-          activeId ||
-          remote?.currentUserId ||
-          null;
 
         if (!remote) {
           if (activeId && !isGuestUserId(activeId)) {
@@ -2561,8 +2632,19 @@ export function AppProvider({
         logAuthRoute("hydrate-remote", {
           activeId,
           usersCount: remote.users?.length ?? 0,
+          chatsCount: remote.chats?.length ?? 0,
         });
         applyRemote(remote, activeId, feed);
+        if (!cancelled && inboxSynced.chats.length > 0) {
+          setStateRaw(s => {
+            const next = preserveResolvedFollowRequestNotifications(s, {
+              ...inboxSynced,
+              currentUserId: activeId,
+            });
+            persistStateSnapshotNow(next);
+            return next;
+          });
+        }
       } catch {
         /* ignore */
       } finally {
@@ -2577,6 +2659,17 @@ export function AppProvider({
       hydrateRemoteBusy.current = false;
       setRemoteHydrating(false);
     };
+  }, []);
+
+  /** تسخين اتصال API فور فتح التطبيق — يقلّل تأخر أول مزامنة */
+  useEffect(() => {
+    if (!apiBackendEnabled()) return;
+    const token = getApiToken();
+    const uid = stateRef.current.currentUserId;
+    if (!token || !uid || isGuestUserId(uid)) return;
+    void pullRemoteAppState(token);
+    void apiFetchHomeFeed(token, { limit: 40 });
+    void import("./serverReachability.js").then(m => m.markServerOnline());
   }, []);
 
   /** توكن موجود لكن صف المستخدم غير محمّل — يمنع شاشة «جاري التحميل» العالقة */
@@ -3250,12 +3343,12 @@ export function AppProvider({
         }
         const cached = loadAccountStateCache(userId);
         const instantBase = cached
-          ? buildMultiAccountState(userId, cached, {
-              ...prev,
-              currentUserId: userId,
-              chats: [],
-            })
-          : prev;
+          ? buildMultiAccountState(
+              userId,
+              cached,
+              scopeAppStateToAccount(userId, { ...cached, currentUserId: userId }),
+            )
+          : scopeAppStateToAccount(userId, { ...prev, currentUserId: userId });
         setStateRaw(s => hydrateSwitchedAccountState(userId, instantBase, null));
 
         const remote = await pullRemoteAppState(token);
@@ -6094,6 +6187,21 @@ export function AppProvider({
     return { ok: true };
   }, []);
 
+  const syncChatsInboxAction = useCallback(async () => {
+    const token = getApiToken();
+    const ownerId = stateRef.current.currentUserId;
+    if (!apiBackendEnabled() || !token || !ownerId || isGuestUserId(ownerId)) return;
+    const synced = await syncChatsInboxFromServer(token, ownerId, stateRef.current);
+    setStateRaw(s => {
+      const next = preserveResolvedFollowRequestNotifications(s, {
+        ...synced,
+        currentUserId: ownerId,
+      });
+      persistStateSnapshotNow(next);
+      return next;
+    });
+  }, [setStateRaw]);
+
   const refreshFromServer = useCallback((opts?: { urgent?: boolean }) => {
     if (storyPublishBusyRef.current) return;
     if (!opts?.urgent && socialSyncBusyRef.current) return;
@@ -7078,6 +7186,7 @@ export function AppProvider({
     mergeDiscoveredUsers,
     refreshUserDirectory,
     refreshFromServer,
+    syncChatsInboxFromServer: syncChatsInboxAction,
     refreshFeedFromServer,
     loadMoreFeedFromServer,
     refreshProfilePostsFromServer,

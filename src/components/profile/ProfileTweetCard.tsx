@@ -6,6 +6,7 @@ import { FeedPostColumnShell, ProfilePostMetaRow } from "../PostFeedLayout";
 import { TweetVoicePlayer } from "../TweetVoicePlayer";
 import type { Post, User } from "@/lib/types";
 import { formatRelativeTime } from "@/lib/formatRelativeTime";
+import { coerceTimestamp } from "@/lib/coerceTimestamp";
 import { normalizePostMedia, type NormalizedPostMedia } from "@/lib/postMedia";
 import { renderMentionHashtagNodes, createMentionRenderer } from "@/lib/renderMentionHashtagText";
 import { useT } from "@/lib/i18n";
@@ -172,7 +173,7 @@ export function ProfileTweetCard({
       id: c.id,
       userId: c.userId,
       text: c.text,
-      createdAt: typeof c.createdAt === "number" ? c.createdAt : Date.now(),
+      createdAt: coerceTimestamp(c.createdAt, typeof c.createdAt === "number" ? c.createdAt : 0),
     }));
   const me = currentUser!;
   const [shareOpen, setShareOpen] = useState(false);

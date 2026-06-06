@@ -1,6 +1,20 @@
+import { coerceTimestamp } from "./coerceTimestamp";
+
 /** وقت نسبي للمنشورات (عربي / إنجليزي) */
 export function formatRelativeTime(createdAt: number, lang: "ar" | "en" = "ar"): string {
-  const sec = Math.max(0, Math.floor((Date.now() - createdAt) / 1000));
+  const at = coerceTimestamp(createdAt, 0);
+  if (!at) {
+    try {
+      return new Date().toLocaleDateString(lang === "en" ? "en-US" : "ar-SA", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+    } catch {
+      return "";
+    }
+  }
+  const sec = Math.max(0, Math.floor((Date.now() - at) / 1000));
   if (lang === "en") {
     if (sec < 60) return "just now";
     const m = Math.floor(sec / 60);

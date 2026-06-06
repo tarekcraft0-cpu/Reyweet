@@ -7,7 +7,7 @@ import { logAuthRoute } from "./authRouteDebug";
 import { applyAuthoritativeProfile, mergeUserFromServer } from "./mergeUserSocial";
 import { scopeAppStateToAccount } from "./scopeAppState";
 import { isolateUsersForAccountCache, snapshotAccountIdsForOwner } from "./accountSessions";
-import { normalizePersistedAppState, readPersistedAppState } from "./store";
+import { mergeChatsPreservingLocal, normalizePersistedAppState, readPersistedAppState } from "./store";
 import type { AppState } from "./types";
 
 import { runChatIsolationMigration } from "./chatIsolationMigration";
@@ -56,17 +56,16 @@ async function hydrateFromApiToken(): Promise<boolean> {
     byId.set(u.id, merged);
   }
 
-  const forceServer = consumeForceServerHydrate();
   const postById = new Map<string, import("./types").Post>();
+  for (const p of base.posts || []) postById.set(p.id, p);
   for (const p of remote.posts || []) postById.set(p.id, p);
-  if (!forceServer) {
-    for (const p of base.posts || []) {
-      if (!postById.has(p.id)) postById.set(p.id, p);
-    }
-  }
   const mergedPosts = [...postById.values()].sort(
     (a, b) => (b.createdAt ?? 0) - (a.createdAt ?? 0),
   );
+
+  const remoteScoped = { ...base, ...remote, chats: remote.chats ?? [] };
+  const mergedChats = mergeChatsPreservingLocal(base, remoteScoped, activeId);
+  void consumeForceServerHydrate();
 
   const merged = normalizePersistedAppState({
     ...base,
@@ -74,11 +73,7 @@ async function hydrateFromApiToken(): Promise<boolean> {
     currentUserId: activeId,
     users: [...byId.values()],
     posts: mergedPosts,
-    chats: forceServer
-      ? (remote.chats ?? [])
-      : remote.chats?.length
-        ? remote.chats
-        : (base.chats ?? []),
+    chats: mergedChats.length ? mergedChats : (base.chats ?? []),
   });
   const scoped = scopeAppStateToAccount(activeId, merged, {
     accountIds: snapshotAccountIdsForOwner(activeId),

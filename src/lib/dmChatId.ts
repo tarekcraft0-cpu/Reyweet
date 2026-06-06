@@ -46,24 +46,55 @@ export function openChatIdFor(chat: Chat, ownerId: ID): string {
   return chatMergeKey(chat, ownerId);
 }
 
-/** إيجاد المحادثة من openChat حتى لو تغيّر id بعد الدمج */
+function repairDmMembersForLookup(chat: Chat, ownerId: ID, peer: ID): Chat {
+  return {
+    ...chat,
+    id: dmChatId(ownerId, peer),
+    members: [ownerId, peer],
+    isGroup: false,
+    isChannel: false,
+  };
+}
+
+/** إيجاد المحادثة من openChat حتى لو تغيّر id أو members تالفة بعد المزامنة */
 export function findChatByOpenId(chats: Chat[], openId: ID, ownerId: ID): Chat | null {
+  const matchesOpen = (c: Chat): boolean => {
+    if (c.isGroup || c.isChannel) return c.id === openId;
+    return c.id === openId || chatMergeKey(c, ownerId) === openId;
+  };
+
   for (const c of chats) {
-    if (!c.members.includes(ownerId)) continue;
+    if (!matchesOpen(c)) continue;
     if (c.isGroup || c.isChannel) {
-      if (c.id === openId) return c;
+      if ((c.members || []).includes(ownerId)) return c;
       continue;
     }
-    if (c.id === openId || chatMergeKey(c, ownerId) === openId) return c;
+    const parsed = parseDmChatId(openId);
+    if (parsed?.includes(ownerId)) {
+      const peer = parsed[0] === ownerId ? parsed[1]! : parsed[0]!;
+      return repairDmMembersForLookup(c, ownerId, peer);
+    }
+    if ((c.members || []).includes(ownerId)) return c;
+    for (const m of c.messages || []) {
+      if (m.senderId && m.senderId !== ownerId) {
+        return repairDmMembersForLookup(c, ownerId, m.senderId);
+      }
+    }
   }
+
   const parsed = parseDmChatId(openId);
   if (!parsed) return null;
   const peer = parsed[0] === ownerId ? parsed[1] : parsed[1] === ownerId ? parsed[0] : null;
   if (!peer) return null;
   for (const c of chats) {
     if (c.isGroup || c.isChannel) continue;
-    if (!c.members.includes(ownerId)) continue;
-    if (dmPeerFromChat(c, ownerId) === peer) return c;
+    const members = c.members || [];
+    if (members.includes(peer) || members.includes(ownerId)) {
+      return repairDmMembersForLookup(c, ownerId, peer);
+    }
+    if ((c.messages || []).some(m => m.senderId === peer || m.senderId === ownerId)) {
+      return repairDmMembersForLookup(c, ownerId, peer);
+    }
   }
   return null;
 }

@@ -1,4 +1,5 @@
 import type { Chat, ID, Message } from "./types";
+import { coerceTimestamp } from "./coerceTimestamp";
 
 const MESSAGE_TYPES = new Set<Message["type"]>([
   "text",
@@ -27,8 +28,7 @@ export function normalizeChatMessage(raw: unknown): Message | null {
 
   const type = coerceMessageType(m.type);
   const content = typeof m.content === "string" ? m.content : "";
-  const createdAt =
-    typeof m.createdAt === "number" && Number.isFinite(m.createdAt) ? m.createdAt : Date.now();
+  const createdAt = coerceTimestamp(m.createdAt, 0);
 
   let replyTo = m.replyTo;
   if (replyTo && typeof replyTo === "object") {

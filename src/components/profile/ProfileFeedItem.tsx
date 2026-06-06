@@ -2,6 +2,7 @@ import { memo, useMemo, useState, startTransition } from "react";
 import { PostOptionsMenu } from "../PostOptionsMenu";
 import { useApp, userById, visibleMediaNotes, isMutual } from "@/lib/store";
 import { formatRelativeTime } from "@/lib/formatRelativeTime";
+import { coerceTimestamp } from "@/lib/coerceTimestamp";
 import { useT } from "@/lib/i18n";
 import { Avatar } from "../Avatar";
 import { ShareSheet } from "../ShareSheet";
@@ -80,7 +81,7 @@ export const ProfileFeedItem = memo(
       id: c.id,
       userId: c.userId,
       text: c.text,
-      createdAt: typeof c.createdAt === "number" ? c.createdAt : Date.now(),
+      createdAt: coerceTimestamp(c.createdAt, typeof c.createdAt === "number" ? c.createdAt : 0),
     }));
   const liked = safeLikes.includes(me.id);
   const reposted = safeReposts.includes(me.id);

@@ -18,7 +18,12 @@ function rowToPost(row: PostRow, prev?: Post): Post {
       (row as { comments?: Post["comments"] }).comments ??
       prev?.comments ??
       [],
-    createdAt: new Date(row.createdAt).getTime() || prev?.createdAt || Date.now(),
+    createdAt: (() => {
+      const parsed = new Date(row.createdAt).getTime();
+      if (Number.isFinite(parsed) && parsed > 0) return parsed;
+      if (prev?.createdAt && prev.createdAt > 0) return prev.createdAt;
+      return 0;
+    })(),
   };
 }
 
