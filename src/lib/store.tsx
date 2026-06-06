@@ -15,6 +15,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -2132,7 +2133,14 @@ export function AppProvider({
       if (uid && !isGuestUserId(uid) && getBannedUserIds().size) {
         base = applyBannedFilterToState(base, uid);
       }
-      return reconcileOwnedAccountProfiles(base);
+      base = reconcileOwnedAccountProfiles(base);
+      if (uid && !isGuestUserId(uid)) {
+        const cache = loadAccountStateCache(uid);
+        if (cache && ((cache.chats?.length ?? 0) > 0 || (cache.posts?.length ?? 0) > 0)) {
+          base = buildMultiAccountState(uid, cache, base, undefined, { serverAuthoritative: false });
+        }
+      }
+      return base;
     } catch (e) {
       console.warn("[Retweet] AppProvider init failed, using empty state:", e);
       return safeNormalizeState(initial);
@@ -2140,6 +2148,11 @@ export function AppProvider({
   });
   const stateRef = useRef(state);
   stateRef.current = state;
+
+  /** عرض الخلاصة من الكاش المحلي فوراً — لا ننتظر جلب الخادم */
+  useLayoutEffect(() => {
+    syncHomeFeedPostsFromState(stateRef.current, setHomeFeedPosts);
+  }, []);
 
   const storeListenersRef = useRef(new Set<() => void>());
   const storeRevisionRef = useRef(0);
@@ -2166,6 +2179,13 @@ export function AppProvider({
   const [feedHasMore, setFeedHasMore] = useState(true);
   const [homeFeedPosts, setHomeFeedPosts] = useState<Post[]>([]);
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
+  const [remoteHydrating, setRemoteHydrating] = useState(() => {
+    try {
+      return apiBackendEnabled() && !!getApiToken();
+    } catch {
+      return false;
+    }
+  });
   const feedLoadMoreBusyRef = useRef(false);
   const [accountSessionKey, setAccountSessionKey] = useState(
     () => `sess-${state.currentUserId || "guest"}-0`,
@@ -2378,6 +2398,7 @@ export function AppProvider({
     let cancelled = false;
     void (async () => {
       hydrateRemoteBusy.current = true;
+      setRemoteHydrating(true);
       try {
         invalidateHomeFeedCache();
         const [remote, bannedIds, feed] = await Promise.all([
@@ -2468,12 +2489,16 @@ export function AppProvider({
       } catch {
         /* ignore */
       } finally {
-        if (!cancelled) hydrateRemoteBusy.current = false;
+        if (!cancelled) {
+          hydrateRemoteBusy.current = false;
+          setRemoteHydrating(false);
+        }
       }
     })();
     return () => {
       cancelled = true;
       hydrateRemoteBusy.current = false;
+      setRemoteHydrating(false);
     };
   }, []);
 
@@ -5866,7 +5891,8 @@ export function AppProvider({
           followers: u.followers,
           following: u.following,
           followerCount: typeof u.displayFollowerCount === "number" ? u.displayFollowerCount : undefined,
-          followingCount: undefined,
+          followingCount:
+            typeof u.displayFollowingCount === "number" ? u.displayFollowingCount : undefined,
         });
         if (!prev || !directoryUserRowEqual(prev, next)) {
           byId.set(u.id, next);
@@ -5983,17 +6009,15 @@ export function AppProvider({
           return preserveResolvedFollowRequestNotifications(s, next);
         };
         markServerHydrated(activeId, applyRemote(stateRef.current));
-        startTransition(() => {
-          setStateRaw(s => {
-            const next = applyRemote(s);
-            syncHomeFeedPostsFromState(
-              next,
-              setHomeFeedPosts,
-              feed.ok ? feed.posts : undefined,
-            );
-            if (feed.ok) markEssentialFeedSynced();
-            return next;
-          });
+        setStateRaw(s => {
+          const next = applyRemote(s);
+          syncHomeFeedPostsFromState(
+            next,
+            setHomeFeedPosts,
+            feed.ok ? feed.posts : undefined,
+          );
+          if (feed.ok) markEssentialFeedSynced();
+          return next;
         });
         perfMark("refreshFromServer-merge-end");
         void refreshUserDirectory();
@@ -7021,8 +7045,8 @@ export function AppProvider({
   );
 
   const appUiValue = useMemo(
-    () => ({ accountSwitching, accountSessionKey, unreadMessageCount }),
-    [accountSwitching, accountSessionKey, unreadMessageCount],
+    () => ({ accountSwitching, accountSessionKey, unreadMessageCount, remoteHydrating }),
+    [accountSwitching, accountSessionKey, unreadMessageCount, remoteHydrating],
   );
 
   return (

@@ -609,6 +609,8 @@ export function userFromSearchResult(row: ApiSearchUser): User {
     following: Array.isArray(row.following) ? row.following : [],
     displayFollowerCount:
       typeof row.followerCount === "number" ? row.followerCount : undefined,
+    displayFollowingCount:
+      typeof row.followingCount === "number" ? row.followingCount : undefined,
     highlights: [],
     followRequestIn: [],
     followRequestOut: [],

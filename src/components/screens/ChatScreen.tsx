@@ -58,6 +58,7 @@ import { useTypingUsers } from "@/lib/typingContext";
 import { notifyGuestActionBlocked } from "@/lib/guestBlocked";
 import { chatNoSelectCaptureHandlers } from "@/lib/chatNoTextSelection";
 import { NATIVE_LONG_PRESS_ATTR } from "@/lib/nativeTextSelectionGuard";
+import { useRemoteHydrating } from "@/lib/appUiContext";
 import { useT } from "@/lib/i18n";
 import { Avatar } from "../Avatar";
 import { ChatDmIntroCard } from "../chat/ChatDmIntroCard";
@@ -3363,6 +3364,7 @@ export function ChatScreen({
    * إذا كانت القائمة قد ظهرت سابقاً ثم صارت فارغة لثوانٍ قليلة،
    * نبقي آخر نسخة مرئية بدلاً من شاشة الفراغ.
    */
+  const remoteHydrating = useRemoteHydrating();
   const [lastStableChats, setLastStableChats] = useState<Chat[]>([]);
   const [lastStableAt, setLastStableAt] = useState(0);
   useEffect(() => {
@@ -3381,6 +3383,8 @@ export function ChatScreen({
     sortedFilteredChats.length === 0 &&
     lastStableChats.length > 0 &&
     Date.now() - lastStableAt < 8000;
+  const inboxAwaitingRemote =
+    remoteHydrating && inboxFilter === "all" && !debouncedSearch && sortedFilteredChats.length === 0;
   const renderedChats = shouldHoldPreviousChats ? lastStableChats : sortedFilteredChats;
 
   const stackChatOpenKey = stackChat ? openChatIdFor(stackChat, me.id) : null;
@@ -3759,7 +3763,9 @@ export function ChatScreen({
           Each row is rendered by ChatListRowWithPeek
           ══════════════════════════════════════════════════ */}
       <div ref={inboxVirtualListAnchorRef}>
-        {shouldHoldPreviousChats && renderedChats.length === 0 && <ChatInboxSkeleton rows={6} />}
+        {(inboxAwaitingRemote || (shouldHoldPreviousChats && renderedChats.length === 0)) && (
+          <ChatInboxSkeleton rows={6} />
+        )}
 
         {renderedChats.length > 0 && (
           <ChatInboxVirtualList
@@ -3780,7 +3786,7 @@ export function ChatScreen({
         )}
 
         {/* Empty state */}
-        {renderedChats.length === 0 && !search.trim() && !shouldHoldPreviousChats && (
+        {renderedChats.length === 0 && !search.trim() && !shouldHoldPreviousChats && !inboxAwaitingRemote && (
           <div className="flex flex-col items-center justify-center py-16 gap-3 px-6 text-center">
             <span className="flex h-16 w-16 items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-800">
               <MessageCirclePlus size={28} className="text-zinc-400" />
@@ -3811,7 +3817,7 @@ export function ChatScreen({
             )}
           </div>
         )}
-        {renderedChats.length === 0 && !!debouncedSearch && !shouldHoldPreviousChats && (
+        {renderedChats.length === 0 && !!debouncedSearch && !shouldHoldPreviousChats && !inboxAwaitingRemote && (
           <p className="py-12 text-center text-[14px] text-zinc-400">
             {isRtl ? "لا نتائج لـ «" + search + "»" : `No results for "${search}"`}
           </p>

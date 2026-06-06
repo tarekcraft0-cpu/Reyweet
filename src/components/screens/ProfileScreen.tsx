@@ -12,7 +12,7 @@ import {
 } from "@/lib/store";
 import { profilePostAuthorIds } from "@/lib/founderAccount";
 import { apiBackendEnabled, getApiToken } from "@/lib/apiBackend";
-import { resolveDisplayFollowerCount } from "@/lib/publicProfileCache";
+import { resolveDisplayFollowerCount, resolveDisplayFollowingCount } from "@/lib/publicProfileCache";
 import { notifyGuestActionBlocked } from "@/lib/guestBlocked";
 import { storyViewerTrayRing } from "@/lib/storyTray";
 import { useT } from "@/lib/i18n";
@@ -700,7 +700,7 @@ export function ProfileScreen({
                   <div className="text-xs text-muted-foreground">{t("followers")}</div>
                 </button>
                 <button type="button" onClick={() => canView && canSeePrivateContent && !isHiddenByBlock && setShowFollowers("following")}>
-                  <div className="font-bold">{isHiddenByBlock ? "—" : formatCompactCount(u.following.length)}</div>
+                  <div className="font-bold">{isHiddenByBlock ? "—" : formatCompactCount(resolveDisplayFollowingCount(u))}</div>
                   <div className="text-xs text-muted-foreground">{t("followsCount")}</div>
                 </button>
               </>

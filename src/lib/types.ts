@@ -75,6 +75,8 @@ export interface User {
   following: ID[];
   /** إن وُجد، يُعرض كعدد المتابعين في البروفايل (بدل `followers.length` فقط) */
   displayFollowerCount?: number;
+  /** إن وُجد، يُعرض كعدد المتابَعين في البروفايل (بدل `following.length` فقط) */
+  displayFollowingCount?: number;
   highlights: HighlightEntry[];
   /** طلبات متابعة واردة (حسابات خاصة) */
   followRequestIn?: ID[];

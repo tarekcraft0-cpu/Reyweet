@@ -42,3 +42,11 @@ export function resolveDisplayFollowerCount(user: Pick<User, "displayFollowerCou
   if (typeof user.displayFollowerCount === "number") return user.displayFollowerCount;
   return user.followers?.length ?? 0;
 }
+
+/** عدد المتابَعين للعرض — يفضّل العدد من الخادم على طول قائمة ناقصة محلياً */
+export function resolveDisplayFollowingCount(
+  user: Pick<User, "displayFollowingCount" | "following">,
+): number {
+  if (typeof user.displayFollowingCount === "number") return user.displayFollowingCount;
+  return user.following?.length ?? 0;
+}

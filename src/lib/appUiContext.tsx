@@ -4,6 +4,8 @@ export type AppUiState = {
   accountSwitching: boolean;
   accountSessionKey: string;
   unreadMessageCount: number;
+  /** جلب أولي من الخادم قيد التنفيذ — لعرض هيكل تحميل بدل فراغ */
+  remoteHydrating: boolean;
 };
 
 export const AppUiCtx = createContext<AppUiState | null>(null);
@@ -24,4 +26,8 @@ export function useAccountSessionKey(): string {
 
 export function useUnreadMessageCount(): number {
   return useContext(AppUiCtx)?.unreadMessageCount ?? 0;
+}
+
+export function useRemoteHydrating(): boolean {
+  return useContext(AppUiCtx)?.remoteHydrating ?? false;
 }

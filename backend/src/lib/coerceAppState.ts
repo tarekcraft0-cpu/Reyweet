@@ -16,6 +16,14 @@ export function coerceAppStateForClient(state: AppState): AppState {
       password: "",
       followers: u.followers ?? [],
       following: u.following ?? [],
+      displayFollowerCount:
+        typeof u.displayFollowerCount === "number"
+          ? u.displayFollowerCount
+          : (u.followers ?? []).length,
+      displayFollowingCount:
+        typeof u.displayFollowingCount === "number"
+          ? u.displayFollowingCount
+          : (u.following ?? []).length,
       blocked: u.blocked ?? [],
       closeFriends: u.closeFriends ?? [],
       favorites: u.favorites ?? [],

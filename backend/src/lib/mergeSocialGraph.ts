@@ -39,13 +39,23 @@ export async function mergeSocialGraphIntoAppState(state: AppState): Promise<App
     if (!prev || item.createdAt >= prev.createdAt) storyById.set(item.id, item);
   }
 
-  let users = (state.users || []).map(u => ({
-    ...u,
-    following: [...new Set(followingByUser.get(u.id) || [])],
-    followers: [...new Set(followersByUser.get(u.id) || [])],
-    followRequestOut: [...new Set(requestOut.get(u.id) || [])],
-    followRequestIn: [...new Set(requestIn.get(u.id) || [])],
-  }));
+  let users = (state.users || []).map(u => {
+    const fromDbFollowing = [...new Set(followingByUser.get(u.id) || [])];
+    const fromDbFollowers = [...new Set(followersByUser.get(u.id) || [])];
+    const fromSnapFollowing = [...new Set(u.following || [])];
+    const fromSnapFollowers = [...new Set(u.followers || [])];
+    const following = [...new Set([...fromDbFollowing, ...fromSnapFollowing])];
+    const followers = [...new Set([...fromDbFollowers, ...fromSnapFollowers])];
+    return {
+      ...u,
+      following,
+      followers,
+      displayFollowingCount: following.length,
+      displayFollowerCount: followers.length,
+      followRequestOut: [...new Set(requestOut.get(u.id) || [])],
+      followRequestIn: [...new Set(requestIn.get(u.id) || [])],
+    };
+  });
 
   users = applyBlockedSocialFilters(users);
 

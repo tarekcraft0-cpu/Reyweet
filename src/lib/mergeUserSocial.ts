@@ -100,6 +100,20 @@ export function mergeBlockedFromServer(prev?: ID[], incoming?: ID[]): ID[] {
   return i;
 }
 
+/** لا نمسح قوائم المتابعة بلقطة جزئية (دليل/خلاصة بلا مصفوفات كاملة) */
+export function mergeSocialIdListFromServer(
+  prev: ID[] | undefined,
+  incoming: ID[] | undefined,
+  opts?: { countHint?: number },
+): ID[] {
+  const p = prev ?? [];
+  if (!Array.isArray(incoming)) return p;
+  if (incoming.length > 0) return incoming;
+  if (typeof opts?.countHint === "number" && opts.countHint === 0) return [];
+  if (p.length > 0) return p;
+  return incoming;
+}
+
 /** دمج حالة السيرفر — المتابعات من الاستجابة دائماً (حتى لو فارغة بعد إلغاء متابعة) */
 export function mergeUserFromServer(prev: User | undefined, incoming: User): User {
   if (!prev) return withUserListDefaults({ ...incoming, password: "" });
@@ -131,8 +145,24 @@ export function mergeUserFromServer(prev: User | undefined, incoming: User): Use
       incoming.appOfficialVerified === true || prev.appOfficialVerified === true,
     appOfficialLabel:
       incoming.appOfficialLabel !== undefined ? incoming.appOfficialLabel : prev.appOfficialLabel,
-    following: Array.isArray(incoming.following) ? incoming.following : prev.following,
-    followers: Array.isArray(incoming.followers) ? incoming.followers : prev.followers,
+    following: mergeSocialIdListFromServer(prev.following, incoming.following, {
+      countHint: incoming.displayFollowingCount,
+    }),
+    followers: mergeSocialIdListFromServer(prev.followers, incoming.followers, {
+      countHint: incoming.displayFollowerCount,
+    }),
+    displayFollowerCount:
+      typeof incoming.displayFollowerCount === "number"
+        ? incoming.displayFollowerCount
+        : Array.isArray(incoming.followers) && incoming.followers.length > 0
+          ? incoming.followers.length
+          : prev.displayFollowerCount,
+    displayFollowingCount:
+      typeof incoming.displayFollowingCount === "number"
+        ? incoming.displayFollowingCount
+        : Array.isArray(incoming.following) && incoming.following.length > 0
+          ? incoming.following.length
+          : prev.displayFollowingCount,
     followRequestIn: Array.isArray(incoming.followRequestIn)
       ? incoming.followRequestIn
       : prev.followRequestIn,
@@ -176,6 +206,8 @@ export function mergeDirectoryUser(prev: User | undefined, row: ApiSearchUser): 
         : prev.following,
     displayFollowerCount:
       typeof row.followerCount === "number" ? row.followerCount : prev.displayFollowerCount,
+    displayFollowingCount:
+      typeof row.followingCount === "number" ? row.followingCount : prev.displayFollowingCount,
     password: "",
   };
 }
