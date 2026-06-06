@@ -1142,7 +1142,7 @@ app.get("/v1/app-state", authMiddleware, async (req, res) => {
     const snap = await getSnapshot(userId);
     let state = (snap as AppState | null) ?? (await buildMinimalAppState(userId));
     state = await mergeDbUsersIntoAppState(state);
-    state = await mergeDbPostsIntoAppState(state);
+    /** المنشورات تُجلب عبر /v1/feed/posts — لا ندمج posts.json هنا لتخفيف الطلب */
     state = await mergeSocialGraphIntoAppState(state);
     state = await hydrateAppStateMessages(state, userId);
     const feedStories = storiesVisibleToViewer(state as AppState, userId);

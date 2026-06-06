@@ -133,6 +133,8 @@ export function sanitizeAppStateForSync(state: AppState): AppState {
       ...c,
       messages: [],
     })),
+    /** المنشورات مصدرها posts.json و /v1/feed/posts — لا نرفع الفيد في كل مزامنة */
+    posts: [],
   };
 }
 
@@ -834,7 +836,7 @@ export async function apiFetchHomeFeed(
     if (cached?.stale && cached.hit.ok) {
       void (async () => {
         const fresh = await apiFetchHomeFeed(token, { ...opts, force: true });
-        if (fresh.ok) apiCacheSet(cacheKey, fresh, 25_000, 15_000);
+        if (fresh.ok) apiCacheSet(cacheKey, fresh, 60_000, 30_000);
       })();
       return cached.hit;
     }
@@ -863,7 +865,7 @@ export async function apiFetchHomeFeed(
     nextCursor: data.nextCursor,
     bannedUserIds: Array.isArray(data.bannedUserIds) ? data.bannedUserIds : undefined,
   };
-  if (cacheKey && out.ok) apiCacheSet(cacheKey, out, 25_000, 15_000);
+  if (cacheKey && out.ok) apiCacheSet(cacheKey, out, 60_000, 30_000);
   return out;
 }
 
@@ -901,7 +903,7 @@ export async function apiFetchUserPosts(
 export function seedPullCacheFromAccountState(userId: ID): boolean {
   const cache = loadAccountStateCache(userId);
   if (cache?.currentUserId) {
-    apiCacheSet("state:pull", cache, 86_400_000, 43_200_000);
+    apiCacheSet("state:pull", { ...cache, posts: [] }, 86_400_000, 43_200_000);
     return true;
   }
   if (typeof window === "undefined") return false;
@@ -913,8 +915,9 @@ export function seedPullCacheFromAccountState(userId: ID): boolean {
       accountIds: snapshotAccountIdsForOwner(userId),
       isolateOwnedUsers: (ownerId, s) => isolateUsersForAccountCache(ownerId, s),
     });
-    if (!(scoped.chats?.length || scoped.posts?.length || scoped.users?.length)) return false;
-    apiCacheSet("state:pull", scoped, 86_400_000, 43_200_000);
+    if (!(scoped.chats?.length || scoped.users?.length)) return false;
+    /** لا نخزّن posts في كاش السحب — تواريخها تتلوث من localStorage وتُعاد بعد ثوانٍ */
+    apiCacheSet("state:pull", { ...scoped, posts: [] }, 86_400_000, 43_200_000);
     return true;
   } catch {
     return false;
@@ -945,7 +948,7 @@ export async function pullRemoteAppState(
           return data.state;
         }
       },
-      { ttlMs: 8_000, staleMs: 4_000, force: opts?.force },
+      { ttlMs: 60_000, staleMs: 120_000, force: opts?.force },
     ),
   );
 }
@@ -959,7 +962,6 @@ export async function pushRemoteAppState(
   if (!shouldAllowRemotePush(state, opts)) return false;
   const body = JSON.stringify({ state: sanitizeAppStateForSync(state) });
   const res = await apiFetch("/v1/app-state", { method: "PUT", body, token });
-  if (res.ok) apiCacheInvalidate("state:pull");
   return res.ok;
 }
 

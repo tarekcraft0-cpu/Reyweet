@@ -77,10 +77,26 @@ function mergeHiddenMessageIdsByUser(
   return { ...(b || {}), ...(a || {}), [ownerId]: merged };
 }
 
+/** تواريخ من آخر فيد خادم — لا تُستبدَل بلقطة محلية/كاش أحدث */
+function feedSliceCreatedAtById(): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const p of homeFeedServerSlice.posts) {
+    const at = coerceTimestamp(p.createdAt, 0);
+    if (p?.id && at > 0) m.set(p.id, at);
+  }
+  return m;
+}
+
+function applyFeedSliceTimestamps(posts: Post[]): Post[] {
+  const feedAt = feedSliceCreatedAtById();
+  if (!feedAt.size) return posts.map(normalizePostTimestamps);
+  return posts.map(p => mergePostCreatedAtAuthoritative(p, feedAt.get(p.id)));
+}
+
 /** سحب الفيد من الخادم مباشرة — يتجاوز لقطة localStorage القديمة */
 function mergePostsServerAuthoritative(localPosts: Post[], remotePosts: Post[]): Post[] {
   pruneLocalRemoveMaps();
-  const remoteNorm = remotePosts.map(normalizePostTimestamps);
+  const remoteNorm = applyFeedSliceTimestamps(remotePosts);
   const remoteById = new Map(remoteNorm.map(p => [p.id, p]));
   const merged: Post[] = [];
   for (const p of remoteNorm) {
@@ -273,14 +289,18 @@ function mergeSocialIdLists(
 function mergePostsPreservingLocalDeletes(localPosts: Post[], remotePosts: Post[]): Post[] {
   const now = Date.now();
   pruneLocalRemoveMaps(now);
-  const remoteNorm = remotePosts.map(normalizePostTimestamps);
+  const remoteNorm = applyFeedSliceTimestamps(remotePosts);
+  const feedAt = feedSliceCreatedAtById();
   const localIds = new Set(localPosts.map(p => p.id));
   const remoteById = new Map(remoteNorm.map(p => [p.id, p]));
   const merged: Post[] = [];
   for (const p of localPosts) {
     if (locallyRemovedPostIds.has(p.id)) continue;
     const remote = remoteById.get(p.id);
-    const base = remote ?? p;
+    let base = remote ?? p;
+    if (remote && feedAt.has(p.id)) {
+      base = mergePostCreatedAtAuthoritative(base, feedAt.get(p.id));
+    }
     const localCommentIds = new Set(p.comments.map(c => c.id));
     const filteredRemoteComments = (remote?.comments ?? []).filter(c => {
       const key = `${p.id}:${c.id}`;
@@ -329,6 +349,7 @@ import {
   apiFetchHomeFeed,
   apiFetchBannedUserIds,
   invalidateHomeFeedCache,
+  invalidateAppStatePullCache,
   apiFetchUserPosts,
   pushRemoteAppState,
   apiPatchProfile,
@@ -492,7 +513,11 @@ import {
   scopeChatForAccount,
   scopeChatForInbox,
 } from "./scopeAppState";
-import { coerceTimestamp, normalizePostTimestamps } from "./coerceTimestamp";
+import {
+  coerceTimestamp,
+  mergePostCreatedAtAuthoritative,
+  normalizePostTimestamps,
+} from "./coerceTimestamp";
 import {
   purgeStateForAccountSwitch,
   refreshOwnedUsersInState,
@@ -1436,8 +1461,12 @@ function buildMultiAccountState(
   }
   const localPostsById = new Map<ID, Post>();
   for (const p of localPostSources) localPostsById.set(p.id, p);
+  const authoritativeRemotePosts =
+    opts?.serverAuthoritative && homeFeedServerSlice.posts.length
+      ? homeFeedServerSlice.posts
+      : primaryNorm.posts || [];
   const mergedPosts = opts?.serverAuthoritative
-    ? mergePostsServerAuthoritative([...localPostsById.values()], primaryNorm.posts || [])
+    ? mergePostsServerAuthoritative([...localPostsById.values()], authoritativeRemotePosts)
     : mergePostsPreservingLocalDeletes([...localPostsById.values()], primaryNorm.posts || []);
 
   return scopeAppStateToAccount(
@@ -2338,8 +2367,8 @@ export function AppProvider({
   const fullPullPendingRef = useRef(false);
   const fullPullTimerRef = useRef<number | null>(null);
   const remoteSyncTimerRef = useRef<number | null>(null);
-  const MIN_FULL_PULL_MS = 1_500;
-  const MIN_URGENT_PULL_MS = 400;
+  const MIN_FULL_PULL_MS = 45_000;
+  const MIN_URGENT_PULL_MS = 3_000;
   const feedPullDebounceRef = useRef<number | null>(null);
   const lastFeedFetchAtRef = useRef(0);
   const urgentPullRef = useRef(false);
@@ -2349,14 +2378,18 @@ export function AppProvider({
     const token = getApiToken();
     const activeId = stateRef.current.currentUserId;
     if (!token || !activeId || isGuestUserId(activeId)) return;
-    const remote = await pullRemoteAppState(token);
+    invalidateHomeFeedCache();
+    const remote = await pullRemoteAppState(token, { force: true });
     if (!remote) return;
-    setStateRaw(s =>
-      preserveResolvedFollowRequestNotifications(
-        s,
-        buildMultiAccountState(activeId, remote, s, undefined, { serverAuthoritative: true }),
-      ),
-    );
+    setStateRaw(s => {
+      let next = buildMultiAccountState(activeId, remote, s, undefined, { serverAuthoritative: true });
+      if (homeFeedServerSlice.posts.length) {
+        next = mergeHomeFeedIntoState(next, { posts: homeFeedServerSlice.posts, users: [] });
+      }
+      next = preserveResolvedFollowRequestNotifications(s, next);
+      syncHomeFeedPostsFromState(next, setHomeFeedPosts);
+      return next;
+    });
   }, [setStateRaw]);
 
   const runFollowToggleApi = useCallback(
@@ -2791,7 +2824,11 @@ export function AppProvider({
                 avatar: meta.avatar,
               }
             : undefined;
-          return buildMultiAccountState(activeId, remote, s, apiUser, { serverAuthoritative: true });
+          let next = buildMultiAccountState(activeId, remote, s, apiUser, { serverAuthoritative: true });
+          if (homeFeedServerSlice.posts.length) {
+            next = mergeHomeFeedIntoState(next, { posts: homeFeedServerSlice.posts, users: [] });
+          }
+          return next;
         });
       } finally {
         if (!cancelled) sessionRepairBusy.current = false;
@@ -2828,8 +2865,6 @@ export function AppProvider({
           ...(s.storyArchive || []).filter((x) => !archiveIds.has(x.id)),
         ].sort((a, b) => b.createdAt - a.createdAt);
         const next = { ...s, stories: nextStories, storyArchive };
-        const token = getApiToken();
-        if (token && apiBackendEnabled()) void pushRemoteAppState(token, next);
         return next;
       });
     };
@@ -2849,10 +2884,7 @@ export function AppProvider({
           return { ...u, note: "", noteAt: undefined };
         });
         if (!changed) return s;
-        const next = { ...s, users };
-        const token = getApiToken();
-        if (token && apiBackendEnabled()) void pushRemoteAppState(token, next);
-        return next;
+        return { ...s, users };
       });
     };
     tick();
@@ -6228,49 +6260,52 @@ export function AppProvider({
           fullPullPendingRef.current = false;
           return;
         }
-        invalidateHomeFeedCache();
-        const remoteP = pullRemoteAppState(token);
-        const feedP = apiFetchHomeFeed(token, { limit: 50, force: true });
+        if (urgent) {
+          invalidateHomeFeedCache();
+          invalidateAppStatePullCache();
+        }
+        const skipFeed = !urgent && essentialFeedSyncedRecently(180_000);
         const bannedP = apiFetchBannedUserIds(token);
-        const remote = await remoteP;
+        const feedP = skipFeed
+          ? Promise.resolve({ ok: false as const, error: "skipped", posts: [], users: [] })
+          : apiFetchHomeFeed(token, { limit: 50, force: urgent });
+        const [remote, bannedIds, feed] = await Promise.all([
+          pullRemoteAppState(token, { force: urgent }),
+          bannedP,
+          feedP,
+        ]);
         lastFullPullAtRef.current = Date.now();
         fullPullPendingRef.current = false;
         if (!remote) return;
         perfMark("refreshFromServer-merge-start");
         const { markServerHydrated } = await import("./remotePushGate");
-        const applyRemote = (
-          s: AppState,
-          feed?: { ok: boolean; posts: Post[]; users: User[]; bannedUserIds?: ID[] },
-        ) => {
+        const applyRemote = (s: AppState) => {
           let next = buildMultiAccountState(activeId, remote, s, undefined, {
             serverAuthoritative: true,
           });
           next = applyBannedFilterToState(next, activeId);
           if (feed?.ok) {
             if (feed.bannedUserIds?.length) syncBannedUserIds(feed.bannedUserIds);
+            else if (bannedIds.length) syncBannedUserIds(bannedIds);
             next = mergeHomeFeedIntoState(next, feed);
             lastFeedFetchAtRef.current = Date.now();
+            markEssentialFeedSynced();
+          } else if (bannedIds.length) {
+            syncBannedUserIds(bannedIds);
           }
           return preserveResolvedFollowRequestNotifications(s, next);
         };
-        markServerHydrated(activeId, applyRemote(stateRef.current));
-        setStateRaw(s => {
-          const next = applyRemote(s);
-          persistStateSnapshotNow(next);
-          syncHomeFeedPostsFromState(next, setHomeFeedPosts);
-          return next;
+        const merged = applyRemote(stateRef.current);
+        markServerHydrated(activeId, merged);
+        setStateRaw(() => {
+          persistStateSnapshotNow(merged);
+          syncHomeFeedPostsFromState(
+            merged,
+            setHomeFeedPosts,
+            feed?.ok ? feed.posts : undefined,
+          );
+          return merged;
         });
-        const [bannedIds, feed] = await Promise.all([bannedP, feedP]);
-        if (bannedIds.length) syncBannedUserIds(bannedIds);
-        else if (feed.ok && feed.bannedUserIds?.length) syncBannedUserIds(feed.bannedUserIds);
-        if (feed.ok) {
-          setStateRaw(s => {
-            const next = applyRemote(s, feed);
-            syncHomeFeedPostsFromState(next, setHomeFeedPosts, feed.posts);
-            markEssentialFeedSynced();
-            return next;
-          });
-        }
         perfMark("refreshFromServer-merge-end");
         void refreshUserDirectory();
       })();
@@ -6298,11 +6333,11 @@ export function AppProvider({
   const refreshFeedFromServer = useCallback(async (opts?: { force?: boolean }) => {
     if (!apiBackendEnabled() || !getApiToken() || isGuestUserId(stateRef.current.currentUserId)) return;
     const now = Date.now();
-    const minGap = opts?.force ? 1_200 : 5_000;
+    const minGap = opts?.force ? 1_200 : 30_000;
     if (!opts?.force && now - lastFeedFetchAtRef.current < minGap) return;
     const token = getApiToken()!;
-    invalidateHomeFeedCache();
-    const feed = await apiFetchHomeFeed(token, { limit: 50, force: true });
+    if (opts?.force) invalidateHomeFeedCache();
+    const feed = await apiFetchHomeFeed(token, { limit: 50, force: !!opts?.force });
     if (!feed.ok) {
       void import("./uiToast").then(({ emitUiToast }) =>
         emitUiToast(feed.error || "تعذّر تحميل التغريدات — تحقق من الاتصال وأعد المحاولة"),
@@ -6391,14 +6426,6 @@ export function AppProvider({
       setHomeFeedPosts([]);
       return;
     }
-    const me = snap.users.find(u => u.id === meId);
-    if (!me) return;
-    const newest = (snap.posts ?? []).reduce<Post | null>((best, p) => {
-      if (!p?.id) return best;
-      if (!best || (p.createdAt ?? 0) > (best.createdAt ?? 0)) return p;
-      return best;
-    }, null);
-    if (newest) prependLivePostToHomeFeedSlice(newest);
     syncHomeFeedPostsFromState(snap, setHomeFeedPosts);
   }, []);
 
@@ -6406,9 +6433,9 @@ export function AppProvider({
     if (feedPullDebounceRef.current != null) window.clearTimeout(feedPullDebounceRef.current);
     feedPullDebounceRef.current = window.setTimeout(() => {
       feedPullDebounceRef.current = null;
-      if (essentialFeedSyncedRecently(120_000)) return;
+      if (essentialFeedSyncedRecently(300_000)) return;
       void refreshFeedFromServer();
-    }, 8_000);
+    }, 20_000);
   }, [refreshFeedFromServer]);
 
   useEffect(() => {
@@ -6466,7 +6493,7 @@ export function AppProvider({
     remoteSyncTimerRef.current = window.setTimeout(() => {
       remoteSyncTimerRef.current = null;
       refreshFromServer();
-    }, 4000);
+    }, 30_000);
   }, [refreshFromServer]);
 
   /** تحديث فوري عبر SSE (رسائل، لايكات، حسابات جديدة) */
@@ -6876,27 +6903,37 @@ export function AppProvider({
         const patch = payload?.post;
         if (!patch?.id) return;
         if (patch.userId && getBannedUserIds().has(patch.userId)) return;
-        prependLivePostToHomeFeedSlice(patch);
+        const feedAt = feedSliceCreatedAtById().get(patch.id);
+        const patchNorm = mergePostCreatedAtAuthoritative(
+          patch,
+          feedAt ?? coerceTimestamp(patch.createdAt, 0),
+        );
+        prependLivePostToHomeFeedSlice(patchNorm);
         setStateRaw(s => {
           if (!s.currentUserId || isGuestUserId(s.currentUserId)) return s;
-          const i = s.posts.findIndex(p => p.id === patch.id);
+          const i = s.posts.findIndex(p => p.id === patchNorm.id);
           if (i < 0) {
-            return { ...s, posts: [patch, ...s.posts].sort((a, b) => b.createdAt - a.createdAt) };
+            return {
+              ...s,
+              posts: [patchNorm, ...s.posts].sort((a, b) => b.createdAt - a.createdAt),
+            };
           }
           const prev = s.posts[i]!;
           const comments =
-            patch.comments.length > 0
-              ? patch.comments
-              : prev.comments;
+            patchNorm.comments.length > 0 ? patchNorm.comments : prev.comments;
           return {
             ...s,
             posts: s.posts.map(p =>
-              p.id === patch.id
+              p.id === patchNorm.id
                 ? {
                     ...p,
-                    ...patch,
-                    likes: mergeSocialIdLists(p.likes, patch.likes, p.id, "likes"),
-                    reposts: mergeSocialIdLists(p.reposts, patch.reposts, p.id, "reposts"),
+                    ...patchNorm,
+                    createdAt: mergePostCreatedAtAuthoritative(
+                      { ...p, ...patchNorm },
+                      feedAt ?? coerceTimestamp(p.createdAt, 0),
+                    ).createdAt,
+                    likes: mergeSocialIdLists(p.likes, patchNorm.likes, p.id, "likes"),
+                    reposts: mergeSocialIdLists(p.reposts, patchNorm.reposts, p.id, "reposts"),
                     comments,
                   }
                 : p,
@@ -7014,7 +7051,7 @@ export function AppProvider({
           if (!profileSaveBusyRef.current) refreshFromServer({ urgent: true });
           return;
         }
-        if (!socialSyncBusyRef.current) scheduleRemoteSync();
+        if (!socialSyncBusyRef.current) scheduleFeedPull();
         return;
       }
       if (event === "user_profile_updated") {

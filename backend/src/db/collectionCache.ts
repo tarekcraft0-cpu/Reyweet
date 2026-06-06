@@ -3,7 +3,7 @@
  * تُبطل عند أي كتابة عبر invalidateCollectionCache().
  */
 
-const TTL_MS = 4_000;
+const TTL_MS = 30_000;
 const cache = new Map<string, { data: unknown; expiresAt: number }>();
 
 export function readCached<T>(key: string, loader: () => Promise<T>): Promise<T> {
