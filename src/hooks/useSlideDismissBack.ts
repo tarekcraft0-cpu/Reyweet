@@ -398,6 +398,7 @@ export function useSlideDismissBack({
   const isInteractiveDismissTarget = (target: EventTarget | null) => {
     if (!(target instanceof HTMLElement)) return false;
     if (target.closest("[data-chat-back-btn], [data-profile-back-btn]")) return true;
+    if (target.closest(".chat-msg-row, [data-chat-composer]")) return true;
     return !!target.closest(
       "button, a, input, select, textarea, label, [role='switch'], [role='button'], [data-no-dismiss-drag], [data-profile-scroll], [data-profile-menu-btn], [data-chat-privacy-menu-btn], [data-profile-menu], [data-chat-privacy-menu]",
     );

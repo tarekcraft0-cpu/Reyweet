@@ -5,11 +5,12 @@ import type { Message } from "@/lib/types";
 
 const SWIPE_THRESHOLD = 48;
 const SWIPE_MAX = 76;
+const SWIPE_ACTIVATE_PX = 8;
 
 /**
  * محاذاة فيزيائية ثابتة (لا تتأثر بلغة الواجهة):
- * - رسائلي: يمين الشاشة
- * - الطرف الآخر: يسار الشاشة + أفاتار يسار الفقاعة
+ * - رسائلي: يمين الشاشة — سحب للرد من اليمين إلى اليسار
+ * - الطرف الآخر: يسار الشاشة — سحب للرد من اليسار إلى اليمين
  */
 function ChatSwipeMessageRowInner({
   message,
@@ -38,15 +39,20 @@ function ChatSwipeMessageRowInner({
   onPointerUp: (e: React.PointerEvent, m: Message) => void;
   message: Message;
 }) {
-  const [dragX, setDragX] = useState(0);
-  const dragXRef = useRef(0);
-  const swipeRef = useRef<{ x: number; y: number; active: boolean } | null>(null);
+  const [dragVisualX, setDragVisualX] = useState(0);
+  const dragMagRef = useRef(0);
+  const swipeRef = useRef<{
+    x: number;
+    y: number;
+    active: boolean;
+    swiping: boolean;
+  } | null>(null);
 
   const handleDown = useCallback(
     (e: React.PointerEvent) => {
-      swipeRef.current = { x: e.clientX, y: e.clientY, active: true };
-      dragXRef.current = 0;
-      setDragX(0);
+      swipeRef.current = { x: e.clientX, y: e.clientY, active: true, swiping: false };
+      dragMagRef.current = 0;
+      setDragVisualX(0);
       onPointerDown(e, message);
     },
     [message, onPointerDown],
@@ -58,8 +64,14 @@ function ChatSwipeMessageRowInner({
       if (s?.active) {
         const dx = e.clientX - s.x;
         const dy = e.clientY - s.y;
-        if (dx > 6 && Math.abs(dx) > Math.abs(dy) * 1.1) {
-          if (dragXRef.current === 0) {
+        const replyMag = mine ? -dx : dx;
+
+        if (replyMag > SWIPE_ACTIVATE_PX && Math.abs(dx) > Math.abs(dy) * 1.1) {
+          if (!s.swiping) {
+            swipeRef.current = { ...s, swiping: true };
+            onPointerMove(e);
+          }
+          if (dragMagRef.current === 0) {
             try {
               (e.currentTarget as Element).setPointerCapture(e.pointerId);
             } catch {
@@ -67,28 +79,35 @@ function ChatSwipeMessageRowInner({
             }
           }
           e.stopPropagation();
-          const next = Math.min(SWIPE_MAX, dx * 0.92);
-          dragXRef.current = next;
-          setDragX(next);
+          const mag = Math.min(SWIPE_MAX, replyMag * 0.92);
+          dragMagRef.current = mag;
+          setDragVisualX(mine ? -mag : mag);
           return;
         }
-        if (Math.abs(dy) > 18) {
-          swipeRef.current = { ...s, active: false };
-          dragXRef.current = 0;
-          setDragX(0);
+        if (s.swiping && replyMag <= 4) {
+          dragMagRef.current = 0;
+          setDragVisualX(0);
+        }
+        if (Math.abs(dy) > 18 && replyMag < SWIPE_ACTIVATE_PX) {
+          swipeRef.current = { ...s, active: false, swiping: false };
+          dragMagRef.current = 0;
+          setDragVisualX(0);
         }
       }
       onPointerMove(e);
     },
-    [onPointerMove],
+    [mine, onPointerMove],
   );
 
   const handleUp = useCallback(
     (e: React.PointerEvent) => {
-      const dx = dragXRef.current;
-      if (dx >= SWIPE_THRESHOLD) onSwipeReply();
-      dragXRef.current = 0;
-      setDragX(0);
+      const wasSwiping = swipeRef.current?.swiping === true;
+      const mag = dragMagRef.current;
+      if (wasSwiping && mag >= SWIPE_THRESHOLD) {
+        onSwipeReply();
+      }
+      dragMagRef.current = 0;
+      setDragVisualX(0);
       swipeRef.current = null;
       try {
         (e.currentTarget as Element).releasePointerCapture(e.pointerId);
@@ -100,7 +119,8 @@ function ChatSwipeMessageRowInner({
     [message, onPointerUp, onSwipeReply],
   );
 
-  const replyOpacity = dragX > 0 ? Math.min(1, dragX / SWIPE_THRESHOLD) : 0;
+  const replyOpacity =
+    Math.abs(dragVisualX) > 0 ? Math.min(1, Math.abs(dragVisualX) / SWIPE_THRESHOLD) : 0;
 
   return (
     <div
@@ -147,7 +167,7 @@ function ChatSwipeMessageRowInner({
           )
         )}
         <div className="relative w-max max-w-full">
-          {dragX > 6 && (
+          {Math.abs(dragVisualX) > 6 && (
             <span
               className={
                 "pointer-events-none absolute top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full " +
@@ -164,8 +184,9 @@ function ChatSwipeMessageRowInner({
           <div
             className="relative w-max max-w-full will-change-transform"
             style={{
-              transform: dragX > 0 ? `translateX(${dragX}px)` : undefined,
-              transition: dragX > 0 ? "none" : "transform 0.22s cubic-bezier(0.32, 0.72, 0, 1)",
+              transform: dragVisualX !== 0 ? `translate3d(${dragVisualX}px, 0, 0)` : undefined,
+              transition:
+                dragVisualX !== 0 ? "none" : "transform 0.22s cubic-bezier(0.32, 0.72, 0, 1)",
             }}
           >
             {children}
@@ -176,17 +197,6 @@ function ChatSwipeMessageRowInner({
   );
 }
 
-/**
- * React.memo — يمنع إعادة رسم الرسالة ما لم تتغيّر خصائصها.
- * المقارنة: id الرسالة + status + reactions + mine (كافية للدردشة).
- */
-/**
- * React.memo مع مقارنة مخصّصة:
- * - message: مقارنة id + status + reactions (بدل reference equality لأن الـ store يُنشئ objects جديدة)
- * - باقي الـ props: === عادية
- * - الـ callbacks (onSwipeReply/onAvatarClick): يُعاد إنشاؤها في map لذا نتجاهلها في المقارنة
- *   وبدلاً من ذلك نعتمد على أن message.id يتغيّر عند تغيير الرسالة الفعلي.
- */
 function messageChanged(a: Message, b: Message): boolean {
   return (
     a.id !== b.id ||
@@ -207,6 +217,5 @@ export const ChatSwipeMessageRow = memo(ChatSwipeMessageRowInner, (prev, next) =
   if (prev.onPointerDown !== next.onPointerDown) return false;
   if (prev.onPointerMove !== next.onPointerMove) return false;
   if (prev.onPointerUp !== next.onPointerUp) return false;
-  // children: نتجاهل المقارنة لأنها تتبع message (المقارَن أعلاه)
   return true;
 });

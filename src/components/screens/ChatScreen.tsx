@@ -135,7 +135,7 @@ import {
   normalizeChatBubbleStyle,
   type VerifiedChatBubbleStyleId,
 } from "@/lib/verifiedChatBubbleStyles";
-import { Mic, Image as ImageIcon, Sticker, Phone, Video, MicOff, MonitorUp, X, Plus, ArrowRight, Check, Camera, Search, Square, Megaphone, Users, LogOut, AtSign, MoreVertical, ChevronLeft, Reply, Forward, Copy, Trash2, Flag, MoreHorizontal, ChevronRight, Pin, Play, Pause, Star, Bell, BellOff, Mail, Send, PenLine, SquarePen, MessageCirclePlus, Smile, Lock, Palette, Languages, Sparkles } from "lucide-react";
+import { Mic, Image as ImageIcon, Sticker, Phone, Video, MicOff, MonitorUp, X, Plus, ArrowRight, Check, Camera, Search, Square, Megaphone, Users, LogOut, AtSign, MoreVertical, ChevronLeft, Reply, Forward, Copy, Trash2, Flag, MoreHorizontal, ChevronRight, Pin, Play, Pause, Star, Bell, BellOff, Mail, Send, PenLine, SquarePen, MessageCirclePlus, Smile, Lock, Languages, Sparkles } from "lucide-react";
 import { TranslateTextSheet } from "../chat/TranslateTextSheet";
 import { PoolGame } from "../games/PoolGame";
 import {
@@ -5361,7 +5361,16 @@ function ChatRoom({
   const onMsgPointerMove = useCallback((e: React.PointerEvent) => {
     const s = lpStartRef.current;
     if (!s || !lpTimerRef.current) return;
-    if (Math.hypot(e.clientX - s.x, e.clientY - s.y) > 14) {
+    const dx = e.clientX - s.x;
+    const dy = e.clientY - s.y;
+    if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) * 1.05) {
+      window.clearTimeout(lpTimerRef.current);
+      lpTimerRef.current = null;
+      lpStartRef.current = null;
+      pressStartRef.current = null;
+      return;
+    }
+    if (Math.hypot(dx, dy) > 14) {
       window.clearTimeout(lpTimerRef.current);
       lpTimerRef.current = null;
       lpStartRef.current = null;
@@ -5373,8 +5382,57 @@ function ChatRoom({
 
   const onSwipeReplyTo = useCallback((m: Message) => {
     swipeReplyLockRef.current = true;
-    startTransition(() => setReplyingTo(m));
+    clearLongPress();
+    longPressActivatedRef.current = false;
+    setReplyingTo(m);
+  }, [clearLongPress]);
+
+  const themeLongPressTimerRef = useRef<number | null>(null);
+  const themeLongPressStartRef = useRef<{ x: number; y: number } | null>(null);
+
+  const clearThemeLongPress = useCallback(() => {
+    if (themeLongPressTimerRef.current != null) {
+      window.clearTimeout(themeLongPressTimerRef.current);
+      themeLongPressTimerRef.current = null;
+    }
+    themeLongPressStartRef.current = null;
   }, []);
+
+  const onChatPanePointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      if (isQuranChannel || drawComposeOpen || e.button !== 0) return;
+      const node = e.target as HTMLElement;
+      if (
+        node.closest(
+          ".chat-msg-row, button, a, input, textarea, select, [data-chat-privacy-menu], [data-chat-composer]",
+        )
+      ) {
+        return;
+      }
+      clearThemeLongPress();
+      themeLongPressStartRef.current = { x: e.clientX, y: e.clientY };
+      themeLongPressTimerRef.current = window.setTimeout(() => {
+        themeLongPressTimerRef.current = null;
+        themeLongPressStartRef.current = null;
+        openThemePicker();
+        try {
+          (navigator as unknown as { vibrate?: (p: number | number[]) => void }).vibrate?.(12);
+        } catch {
+          /* ignore */
+        }
+      }, 520);
+    },
+    [isQuranChannel, drawComposeOpen, clearThemeLongPress, openThemePicker],
+  );
+
+  const onChatPanePointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      const s = themeLongPressStartRef.current;
+      if (!s || themeLongPressTimerRef.current == null) return;
+      if (Math.hypot(e.clientX - s.x, e.clientY - s.y) > 14) clearThemeLongPress();
+    },
+    [clearThemeLongPress],
+  );
 
   const onMsgPointerUp = useCallback(
     (e: React.PointerEvent, m: Message) => {
@@ -5398,10 +5456,6 @@ function ChatRoom({
       if (!st || st.mid !== m.id) return;
       const dx = e.clientX - st.x;
       const dy = e.clientY - st.y;
-      if (dx > 44 && Math.abs(dx) > Math.abs(dy)) {
-        startTransition(() => setReplyingTo(m));
-        return;
-      }
       if (Math.hypot(dx, dy) > 26) {
         heartDblTapRef.current = null;
         return;
@@ -6911,23 +6965,6 @@ function ChatRoom({
               <Sparkles size={20} strokeWidth={1.75} />
             </button>
           )}
-          {!isQuranChannel && (
-            <button
-              type="button"
-              aria-label={lang === "en" ? "Chat theme" : "سمة المحادثة"}
-              className={
-                "flex h-10 w-10 shrink-0 touch-manipulation items-center justify-center rounded-full " +
-                (chromeOnWallpaper
-                  ? wallpaperIconClass
-                  : useIgDm && dmPalette
-                    ? dmPalette.iconBtnClass
-                    : "text-foreground hover:bg-secondary active:bg-secondary/90")
-              }
-              onClick={() => setShowChatThemePicker(true)}
-            >
-              <Palette size={20} strokeWidth={1.75} />
-            </button>
-          )}
         </div>
       </div>
       ) : null}
@@ -7016,6 +7053,10 @@ function ChatRoom({
         ref={messagesScrollRef}
         data-scroll-pane
         onScroll={onMessagesScroll}
+        onPointerDown={onChatPanePointerDown}
+        onPointerMove={onChatPanePointerMove}
+        onPointerUp={clearThemeLongPress}
+        onPointerCancel={clearThemeLongPress}
         dir="ltr"
         className={
           "chat-scroll-pane chat-no-select no-scrollbar relative min-h-0 flex-1 basis-0 touch-pan-y overscroll-y-contain " +
