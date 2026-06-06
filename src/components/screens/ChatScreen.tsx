@@ -2108,7 +2108,6 @@ export function ChatScreen({
     sendMessage,
     replyToProfileNoteAsDm,
     loadChatMessages,
-    refreshFromServer,
     syncChatsInboxFromServer,
   } = useAppActions();
   const lang = useAppLanguage();
@@ -3351,11 +3350,11 @@ export function ChatScreen({
     if (!chatTabActive || isGuest || myChats.length > 0 || inboxSyncBusyRef.current) return;
     inboxSyncBusyRef.current = true;
     void syncChatsInboxFromServer()
-      .catch(() => refreshFromServer({ urgent: true }))
+      .catch(() => syncChatsInboxFromServer())
       .finally(() => {
         inboxSyncBusyRef.current = false;
       });
-  }, [chatTabActive, isGuest, myChats.length, syncChatsInboxFromServer, refreshFromServer]);
+  }, [chatTabActive, isGuest, myChats.length, syncChatsInboxFromServer]);
   const requests = useMemo(() => {
     if (!meIdSafe) return [];
     const out: Chat[] = [];
@@ -3592,8 +3591,7 @@ export function ChatScreen({
 
   const refreshInbox = useCallback(async () => {
     await syncChatsInboxFromServer();
-    refreshFromServer({ urgent: true });
-  }, [syncChatsInboxFromServer, refreshFromServer]);
+  }, [syncChatsInboxFromServer]);
 
   const inboxPullEnabled = chatTabActive && !isGuest && !openChat && !stackClosingId;
   const { pullPx: inboxPullPx, refreshing: inboxPullRefreshing } = useHomePullToRefresh(

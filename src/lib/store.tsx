@@ -1400,13 +1400,11 @@ function buildMultiAccountState(
                   : Array.from(new Set([...prev.members, ...scoped.members]))
                 : scoped.members,
             messages: mergeChatMessages(prev.messages, scoped.messages || []),
-            hiddenMessageIdsByUser: opts?.serverAuthoritative
-              ? scoped.hiddenMessageIdsByUser
-              : mergeHiddenMessageIdsByUser(
-                  prev.hiddenMessageIdsByUser,
-                  scoped.hiddenMessageIdsByUser,
-                  resolvedId,
-                ),
+            hiddenMessageIdsByUser: mergeHiddenMessageIdsByUser(
+              prev.hiddenMessageIdsByUser,
+              scoped.hiddenMessageIdsByUser,
+              resolvedId,
+            ),
           }
         : { ...scoped, id: key },
     );
@@ -1455,10 +1453,8 @@ function buildMultiAccountState(
   );
 
   const localPostSources: Post[] = [];
-  if (!opts?.serverAuthoritative) {
-    if (previous.currentUserId === resolvedId) localPostSources.push(...(previous.posts || []));
-    if (activeCache?.posts?.length) localPostSources.push(...activeCache.posts);
-  }
+  if (previous.currentUserId === resolvedId) localPostSources.push(...(previous.posts || []));
+  if (activeCache?.posts?.length) localPostSources.push(...activeCache.posts);
   const localPostsById = new Map<ID, Post>();
   for (const p of localPostSources) localPostsById.set(p.id, p);
   const authoritativeRemotePosts =
@@ -6283,6 +6279,10 @@ export function AppProvider({
           let next = buildMultiAccountState(activeId, remote, s, undefined, {
             serverAuthoritative: true,
           });
+          next = {
+            ...next,
+            chats: mergeChatsPreservingLocal(s, next, activeId),
+          };
           next = applyBannedFilterToState(next, activeId);
           if (feed?.ok) {
             if (feed.bannedUserIds?.length) syncBannedUserIds(feed.bannedUserIds);
@@ -7047,8 +7047,15 @@ export function AppProvider({
           scheduleFeedPull();
           return;
         }
-        if (kind === "chats" || kind === "profile") {
-          if (!profileSaveBusyRef.current) refreshFromServer({ urgent: true });
+        if (kind === "chats") {
+          void syncChatsInboxAction();
+          return;
+        }
+        if (kind === "profile") {
+          const meId = stateRef.current.currentUserId;
+          if (meId && !isGuestUserId(meId) && !profileSaveBusyRef.current) {
+            void refreshProfilePostsFromServer(meId);
+          }
           return;
         }
         if (!socialSyncBusyRef.current) scheduleFeedPull();
@@ -7156,6 +7163,8 @@ export function AppProvider({
     refreshFromServer,
     scheduleFeedPull,
     refreshFeedFromServer,
+    refreshProfilePostsFromServer,
+    syncChatsInboxAction,
     bumpHomeFeedNow,
     setState,
   ]);

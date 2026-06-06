@@ -1,4 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useHomePullToRefresh } from "@/hooks/useHomePullToRefresh";
+import { HomePullToRefreshIndicator } from "../home/HomePullToRefreshIndicator";
+import { useTabPanelScrollRef } from "@/lib/tabPanelScrollContext";
+import { useIsTabActive } from "@/lib/tabActiveContext";
 import { formatCompactCount } from "@/lib/formatCount";
 import {
   useApp,
@@ -167,6 +171,21 @@ export function ProfileScreen({
   const [reportOpen, setReportOpen] = useState(false);
   const [profileBanned, setProfileBanned] = useState(false);
   const [blockConfirmOpen, setBlockConfirmOpen] = useState(false);
+  const tabScrollRef = useTabPanelScrollRef();
+  const profileScrollRef = useRef<HTMLDivElement>(null);
+  const isProfileTabActive = useIsTabActive("profile");
+
+  const refreshProfile = useCallback(async () => {
+    await refreshProfilePostsFromServer(userId);
+    refreshSocialRelation(userId);
+  }, [userId, refreshProfilePostsFromServer, refreshSocialRelation]);
+
+  const profilePullEnabled = !isGuest && !profileFeed && (onBack ? true : isProfileTabActive);
+  const { pullPx: profilePullPx, refreshing: profilePullRefreshing } = useHomePullToRefresh(
+    onBack ? profileScrollRef : tabScrollRef,
+    refreshProfile,
+    profilePullEnabled,
+  );
 
   useEffect(() => {
     if (!userId || userId === currentUser?.id || !apiBackendEnabled()) {
@@ -492,6 +511,7 @@ export function ProfileScreen({
 
   const profileBody = (
     <div data-no-tab-swipe className={profileShellClass}>
+      <HomePullToRefreshIndicator pullPx={profilePullPx} refreshing={profilePullRefreshing} />
       {!suppressChrome && !onBack && (
       <div
         dir="rtl"
@@ -652,6 +672,7 @@ export function ProfileScreen({
       )}
 
       <div
+        ref={isOtherUserProfile ? profileScrollRef : undefined}
         {...(isOtherUserProfile
           ? { "data-profile-scroll": true as const, "data-no-dismiss-drag": true as const, "data-no-tab-swipe": true as const }
           : {})}

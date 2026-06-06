@@ -1,7 +1,7 @@
 import type { AppState } from "../../../src/lib/types.js";
 
 /** حدّ الرسائل في كل محادثة عند إرسال app-state للعميل — الرسائل الأقدم تُجلب لاحقاً عبر pagination */
-const CHAT_MESSAGE_CAP = 80;
+const CHAT_MESSAGE_CAP = 150;
 
 export function trimAppStateForDelivery(state: AppState): AppState {
   const chats = (state.chats ?? []).map(chat => {

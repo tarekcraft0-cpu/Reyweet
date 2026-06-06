@@ -1067,6 +1067,17 @@ export function mergeChatMessages(local: Message[], remote: Message[]): Message[
   return dedupeGroupSystemMessages(sorted);
 }
 
+function mergeHiddenIdsByUser(
+  a: Chat["hiddenMessageIdsByUser"] | undefined,
+  b: Chat["hiddenMessageIdsByUser"] | undefined,
+): Chat["hiddenMessageIdsByUser"] | undefined {
+  const out: NonNullable<Chat["hiddenMessageIdsByUser"]> = { ...(a || {}) };
+  for (const [uid, ids] of Object.entries(b || {})) {
+    out[uid] = [...new Set([...(out[uid] || []), ...ids])];
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
 /** دمج محادثة من استجابة API مع النسخة المحلية دون فقدان الرسائل */
 export function mergeChatRecord(local: Chat, server: Chat): Chat {
   return {
@@ -1075,6 +1086,10 @@ export function mergeChatRecord(local: Chat, server: Chat): Chat {
     members: server.members?.length ? server.members : local.members,
     admins: server.admins?.length ? server.admins : local.admins,
     messages: mergeChatMessages(local.messages || [], server.messages || []),
+    hiddenMessageIdsByUser: mergeHiddenIdsByUser(
+      local.hiddenMessageIdsByUser,
+      server.hiddenMessageIdsByUser,
+    ),
   };
 }
 
