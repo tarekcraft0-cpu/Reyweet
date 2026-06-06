@@ -42,7 +42,10 @@ function snapshotPostToRow(p: Post): PostRow {
     likes: p.likes ?? [],
     reposts: p.reposts ?? [],
     comments: [],
-    createdAt: new Date(p.createdAt || Date.now()).toISOString(),
+    createdAt: (() => {
+      const ms = coerceTimestamp(p.createdAt, 0);
+      return ms > 0 ? new Date(ms).toISOString() : new Date().toISOString();
+    })(),
     updatedAt: new Date().toISOString(),
   };
 }

@@ -29,7 +29,7 @@ import { consumeForceServerHydrate } from "./nativeAppMigrate";
 const STORAGE_KEY = "retweet_state_v2";
 /** يُفرّغ كاش الفيد/الحالة بعد إصلاحات التواريخ والمحادثات */
 const WEB_REPAIR_KEY = "retweet_web_repair_v";
-const WEB_REPAIR_VERSION = "5";
+const WEB_REPAIR_VERSION = "6";
 
 function runWebClientRepairOnce(): void {
   if (typeof window === "undefined") return;

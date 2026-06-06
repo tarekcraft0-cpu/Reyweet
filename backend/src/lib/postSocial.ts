@@ -61,7 +61,10 @@ function clientPostToRow(p: Post): PostRow {
       text: c.text,
       createdAt: c.createdAt,
     })),
-    createdAt: new Date(p.createdAt || Date.now()).toISOString(),
+    createdAt: (() => {
+      const ms = coerceTimestamp(p.createdAt, 0);
+      return ms > 0 ? new Date(ms).toISOString() : now;
+    })(),
     updatedAt: now,
   };
 }

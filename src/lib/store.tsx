@@ -905,8 +905,7 @@ export function normalizePersistedAppState(merged: AppState): AppState {
     }
   }
   m.posts = (Array.isArray(m.posts) ? m.posts : []).map((p) => {
-    const prevAt = typeof p.createdAt === "number" ? p.createdAt : 0;
-    const createdAt = coerceTimestamp(p.createdAt, prevAt);
+    const createdAt = coerceTimestamp(p.createdAt, 0);
     return {
       ...p,
       likes: Array.isArray(p.likes) ? p.likes : [],

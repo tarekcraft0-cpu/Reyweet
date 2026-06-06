@@ -3,6 +3,7 @@ import { coerceTimestamp } from "../../../src/lib/coerceTimestamp.js";
 import {
   createUser,
   getUserById,
+  listPosts,
   listStories,
   replaceStories,
   updateUser,
@@ -51,8 +52,11 @@ export async function syncNormalizedFromAppState(state: AppState, ownerUserId?: 
     }
   }
 
+  const dbById = new Map((await listPosts()).map(r => [r.id, r]));
   for (const p of state.posts || []) {
     if (!p.id || !p.userId) continue;
+    const existing = dbById.get(p.id);
+    const clientMs = coerceTimestamp(p.createdAt, 0);
     const row: PostRow = {
       id: p.id,
       userId: p.userId,
@@ -66,10 +70,9 @@ export async function syncNormalizedFromAppState(state: AppState, ownerUserId?: 
       likes: [],
       reposts: [],
       comments: [],
-      createdAt: (() => {
-        const ms = coerceTimestamp(p.createdAt, 0);
-        return ms > 0 ? new Date(ms).toISOString() : now;
-      })(),
+      createdAt:
+        existing?.createdAt ||
+        (clientMs > 0 ? new Date(clientMs).toISOString() : now),
       updatedAt: now,
     };
     await upsertPostPreservingSocial(row);
