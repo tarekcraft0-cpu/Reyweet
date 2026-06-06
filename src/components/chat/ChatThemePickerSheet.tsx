@@ -85,17 +85,20 @@ export function ChatThemePickerSheet({
 
   return (
     <div
-      className="fixed inset-0 z-[280] mx-auto flex max-w-md flex-col justify-end bg-black/50"
+      className="fixed inset-0 z-[320] mx-auto flex max-w-md flex-col justify-end bg-black/50"
       role="dialog"
       aria-modal
       aria-label={language === "en" ? "Chat theme" : "سمة المحادثة"}
       onClick={onClose}
     >
       <div
-        className="max-h-[82dvh] overflow-hidden rounded-t-3xl bg-background shadow-2xl animate-in slide-in-from-bottom duration-200"
+        className="chat-theme-picker-sheet pointer-events-auto flex max-h-[min(88dvh,720px)] min-h-0 w-full flex-col overflow-hidden rounded-t-3xl bg-background shadow-2xl animate-in slide-in-from-bottom duration-200"
         onClick={e => e.stopPropagation()}
+        onPointerDown={e => e.stopPropagation()}
+        data-no-dismiss-drag
+        data-no-tab-swipe
       >
-        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+        <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3">
           <h2 className="text-[17px] font-semibold text-foreground">
             {language === "en" ? "Chat theme" : "سمة المحادثة"}
           </h2>
@@ -107,7 +110,7 @@ export function ChatThemePickerSheet({
             {language === "en" ? "Done" : "تم"}
           </button>
         </div>
-        <div className="no-scrollbar overflow-y-auto px-4 py-4 pb-[max(1rem,var(--sab))]">
+        <div className="chat-theme-picker-scroll no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 pb-[max(1.25rem,var(--sab))] touch-pan-y">
           {animated.length > 0 ? (
             <>
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">

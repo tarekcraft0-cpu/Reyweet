@@ -30,11 +30,13 @@ export function ChatVerifiedBubblePickerSheet({
       onClick={onClose}
     >
       <div
-        className="pointer-events-auto max-h-[78dvh] overflow-hidden rounded-t-3xl bg-background shadow-2xl animate-in slide-in-from-bottom duration-200"
+        className="chat-theme-picker-sheet pointer-events-auto flex max-h-[min(88dvh,720px)] min-h-0 w-full flex-col overflow-hidden rounded-t-3xl bg-background shadow-2xl animate-in slide-in-from-bottom duration-200"
         onClick={e => e.stopPropagation()}
         onPointerDown={e => e.stopPropagation()}
+        data-no-dismiss-drag
+        data-no-tab-swipe
       >
-        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+        <div className="flex shrink-0 items-center justify-between border-b border-border px-4 py-3">
           <div>
             <h2 className="text-[17px] font-semibold text-foreground">
               {language === "en" ? "Your message bubbles" : "فقاعات رسائلك"}
@@ -53,7 +55,7 @@ export function ChatVerifiedBubblePickerSheet({
             {language === "en" ? "Done" : "تم"}
           </button>
         </div>
-        <div className="no-scrollbar overflow-y-auto px-4 py-4 pb-[max(1rem,var(--sab))]">
+        <div className="chat-theme-picker-scroll no-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 pb-[max(1.25rem,var(--sab))] touch-pan-y">
           <div className="grid grid-cols-2 gap-3">
             {VERIFIED_CHAT_BUBBLE_STYLES.map(style => {
               const selected = style.id === selectedId;
