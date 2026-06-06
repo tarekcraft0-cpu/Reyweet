@@ -15,7 +15,6 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -319,6 +318,7 @@ import {
   apiSeverSocialOnBlock,
   ensureApiRuntimeConfig,
   pullRemoteAppState,
+  seedPullCacheFromAccountState,
   apiFetchHomeFeed,
   apiFetchBannedUserIds,
   invalidateHomeFeedCache,
@@ -2091,6 +2091,123 @@ function applyFollowToggleMode(
 /** انتهاء مؤشر «يكتب» محلياً إذا ضاع حدث التوقف */
 const typingIndicatorTimersRef = new Map<string, ReturnType<typeof setTimeout>>();
 
+function persistStateSnapshotNow(state: AppState): void {
+  if (typeof window === "undefined") return;
+  try {
+    const uid = state.currentUserId;
+    const toPersist =
+      uid && !isGuestUserId(uid) ? scopeStateForAccountPersist(state, uid) : state;
+    const stripped = stripGuestFromPersistedState(toPersist);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(stripped));
+    if (uid && !isGuestUserId(uid)) {
+      saveAccountStateCache(uid, stripped);
+      seedPullCacheFromAccountState(uid);
+    }
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "QuotaExceededError") {
+      console.warn("[Retweet] persistStateSnapshotNow: quota exceeded");
+    }
+  }
+}
+
+function bootAppState(initialState?: AppState): {
+  state: AppState;
+  homeFeed: Post[];
+  remoteHydrating: boolean;
+} {
+  try {
+    let loaded = initialState ?? loadState();
+    const recoveredId = resolveActiveUserIdFromToken(loaded);
+    if (recoveredId && !isGuestUserId(recoveredId)) {
+      const sess = getAccountSession(recoveredId);
+      if (sess) {
+        loaded = ensureAuthUserInState(loaded, recoveredId, {
+          id: recoveredId,
+          username: sess.username,
+          email: sess.email,
+          avatar: sess.avatar,
+        });
+      } else if (!loaded.users.some(u => u.id === recoveredId)) {
+        loaded = ensureAuthUserInState(loaded, recoveredId, {
+          id: recoveredId,
+          username: "…",
+          email: "",
+          avatar: DEFAULT_AVATAR_DATA_URI,
+        });
+      } else if (loaded.currentUserId !== recoveredId) {
+        loaded = { ...loaded, currentUserId: recoveredId };
+      }
+    }
+    const uid = loaded.currentUserId;
+    let base =
+      uid && !isGuestUserId(uid)
+        ? scopeAppStateToAccount(uid, loaded, {
+            accountIds: snapshotAccountIdsForOwner(uid),
+            isolateOwnedUsers: (ownerId, s) => isolateUsersForAccountCache(ownerId, s),
+          })
+        : loaded;
+    if (uid && !isGuestUserId(uid) && getBannedUserIds().size) {
+      base = applyBannedFilterToState(base, uid);
+    }
+    base = reconcileOwnedAccountProfiles(base);
+    if (uid && !isGuestUserId(uid)) {
+      seedPullCacheFromAccountState(uid);
+      const cache = loadAccountStateCache(uid);
+      if (cache) {
+        base = buildMultiAccountState(uid, cache, base, undefined, { serverAuthoritative: true });
+      }
+    }
+    const state = base;
+    let homeFeed: Post[] = [];
+    if (uid && !isGuestUserId(uid)) {
+      const me = state.users.find(u => u.id === uid);
+      if (me) {
+        homeFeed = buildHomeFeedDisplayPosts(state, uid, state.posts || [], me, getBannedUserIds());
+      }
+    }
+    const remoteHydrating =
+      apiBackendEnabled() &&
+      !!getApiToken() &&
+      !isGuestUserId(uid || "") &&
+      (state.chats?.length ?? 0) === 0 &&
+      (state.posts?.length ?? 0) === 0;
+    return { state, homeFeed, remoteHydrating };
+  } catch (e) {
+    console.warn("[Retweet] bootAppState failed, using initial:", e);
+    const state = safeNormalizeState(initial);
+    return { state, homeFeed: [], remoteHydrating: false };
+  }
+}
+
+function mergeRemoteHydrationIntoState(
+  activeId: ID,
+  remote: AppState,
+  prev: AppState,
+  feed?: { ok: boolean; posts: Post[]; users: User[]; bannedUserIds?: ID[] },
+): AppState {
+  let merged = buildMultiAccountState(activeId, remote, prev, undefined, {
+    serverAuthoritative: true,
+  });
+  merged = applyBannedFilterToState(merged, activeId);
+  if (feed?.ok) {
+    if (feed.bannedUserIds?.length) syncBannedUserIds(feed.bannedUserIds);
+    merged = mergeHomeFeedIntoState(merged, feed);
+  }
+  const meRow = merged.users.find(u => u.id === activeId);
+  const sess = meRow ? getAccountSession(activeId) : null;
+  if (meRow && sess) {
+    upsertAccountSession({
+      ...sess,
+      username: meRow.username,
+      avatar: toStoredMediaRef(meRow.avatar),
+    });
+  }
+  return normalizePersistedAppState({
+    ...merged,
+    accountIds: snapshotAccountIdsForOwner(activeId),
+  });
+}
+
 export function AppProvider({
   children,
   initialState,
@@ -2098,61 +2215,10 @@ export function AppProvider({
   children: ReactNode;
   initialState?: AppState;
 }) {
-  const [state, setStateRaw] = useState<AppState>(() => {
-    try {
-      let loaded = initialState ?? loadState();
-      const recoveredId = resolveActiveUserIdFromToken(loaded);
-      if (recoveredId && !isGuestUserId(recoveredId)) {
-        const sess = getAccountSession(recoveredId);
-        if (sess) {
-          loaded = ensureAuthUserInState(loaded, recoveredId, {
-            id: recoveredId,
-            username: sess.username,
-            email: sess.email,
-            avatar: sess.avatar,
-          });
-        } else if (!loaded.users.some(u => u.id === recoveredId)) {
-          loaded = ensureAuthUserInState(loaded, recoveredId, {
-            id: recoveredId,
-            username: "…",
-            email: "",
-            avatar: DEFAULT_AVATAR_DATA_URI,
-          });
-        } else if (loaded.currentUserId !== recoveredId) {
-          loaded = { ...loaded, currentUserId: recoveredId };
-        }
-      }
-      const uid = loaded.currentUserId;
-      let base =
-        uid && !isGuestUserId(uid)
-          ? scopeAppStateToAccount(uid, loaded, {
-              accountIds: snapshotAccountIdsForOwner(uid),
-              isolateOwnedUsers: (ownerId, s) => isolateUsersForAccountCache(ownerId, s),
-            })
-          : loaded;
-      if (uid && !isGuestUserId(uid) && getBannedUserIds().size) {
-        base = applyBannedFilterToState(base, uid);
-      }
-      base = reconcileOwnedAccountProfiles(base);
-      if (uid && !isGuestUserId(uid)) {
-        const cache = loadAccountStateCache(uid);
-        if (cache && ((cache.chats?.length ?? 0) > 0 || (cache.posts?.length ?? 0) > 0)) {
-          base = buildMultiAccountState(uid, cache, base, undefined, { serverAuthoritative: false });
-        }
-      }
-      return base;
-    } catch (e) {
-      console.warn("[Retweet] AppProvider init failed, using empty state:", e);
-      return safeNormalizeState(initial);
-    }
-  });
+  const bootRef = useRef(bootAppState(initialState));
+  const [state, setStateRaw] = useState<AppState>(() => bootRef.current.state);
   const stateRef = useRef(state);
   stateRef.current = state;
-
-  /** عرض الخلاصة من الكاش المحلي فوراً — لا ننتظر جلب الخادم */
-  useLayoutEffect(() => {
-    syncHomeFeedPostsFromState(stateRef.current, setHomeFeedPosts);
-  }, []);
 
   const storeListenersRef = useRef(new Set<() => void>());
   const storeRevisionRef = useRef(0);
@@ -2177,15 +2243,9 @@ export function AppProvider({
 
   const [accountSwitching, setAccountSwitching] = useState(false);
   const [feedHasMore, setFeedHasMore] = useState(true);
-  const [homeFeedPosts, setHomeFeedPosts] = useState<Post[]>([]);
+  const [homeFeedPosts, setHomeFeedPosts] = useState<Post[]>(() => bootRef.current.homeFeed);
   const [unreadMessageCount, setUnreadMessageCount] = useState(0);
-  const [remoteHydrating, setRemoteHydrating] = useState(() => {
-    try {
-      return apiBackendEnabled() && !!getApiToken();
-    } catch {
-      return false;
-    }
-  });
+  const [remoteHydrating, setRemoteHydrating] = useState(() => bootRef.current.remoteHydrating);
   const feedLoadMoreBusyRef = useRef(false);
   const [accountSessionKey, setAccountSessionKey] = useState(
     () => `sess-${state.currentUserId || "guest"}-0`,
@@ -2375,7 +2435,7 @@ export function AppProvider({
       } else {
         write();
       }
-    }, 4500);
+    }, 1200);
   }, [state.chats, state.posts?.length, state.users?.length, state.currentUserId]);
 
   useEffect(() => {
@@ -2398,26 +2458,85 @@ export function AppProvider({
     let cancelled = false;
     void (async () => {
       hydrateRemoteBusy.current = true;
-      setRemoteHydrating(true);
+      const sessionIds = listAccountSessions().map(x => x.userId);
+      const sessionFallback = getLastActiveUserId() || sessionIds[0];
+      const activeIdEarly =
+        getLastActiveUserId() ||
+        stateRef.current.currentUserId ||
+        sessionFallback ||
+        resolveActiveUserIdFromToken(stateRef.current) ||
+        null;
+      if (activeIdEarly && !isGuestUserId(activeIdEarly)) {
+        seedPullCacheFromAccountState(activeIdEarly);
+      }
+      const hasLocalData =
+        (stateRef.current.chats?.length ?? 0) > 0 ||
+        (stateRef.current.posts?.length ?? 0) > 0;
+      if (!hasLocalData) setRemoteHydrating(true);
+
+      const applyRemote = (
+        remote: AppState,
+        activeId: ID,
+        feed?: { ok: boolean; posts: Post[]; users: User[]; bannedUserIds?: ID[] },
+      ) => {
+        const me = remote.users?.find(u => u.id === activeId) ?? stateRef.current.users.find(u => u.id === activeId);
+        if (me) {
+          migrateLegacyApiToken(activeId, me.username, me.email);
+          syncActiveApiToken(activeId, token);
+        }
+        setStateRaw(s => {
+          const normalized = mergeRemoteHydrationIntoState(activeId, remote, s, feed);
+          persistStateSnapshotNow(normalized);
+          void import("./remotePushGate").then(({ markServerHydrated }) =>
+            markServerHydrated(activeId, normalized),
+          );
+          syncHomeFeedPostsFromState(
+            normalized,
+            setHomeFeedPosts,
+            feed?.ok ? feed.posts : undefined,
+          );
+          if (feed?.ok) {
+            lastFeedFetchAtRef.current = Date.now();
+            markEssentialFeedSynced();
+          }
+          if ((normalized.chats?.length ?? 0) > 0 || (normalized.posts?.length ?? 0) > 0) {
+            setRemoteHydrating(false);
+          }
+          return normalized;
+        });
+      };
+
       try {
         invalidateHomeFeedCache();
-        const [remote, bannedIds, feed] = await Promise.all([
-          pullRemoteAppState(token, { force: true }),
-          apiFetchBannedUserIds(token),
-          apiFetchHomeFeed(token, { limit: 50, force: true }),
-        ]);
+
+        const cachedRemote = await pullRemoteAppState(token);
         if (cancelled) return;
+
+        let activeId =
+          activeIdEarly ||
+          cachedRemote?.currentUserId ||
+          null;
+
+        if (cachedRemote && activeId && !isGuestUserId(activeId)) {
+          applyRemote(cachedRemote, activeId);
+        }
+
+        const remoteP = pullRemoteAppState(token, { force: true });
+        const bannedP = apiFetchBannedUserIds(token);
+        const feedP = apiFetchHomeFeed(token, { limit: 50, force: true });
+
+        const remote = await remoteP;
+        if (cancelled) return;
+
+        const [bannedIds, feed] = await Promise.all([bannedP, feedP]);
+        if (cancelled) return;
+
         if (bannedIds.length) syncBannedUserIds(bannedIds);
         else if (feed.ok && feed.bannedUserIds?.length) syncBannedUserIds(feed.bannedUserIds);
 
-        const sessionIds = listAccountSessions().map((x) => x.userId);
-        const sessionFallback = getLastActiveUserId() || sessionIds[0];
-        const activeId =
-          getLastActiveUserId() ||
-          stateRef.current.currentUserId ||
+        activeId =
+          activeId ||
           remote?.currentUserId ||
-          sessionFallback ||
-          resolveActiveUserIdFromToken(stateRef.current) ||
           null;
 
         if (!remote) {
@@ -2425,7 +2544,8 @@ export function AppProvider({
             const boot = await bootstrapEssentialAfterAuth(token, stateRef.current, activeId);
             if (!cancelled) {
               setStateRaw(s => {
-                const next = { ...boot, currentUserId: activeId };
+                const next = { ...boot, currentUserId: activeId! };
+                persistStateSnapshotNow(next);
                 syncHomeFeedPostsFromState(next, setHomeFeedPosts);
                 return next;
               });
@@ -2442,50 +2562,11 @@ export function AppProvider({
           return;
         }
 
-        const me = remote.users?.find((u) => u.id === activeId) ?? stateRef.current.users.find((u) => u.id === activeId);
-        if (me) {
-          migrateLegacyApiToken(activeId, me.username, me.email);
-          syncActiveApiToken(activeId, token);
-        }
-
-        setStateRaw(s => {
-          let merged = buildMultiAccountState(activeId, remote, s, undefined, {
-            serverAuthoritative: true,
-          });
-          merged = applyBannedFilterToState(merged, activeId);
-          if (feed.ok) {
-            if (feed.bannedUserIds?.length) syncBannedUserIds(feed.bannedUserIds);
-            merged = mergeHomeFeedIntoState(merged, feed);
-            lastFeedFetchAtRef.current = Date.now();
-          }
-          const meRow = merged.users.find(u => u.id === activeId);
-          const sess = meRow ? getAccountSession(activeId) : null;
-          if (meRow && sess) {
-            upsertAccountSession({
-              ...sess,
-              username: meRow.username,
-              avatar: toStoredMediaRef(meRow.avatar),
-            });
-          }
-          logAuthRoute("hydrate-remote", {
-            activeId,
-            usersCount: merged.users.length,
-          });
-          const normalized = normalizePersistedAppState({
-            ...merged,
-            accountIds: snapshotAccountIdsForOwner(activeId),
-          });
-          void import("./remotePushGate").then(({ markServerHydrated }) =>
-            markServerHydrated(activeId, normalized),
-          );
-          syncHomeFeedPostsFromState(
-            normalized,
-            setHomeFeedPosts,
-            feed.ok ? feed.posts : undefined,
-          );
-          if (feed.ok) markEssentialFeedSynced();
-          return normalized;
+        logAuthRoute("hydrate-remote", {
+          activeId,
+          usersCount: remote.users?.length ?? 0,
         });
+        applyRemote(remote, activeId, feed);
       } catch {
         /* ignore */
       } finally {

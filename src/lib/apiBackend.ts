@@ -1,5 +1,9 @@
 import { Capacitor } from "@capacitor/core";
-import { isolateUsersForAccountCache, snapshotAccountIdsForOwner } from "./accountSessions";
+import {
+  isolateUsersForAccountCache,
+  loadAccountStateCache,
+  snapshotAccountIdsForOwner,
+} from "./accountSessions";
 import type { AppState, Chat, ID, Message, User } from "./types";
 import {
   canUseSameOriginApi,
@@ -874,6 +878,14 @@ export async function apiFetchUserPosts(
     hasMore: !!data.hasMore,
     nextCursor: data.nextCursor,
   };
+}
+
+/** يملأ كاش الجلب من اللقطة المحلية — عرض فوري قبل شبكة الخادم */
+export function seedPullCacheFromAccountState(userId: ID): boolean {
+  const cache = loadAccountStateCache(userId);
+  if (!cache?.currentUserId) return false;
+  apiCacheSet("state:pull", cache, 86_400_000, 43_200_000);
+  return true;
 }
 
 export async function pullRemoteAppState(
