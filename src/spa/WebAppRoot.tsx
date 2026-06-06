@@ -4,11 +4,16 @@ import { bootstrapWebAppSession } from "@/lib/webSessionBootstrap";
 import { AppProvider, readPersistedAppState } from "@/lib/store";
 import type { AppState } from "@/lib/types";
 import { App } from "@/components/App";
+import { OfflineModeBanner } from "@/components/OfflineModeBanner";
 import { AppErrorBoundary } from "@/components/AppErrorBoundary";
 import logo from "@/assets/logo.png";
 import { logAuthRoute } from "@/lib/authRouteDebug";
 import { clearStaleApiConfig, probeHealth } from "@/lib/apiConfig";
-import { clearRetweetLocalSession } from "@/lib/uiErrorMessage";
+import {
+  hasPersistedLocalSession,
+  markServerOffline,
+  markServerOnline,
+} from "@/lib/serverReachability";
 import {
   isCapacitorNativePlatform,
   isNativeCapacitorShell,
@@ -35,6 +40,7 @@ export function WebAppRoot() {
   const [ready, setReady] = useState(false);
   const [bootState, setBootState] = useState<AppState | null>(null);
   const [apiMissing, setApiMissing] = useState(false);
+  const [offlineLocalMode, setOfflineLocalMode] = useState(false);
 
   useEffect(() => {
     try {
@@ -59,6 +65,7 @@ export function WebAppRoot() {
     });
     let cancelled = false;
     let serverOffline = false;
+    let useOfflineLocal = false;
 
     const waitForNativeApiConfig = (): Promise<void> => {
       if (typeof window === "undefined") return Promise.resolve();
@@ -81,17 +88,30 @@ export function WebAppRoot() {
       .then(async () => {
         if (cancelled) return;
         if (!apiBackendEnabled()) {
+          if (hasPersistedLocalSession()) {
+            serverOffline = true;
+            useOfflineLocal = true;
+            markServerOffline();
+            setOfflineLocalMode(true);
+            return;
+          }
           serverOffline = true;
-          clearRetweetLocalSession();
           setApiMissing(true);
           return;
         }
         if (!(await probeHealth())) {
+          if (hasPersistedLocalSession()) {
+            serverOffline = true;
+            useOfflineLocal = true;
+            markServerOffline();
+            setOfflineLocalMode(true);
+            return;
+          }
           serverOffline = true;
-          clearRetweetLocalSession();
           setApiMissing(true);
           return;
         }
+        markServerOnline();
         const bootTimeoutMs = isNativeCapacitorShell() ? 20_000 : 12_000;
         await Promise.race([
           bootstrapWebAppSession(),
@@ -100,10 +120,26 @@ export function WebAppRoot() {
       })
       .catch(err => {
         console.error("[Retweet] WebAppRoot bootstrap failed:", err);
-        if (!cancelled) setApiMissing(true);
+        if (!cancelled) {
+          if (hasPersistedLocalSession()) {
+            useOfflineLocal = true;
+            markServerOffline();
+            setOfflineLocalMode(true);
+          } else {
+            setApiMissing(true);
+          }
+        }
       })
       .then(() => {
         if (!cancelled) {
+          if (serverOffline && useOfflineLocal) {
+            try {
+              setBootState(readPersistedAppState());
+            } catch {
+              setBootState(null);
+            }
+            return;
+          }
           if (serverOffline) {
             setBootState(null);
             return;
@@ -163,7 +199,7 @@ export function WebAppRoot() {
     );
   }
 
-  if (apiMissing || !apiBackendEnabled()) {
+  if ((apiMissing || !apiBackendEnabled()) && !offlineLocalMode) {
     const retry = () => {
       try {
         localStorage.removeItem("retweet_web_api_config");
@@ -179,8 +215,8 @@ export function WebAppRoot() {
         <p className="text-muted-foreground leading-relaxed">
           {isNativeCapacitorShell() || isCapacitorNativePlatform() ? (
             <>
-              لا يمكن تسجيل الدخول الآن — الخادم متوقف للصيانة. تم مسح الجلسة المحلية. أعد فتح
-              التطبيق بعد إعادة تشغيل الخادم.
+              لا يمكن تسجيل الدخول الآن — الخادم متوقف للصيانة. أعد فتح التطبيق بعد إعادة تشغيل
+              الخادم.
             </>
           ) : isVpsProductionHost() ? (
             <>
@@ -241,6 +277,7 @@ export function WebAppRoot() {
       {...nativeNoSelectCaptureHandlers}
     >
       <AppProvider initialState={bootState ?? undefined}>
+        <OfflineModeBanner />
         <AppErrorBoundary label="app-root">
           <App />
         </AppErrorBoundary>

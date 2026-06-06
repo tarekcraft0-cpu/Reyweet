@@ -2454,6 +2454,11 @@ export function AppProvider({
     if (!token) return;
     let cancelled = false;
     void (async () => {
+      const reach = await import("./serverReachability.js");
+      if (!reach.isServerReachable()) {
+        setRemoteHydrating(false);
+        return;
+      }
       hydrateRemoteBusy.current = true;
       const sessionIds = listAccountSessions().map(x => x.userId);
       const sessionFallback = getLastActiveUserId() || sessionIds[0];
@@ -3476,25 +3481,67 @@ export function AppProvider({
         return s;
       }
       const meId = s.currentUserId;
-      const me = s.users.find((u) => u.id === meId)!;
-      let target = s.users.find((u) => u.id === userId);
-      if (!target && useApi) {
-        queueMicrotask(() => {
-          void (async () => {
-            const rows = await apiFetchUserDirectory();
-            const row = rows.find(r => r.id === userId);
-            if (row) mergeDiscoveredUsers([userFromSearchResult(row)]);
-            runFollowToggleApi(userId);
-          })();
-        });
-        return s;
+      let working = s;
+      let me = working.users.find(u => u.id === meId);
+      if (!me) {
+        const resolved = resolveUserProfile(working, meId);
+        if (!resolved) {
+          if (useApi) socialSyncBusyRef.current = false;
+          return s;
+        }
+        me = resolved;
+        if (!working.users.some(u => u.id === meId)) {
+          working = { ...working, users: [...working.users, me] };
+        }
       }
-      if (!target) return s;
+      let target = working.users.find(u => u.id === userId);
+      if (!target) {
+        const overlay = getPublicProfileOverlay(userId);
+        if (overlay) {
+          target = mergeDirectoryUser(undefined, {
+            id: overlay.id,
+            username: overlay.username,
+            displayName: overlay.displayName,
+            avatar: overlay.avatar?.trim() || "",
+            bio: overlay.bio,
+            verified: overlay.verified,
+            isPrivate: overlay.isPrivate,
+            followers: overlay.followers,
+            following: overlay.following,
+            followerCount:
+              typeof overlay.displayFollowerCount === "number"
+                ? overlay.displayFollowerCount
+                : undefined,
+          });
+          working = {
+            ...working,
+            users: working.users.some(u => u.id === userId)
+              ? working.users
+              : [...working.users, target],
+          };
+        } else if (useApi) {
+          queueMicrotask(() => {
+            void (async () => {
+              const row = await apiFetchUserById(userId);
+              if (row) mergeDiscoveredUsers([userFromSearchResult(row)]);
+              runFollowToggleApi(userId);
+            })();
+          });
+          if (useApi) socialSyncBusyRef.current = false;
+          return s;
+        } else {
+          return s;
+        }
+      }
+      const applyState = (next: AppState) => {
+        persistStateSnapshotNow(next);
+        return next;
+      };
       const wasFollowing = me.following.includes(userId);
       if (wasFollowing) {
         const next: AppState = {
-          ...s,
-          users: s.users.map((u) => {
+          ...working,
+          users: working.users.map((u) => {
             if (u.id === meId) {
               return {
                 ...u,
@@ -3516,14 +3563,14 @@ export function AppProvider({
           if (getApiToken()) runFollowToggleApi(userId);
           else pushSnapshotNow(next);
         });
-        return next;
+        return applyState(next);
       }
       const pendingOut = (me.followRequestOut || []).includes(userId);
       if (target.isPrivate) {
         if (pendingOut) {
           const next: AppState = {
-            ...s,
-            users: s.users.map((u) => {
+            ...working,
+            users: working.users.map((u) => {
               if (u.id === meId)
                 return {
                   ...u,
@@ -3541,12 +3588,12 @@ export function AppProvider({
             if (getApiToken()) runFollowToggleApi(userId);
             else pushSnapshotNow(next);
           });
-          return next;
+          return applyState(next);
         }
         const next: AppState = pushNotif(
           {
-            ...s,
-            users: s.users.map((u) => {
+            ...working,
+            users: working.users.map((u) => {
               if (u.id === meId)
                 return { ...u, followRequestOut: [...(u.followRequestOut || []), userId] };
               if (u.id === userId)
@@ -3566,12 +3613,12 @@ export function AppProvider({
           if (getApiToken()) runFollowToggleApi(userId);
           else pushSnapshotNow(next);
         });
-        return next;
+        return applyState(next);
       }
       const next = pushNotif(
         {
-          ...s,
-          users: s.users.map((u) => {
+          ...working,
+          users: working.users.map((u) => {
             if (u.id === meId) return { ...u, following: [...u.following, userId] };
             if (u.id === userId) return { ...u, followers: [...u.followers, meId] };
             return u;
@@ -3583,7 +3630,7 @@ export function AppProvider({
         if (getApiToken()) runFollowToggleApi(userId);
         else pushSnapshotNow(next);
       });
-      return next;
+      return applyState(next);
     });
   };
 
@@ -4476,8 +4523,9 @@ export function AppProvider({
       const existing = findDmChatForPeer(snap.chats, selfId, otherUserId);
       if (existing) return existing;
 
-      const other = snap.users.find((u) => u.id === otherUserId);
-      const meRow = snap.users.find((u) => u.id === selfId);
+      const meRow = resolveUserProfile(snap, selfId) ?? snap.users.find(u => u.id === selfId);
+      const other =
+        resolveUserProfile(snap, otherUserId) ?? snap.users.find(u => u.id === otherUserId);
       const isFollowing = meRow?.following.includes(otherUserId) ?? false;
       const followsMe = other?.following.includes(selfId) ?? false;
       const newChat: Chat = {
@@ -4491,15 +4539,19 @@ export function AppProvider({
         lastReadMessageIdByUser: {},
       };
 
-      setState((s) => {
-        if (!s.currentUserId || isGuestUserId(s.currentUserId)) return s;
-        const uid = s.currentUserId;
-        if (findDmChatForPeer(s.chats, uid, otherUserId)) return s;
-        return { ...s, chats: [...s.chats, newChat] };
-      });
+      let users = snap.users;
+      if (other && !users.some(u => u.id === otherUserId)) {
+        users = [...users, other];
+      }
+      if (meRow && !users.some(u => u.id === selfId)) {
+        users = [...users, meRow];
+      }
+      const next: AppState = { ...snap, users, chats: [...snap.chats, newChat] };
+      setStateRaw(next);
+      persistStateSnapshotNow(next);
       return newChat;
     },
-    [setState],
+    [setStateRaw],
   );
 
   const createGroup: Ctx["createGroup"] = (name, avatar, memberIds) => {
@@ -4708,7 +4760,10 @@ export function AppProvider({
           }, nativeShell ? 20_000 : 12_000);
         });
         if (!delivered && stateRef.current.currentUserId === senderId) {
-          // تحديث حالة الرسالة إلى "failed" عند الفشل الكامل
+          const { isServerReachable } = await import("./serverReachability.js");
+          if (!isServerReachable() || (typeof navigator !== "undefined" && !navigator.onLine)) {
+            return;
+          }
           setState(s => {
             if (s.currentUserId !== senderId) return s;
             return {

@@ -231,6 +231,9 @@ export async function apiFetch(
         await new Promise(r => setTimeout(r, 400 * (attempt + 1)));
         return doFetch(attempt + 1);
       }
+      if (res.ok) {
+        void import("./serverReachability").then(m => m.markServerOnline());
+      }
       void import("./accountModerationBridge").then(({ notifyAccountBannedFromResponse }) =>
         notifyAccountBannedFromResponse(res),
       );
@@ -268,6 +271,7 @@ export async function apiFetch(
   try {
     return await doFetch(0);
   } catch (e) {
+    void import("./serverReachability").then(m => m.markServerOffline());
     const aborted = e instanceof Error && e.name === "AbortError";
     const networkMsg = formatFetchError(e, url);
     logApi("error", { method, url, aborted, error: e });

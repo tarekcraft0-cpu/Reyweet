@@ -104,7 +104,13 @@ import { resetNativeChatInboxLayout } from "@/lib/nativeChatInboxLayout";
 import { compressChatMediaFile } from "@/lib/chatMediaCompress";
 import { isOwnChatMessage, resolveActiveViewerId } from "@/lib/chatViewer";
 import { messageContent, normalizeChatRecord } from "@/lib/chatNormalize";
-import { chatMergeKey, dmChatId, findChatByOpenId, openChatIdFor } from "@/lib/dmChatId";
+import {
+  chatMergeKey,
+  dmChatId,
+  findChatByOpenId,
+  openChatIdFor,
+  parseDmChatId,
+} from "@/lib/dmChatId";
 import { ChatInlineReplyQuote } from "../chat/ChatInlineReplyQuote";
 import { ChatComposerReplyBar } from "../chat/ChatComposerReplyBar";
 import { GroupDetailsScreen } from "../chat/GroupDetailsScreen";
@@ -3126,10 +3132,23 @@ export function ChatScreen({
 
   const activeStackChatId = openChat ?? stackClosingId ?? null;
   const stackChatRaw = activeStackChatId ? findChatByOpenId(chats, activeStackChatId, me.id) : null;
-  const stackChat = useMemo(
-    () => (stackChatRaw ? normalizeChatRecord(stackChatRaw) : null),
-    [stackChatRaw],
-  );
+  const stackChat = useMemo(() => {
+    if (stackChatRaw) return normalizeChatRecord(stackChatRaw);
+    if (!activeStackChatId) return null;
+    const parsed = parseDmChatId(activeStackChatId);
+    if (!parsed) return null;
+    const peer = parsed[0] === me.id ? parsed[1] : parsed[1] === me.id ? parsed[0] : null;
+    if (!peer) return null;
+    return normalizeChatRecord({
+      id: activeStackChatId,
+      isGroup: false,
+      members: [me.id, peer],
+      admins: [],
+      messages: [],
+      lastOpenAtByUser: {},
+      lastReadMessageIdByUser: {},
+    });
+  }, [stackChatRaw, activeStackChatId, me.id]);
   const restoreChatStackAfterGroupSettings = useCallback(() => {
     if (!openChat) return;
     const p = Math.max(
