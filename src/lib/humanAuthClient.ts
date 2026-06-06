@@ -68,7 +68,7 @@ export async function buildAuthHumanBody(
       "الدخول من تيليجرام أو بوتات خارجية ممنوع — حمّل تطبيق Retweet الرسمي أو افتح الموقع من Safari/Chrome",
     );
   }
-  const humanChallengeId = await getHumanChallengeId();
+  const humanChallengeId = await refreshHumanChallenge();
   const ts = turnstileToken?.trim() || authTurnstileToken || undefined;
   return {
     ...base,

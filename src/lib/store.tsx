@@ -4951,10 +4951,12 @@ export function AppProvider({
       const stateKey = peer ? dmChatId(uid, peer) : chatId;
       const fetchId = stateKey;
 
+      const isDm =
+        !localChat.isGroup && !localChat.isChannel && localChat.members.length === 2;
+
       await runChatMessageLoad(uid, stateKey, async () => {
-        const { apiFetchChatMessagesPage, CHAT_MESSAGES_PAGE_SIZE } = await import(
-          "./chatMessagesApi"
-        );
+        const { apiFetchChatMessagesPage, apiFetchAllChatMessages, CHAT_MESSAGES_PAGE_SIZE } =
+          await import("./chatMessagesApi");
 
         if (!opts?.older) {
           const cached = await readCachedChatMessages(uid, stateKey);
@@ -4962,6 +4964,20 @@ export function AppProvider({
         } else {
           const meta = getChatMessageSyncMeta(uid, stateKey);
           if (!meta.hasMore) return;
+        }
+
+        if (!opts?.older && isDm) {
+          const all = await apiFetchAllChatMessages(token, fetchId, 300);
+          if (all.length) {
+            mergeChatMessagesIntoState(uid, chatId, stateKey, all);
+            void writeCachedChatMessages(uid, stateKey, all);
+          }
+          setChatMessageSyncMeta(uid, stateKey, {
+            hasMore: false,
+            oldestCursor: all[0]?.createdAt,
+            loading: false,
+          });
+          return;
         }
 
         const meta = getChatMessageSyncMeta(uid, stateKey);
@@ -6878,9 +6894,6 @@ export function AppProvider({
             return { ...s, notifications: [n, ...(s.notifications || [])].slice(0, 200) };
           });
         }
-        if (payload?.notification?.type !== "follow" && !socialSyncBusyRef.current) {
-          scheduleRemoteSync();
-        }
         return;
       }
       if (event === "streak_update") {
@@ -6919,8 +6932,15 @@ export function AppProvider({
             };
           }
           const prev = s.posts[i]!;
-          const comments =
-            patchNorm.comments.length > 0 ? patchNorm.comments : prev.comments;
+          const remoteComments = patchNorm.comments ?? [];
+          const localCommentIds = new Set(prev.comments.map(c => c.id));
+          const mergedComments =
+            remoteComments.length > 0
+              ? [
+                  ...prev.comments,
+                  ...remoteComments.filter(c => !localCommentIds.has(c.id)),
+                ]
+              : prev.comments;
           return {
             ...s,
             posts: s.posts.map(p =>
@@ -6934,7 +6954,7 @@ export function AppProvider({
                     ).createdAt,
                     likes: mergeSocialIdLists(p.likes, patchNorm.likes, p.id, "likes"),
                     reposts: mergeSocialIdLists(p.reposts, patchNorm.reposts, p.id, "reposts"),
-                    comments,
+                    comments: mergedComments,
                   }
                 : p,
             ),

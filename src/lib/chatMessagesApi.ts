@@ -38,7 +38,7 @@ export async function apiFetchChatMessagesPage(
 }
 
 /** حجم صفحة التحميل الافتراضي (فتح محادثة / تحميل أقدم) */
-export const CHAT_MESSAGES_PAGE_SIZE = 80;
+export const CHAT_MESSAGES_PAGE_SIZE = 200;
 
 /** يجلب كل صفحات الرسائل (استخدمه فقط عند الحاجة — ثقيل على المحادثات الطويلة). */
 export async function apiFetchAllChatMessages(

@@ -3346,6 +3346,7 @@ export function ChatScreen({
   }, [chats, meIdSafe]);
 
   const inboxSyncBusyRef = useRef(false);
+  const dmPreloadDoneRef = useRef(new Set<string>());
   useEffect(() => {
     if (!chatTabActive || isGuest || myChats.length > 0 || inboxSyncBusyRef.current) return;
     inboxSyncBusyRef.current = true;
@@ -3355,6 +3356,24 @@ export function ChatScreen({
         inboxSyncBusyRef.current = false;
       });
   }, [chatTabActive, isGuest, myChats.length, syncChatsInboxFromServer]);
+  useEffect(() => {
+    if (!chatTabActive || isGuest || !myChats.length) return;
+    let i = 0;
+    const preload = () => {
+      const batch = myChats
+        .filter(c => !c.isGroup && !c.isChannel)
+        .slice(i, i + 2);
+      i += 2;
+      for (const c of batch) {
+        const key = openChatIdFor(c, meIdSafe!);
+        if (dmPreloadDoneRef.current.has(key)) continue;
+        dmPreloadDoneRef.current.add(key);
+        void loadChatMessages(key);
+      }
+      if (i < myChats.length) window.setTimeout(preload, 400);
+    };
+    preload();
+  }, [chatTabActive, isGuest, myChats, meIdSafe, loadChatMessages]);
   const requests = useMemo(() => {
     if (!meIdSafe) return [];
     const out: Chat[] = [];

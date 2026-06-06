@@ -1023,9 +1023,10 @@ export async function apiRequestPasswordReset(
   | { ok: true; method: "code" | "link"; message?: string }
   | { ok: false; error: string }
 > {
+  const body = await buildAuthHumanBody({ identifier: identifier.trim() });
   const res = await apiFetch("/auth/request-password-reset", {
     method: "POST",
-    body: JSON.stringify({ identifier: identifier.trim() }),
+    body: JSON.stringify(body),
     token: null,
   });
   const data = (await res.json().catch(() => ({}))) as {
@@ -1048,9 +1049,10 @@ export async function apiCompletePasswordResetLink(
   token: string,
   newPassword: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  const body = await buildAuthHumanBody({ token: token.trim(), newPassword });
   const res = await apiFetch("/auth/complete-password-reset-link", {
     method: "POST",
-    body: JSON.stringify({ token: token.trim(), newPassword }),
+    body: JSON.stringify(body),
     token: null,
   });
   const data = (await res.json().catch(() => ({}))) as { error?: string };
@@ -1673,9 +1675,14 @@ export async function apiCompletePasswordReset(
   code: string,
   newPassword: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
+  const body = await buildAuthHumanBody({
+    identifier: identifier.trim(),
+    code: code.trim(),
+    newPassword,
+  });
   const res = await apiFetch("/auth/complete-password-reset", {
     method: "POST",
-    body: JSON.stringify({ identifier: identifier.trim(), code: code.trim(), newPassword }),
+    body: JSON.stringify(body),
     token: null,
   });
   const data = (await res.json().catch(() => ({}))) as { error?: string };
